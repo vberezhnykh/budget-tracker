@@ -1,0 +1,524 @@
+[
+    {
+        "date": "2025-11-09",
+        "description": "Старт",
+        "type": "balance",
+        "cash_flow": 5650.00,
+        "card_flow": 0.00,
+        "cash_balance": 5650.00,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-09",
+        "description": "Продукты",
+        "type": "expense",
+        "cash_flow": -47.50,
+        "card_flow": 0.00,
+        "cash_balance": 5602.50,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-10",
+        "description": "Продукты, такси, анализы",
+        "type": "expense",
+        "cash_flow": -215.55,
+        "card_flow": 0.00,
+        "cash_balance": 5386.95,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-12",
+        "description": "Продукты",
+        "type": "expense",
+        "cash_flow": -27.80,
+        "card_flow": 0.00,
+        "cash_balance": 5359.15,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-13",
+        "description": "Такси",
+        "type": "expense",
+        "cash_flow": -27.00,
+        "card_flow": 0.00,
+        "cash_balance": 5332.15,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-14",
+        "description": "Такси, ужин",
+        "type": "expense",
+        "cash_flow": -73.00,
+        "card_flow": 0.00,
+        "cash_balance": 5259.15,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-15",
+        "description": "Такси, музей, обед, кальян",
+        "type": "expense",
+        "cash_flow": -104.50,
+        "card_flow": 0.00,
+        "cash_balance": 5154.65,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-16",
+        "description": "Такси, продукты",
+        "type": "expense",
+        "cash_flow": -175.00,
+        "card_flow": 0.00,
+        "cash_balance": 4979.65,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-17",
+        "description": "Продукты",
+        "type": "expense",
+        "cash_flow": -49.81,
+        "card_flow": 0.00,
+        "cash_balance": 4929.84,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-18",
+        "description": "Продукты",
+        "type": "expense",
+        "cash_flow": -19.79,
+        "card_flow": 0.00,
+        "cash_balance": 4910.05,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-20",
+        "description": "Продукты",
+        "type": "expense",
+        "cash_flow": -18.90,
+        "card_flow": 0.00,
+        "cash_balance": 4891.15,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-21",
+        "description": "Ужин, машина",
+        "type": "expense",
+        "cash_flow": -850.00,
+        "card_flow": 0.00,
+        "cash_balance": 4041.15,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-22",
+        "description": "Продукты, ИКЕА, кофе",
+        "type": "expense",
+        "cash_flow": -247.58,
+        "card_flow": 0.00,
+        "cash_balance": 3793.57,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-23",
+        "description": "Кальянная",
+        "type": "expense",
+        "cash_flow": -70.00,
+        "card_flow": 0.00,
+        "cash_balance": 3723.57,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-25",
+        "description": "Бензин",
+        "type": "expense",
+        "cash_flow": -20.00,
+        "card_flow": 0.00,
+        "cash_balance": 3703.57,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-26",
+        "description": "Обед",
+        "type": "expense",
+        "cash_flow": -9.88,
+        "card_flow": 0.00,
+        "cash_balance": 3693.69,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-27",
+        "description": "Маникюр, продукты",
+        "type": "expense",
+        "cash_flow": -60.00,
+        "card_flow": 0.00,
+        "cash_balance": 3633.69,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-27",
+        "description": "Зарплата",
+        "type": "income",
+        "cash_flow": 2600.00,
+        "card_flow": 0.00,
+        "cash_balance": 6233.69,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-28",
+        "description": "Обмен валюты",
+        "type": "income",
+        "cash_flow": 500.00,
+        "card_flow": 0.00,
+        "cash_balance": 6733.69,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-29",
+        "description": "Ужин, продукты",
+        "type": "expense",
+        "cash_flow": -60.00,
+        "card_flow": 0.00,
+        "cash_balance": 6673.69,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-29",
+        "description": "Обед, бензин",
+        "type": "expense",
+        "cash_flow": -90.00,
+        "card_flow": 0.00,
+        "cash_balance": 6583.69,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-11-30",
+        "description": "Депозит на электричество",
+        "type": "expense",
+        "cash_flow": -350.00,
+        "card_flow": 0.00,
+        "cash_balance": 6233.69,
+        "card_balance": 0.00
+    },
+    {
+        "date": "2025-12-02",
+        "description": "Депозит",
+        "type": "transfer",
+        "cash_flow": -500.00,
+        "card_flow": 500.00,
+        "cash_balance": 5733.69,
+        "card_balance": 500.00
+    },
+    {
+        "date": "2025-12-03",
+        "description": "Депозит",
+        "type": "transfer",
+        "cash_flow": -100.00,
+        "card_flow": 100.00,
+        "cash_balance": 5633.69,
+        "card_balance": 600.00
+    },
+    {
+        "date": "2025-12-03",
+        "description": "Зарплата",
+        "type": "income",
+        "cash_flow": 0.00,
+        "card_flow": 2656.50,
+        "cash_balance": 5633.69,
+        "card_balance": 3256.50
+    },
+    {
+        "date": "2025-12-03",
+        "description": "Комиссии, обед",
+        "type": "expense",
+        "cash_flow": -11.85,
+        "card_flow": -14.00,
+        "cash_balance": 5621.84,
+        "card_balance": 3242.50
+    },
+    {
+        "date": "2025-12-04",
+        "description": "Педикюр, кофе",
+        "type": "expense",
+        "cash_flow": -105.00,
+        "card_flow": 0.00,
+        "cash_balance": 5516.84,
+        "card_balance": 3242.50
+    },
+    {
+        "date": "2025-12-05",
+        "description": "Комиссии",
+        "type": "expense",
+        "cash_flow": 0.00,
+        "card_flow": -7.50,
+        "cash_balance": 5516.84,
+        "card_balance": 3235.00
+    },
+    {
+        "date": "2025-12-06",
+        "description": "Обед, одежда, подарок Веронике",
+        "type": "expense",
+        "cash_flow": -150.00,
+        "card_flow": 0.00,
+        "cash_balance": 5366.84,
+        "card_balance": 3235.00
+    },
+    {
+        "date": "2025-12-07",
+        "description": "Кальян",
+        "type": "expense",
+        "cash_flow": -35.00,
+        "card_flow": 0.00,
+        "cash_balance": 5331.84,
+        "card_balance": 3235.00
+    },
+    {
+        "date": "2025-12-07",
+        "description": "Неопознанные траты",
+        "type": "expense",
+        "cash_flow": -1444.84,
+        "card_flow": 0.00,
+        "cash_balance": 3887.00,
+        "card_balance": 3235.00
+    },
+    {
+        "date": "2025-12-08",
+        "description": "Гарантия",
+        "type": "expense",
+        "cash_flow": 0.00,
+        "card_flow": -670.00,
+        "cash_balance": 3887.00,
+        "card_balance": 2565.00
+    },
+    {
+        "date": "2025-12-09",
+        "description": "Косметика, ужин, фото",
+        "type": "expense",
+        "cash_flow": -45.00,
+        "card_flow": -196.10,
+        "cash_balance": 3842.00,
+        "card_balance": 2368.90
+    },
+    {
+        "date": "2025-12-10",
+        "description": "Обувница",
+        "type": "expense",
+        "cash_flow": 0.00,
+        "card_flow": -54.09,
+        "cash_balance": 3842.00,
+        "card_balance": 2314.81
+    },
+    {
+        "date": "2025-12-11",
+        "description": "Оплата счетов",
+        "type": "expense",
+        "cash_flow": 0.00,
+        "card_flow": -65.48,
+        "cash_balance": 3842.00,
+        "card_balance": 2249.33
+    },
+    {
+        "date": "2025-12-12",
+        "description": "Ужин",
+        "type": "expense",
+        "cash_flow": -40.00,
+        "card_flow": 0.00,
+        "cash_balance": 3802.00,
+        "card_balance": 2249.33
+    },
+    {
+        "date": "2025-12-13",
+        "description": "Вода, мороженое, обед, кальян, продукты",
+        "type": "expense",
+        "cash_flow": -206.00,
+        "card_flow": 0.00,
+        "cash_balance": 3596.00,
+        "card_balance": 2249.33
+    },
+    {
+        "date": "2025-12-14",
+        "description": "Курсы английского",
+        "type": "expense",
+        "cash_flow": 0.00,
+        "card_flow": -17.58,
+        "cash_balance": 3596.00,
+        "card_balance": 2231.75
+    },
+    {
+        "date": "2025-12-15",
+        "description": "Компенсация квартиры",
+        "type": "income",
+        "cash_flow": 1895.00,
+        "card_flow": 0.00,
+        "cash_balance": 5491.00,
+        "card_balance": 2231.75
+    },
+    {
+        "date": "2025-12-18",
+        "description": "Кальянная, товары для дома",
+        "type": "expense",
+        "cash_flow": -90.00,
+        "card_flow": 0.00,
+        "cash_balance": 5401.00,
+        "card_balance": 2231.75
+    },
+    {
+        "date": "2025-12-19",
+        "description": "Аренда квартиры, обед, продукты, ужин",
+        "type": "expense",
+        "cash_flow": -175.00,
+        "card_flow": -1890.00,
+        "cash_balance": 5226.00,
+        "card_balance": 341.75
+    },
+    {
+        "date": "2025-12-20",
+        "description": "Аренда машины, бензин, обед",
+        "type": "expense",
+        "cash_flow": -1566.00,
+        "card_flow": 0.00,
+        "cash_balance": 3660.00,
+        "card_balance": 341.75
+    },
+    {
+        "date": "2025-12-21",
+        "description": "Кофе, продукты, кальян",
+        "type": "expense",
+        "cash_flow": -157.00,
+        "card_flow": 0.00,
+        "cash_balance": 3503.00,
+        "card_balance": 341.75
+    },
+    {
+        "date": "2025-12-22",
+        "description": "Кроссовки, билеты на Анакондаз",
+        "type": "expense",
+        "cash_flow": 0.00,
+        "card_flow": -185.40,
+        "cash_balance": 3503.00,
+        "card_balance": 156.35
+    },
+    {
+        "date": "2025-12-23",
+        "description": "Ветеринар, комиссия",
+        "type": "expense",
+        "cash_flow": -50.00,
+        "card_flow": -4.00,
+        "cash_balance": 3453.00,
+        "card_balance": 152.35
+    },
+    {
+        "date": "2025-12-23",
+        "description": "Зарплата",
+        "type": "income",
+        "cash_flow": 0.00,
+        "card_flow": 3542.00,
+        "cash_balance": 3453.00,
+        "card_balance": 3694.35
+    },
+    {
+        "date": "2025-12-24",
+        "description": "Подарок начальнице",
+        "type": "expense",
+        "cash_flow": -10.00,
+        "card_flow": 0.00,
+        "cash_balance": 3443.00,
+        "card_balance": 3694.35
+    },
+    {
+        "date": "2025-12-25",
+        "description": "Обед, аэрогриль",
+        "type": "expense",
+        "cash_flow": -65.00,
+        "card_flow": 0.00,
+        "cash_balance": 3378.00,
+        "card_balance": 3694.35
+    },
+    {
+        "date": "2025-12-25",
+        "description": "Зарплата",
+        "type": "income",
+        "cash_flow": 2500.00,
+        "card_flow": 0.00,
+        "cash_balance": 5878.00,
+        "card_balance": 3694.35
+    },
+    {
+        "date": "2025-12-26",
+        "description": "Продукты",
+        "type": "expense",
+        "cash_flow": -45.00,
+        "card_flow": 0.00,
+        "cash_balance": 5833.00,
+        "card_balance": 3694.35
+    },
+    {
+        "date": "2025-12-27",
+        "description": "Кальян, книга, сладости",
+        "type": "expense",
+        "cash_flow": -70.00,
+        "card_flow": 0.00,
+        "cash_balance": 5763.00,
+        "card_balance": 3694.35
+    },
+    {
+        "date": "2025-12-28",
+        "description": "Одежда, косметика, велосипед, комплектующие, бензин",
+        "type": "expense",
+        "cash_flow": -765.00,
+        "card_flow": 0.00,
+        "cash_balance": 4998.00,
+        "card_balance": 3694.35
+    },
+    {
+        "date": "2025-12-29",
+        "description": "Зоомагазин, продукты",
+        "type": "expense",
+        "cash_flow": -180.00,
+        "card_flow": 0.00,
+        "cash_balance": 4818.00,
+        "card_balance": 3694.35
+    },
+    {
+        "date": "2025-12-30",
+        "description": "Депозит водоканал, насос, обед",
+        "type": "expense",
+        "cash_flow": -60.00,
+        "card_flow": -250.00,
+        "cash_balance": 4758.00,
+        "card_balance": 3444.35
+    },
+    {
+        "date": "2025-12-31",
+        "description": "Продукты, обслуживание карты",
+        "type": "expense",
+        "cash_flow": -5.00,
+        "card_flow": -35.00,
+        "cash_balance": 4753.00,
+        "card_balance": 3409.35
+    },
+    {
+        "date": "2026-01-01",
+        "description": "Обед",
+        "type": "expense",
+        "cash_flow": -45.00,
+        "card_flow": 0.00,
+        "cash_balance": 4708.00,
+        "card_balance": 3409.35
+    },
+    {
+        "date": "2026-01-02",
+        "description": "Кальянная",
+        "type": "expense",
+        "cash_flow": -85.00,
+        "card_flow": 0.00,
+        "cash_balance": 4623.00,
+        "card_balance": 3409.35
+    },
+    {
+        "date": "2026-01-03",
+        "description": "Продукты, брови, корректировка",
+        "type": "expense",
+        "cash_flow": -168.00,
+        "card_flow": -489.95,
+        "cash_balance": 4455.00,
+        "card_balance": 2919.40
+    }
+]
