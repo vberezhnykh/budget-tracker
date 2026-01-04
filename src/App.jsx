@@ -91,13 +91,17 @@ function App() {
     // Calculate expense only from negative visual amounts
     const expense = filtered.reduce((acc, t) => t.visualAmount < 0 ? acc + t.visualAmount : acc, 0);
 
-    // Group by date
+    // Group by date with daily totals
     const grouped = filtered.reduce((groups, t) => {
       const date = t.date;
       if (!groups[date]) {
-        groups[date] = [];
+        groups[date] = { items: [], dailySum: 0 };
       }
-      groups[date].push(t);
+      groups[date].items.push(t);
+      // Only add to daily sum if it's a real income/expense (not transfer/initial)
+      if (t.type !== 'initial' && t.type !== 'transfer') {
+        groups[date].dailySum += t.visualAmount;
+      }
       return groups;
     }, {});
 
@@ -537,11 +541,24 @@ function App() {
                       color: 'var(--color-text-muted)',
                       textTransform: 'capitalize',
                       fontWeight: '500',
-                      borderBottom: '1px solid rgba(255,255,255,0.03)'
+                      borderBottom: '1px solid rgba(255,255,255,0.03)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
                     }}>
-                      {formatDate(date)}
+                      <span>{formatDate(date)}</span>
+                      {monthlyData.transactions[date].dailySum !== 0 && (
+                        <span style={{
+                          fontWeight: '600',
+                          color: monthlyData.transactions[date].dailySum > 0 ? '#4ade80' : 'rgba(255,255,255,0.4)',
+                          fontSize: '0.75rem'
+                        }}>
+                          {monthlyData.transactions[date].dailySum > 0 ? '+' : ''}
+                          {monthlyData.transactions[date].dailySum.toFixed(2)}€
+                        </span>
+                      )}
                     </div>
-                    {monthlyData.transactions[date].map((item, i) => (
+                    {monthlyData.transactions[date].items.map((item, i) => (
                       <div
                         key={item.id}
                         onClick={() => openEditModal(item)}

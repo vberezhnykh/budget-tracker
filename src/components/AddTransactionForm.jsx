@@ -4,16 +4,16 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const [formData, setFormData] = useState(initialData ? {
         ...initialData,
         date: initialData.date || new Date().toISOString().split('T')[0],
-        account: initialData.account || 'card',
-        toAccount: initialData.toAccount || (initialData.account === 'cash' ? 'card' : 'cash')
+        account: initialData.account || 'cash',
+        toAccount: initialData.toAccount || (initialData.account === 'card' ? 'cash' : 'card')
     } : {
         amount: '',
         category: '',
         description: '',
         date: new Date().toISOString().split('T')[0],
         type: type, // 'income', 'expense', or 'transfer'
-        account: 'card',
-        toAccount: 'cash'
+        account: 'cash',
+        toAccount: 'card'
     });
 
     const isTransfer = formData.type === 'transfer';
