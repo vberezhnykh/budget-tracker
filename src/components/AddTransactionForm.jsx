@@ -17,6 +17,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     });
 
     const isTransfer = formData.type === 'transfer';
+    const today = new Date().toISOString().split('T')[0];
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -284,6 +285,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         <input
                             type="date"
                             value={formData.date}
+                            min="2025-11-09"
+                            max={today}
                             onChange={e => setFormData({ ...formData, date: e.target.value })}
                             style={{
                                 width: '100%',

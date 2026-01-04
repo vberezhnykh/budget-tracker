@@ -86,10 +86,10 @@ function App() {
   const monthlyData = useMemo(() => {
     const filtered = transactions.filter(t => t.date.startsWith(selectedMonth));
 
-    // Calculate income only from positive visual amounts, excluding initial
-    const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial') ? acc + t.visualAmount : acc, 0);
-    // Calculate expense only from negative visual amounts
-    const expense = filtered.reduce((acc, t) => t.visualAmount < 0 ? acc + t.visualAmount : acc, 0);
+    // Calculate income only from positive visual amounts, excluding initial and transfers
+    const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
+    // Calculate expense only from negative visual amounts, excluding transfers
+    const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
 
     // Group by date with daily totals
     const grouped = filtered.reduce((groups, t) => {
