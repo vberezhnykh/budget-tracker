@@ -70,8 +70,8 @@ function App() {
   const monthlyData = useMemo(() => {
     const filtered = transactions.filter(t => t.date.startsWith(selectedMonth));
 
-    // Calculate income only from positive visual amounts
-    const income = filtered.reduce((acc, t) => t.visualAmount > 0 ? acc + t.visualAmount : acc, 0);
+    // Calculate income only from positive visual amounts, excluding initial
+    const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial') ? acc + t.visualAmount : acc, 0);
     // Calculate expense only from negative visual amounts
     const expense = filtered.reduce((acc, t) => t.visualAmount < 0 ? acc + t.visualAmount : acc, 0);
 
@@ -244,20 +244,14 @@ function App() {
             boxShadow: '0 0 15px var(--color-primary-glow)'
           }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M17.2 7a6 7 0 1 0 0 10" />
+              <path d="M13.5 10h-9" />
+              <path d="M13.5 14h-9" />
             </svg>
           </div>
-          <h1 style={{ fontSize: '1.5rem', letterSpacing: '-0.02em' }}>BudgetPro</h1>
+          <h1 style={{ fontSize: '1.5rem', letterSpacing: '-0.02em' }}>BudgetTracker</h1>
         </div>
-
-        <button className="glass-panel" style={{
-          padding: '8px 16px',
-          color: 'var(--color-text-muted)',
-          fontSize: '0.9rem',
-          cursor: 'pointer'
-        }}>
-          Валентин
-        </button>
       </header>
 
       <main>
@@ -535,13 +529,16 @@ function App() {
                             width: '36px',
                             height: '36px',
                             borderRadius: '50%',
-                            background: item.visualAmount > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                            background: item.type === 'initial'
+                              ? 'rgba(99, 102, 241, 0.1)'
+                              : (item.visualAmount > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)'),
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontSize: '1rem'
+                            fontSize: '1rem',
+                            color: item.type === 'initial' ? '#818cf8' : 'inherit'
                           }}>
-                            {item.visualAmount > 0 ? '↓' : '↑'}
+                            {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                           </div>
                           <div>
                             <div style={{ fontWeight: '500', color: '#fff' }}>{item.title}</div>
@@ -552,9 +549,9 @@ function App() {
                         </div>
                         <div style={{
                           fontWeight: '600',
-                          color: item.visualAmount > 0 ? '#4ade80' : '#fff'
+                          color: item.type === 'initial' ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff')
                         }}>
-                          {item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
+                          {item.type !== 'initial' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                         </div>
                       </div>
                     ))}

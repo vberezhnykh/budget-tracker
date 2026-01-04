@@ -117,11 +117,25 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             }}>€</span>
                             <input
                                 type="number"
+                                inputMode="decimal"
                                 step="0.01"
                                 placeholder="0.00"
-                                autoFocus
                                 value={formData.amount}
                                 onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                                onKeyDown={(e) => {
+                                    // Allow: backspace, delete, tab, escape, enter and . or ,
+                                    if ([46, 8, 9, 27, 13, 110, 190, 188].indexOf(e.keyCode) !== -1 ||
+                                        // Allow: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
+                                        (e.ctrlKey === true && [65, 67, 86, 88].indexOf(e.keyCode) !== -1) ||
+                                        // Allow: home, end, left, right
+                                        (e.keyCode >= 35 && e.keyCode <= 39)) {
+                                        return;
+                                    }
+                                    // Ensure that it is a number and stop the keypress
+                                    if ((e.shiftKey || (e.keyCode < 48 || e.keyCode > 57)) && (e.keyCode < 96 || e.keyCode > 105)) {
+                                        e.preventDefault();
+                                    }
+                                }}
                                 style={{
                                     width: '100%',
                                     background: 'rgba(255,255,255,0.05)',
@@ -263,10 +277,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         <button
                             type="submit"
                             className="btn-primary"
+                            disabled={!formData.amount || !formData.category}
                             style={{
                                 flex: 1,
                                 padding: '16px',
-                                fontSize: '1.1rem'
+                                fontSize: '1.1rem',
+                                opacity: (!formData.amount || !formData.category) ? 0.5 : 1,
+                                cursor: (!formData.amount || !formData.category) ? 'not-allowed' : 'pointer'
                             }}
                         >
                             Сохранить

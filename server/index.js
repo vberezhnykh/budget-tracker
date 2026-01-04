@@ -14,7 +14,24 @@ app.use(express.json());
 
 // Database Connection
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('MongoDB Connected'))
+    .then(async () => {
+        console.log('MongoDB Connected');
+        // Seed initial balance if not exists
+        const initialExists = await Transaction.findOne({ type: 'initial' });
+        if (!initialExists) {
+            const initialBalance = new Transaction({
+                title: "Стартовый баланс",
+                amount: 5650,
+                type: "initial",
+                category: "Другое",
+                description: "Стартовый баланс",
+                account: "cash",
+                date: "2025-11-09"
+            });
+            await initialBalance.save();
+            console.log('Initial balance seeded');
+        }
+    })
     .catch(err => console.log(err));
 
 // Routes
@@ -90,4 +107,17 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+
+    // Prevention of Render's "Sleep" mode
+    const url = process.env.RENDER_EXTERNAL_URL;
+    if (url) {
+        console.log(`Setting up self-ping for ${url}`);
+        setInterval(() => {
+            fetch(`${url}/api/transactions`)
+                .then(() => console.log('Self-ping successful'))
+                .catch(err => console.error('Self-ping failed:', err.message));
+        }, 14 * 60 * 1000); // Every 14 minutes
+    }
+});
