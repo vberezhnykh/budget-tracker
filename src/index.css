@@ -5,23 +5,30 @@
   --font-main: 'Inter', sans-serif;
   --font-heading: 'Outfit', sans-serif;
 
-  --color-bg: #030712; /* Slate 950 */
-  --color-surface: #111827; /* Slate 900 */
+  --color-bg: #030712;
+  /* Slate 950 */
+  --color-surface: #111827;
+  /* Slate 900 */
   --color-surface-glass: rgba(17, 24, 39, 0.7);
-  
-  --color-primary: #6366f1; /* Indigo 500 */
+
+  --color-primary: #6366f1;
+  /* Indigo 500 */
   --color-primary-glow: rgba(99, 102, 241, 0.5);
-  
-  --color-secondary: #ec4899; /* Pink 500 */
-  
-  --color-text-main: #f9fafb; /* Gray 50 */
-  --color-text-muted: #9ca3af; /* Gray 400 */
-  
+  --color-primary-gradient: linear-gradient(135deg, #6366f1, #818cf8);
+
+  --color-secondary: #ec4899;
+  /* Pink 500 */
+
+  --color-text-main: #f9fafb;
+  /* Gray 50 */
+  --color-text-muted: #9ca3af;
+  /* Gray 400 */
+
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;
-  
+
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-glow: 0 0 20px var(--color-primary-glow);
@@ -37,7 +44,7 @@ body {
   font-family: var(--font-main);
   background-color: var(--color-bg);
   color: var(--color-text-main);
-  background-image: 
+  background-image:
     radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
     radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.15) 0px, transparent 50%);
   background-attachment: fixed;
@@ -46,7 +53,12 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-heading);
   font-weight: 700;
   color: #fff;
@@ -105,8 +117,15 @@ button {
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fade-in {
