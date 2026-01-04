@@ -1,22 +1,32 @@
 import { useState } from 'react';
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, onClose, onSubmit, onDelete }) {
-    const [formData, setFormData] = useState(initialData || {
+    const [formData, setFormData] = useState(initialData ? {
+        ...initialData,
+        date: initialData.date || new Date().toISOString().split('T')[0],
+        account: initialData.account || 'card',
+        toAccount: initialData.toAccount || (initialData.account === 'cash' ? 'card' : 'cash')
+    } : {
         amount: '',
         category: '',
         description: '',
         date: new Date().toISOString().split('T')[0],
-        type: type, // 'income' or 'expense'
-        account: 'card' // 'card' or 'cash'
+        type: type, // 'income', 'expense', or 'transfer'
+        account: 'card',
+        toAccount: 'cash'
     });
+
+    const isTransfer = formData.type === 'transfer';
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (!formData.amount || !formData.category) return;
+        const canSave = formData.amount && (isTransfer || formData.category);
+        if (!canSave) return;
 
         onSubmit({
             ...formData,
             amount: parseFloat(formData.amount),
+            category: isTransfer ? 'Обмен' : formData.category,
             id: initialData ? initialData.id : Date.now()
         });
         onClose();
@@ -26,6 +36,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         ? ['Продукты', 'Еда вне дома', 'Транспорт', 'Развлечения', 'Шопинг', 'Красота', 'Жилье', 'Питомцы', 'Услуги', 'Другое']
         : ['Зарплата', 'Фриланс', 'Подарок', 'Кэшбэк', 'Другое'];
 
+    const getTitle = () => {
+        if (initialData) return 'Редактировать';
+        if (isTransfer) return 'Обмен / Перевод';
+        return formData.type === 'income' ? 'Новый доход' : 'Новый расход';
+    };
+
     return (
         <div style={{
             position: 'fixed',
@@ -33,32 +49,30 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             background: 'rgba(3, 7, 18, 0.8)',
             backdropFilter: 'blur(4px)',
             display: 'flex',
-            alignItems: 'flex-end', // Bottom sheet style for mobile
+            alignItems: 'center',
             justifyContent: 'center',
             zIndex: 100,
-            animation: 'fadeIn 0.2s ease-out'
+            animation: 'fadeIn 0.2s ease-out',
+            overflowY: 'auto',
+            padding: '20px 0'
         }} onClick={onClose}>
             <div
                 onClick={e => e.stopPropagation()}
                 className="glass-panel"
                 style={{
-                    width: '100%',
-                    maxWidth: '500px',
+                    width: 'calc(100% - 32px)',
+                    maxWidth: '450px',
                     padding: '24px',
-                    borderBottomLeftRadius: 0,
-                    borderBottomRightRadius: 0,
-                    borderTopLeftRadius: '24px',
-                    borderTopRightRadius: '24px',
-                    animation: 'slideUp 0.3s ease-out',
+                    borderRadius: '24px',
+                    animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '20px',
-                    maxHeight: '90vh',
-                    overflowY: 'auto'
+                    margin: 'auto'
                 }}
             >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3>{initialData ? 'Редактировать' : (formData.type === 'income' ? 'Новый доход' : 'Новый расход')}</h3>
+                    <h3 style={{ margin: 0 }}>{getTitle()}</h3>
                     <button
                         type="button"
                         onClick={onClose}
@@ -80,7 +94,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 }}>
                     {[
                         { id: 'expense', label: 'Расход' },
-                        { id: 'income', label: 'Доход' }
+                        { id: 'income', label: 'Доход' },
+                        { id: 'transfer', label: 'Обмен' }
                     ].map(t => (
                         <button
                             key={t.id}
@@ -92,7 +107,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 background: formData.type === t.id ? 'rgba(255,255,255,0.1)' : 'transparent',
                                 color: formData.type === t.id ? '#fff' : 'var(--color-text-muted)',
                                 fontWeight: '500',
-                                textTransform: 'capitalize',
+                                fontSize: '0.9rem',
                                 transition: 'all 0.2s'
                             }}
                         >
@@ -123,15 +138,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 value={formData.amount}
                                 onChange={e => setFormData({ ...formData, amount: e.target.value })}
                                 onKeyDown={(e) => {
-                                    // Allow: backspace, delete, tab, escape, enter and . or ,
                                     if ([46, 8, 9, 27, 13, 110, 190, 188].indexOf(e.keyCode) !== -1 ||
-                                        // Allow: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
                                         (e.ctrlKey === true && [65, 67, 86, 88].indexOf(e.keyCode) !== -1) ||
-                                        // Allow: home, end, left, right
                                         (e.keyCode >= 35 && e.keyCode <= 39)) {
                                         return;
                                     }
-                                    // Ensure that it is a number and stop the keypress
                                     if ((e.shiftKey || (e.keyCode < 48 || e.keyCode > 57)) && (e.keyCode < 96 || e.keyCode > 105)) {
                                         e.preventDefault();
                                     }
@@ -151,6 +162,122 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         </div>
                     </div>
 
+                    {!isTransfer ? (
+                        <>
+                            {/* Account Selector for Income/Expense */}
+                            <div>
+                                <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
+                                    {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
+                                </label>
+                                <div style={{ display: 'flex', gap: '12px' }}>
+                                    {[
+                                        { id: 'card', label: '💳 Карта' },
+                                        { id: 'cash', label: '💵 Наличные' }
+                                    ].map(acc => (
+                                        <button
+                                            key={acc.id}
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, account: acc.id })}
+                                            style={{
+                                                flex: 1,
+                                                padding: '12px',
+                                                borderRadius: '12px',
+                                                border: '1px solid',
+                                                borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
+                                                background: formData.account === acc.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                color: formData.account === acc.id ? '#fff' : 'var(--color-text-muted)',
+                                                fontWeight: '500',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            {acc.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Category Selection */}
+                            <div>
+                                <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Категория</label>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    {categories.map(cat => (
+                                        <button
+                                            key={cat}
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, category: cat })}
+                                            style={{
+                                                padding: '8px 16px',
+                                                borderRadius: '20px',
+                                                border: '1px solid',
+                                                borderColor: formData.category === cat ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
+                                                background: formData.category === cat ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                color: formData.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                                fontSize: '0.875rem',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            {cat}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        /* Transfer specific UI */
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>ОТКУДА</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newFrom = formData.account === 'card' ? 'cash' : 'card';
+                                            setFormData({ ...formData, account: newFrom, toAccount: formData.account });
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '16px',
+                                            borderRadius: '16px',
+                                            background: 'rgba(239, 68, 68, 0.1)',
+                                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                                            color: '#fff',
+                                            fontWeight: '600',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {formData.account === 'card' ? '💳 Карта' : '💵 Наличные'}
+                                    </button>
+                                </div>
+                                <div style={{ fontSize: '1.5rem', paddingTop: '20px' }}>→</div>
+                                <div style={{ flex: 1 }}>
+                                    <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>КУДА</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newTo = formData.toAccount === 'card' ? 'cash' : 'card';
+                                            setFormData({ ...formData, toAccount: newTo, account: formData.toAccount });
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '16px',
+                                            borderRadius: '16px',
+                                            background: 'rgba(34, 197, 94, 0.1)',
+                                            border: '1px solid rgba(34, 197, 94, 0.2)',
+                                            color: '#fff',
+                                            fontWeight: '600',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {formData.toAccount === 'card' ? '💳 Карта' : '💵 Наличные'}
+                                    </button>
+                                </div>
+                            </div>
+                            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 }}>
+                                Общий баланс не изменится
+                            </p>
+                        </div>
+                    )}
+
                     {/* Date Input */}
                     <div>
                         <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Дата</label>
@@ -167,72 +294,15 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 color: '#fff',
                                 fontSize: '1rem',
                                 outline: 'none',
-                                fontFamily: 'inherit'
+                                fontFamily: 'inherit',
+                                colorScheme: 'dark'
                             }}
                         />
                     </div>
 
-                    {/* Account Source */}
-                    <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
-                            {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
-                        </label>
-                        <div style={{ display: 'flex', gap: '12px' }}>
-                            {[
-                                { id: 'card', label: '💳 Карта' },
-                                { id: 'cash', label: '💵 Наличные' }
-                            ].map(acc => (
-                                <button
-                                    key={acc.id}
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, account: acc.id })}
-                                    style={{
-                                        flex: 1,
-                                        padding: '12px',
-                                        borderRadius: '12px',
-                                        border: '1px solid',
-                                        borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
-                                        background: formData.account === acc.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
-                                        color: formData.account === acc.id ? '#fff' : 'var(--color-text-muted)',
-                                        fontWeight: '500',
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    {acc.label}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Category Selection */}
-                    <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Категория</label>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            {categories.map(cat => (
-                                <button
-                                    key={cat}
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, category: cat })}
-                                    style={{
-                                        padding: '8px 16px',
-                                        borderRadius: '20px',
-                                        border: '1px solid',
-                                        borderColor: formData.category === cat ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
-                                        background: formData.category === cat ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
-                                        color: formData.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                                        fontSize: '0.875rem',
-                                        transition: 'all 0.2s'
-                                    }}
-                                >
-                                    {cat}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
                     {/* Description */}
                     <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Описание</label>
+                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Описание (опц.)</label>
                         <input
                             type="text"
                             placeholder="Комментарий..."
@@ -277,13 +347,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         <button
                             type="submit"
                             className="btn-primary"
-                            disabled={!formData.amount || !formData.category}
+                            disabled={!formData.amount || (!isTransfer && !formData.category)}
                             style={{
                                 flex: 1,
                                 padding: '16px',
                                 fontSize: '1.1rem',
-                                opacity: (!formData.amount || !formData.category) ? 0.5 : 1,
-                                cursor: (!formData.amount || !formData.category) ? 'not-allowed' : 'pointer'
+                                opacity: (!formData.amount || (!isTransfer && !formData.category)) ? 0.5 : 1,
+                                cursor: (!formData.amount || (!isTransfer && !formData.category)) ? 'not-allowed' : 'pointer'
                             }}
                         >
                             Сохранить
@@ -292,9 +362,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 </form>
             </div>
             <style>{`
-        @keyframes slideUp {
-          from { transform: translateY(100%); }
-          to { transform: translateY(0); }
+        @keyframes scaleIn {
+          from { transform: scale(0.9); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
         }
       `}</style>
         </div>

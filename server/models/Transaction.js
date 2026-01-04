@@ -12,7 +12,7 @@ const TransactionSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['income', 'expense', 'initial'],
+        enum: ['income', 'expense', 'initial', 'transfer'],
         required: true
     },
     category: {
@@ -27,6 +27,10 @@ const TransactionSchema = new mongoose.Schema({
         type: String,
         enum: ['card', 'cash'],
         default: 'card'
+    },
+    toAccount: {
+        type: String,
+        enum: ['card', 'cash']
     },
     date: {
         type: Date,

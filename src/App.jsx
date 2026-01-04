@@ -30,19 +30,35 @@ function App() {
       const formatted = data.map(t => {
         const amount = Number(t.amount);
         const isExpense = t.type === 'expense';
+        const isTransfer = t.type === 'transfer';
         const signedAmount = isExpense ? -Math.abs(amount) : Math.abs(amount);
+
+        let cashFlow = 0;
+        let cardFlow = 0;
+        let visualAmount = signedAmount;
+
+        if (isTransfer) {
+          visualAmount = amount; // Show amount in history
+          if (t.account === 'cash') cashFlow = -amount;
+          if (t.account === 'card') cardFlow = -amount;
+          if (t.toAccount === 'cash') cashFlow = amount;
+          if (t.toAccount === 'card') cardFlow = amount;
+        } else {
+          cashFlow = t.account === 'cash' ? signedAmount : 0;
+          cardFlow = t.account === 'card' ? signedAmount : 0;
+        }
 
         return {
           id: t._id,
           title: t.title,
           category: t.category,
           description: t.description,
-          // Extract YYYY-MM-DD from date string
           date: new Date(t.date).toISOString().split('T')[0],
           account: t.account,
-          cashFlow: t.account === 'cash' ? signedAmount : 0,
-          cardFlow: t.account === 'card' ? signedAmount : 0,
-          visualAmount: signedAmount,
+          toAccount: t.toAccount,
+          cashFlow,
+          cardFlow,
+          visualAmount,
           type: t.type
         };
       }).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -57,13 +73,13 @@ function App() {
 
   // Calculate current balances (Total lifetime)
   const balances = useMemo(() => {
-    return transactions.reduce((acc, curr) => {
+    const b = transactions.reduce((acc, curr) => {
       return {
         cash: acc.cash + curr.cashFlow,
-        card: acc.card + curr.cardFlow,
-        total: acc.total + curr.visualAmount
+        card: acc.card + curr.cardFlow
       };
-    }, { cash: 0, card: 0, total: 0 });
+    }, { cash: 0, card: 0 });
+    return { ...b, total: b.cash + b.card };
   }, [transactions]);
 
   // Filter transactions for the selected month
@@ -105,14 +121,14 @@ function App() {
 
   const handleAddTransaction = async (newTx) => {
     try {
-      // Backend expects: title, amount, type, category, description, account, date
       const payload = {
-        title: newTx.description || newTx.category,
+        title: newTx.type === 'transfer' ? 'Обмен' : (newTx.description || newTx.category),
         amount: parseFloat(newTx.amount),
         type: newTx.type,
-        category: newTx.category,
+        category: newTx.type === 'transfer' ? 'Обмен' : newTx.category,
         description: newTx.description,
         account: newTx.account,
+        toAccount: newTx.toAccount,
         date: newTx.date
       };
 
@@ -134,12 +150,13 @@ function App() {
   const handleUpdateTransaction = async (updatedTx) => {
     try {
       const payload = {
-        title: updatedTx.description || updatedTx.category,
+        title: updatedTx.type === 'transfer' ? 'Обмен' : (updatedTx.description || updatedTx.category),
         amount: parseFloat(updatedTx.amount),
         type: updatedTx.type,
-        category: updatedTx.category,
+        category: updatedTx.type === 'transfer' ? 'Обмен' : updatedTx.category,
         description: updatedTx.description,
         account: updatedTx.account,
+        toAccount: updatedTx.toAccount,
         date: updatedTx.date
       };
 
@@ -331,43 +348,59 @@ function App() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
                 className="glass-panel"
                 onClick={() => openAddModal('income')}
                 style={{
                   flex: 1,
-                  padding: '12px 24px',
+                  padding: '12px',
                   color: 'var(--color-text-muted)',
                   fontWeight: '500',
-                  transition: 'background 0.2s',
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '8px'
+                  gap: '4px',
+                  fontSize: '0.9rem'
                 }}
               >
                 <span>+</span> Доход
               </button>
               <button
-                onClick={() => openAddModal('expense')}
+                className="glass-panel"
+                onClick={() => openAddModal('transfer')}
                 style={{
-                  flex: 2,
-                  background: 'linear-gradient(135deg, #f43f5e, #e11d48)', // Rose 500-600
-                  color: 'white',
-                  padding: '16px 32px',
-                  borderRadius: 'var(--radius-md)',
-                  fontWeight: '700',
-                  fontSize: '1.1rem',
-                  transition: 'all 0.3s ease',
-                  boxShadow: '0 4px 12px rgba(244, 63, 94, 0.4)',
+                  flex: 1,
+                  padding: '12px',
+                  color: 'var(--color-text-muted)',
+                  fontWeight: '500',
                   cursor: 'pointer',
-                  whiteSpace: 'nowrap',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '8px'
+                  gap: '4px',
+                  fontSize: '0.9rem'
+                }}
+              >
+                <span>⇄</span> Обмен
+              </button>
+              <button
+                onClick={() => openAddModal('expense')}
+                style={{
+                  flex: 2,
+                  background: 'linear-gradient(135deg, #f43f5e, #e11d48)',
+                  color: 'white',
+                  padding: '12px 24px',
+                  borderRadius: 'var(--radius-md)',
+                  fontWeight: '700',
+                  fontSize: '1rem',
+                  boxShadow: '0 4px 12px rgba(244, 63, 94, 0.4)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px'
                 }}
               >
                 <span>-</span> Расход
@@ -549,9 +582,9 @@ function App() {
                         </div>
                         <div style={{
                           fontWeight: '600',
-                          color: item.type === 'initial' ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff')
+                          color: (item.type === 'initial' || item.type === 'transfer') ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff')
                         }}>
-                          {item.type !== 'initial' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
+                          {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                         </div>
                       </div>
                     ))}

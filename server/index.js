@@ -49,10 +49,10 @@ app.get('/api/transactions', async (req, res) => {
 // Add transaction
 app.post('/api/transactions', async (req, res) => {
     try {
-        const { title, amount, type, category, description, account, date } = req.body;
+        const { title, amount, type, category, description, account, toAccount, date } = req.body;
 
         // Validate required fields
-        if (!amount || !category) {
+        if (!amount || (!category && type !== 'transfer')) {
             return res.status(400).json({ message: 'Amount and category are required' });
         }
 
@@ -63,12 +63,14 @@ app.post('/api/transactions', async (req, res) => {
             category,
             description,
             account,
+            toAccount,
             date
         });
 
         const savedTransaction = await newTransaction.save();
         res.json(savedTransaction);
     } catch (err) {
+        console.error('POST Error:', err.message);
         res.status(400).json({ message: err.message });
     }
 });
@@ -76,13 +78,15 @@ app.post('/api/transactions', async (req, res) => {
 // Update transaction
 app.put('/api/transactions/:id', async (req, res) => {
     try {
+        const { title, amount, type, category, description, account, toAccount, date } = req.body;
         const updatedTransaction = await Transaction.findByIdAndUpdate(
             req.params.id,
-            req.body,
+            { title, amount, type, category, description, account, toAccount, date },
             { new: true }
         );
         res.json(updatedTransaction);
     } catch (err) {
+        console.error('PUT Error:', err.message);
         res.status(400).json({ message: err.message });
     }
 });
