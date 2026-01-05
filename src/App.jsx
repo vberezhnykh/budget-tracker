@@ -277,8 +277,13 @@ function App() {
                             {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                           </div>
                           <div>
-                            <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>{item.title}</div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}</div>
+                            <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
+                              {item.description || item.title}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}
+                              {item.description ? ` • ${item.category}` : ''}
+                            </div>
                           </div>
                         </div>
                         <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff') }}>

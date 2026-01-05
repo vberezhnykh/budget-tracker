@@ -10,15 +10,18 @@ const mockTransactions = [
         amount: 5000,
         type: 'income',
         account: 'card',
-        date: '2026-01-01T00:00:00Z'
+        date: '2026-01-01T00:00:00Z',
+        category: 'Job'
     },
     {
         _id: '2',
         title: 'Rent',
+        description: 'Monthly flat rent',
         amount: 1000,
         type: 'expense',
         account: 'card',
-        date: '2026-01-02T00:00:00Z'
+        date: '2026-01-02T00:00:00Z',
+        category: 'Housing'
     }
 ];
 
@@ -38,12 +41,10 @@ describe('App Integration Tests', () => {
     it('renders content after loading', async () => {
         render(<App />);
 
-        // Wait for content
         await waitFor(() => {
             expect(screen.getByText('BudgetTracker')).toBeInTheDocument();
         }, { timeout: 3000 });
 
-        // Verify balance calculation (5000 - 1000 = 4000)
         expect(screen.getAllByText(/4\.000/)[0]).toBeInTheDocument();
     });
 
@@ -52,12 +53,10 @@ describe('App Integration Tests', () => {
 
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        // Navigate back to December 2025
         const prevButton = screen.getByText('←');
         fireEvent.click(prevButton);
 
         await waitFor(() => {
-            // Look for December 2025 (case insensitive, partial match)
             expect(screen.getByText(/декабр/i)).toBeInTheDocument();
             expect(screen.getByText(/2025/)).toBeInTheDocument();
         });
@@ -68,7 +67,6 @@ describe('App Integration Tests', () => {
 
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        // Click to analytics
         const analyticsBtn = screen.getByText(/Аналитика/);
         fireEvent.click(analyticsBtn);
 
@@ -76,7 +74,6 @@ describe('App Integration Tests', () => {
             expect(screen.getByText(/Аналитика трат/)).toBeInTheDocument();
         });
 
-        // Click back
         const backBtn = screen.getByText(/Назад/);
         fireEvent.click(backBtn);
 
@@ -101,5 +98,23 @@ describe('App Integration Tests', () => {
         await waitFor(() => {
             expect(screen.queryByText(/Новый доход/)).not.toBeInTheDocument();
         });
+    });
+
+    it('displays transaction description and account/category correctly', async () => {
+        render(<App />);
+
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Check for the transaction with description (Rent)
+        expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
+
+        // Subtitle text: "💳 Карта • Housing"
+        expect(screen.getByText(/💳 Карта • Housing/)).toBeInTheDocument();
+
+        // Check for the transaction without description (Salary)
+        expect(screen.getByText('Salary')).toBeInTheDocument();
+
+        // Subtitle text: "💳 Карта" (no category because no description)
+        expect(screen.getByText(/💳 Карта$/)).toBeInTheDocument();
     });
 });
