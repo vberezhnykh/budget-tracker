@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const Transaction = require('./models/Transaction');
 require('dotenv').config();
+const { startBackupService } = require('./services/backupService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -13,9 +14,12 @@ app.use(cors());
 app.use(express.json());
 
 // Database Connection
-mongoose.connect(process.env.MONGODB_URI)
+const isProduction = process.env.NODE_ENV === 'production';
+const dbOptions = !isProduction ? { dbName: 'budget-tracker-dev' } : {};
+
+mongoose.connect(process.env.MONGODB_URI, dbOptions)
     .then(async () => {
-        console.log('MongoDB Connected');
+        console.log(`MongoDB Connected (${isProduction ? 'Production' : 'Development: budget-tracker-dev'})`);
         // Seed initial balance if not exists
         const initialExists = await Transaction.findOne({ type: 'initial' });
         if (!initialExists) {
@@ -101,6 +105,8 @@ app.delete('/api/transactions/:id', async (req, res) => {
     }
 });
 
+
+
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
     // Set static folder
@@ -113,6 +119,9 @@ if (process.env.NODE_ENV === 'production') {
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+
+    // Start backup service
+    startBackupService();
 
     // Prevention of Render's "Sleep" mode
     const url = process.env.RENDER_EXTERNAL_URL;
