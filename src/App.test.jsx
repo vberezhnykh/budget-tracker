@@ -78,7 +78,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(backBtn);
 
         await waitFor(() => {
-            expect(screen.getByText(/Итоги месяца/)).toBeInTheDocument();
+            expect(screen.getByText(/Месяц/)).toBeInTheDocument();
         });
     });
 
@@ -172,5 +172,24 @@ describe('App Integration Tests', () => {
             expect.stringContaining('splitId=group-123'),
             expect.objectContaining({ method: 'DELETE' })
         );
+    });
+
+    it('toggles between monthly and lifetime stats', async () => {
+        render(<App />);
+
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Default is monthly income (Salary = 5000)
+        expect(screen.getByText(/\+€5\.000/)).toBeInTheDocument();
+
+        // Switch to lifetime
+        const lifetimeBtn = screen.getByText('Всё время');
+        fireEvent.click(lifetimeBtn);
+
+        // Should show lifetime stats (same as monthly in this mock since all are in Jan 2026)
+        expect(screen.getByText(/\+€5\.000/)).toBeInTheDocument();
+
+        // Progress bar (Limit) should be gone
+        expect(screen.queryByText(/Лимит €/)).not.toBeInTheDocument();
     });
 });

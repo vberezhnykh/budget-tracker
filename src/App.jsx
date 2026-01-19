@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
-import { transformTransactions, calculateBalances, getMonthlyData } from './utils/finance'
+import { transformTransactions, calculateBalances, getMonthlyData, getLifetimeStats } from './utils/finance'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -17,6 +17,7 @@ function App() {
   // State for selected. Defaults to current month YYYY-MM
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [summaryView, setSummaryView] = useState('stats'); // 'stats' or 'analytics'
+  const [timeRange, setTimeRange] = useState('month'); // 'month' or 'lifetime'
 
   // Transactions state
   const [transactions, setTransactions] = useState([]);
@@ -43,6 +44,9 @@ function App() {
 
   // Filter transactions for the selected month
   const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth), [transactions, selectedMonth]);
+
+  // Calculate lifetime stats
+  const lifetimeStats = useMemo(() => getLifetimeStats(transactions), [transactions]);
 
   const handleMonthChange = (direction) => {
     const [year, month] = selectedMonth.split('-').map(Number);
@@ -209,7 +213,36 @@ function App() {
           {summaryView === 'stats' ? (
             <div className="glass-panel" style={{ padding: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <h3 style={{ margin: 0 }}>Итоги месяца</h3>
+                <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '10px' }}>
+                  <button
+                    onClick={() => setTimeRange('month')}
+                    style={{
+                      background: timeRange === 'month' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '4px 12px',
+                      color: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: timeRange === 'month' ? 'bold' : 'normal'
+                    }}
+                  >
+                    Месяц
+                  </button>
+                  <button
+                    onClick={() => setTimeRange('lifetime')}
+                    style={{
+                      background: timeRange === 'lifetime' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '4px 12px',
+                      color: '#fff',
+                      fontSize: '0.75rem',
+                      fontWeight: timeRange === 'lifetime' ? 'bold' : 'normal'
+                    }}
+                  >
+                    Всё время
+                  </button>
+                </div>
                 <button onClick={() => setSummaryView('analytics')} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 12px', color: '#fff', fontSize: '0.8rem' }}>
                   Аналитика →
                 </button>
@@ -218,32 +251,41 @@ function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ background: 'rgba(34, 197, 94, 0.08)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(34, 197, 94, 0.15)' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Доход</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#4ade80' }}>+€{monthlyData.income.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#4ade80' }}>
+                    +€{(timeRange === 'month' ? monthlyData.income : lifetimeStats.income).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                  </div>
                 </div>
                 <div style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Расход</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#f87171' }}>€{monthlyData.expense.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#f87171' }}>
+                    €{(timeRange === 'month' ? monthlyData.expense : lifetimeStats.expense).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                  </div>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '18px', borderRadius: '18px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: timeRange === 'month' ? '12px' : '0' }}>
                     <span style={{ color: 'var(--color-text-muted)' }}>Сальдо:</span>
-                    <span style={{ fontWeight: '700', color: (monthlyData.income + monthlyData.expense) >= 0 ? '#fff' : '#f87171' }}>
-                      €{(monthlyData.income + monthlyData.expense).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    <span style={{ fontWeight: '700', color: ((timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : lifetimeStats.total) >= 0) ? '#fff' : '#f87171' }}>
+                      €{(timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : lifetimeStats.total).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
-                  {/* Progress Bar */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Лимит €{MONTHLY_LIMIT.toLocaleString()}</span>
-                    <span>{Math.round((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100)}%</span>
-                  </div>
-                  <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%',
-                      width: `${Math.min((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100, 100)}%`,
-                      background: Math.abs(monthlyData.expense) > MONTHLY_LIMIT ? '#f87171' : 'var(--color-primary-gradient)',
-                      transition: 'width 0.4s ease'
-                    }} />
-                  </div>
+
+                  {timeRange === 'month' && (
+                    <>
+                      {/* Progress Bar */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem' }}>
+                        <span style={{ color: 'var(--color-text-muted)' }}>Лимит €{MONTHLY_LIMIT.toLocaleString()}</span>
+                        <span>{Math.round((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100)}%</span>
+                      </div>
+                      <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%',
+                          width: `${Math.min((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100, 100)}%`,
+                          background: Math.abs(monthlyData.expense) > MONTHLY_LIMIT ? '#f87171' : 'var(--color-primary-gradient)',
+                          transition: 'width 0.4s ease'
+                        }} />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

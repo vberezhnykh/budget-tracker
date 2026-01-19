@@ -109,3 +109,16 @@ export const getMonthlyData = (transactions, selectedMonth) => {
 
     return { transactions: grouped, income, expense, categoryTotals };
 };
+
+export const getLifetimeStats = (transactions, startDate = '2025-11-09') => {
+    const filtered = transactions.filter(t => t.date >= startDate);
+
+    const income = filtered.reduce((acc, t) =>
+        (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0
+    );
+    const expense = filtered.reduce((acc, t) =>
+        (t.visualAmount < 0 && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0
+    );
+
+    return { income, expense, total: income + expense };
+};
