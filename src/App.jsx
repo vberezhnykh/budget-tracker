@@ -252,20 +252,20 @@ function App() {
                 <div style={{ background: 'rgba(34, 197, 94, 0.08)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(34, 197, 94, 0.15)' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Доход</div>
                   <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#4ade80' }}>
-                    +€{(timeRange === 'month' ? monthlyData.income : lifetimeStats.income).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    +€{(timeRange === 'month' ? monthlyData.income : (lifetimeStats?.income || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
                 <div style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Расход</div>
                   <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#f87171' }}>
-                    €{(timeRange === 'month' ? monthlyData.expense : lifetimeStats.expense).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    €{(timeRange === 'month' ? monthlyData.expense : (lifetimeStats?.expense || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.03)', padding: '18px', borderRadius: '18px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: timeRange === 'month' ? '12px' : '0' }}>
                     <span style={{ color: 'var(--color-text-muted)' }}>Сальдо:</span>
-                    <span style={{ fontWeight: '700', color: ((timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : lifetimeStats.total) >= 0) ? '#fff' : '#f87171' }}>
-                      €{(timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : lifetimeStats.total).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    <span style={{ fontWeight: '700', color: ((timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : (lifetimeStats?.total || 0)) >= 0) ? '#fff' : '#f87171' }}>
+                      €{(timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : (lifetimeStats?.total || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
 

@@ -215,14 +215,28 @@ app.post('/api/analyze', async (req, res) => {
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
-    const distPath = path.join(process.cwd(), 'dist');
-    console.log(`Serving static files from: ${distPath}`);
+    const fs = require('fs');
+    const distPath = path.resolve(process.cwd(), 'dist');
 
-    app.use(express.static(distPath));
+    if (fs.existsSync(distPath)) {
+        console.log(`✅ Dist folder found at: ${distPath}`);
+        try {
+            const files = fs.readdirSync(distPath);
+            console.log(`Files in dist: ${files.join(', ')}`);
+        } catch (e) { console.error('Error reading dist:', e.message); }
 
-    app.get('*', (req, res) => {
-        res.sendFile(path.join(distPath, 'index.html'));
-    });
+        app.use(express.static(distPath));
+        app.get('*', (req, res) => {
+            const indexPath = path.join(distPath, 'index.html');
+            if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+            else {
+                console.error(`❌ index.html not found in dist: ${indexPath}`);
+                res.status(404).send('index.html not found');
+            }
+        });
+    } else {
+        console.error(`❌ Dist folder NOT FOUND at: ${distPath}`);
+    }
 }
 
 app.listen(PORT, () => {
