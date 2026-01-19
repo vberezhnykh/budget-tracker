@@ -36,7 +36,8 @@ export const transformTransactions = (data) => {
             description: t.description,
             account: t.account,
             toAccount: t.toAccount,
-            date: t.date?.split('T')[0] // Use YYYY-MM-DD
+            date: t.date?.split('T')[0], // Use YYYY-MM-DD
+            splitId: t.splitId
         };
     });
 };
@@ -60,14 +61,43 @@ export const getMonthlyData = (transactions, selectedMonth) => {
     const grouped = filtered.reduce((groups, t) => {
         const date = t.date;
         if (!groups[date]) {
-            groups[date] = { items: [], dailySum: 0 };
+            groups[date] = { itemsById: {}, dailySum: 0 };
         }
-        groups[date].items.push(t);
+
+        if (t.splitId) {
+            if (!groups[date].itemsById[t.splitId]) {
+                groups[date].itemsById[t.splitId] = {
+                    id: t.splitId,
+                    type: 'split_group',
+                    date: t.date,
+                    description: t.description.split(' (')[0], // Base description
+                    account: t.account,
+                    visualAmount: 0,
+                    items: []
+                };
+            }
+            groups[date].itemsById[t.splitId].items.push(t);
+            groups[date].itemsById[t.splitId].visualAmount += t.visualAmount;
+        } else {
+            groups[date].itemsById[t.id] = t;
+        }
+
         if (t.type !== 'initial' && t.type !== 'transfer') {
             groups[date].dailySum += t.visualAmount;
         }
         return groups;
     }, {});
+
+    // Convert itemsById to items array for each date and sort them
+    Object.keys(grouped).forEach(date => {
+        grouped[date].items = Object.values(grouped[date].itemsById).sort((a, b) => {
+            // Put newer transactions first (using ID or date/time if available)
+            // Since we sorted in API, we can rely on order if we had indices,
+            // but for now let's just use string comparison for IDs or similar
+            return b.id > a.id ? 1 : -1;
+        });
+        delete grouped[date].itemsById;
+    });
 
     const categoryTotals = filtered
         .filter(t => t.type === 'expense')

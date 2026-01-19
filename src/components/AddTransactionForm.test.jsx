@@ -90,4 +90,49 @@ describe('AddTransactionForm Component', () => {
         expect(window.confirm).toHaveBeenCalled();
         expect(mockOnDelete).toHaveBeenCalledWith('test-id');
     });
+
+    it('renders split transaction UI when toggled', async () => {
+        render(<AddTransactionForm type="expense" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        // Enter amount to enable split toggle
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
+
+        // Toggle split
+        const splitToggle = screen.getByText('Разделить на несколько категорий');
+        fireEvent.click(splitToggle);
+
+        expect(screen.getByText('Осталось распределить:')).toBeInTheDocument();
+        expect(screen.getByText('Категория 1')).toBeInTheDocument();
+        expect(screen.getByText('Категория 2')).toBeInTheDocument();
+        expect(screen.getByText('+ Добавить категорию')).toBeInTheDocument();
+    });
+
+    it('validates splits sum and submits array of transactions', async () => {
+        render(<AddTransactionForm type="expense" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        // Enter total amount
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
+
+        // Toggle split
+        fireEvent.click(screen.getByText('Разделить на несколько категорий'));
+
+        // Fill split 1
+        const splitInputs = screen.getAllByPlaceholderText('Сумма');
+        fireEvent.change(splitInputs[0], { target: { value: '40' } });
+        const categories = screen.getAllByText('Продукты');
+        fireEvent.click(categories[0]); // Select for first split
+
+        // Fill split 2
+        fireEvent.change(splitInputs[1], { target: { value: '60' } });
+        const transportCategories = screen.getAllByText('Транспорт');
+        fireEvent.click(transportCategories[1]); // Select for second split (index 1 because category list is rendered for each split)
+
+        // Submit
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        expect(mockOnSubmit).toHaveBeenCalledWith(expect.arrayContaining([
+            expect.objectContaining({ amount: 40, category: 'Продукты' }),
+            expect.objectContaining({ amount: 60, category: 'Транспорт' })
+        ]));
+    });
 });

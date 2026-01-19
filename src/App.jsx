@@ -96,11 +96,14 @@ function App() {
     } catch (err) { console.error('Update error:', err); }
   };
 
-  const handleDeleteTransaction = async (id) => {
-    if (!window.confirm('Удалить эту операцию?')) return;
+  const handleDeleteTransaction = async (id, splitId = null) => {
     try {
-      const res = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
-      if (res.ok) fetchTransactions();
+      const url = splitId ? `${API_URL}/${id}?splitId=${splitId}` : `${API_URL}/${id}`;
+      const res = await fetch(url, { method: 'DELETE' });
+      if (res.ok) {
+        fetchTransactions();
+        setEditingTransaction(null);
+      }
     } catch (err) { console.error('Delete error:', err); }
   };
 
@@ -248,6 +251,8 @@ function App() {
             <CategoryDonut data={monthlyData.categoryTotals} onToggle={() => setSummaryView('stats')} />
           )}
 
+          {/* AI Analytics Removed */}
+
           {/* Transaction History */}
           <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
             <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -270,27 +275,65 @@ function App() {
                         </span>
                       )}
                     </div>
-                    {monthlyData.transactions[date].items.map(item => (
-                      <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: 'pointer' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                          <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(99, 102, 241, 0.1)' : (item.visualAmount > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                            {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
+                    {monthlyData.transactions[date].items.map(item => {
+                      if (item.type === 'split_group') {
+                        return (
+                          <div key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'rgba(255,255,255,0.01)' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'rgba(129, 140, 248, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                                  🗂️
+                                </div>
+                                <div>
+                                  <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>{item.description} (Разделено)</div>
+                                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                    {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'} • {item.items.length} катег.
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ fontWeight: '700' }}>
+                                €{Math.abs(item.visualAmount).toFixed(2)}
+                              </div>
+                            </div>
+                            {/* Sub-items */}
+                            <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
+                              {item.items.map(subItem => (
+                                <div key={subItem.id} onClick={() => openEditModal(subItem)} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(129, 140, 248, 0.2)', marginBottom: '4px' }}>
+                                  <div style={{ color: 'var(--color-text-muted)' }}>
+                                    {subItem.category}
+                                  </div>
+                                  <div style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                    €{Math.abs(subItem.visualAmount).toFixed(2)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div>
-                            <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
-                              {item.description || item.title}
+                        );
+                      }
+
+                      return (
+                        <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: 'pointer' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                            <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(99, 102, 241, 0.1)' : (item.visualAmount > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                              {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                             </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                              {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}
-                              {item.description ? ` • ${item.category}` : ''}
+                            <div>
+                              <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
+                                {item.description || item.title}
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}
+                                {item.category ? ` • ${item.category}` : ''}
+                              </div>
                             </div>
+                          </div>
+                          <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff') }}>
+                            {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                           </div>
                         </div>
-                        <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff') }}>
-                          {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ))
               )}
@@ -300,7 +343,7 @@ function App() {
       </main>
 
       {showAddTransaction && <AddTransactionForm type={transactionType} onClose={() => setShowAddTransaction(false)} onSubmit={handleAddTransaction} />}
-      {editingTransaction && <AddTransactionForm initialData={editingTransaction} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={handleDeleteTransaction} />}
+      {editingTransaction && <AddTransactionForm initialData={editingTransaction} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} />}
     </div>
   );
 }

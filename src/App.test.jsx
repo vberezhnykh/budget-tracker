@@ -109,12 +109,68 @@ describe('App Integration Tests', () => {
         expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
 
         // Subtitle text: "💳 Карта • Housing"
-        expect(screen.getByText(/💳 Карта • Housing/)).toBeInTheDocument();
+        const cardElements = screen.getAllByText(/Карта/);
+        expect(cardElements.length).toBeGreaterThan(1);
+        expect(screen.getByText(/Housing/)).toBeInTheDocument();
 
         // Check for the transaction without description (Salary)
         expect(screen.getByText('Salary')).toBeInTheDocument();
+    });
 
-        // Subtitle text: "💳 Карта" (no category because no description)
-        expect(screen.getByText(/💳 Карта$/)).toBeInTheDocument();
+    it('deletes a transaction correctly', async () => {
+        window.confirm = vi.fn(() => true);
+        render(<App />);
+
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Find Rent transaction and click it
+        const rentTx = screen.getByText('Monthly flat rent');
+        fireEvent.click(rentTx);
+
+        // Find delete button and click it
+        const deleteBtn = await screen.findByText('🗑');
+        fireEvent.click(deleteBtn);
+
+        expect(window.confirm).toHaveBeenCalled();
+        expect(global.fetch).toHaveBeenCalledWith(
+            expect.stringContaining('/api/transactions/2'),
+            expect.objectContaining({ method: 'DELETE' })
+        );
+    });
+
+    it('deletes an entire split group', async () => {
+        // Add a split group item to mock
+        const splitItem = {
+            _id: 'split-1',
+            splitId: 'group-123',
+            title: 'Split Part 1',
+            amount: 50,
+            type: 'expense',
+            category: 'Food',
+            date: '2026-01-03T00:00:00Z',
+            description: 'Grouped'
+        };
+
+        global.fetch.mockImplementationOnce(() => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([...mockTransactions, splitItem])
+        }));
+
+        window.confirm = vi.fn(() => true);
+        render(<App />);
+
+        // Open split sub-item
+        await waitFor(() => screen.getByText('Food'));
+        fireEvent.click(screen.getByText('Food'));
+
+        // Click delete
+        const deleteBtn = await screen.findByText('🗑');
+        fireEvent.click(deleteBtn);
+
+        // Verify splitId was passed
+        expect(global.fetch).toHaveBeenCalledWith(
+            expect.stringContaining('splitId=group-123'),
+            expect.objectContaining({ method: 'DELETE' })
+        );
     });
 });

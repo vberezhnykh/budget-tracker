@@ -53,6 +53,24 @@ app.get('/api/transactions', async (req, res) => {
 // Add transaction
 app.post('/api/transactions', async (req, res) => {
     try {
+        // Handle batch insert for split transactions
+        if (Array.isArray(req.body)) {
+            const transactions = req.body;
+            if (transactions.length === 0) {
+                return res.status(400).json({ message: 'Batch must contain at least one transaction' });
+            }
+
+            // Basic validation for each item
+            for (const tx of transactions) {
+                if (!tx.amount || (!tx.category && tx.type !== 'transfer')) {
+                    return res.status(400).json({ message: 'Amount and category are required for all items' });
+                }
+            }
+
+            const savedTransactions = await Transaction.insertMany(transactions);
+            return res.json(savedTransactions);
+        }
+
         const { title, amount, type, category, description, account, toAccount, date } = req.body;
 
         // Validate required fields
@@ -98,7 +116,12 @@ app.put('/api/transactions/:id', async (req, res) => {
 // Delete transaction
 app.delete('/api/transactions/:id', async (req, res) => {
     try {
-        await Transaction.findByIdAndDelete(req.params.id);
+        const { splitId } = req.query;
+        if (splitId) {
+            await Transaction.deleteMany({ splitId });
+        } else {
+            await Transaction.findByIdAndDelete(req.params.id);
+        }
         res.json({ message: 'Transaction deleted' });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -116,6 +139,89 @@ if (process.env.NODE_ENV === 'production') {
         res.sendFile(path.join(__dirname, '../dist/index.html'));
     });
 }
+
+// Gemini Analytics Route
+const { GoogleGenerativeAI } = require("@google/generative-ai");
+
+app.post('/api/analyze', async (req, res) => {
+    try {
+        if (!process.env.GEMINI_API_KEY) {
+            return res.status(500).json({ message: 'GEMINI_API_KEY is not set in environment variables' });
+        }
+
+        const { month } = req.body; // Expect format YYYY-MM
+
+        // Find transactions for the month
+        const startOfMonth = new Date(`${month}-01`);
+        const endOfMonth = new Date(new Date(startOfMonth).setMonth(startOfMonth.getMonth() + 1));
+
+        const transactions = await Transaction.find({
+            date: {
+                $gte: startOfMonth.toISOString().slice(0, 10),
+                $lt: endOfMonth.toISOString().slice(0, 10)
+            }
+        });
+
+        // Prepare data for Gemini
+        const income = transactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+        const expense = transactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+
+        const categories = {};
+        transactions.filter(t => t.type === 'expense').forEach(t => {
+            categories[t.category] = (categories[t.category] || 0) + t.amount;
+        });
+
+        const topCategories = Object.entries(categories)
+            .sort(([, a], [, b]) => b - a)
+            .map(([cat, amount]) => `- ${cat}: €${amount.toFixed(2)}`)
+            .join('\n');
+
+        const prompt = `
+        Проанализируй финансовые данные за ${month}.
+        Доходы: €${income.toFixed(2)}
+        Расходы: €${expense.toFixed(2)}
+        Баланс: €${(income - expense).toFixed(2)}
+        
+        Траты по категориям:
+        ${topCategories}
+
+        Дай краткую аналитику (3-4 предложения), оцени финансовое здоровье и дай 1 конкретный совет по экономии. Отвечай на русском языке. Используй эмодзи.
+        `;
+
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+        let text;
+        const modelsToTry = ["gemini-3-flash", "gemini-3-flash-preview", "gemini-2.0-flash", "gemini-1.5-flash"];
+        let lastError;
+
+        for (const modelName of modelsToTry) {
+            try {
+                console.log(`Generating analysis for ${month} using ${modelName}...`);
+                const model = genAI.getGenerativeModel({ model: modelName });
+                const result = await model.generateContent(prompt);
+                const response = await result.response;
+                text = response.text();
+                if (text) {
+                    console.log(`Successfully generated using ${modelName}`);
+                    break;
+                }
+            } catch (err) {
+                console.error(`Failed with ${modelName}:`, err.message);
+                lastError = err;
+            }
+        }
+
+        if (!text) {
+            throw new Error(lastError ? lastError.message : 'Failed to generate analysis with available models');
+        }
+
+        res.json({ analysis: text });
+
+    } catch (err) {
+        console.error('Gemini Error:', err);
+        res.status(500).json({ message: 'Error generating analysis: ' + err.message });
+    }
+});
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

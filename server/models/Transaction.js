@@ -36,6 +36,10 @@ const TransactionSchema = new mongoose.Schema({
         type: Date,
         default: Date.now
     },
+    splitId: {
+        type: String,
+        trim: true
+    },
     createdAt: {
         type: Date,
         default: Date.now

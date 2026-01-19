@@ -19,17 +19,45 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const isTransfer = formData.type === 'transfer';
     const today = new Date().toISOString().split('T')[0];
 
+    // Split Logic
+    const [isSplit, setIsSplit] = useState(false);
+    const [splits, setSplits] = useState([{ id: 1, amount: '', category: '' }, { id: 2, amount: '', category: '' }]);
+
+    const totalSplitAmount = splits.reduce((sum, split) => sum + (parseFloat(split.amount) || 0), 0);
+    const remainingAmount = (parseFloat(formData.amount) || 0) - totalSplitAmount;
+
+    // Validation for split: check if split mode is active, remaining amount is approx 0, and all splits have data
+    const isSplitValid = isSplit && Math.abs(remainingAmount) < 0.01 && splits.every(s => s.amount && s.category);
+
     const handleSubmit = (e) => {
         e.preventDefault();
-        const canSave = formData.amount && (isTransfer || formData.category);
+        // Allow save if: (amount exists) AND (isTransfer OR category chosen OR (isSplit AND split is valid))
+        const canSave = formData.amount && (isTransfer || formData.category || (isSplit && isSplitValid));
         if (!canSave) return;
 
-        onSubmit({
-            ...formData,
-            amount: parseFloat(formData.amount),
-            category: isTransfer ? 'Обмен' : formData.category,
-            id: initialData ? initialData.id : Date.now()
-        });
+        if (isSplit && splits.length > 0) {
+            const splitGroupId = `split_${Date.now()}`;
+            const splitTransactions = splits.map(split => ({
+                title: split.category,
+                amount: parseFloat(split.amount),
+                category: split.category,
+                description: (formData.description + (split.description ? ` (${split.description})` : '')).trim(),
+                date: formData.date,
+                type: formData.type,
+                account: formData.account,
+                toAccount: formData.toAccount,
+                splitId: splitGroupId,
+                id: Date.now() + Math.random()
+            }));
+            onSubmit(splitTransactions);
+        } else {
+            onSubmit({
+                ...formData,
+                amount: parseFloat(formData.amount),
+                category: isTransfer ? 'Обмен' : formData.category,
+                id: initialData ? initialData.id : Date.now()
+            });
+        }
         onClose();
     };
 
@@ -42,6 +70,22 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         if (isTransfer) return 'Обмен / Перевод';
         return formData.type === 'income' ? 'Новый доход' : 'Новый расход';
     };
+
+    const addSplit = () => {
+        setSplits([...splits, { id: Date.now(), amount: '', category: '' }]);
+    };
+
+    const removeSplit = (id) => {
+        if (splits.length > 2) {
+            setSplits(splits.filter(s => s.id !== id));
+        }
+    };
+
+    const updateSplit = (id, field, value) => {
+        setSplits(splits.map(s => s.id === id ? { ...s, [field]: value } : s));
+    };
+
+
 
     return (
         <div style={{
@@ -62,7 +106,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 className="glass-panel"
                 style={{
                     width: 'calc(100% - 32px)',
-                    maxWidth: '450px',
+                    maxWidth: '550px',
                     padding: '24px',
                     borderRadius: '24px',
                     animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -86,42 +130,46 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     >×</button>
                 </div>
 
-                {/* Type Toggle */}
-                <div style={{
-                    display: 'flex',
-                    background: 'rgba(0,0,0,0.2)',
-                    padding: '4px',
-                    borderRadius: '12px'
-                }}>
-                    {[
-                        { id: 'expense', label: 'Расход' },
-                        { id: 'income', label: 'Доход' },
-                        { id: 'transfer', label: 'Обмен' }
-                    ].map(t => (
-                        <button
-                            key={t.id}
-                            onClick={() => setFormData({ ...formData, type: t.id })}
-                            style={{
-                                flex: 1,
-                                padding: '8px',
-                                borderRadius: '8px',
-                                background: formData.type === t.id ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                color: formData.type === t.id ? '#fff' : 'var(--color-text-muted)',
-                                fontWeight: '500',
-                                fontSize: '0.9rem',
-                                transition: 'all 0.2s'
-                            }}
-                        >
-                            {t.label}
-                        </button>
-                    ))}
-                </div>
+                {/* Type Toggle - Hide if splitting or editing */}
+                {!initialData && !isSplit && (
+                    <div style={{
+                        display: 'flex',
+                        background: 'rgba(0,0,0,0.2)',
+                        padding: '4px',
+                        borderRadius: '12px'
+                    }}>
+                        {[
+                            { id: 'expense', label: 'Расход' },
+                            { id: 'income', label: 'Доход' },
+                            { id: 'transfer', label: 'Обмен' }
+                        ].map(t => (
+                            <button
+                                key={t.id}
+                                onClick={() => setFormData({ ...formData, type: t.id })}
+                                style={{
+                                    flex: 1,
+                                    padding: '8px',
+                                    borderRadius: '8px',
+                                    background: formData.type === t.id ? 'rgba(255,255,255,0.1)' : 'transparent',
+                                    color: formData.type === t.id ? '#fff' : 'var(--color-text-muted)',
+                                    fontWeight: '500',
+                                    fontSize: '0.9rem',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-                    {/* Amount Input */}
+                    {/* Main Amount Input */}
                     <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Сумма</label>
+                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
+                            {isSplit ? 'Общая сумма' : 'Сумма'}
+                        </label>
                         <div style={{ position: 'relative' }}>
                             <span style={{
                                 position: 'absolute',
@@ -138,16 +186,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 placeholder="0.00"
                                 value={formData.amount}
                                 onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                                onKeyDown={(e) => {
-                                    if ([46, 8, 9, 27, 13, 110, 190, 188].indexOf(e.keyCode) !== -1 ||
-                                        (e.ctrlKey === true && [65, 67, 86, 88].indexOf(e.keyCode) !== -1) ||
-                                        (e.keyCode >= 35 && e.keyCode <= 39)) {
-                                        return;
-                                    }
-                                    if ((e.shiftKey || (e.keyCode < 48 || e.keyCode > 57)) && (e.keyCode < 96 || e.keyCode > 105)) {
-                                        e.preventDefault();
-                                    }
-                                }}
                                 style={{
                                     width: '100%',
                                     background: 'rgba(255,255,255,0.05)',
@@ -163,67 +201,190 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         </div>
                     </div>
 
-                    {!isTransfer ? (
+                    {!isTransfer && (
                         <>
-                            {/* Account Selector for Income/Expense */}
-                            <div>
-                                <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
-                                    {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
-                                </label>
-                                <div style={{ display: 'flex', gap: '12px' }}>
-                                    {[
-                                        { id: 'card', label: '💳 Карта' },
-                                        { id: 'cash', label: '💵 Наличные' }
-                                    ].map(acc => (
-                                        <button
-                                            key={acc.id}
-                                            type="button"
-                                            onClick={() => setFormData({ ...formData, account: acc.id })}
-                                            style={{
-                                                flex: 1,
-                                                padding: '12px',
-                                                borderRadius: '12px',
-                                                border: '1px solid',
-                                                borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
-                                                background: formData.account === acc.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
-                                                color: formData.account === acc.id ? '#fff' : 'var(--color-text-muted)',
-                                                fontWeight: '500',
-                                                transition: 'all 0.2s'
-                                            }}
-                                        >
-                                            {acc.label}
-                                        </button>
-                                    ))}
+                            {/* Split Toggle */}
+                            {!initialData && formData.amount && parseFloat(formData.amount) > 0 && (
+                                <div
+                                    onClick={() => setIsSplit(!isSplit)}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '12px',
+                                        padding: '12px',
+                                        background: 'rgba(255,255,255,0.05)',
+                                        borderRadius: '12px',
+                                        cursor: 'pointer',
+                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        transition: 'all 0.2s'
+                                    }}
+                                >
+                                    <div style={{
+                                        width: '40px',
+                                        height: '20px',
+                                        background: isSplit ? 'var(--color-primary)' : 'rgba(255,255,255,0.2)',
+                                        borderRadius: '20px',
+                                        position: 'relative',
+                                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                                    }}>
+                                        <div style={{
+                                            position: 'absolute',
+                                            top: '2px',
+                                            left: isSplit ? '22px' : '2px',
+                                            width: '16px',
+                                            height: '16px',
+                                            background: '#fff',
+                                            borderRadius: '50%',
+                                            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                        }} />
+                                    </div>
+                                    <span style={{ fontSize: '0.9rem', fontWeight: '500', color: isSplit ? '#fff' : 'var(--color-text-muted)' }}>
+                                        Разделить на несколько категорий
+                                    </span>
                                 </div>
-                            </div>
+                            )}
 
-                            {/* Category Selection */}
-                            <div>
-                                <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Категория</label>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    {categories.map(cat => (
-                                        <button
-                                            key={cat}
-                                            type="button"
-                                            onClick={() => setFormData({ ...formData, category: cat })}
-                                            style={{
-                                                padding: '8px 16px',
-                                                borderRadius: '20px',
-                                                border: '1px solid',
-                                                borderColor: formData.category === cat ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
-                                                background: formData.category === cat ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
-                                                color: formData.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                                                fontSize: '0.875rem',
-                                                transition: 'all 0.2s'
-                                            }}
-                                        >
-                                            {cat}
-                                        </button>
+                            {!isSplit ? (
+                                <>
+                                    {/* Account Selector */}
+                                    <div>
+                                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
+                                            {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
+                                        </label>
+                                        <div style={{ display: 'flex', gap: '12px' }}>
+                                            {[
+                                                { id: 'card', label: '💳 Карта' },
+                                                { id: 'cash', label: '💵 Наличные' }
+                                            ].map(acc => (
+                                                <button
+                                                    key={acc.id}
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, account: acc.id })}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '12px',
+                                                        borderRadius: '12px',
+                                                        border: '1px solid',
+                                                        borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
+                                                        background: formData.account === acc.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                        color: formData.account === acc.id ? '#fff' : 'var(--color-text-muted)',
+                                                        fontWeight: '500',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                >
+                                                    {acc.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Category Selection */}
+                                    <div>
+                                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Категория</label>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                            {categories.map(cat => (
+                                                <button
+                                                    key={cat}
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, category: cat })}
+                                                    style={{
+                                                        padding: '8px 16px',
+                                                        borderRadius: '20px',
+                                                        border: '1px solid',
+                                                        borderColor: formData.category === cat ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
+                                                        background: formData.category === cat ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                        color: formData.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                                        fontSize: '0.875rem',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                >
+                                                    {cat}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                /* Split UI */
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '16px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                        <span>Осталось распределить:</span>
+                                        <span style={{ color: remainingAmount === 0 ? '#4ade80' : ((remainingAmount < 0) ? '#ef4444' : '#fbbf24'), fontWeight: 'bold' }}>
+                                            €{remainingAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+
+                                    {splits.map((split, index) => (
+                                        <div key={split.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Категория {index + 1}</span>
+                                                {splits.length > 2 && (
+                                                    <button type="button" onClick={() => removeSplit(split.id)} style={{ color: '#ef4444', background: 'transparent', fontSize: '1.1rem' }}>×</button>
+                                                )}
+                                            </div>
+
+                                            {/* Category Scroll */}
+                                            <div
+                                                className="no-scrollbar"
+                                                style={{
+                                                    display: 'flex',
+                                                    gap: '8px',
+                                                    overflowX: 'auto',
+                                                    paddingBottom: '4px',
+                                                }}
+                                            >
+                                                {categories.map(cat => {
+                                                    const isSelectedInOtherSplit = splits.some(s => s.id !== split.id && s.category === cat);
+                                                    if (isSelectedInOtherSplit) return null;
+
+                                                    return (
+                                                        <button
+                                                            key={cat}
+                                                            type="button"
+                                                            onClick={() => updateSplit(split.id, 'category', cat)}
+                                                            style={{
+                                                                padding: '6px 12px',
+                                                                borderRadius: '16px',
+                                                                whiteSpace: 'nowrap',
+                                                                border: '1px solid',
+                                                                borderColor: split.category === cat ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
+                                                                background: split.category === cat ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                                color: split.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                                                fontSize: '0.8rem'
+                                                            }}
+                                                        >
+                                                            {cat}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                                <input
+                                                    type="number"
+                                                    placeholder="Сумма"
+                                                    value={split.amount}
+                                                    onChange={e => updateSplit(split.id, 'amount', e.target.value)}
+                                                    style={{ flex: 1, background: 'rgba(0,0,0,0.2)', border: 'none', padding: '10px', borderRadius: '8px', color: '#fff' }}
+                                                />
+                                            </div>
+                                        </div>
                                     ))}
+
+                                    <button
+                                        type="button"
+                                        onClick={addSplit}
+                                        style={{ width: '100%', padding: '10px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-muted)', border: '1px dashed rgba(255,255,255,0.2)' }}
+                                    >
+                                        + Добавить категорию
+                                    </button>
                                 </div>
-                            </div>
+                            )}
                         </>
-                    ) : (
+                    )}
+
+                    {isTransfer && (
                         /* Transfer specific UI */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -279,6 +440,40 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         </div>
                     )}
 
+                    {/* Description & Account for split (if split, account is shared) */}
+                    {isSplit && (
+                        <div>
+                            <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
+                                Списать с
+                            </label>
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                {[
+                                    { id: 'card', label: '💳 Карта' },
+                                    { id: 'cash', label: '💵 Наличные' }
+                                ].map(acc => (
+                                    <button
+                                        key={acc.id}
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, account: acc.id })}
+                                        style={{
+                                            flex: 1,
+                                            padding: '12px',
+                                            borderRadius: '12px',
+                                            border: '1px solid',
+                                            borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
+                                            background: formData.account === acc.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                                            color: formData.account === acc.id ? '#fff' : 'var(--color-text-muted)',
+                                            fontWeight: '500',
+                                            transition: 'all 0.2s'
+                                        }}
+                                    >
+                                        {acc.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Date Input */}
                     <div>
                         <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Дата</label>
@@ -329,8 +524,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             <button
                                 type="button"
                                 onClick={() => {
-                                    if (window.confirm('Вы уверены, что хотите удалить эту запись?')) {
+                                    const isSplitTx = !!initialData?.splitId;
+                                    const confirmMsg = isSplitTx
+                                        ? 'Это часть разделенной транзакции. Удалить всю транзакцию целиком?'
+                                        : 'Вы уверены, что хотите удалить эту запись?';
+                                    if (window.confirm(confirmMsg)) {
                                         onDelete(initialData.id);
+                                        onClose();
                                     }
                                 }}
                                 style={{
@@ -350,13 +550,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         <button
                             type="submit"
                             className="btn-primary"
-                            disabled={!formData.amount || (!isTransfer && !formData.category)}
+                            disabled={isSplit ? !isSplitValid : (!formData.amount || (!isTransfer && !formData.category))}
                             style={{
                                 flex: 1,
                                 padding: '16px',
                                 fontSize: '1.1rem',
-                                opacity: (!formData.amount || (!isTransfer && !formData.category)) ? 0.5 : 1,
-                                cursor: (!formData.amount || (!isTransfer && !formData.category)) ? 'not-allowed' : 'pointer'
+                                opacity: (isSplit ? !isSplitValid : (!formData.amount || (!isTransfer && !formData.category))) ? 0.5 : 1,
+                                cursor: (isSplit ? !isSplitValid : (!formData.amount || (!isTransfer && !formData.category))) ? 'not-allowed' : 'pointer'
                             }}
                         >
                             Сохранить
@@ -368,6 +568,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         @keyframes scaleIn {
           from { transform: scale(0.9); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
         }
       `}</style>
         </div>
