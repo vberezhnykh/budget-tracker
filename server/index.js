@@ -130,16 +130,6 @@ app.delete('/api/transactions/:id', async (req, res) => {
 
 
 
-// Serve static assets in production
-if (process.env.NODE_ENV === 'production') {
-    // Set static folder
-    app.use(express.static(path.join(__dirname, '../dist')));
-
-    app.get('*', (req, res) => {
-        res.sendFile(path.join(__dirname, '../dist/index.html'));
-    });
-}
-
 // Gemini Analytics Route
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
@@ -222,6 +212,18 @@ app.post('/api/analyze', async (req, res) => {
         res.status(500).json({ message: 'Error generating analysis: ' + err.message });
     }
 });
+
+// Serve static assets in production
+if (process.env.NODE_ENV === 'production') {
+    const distPath = path.resolve(__dirname, '..', 'dist');
+    console.log(`Production mode: serving static files from ${distPath}`);
+
+    app.use(express.static(distPath));
+
+    app.get('*', (req, res) => {
+        res.sendFile(path.resolve(distPath, 'index.html'));
+    });
+}
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
