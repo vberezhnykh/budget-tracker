@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
-import { transformTransactions, calculateBalances, getMonthlyData, getLifetimeStats } from './utils/finance'
+import { transformTransactions, calculateBalances, getMonthlyData, getLifetimeStats, getSearchResults } from './utils/finance'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -21,6 +21,7 @@ function App() {
 
   // Transactions state
   const [transactions, setTransactions] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Fetch transactions on mount
   useEffect(() => {
@@ -47,6 +48,9 @@ function App() {
 
   // Calculate lifetime stats
   const lifetimeStats = useMemo(() => getLifetimeStats(transactions), [transactions]);
+
+  // Search results
+  const searchResults = useMemo(() => getSearchResults(transactions, searchQuery), [transactions, searchQuery]);
 
   const handleMonthChange = (direction) => {
     const [year, month] = selectedMonth.split('-').map(Number);
@@ -297,64 +301,60 @@ function App() {
 
           {/* Transaction History */}
           <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
-            <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ margin: 0 }}>История</h3>
-              <button onClick={exportToCSV} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '8px', color: 'var(--color-text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <span>💾</span> Экспорт
-              </button>
+            <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
+                <button onClick={exportToCSV} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '8px', color: 'var(--color-text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span>💾</span> Экспорт
+                </button>
+              </div>
+
+              {/* Search Bar */}
+              <div style={{ position: 'relative' }}>
+                <input
+                  type="text"
+                  placeholder="Поиск по названию или сумме..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '12px 16px 12px 40px',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '12px',
+                    color: '#fff',
+                    fontSize: '0.9rem',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {Object.keys(monthlyData.transactions).length === 0 ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Нет операций</div>
-              ) : (
-                Object.keys(monthlyData.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
-                  <div key={date}>
-                    <div style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{formatDate(date)}</span>
-                      {monthlyData.transactions[date].dailySum !== 0 && (
-                        <span style={{ fontWeight: '600', color: monthlyData.transactions[date].dailySum > 0 ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
-                          {monthlyData.transactions[date].dailySum > 0 ? '+' : ''}{monthlyData.transactions[date].dailySum.toFixed(2)}€
-                        </span>
-                      )}
-                    </div>
-                    {monthlyData.transactions[date].items.map(item => {
-                      if (item.type === 'split_group') {
-                        return (
-                          <div key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'rgba(255,255,255,0.01)' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'rgba(129, 140, 248, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                                  🗂️
-                                </div>
-                                <div>
-                                  <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>{item.description} (Разделено)</div>
-                                  <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                    {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'} • {item.items.length} катег.
-                                  </div>
-                                </div>
-                              </div>
-                              <div style={{ fontWeight: '700' }}>
-                                €{Math.abs(item.visualAmount).toFixed(2)}
-                              </div>
-                            </div>
-                            {/* Sub-items */}
-                            <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
-                              {item.items.map(subItem => (
-                                <div key={subItem.id} onClick={() => openEditModal(subItem)} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(129, 140, 248, 0.2)', marginBottom: '4px' }}>
-                                  <div style={{ color: 'var(--color-text-muted)' }}>
-                                    {subItem.category}
-                                  </div>
-                                  <div style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                    €{Math.abs(subItem.visualAmount).toFixed(2)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      return (
+              {searchQuery ? (
+                // Search Results View
+                searchResults.count === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Ничего не найдено</div>
+                ) : (
+                  Object.keys(searchResults.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
+                    <div key={date}>
+                      <div style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{formatDate(date)}</span>
+                        {searchResults.transactions[date].dailySum !== 0 && (
+                          <span style={{ fontWeight: '600', color: searchResults.transactions[date].dailySum > 0 ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
+                            {searchResults.transactions[date].dailySum > 0 ? '+' : ''}{searchResults.transactions[date].dailySum.toFixed(2)}€
+                          </span>
+                        )}
+                      </div>
+                      {searchResults.transactions[date].items.map(item => (
                         <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: 'pointer' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                             <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(99, 102, 241, 0.1)' : (item.visualAmount > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
@@ -374,10 +374,87 @@ function App() {
                             {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                ))
+                      ))}
+                    </div>
+                  ))
+                )
+              ) : (
+                // Monthly Data View
+                Object.keys(monthlyData.transactions).length === 0 ? (
+                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Нет операций</div>
+                ) : (
+                  Object.keys(monthlyData.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
+                    <div key={date}>
+                      <div style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between' }}>
+                        <span>{formatDate(date)}</span>
+                        {monthlyData.transactions[date].dailySum !== 0 && (
+                          <span style={{ fontWeight: '600', color: monthlyData.transactions[date].dailySum > 0 ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
+                            {monthlyData.transactions[date].dailySum > 0 ? '+' : ''}{monthlyData.transactions[date].dailySum.toFixed(2)}€
+                          </span>
+                        )}
+                      </div>
+                      {monthlyData.transactions[date].items.map(item => {
+                        if (item.type === 'split_group') {
+                          return (
+                            <div key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'rgba(255,255,255,0.01)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                  <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'rgba(129, 140, 248, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                                    🗂️
+                                  </div>
+                                  <div>
+                                    <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>{item.description} (Разделено)</div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                      {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'} • {item.items.length} катег.
+                                    </div>
+                                  </div>
+                                </div>
+                                <div style={{ fontWeight: '700' }}>
+                                  €{Math.abs(item.visualAmount).toFixed(2)}
+                                </div>
+                              </div>
+                              {/* Sub-items */}
+                              <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
+                                {item.items.map(subItem => (
+                                  <div key={subItem.id} onClick={() => openEditModal(subItem)} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(129, 140, 248, 0.2)', marginBottom: '4px' }}>
+                                    <div style={{ color: 'var(--color-text-muted)' }}>
+                                      {subItem.category}
+                                    </div>
+                                    <div style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                      €{Math.abs(subItem.visualAmount).toFixed(2)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: 'pointer' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                              <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(99, 102, 241, 0.1)' : (item.visualAmount > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                                {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
+                              </div>
+                              <div>
+                                <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
+                                  {item.description || item.title}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                  {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}
+                                  {item.category ? ` • ${item.category}` : ''}
+                                </div>
+                              </div>
+                            </div>
+                            <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff') }}>
+                              {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))
+                )
               )}
             </div>
           </div>

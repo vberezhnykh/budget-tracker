@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
 
 // Mock the API response
@@ -35,7 +35,13 @@ global.fetch = vi.fn(() =>
 
 describe('App Integration Tests', () => {
     beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-01-15'));
         vi.clearAllMocks();
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
     });
 
     it('renders content after loading', async () => {
@@ -191,5 +197,37 @@ describe('App Integration Tests', () => {
 
         // Progress bar (Limit) should be gone
         expect(screen.queryByText(/Лимит €/)).not.toBeInTheDocument();
+    });
+
+    it('filters transactions by search query', async () => {
+        render(<App />);
+
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Initially shows both (Salary and Rent) in January view (since we mocked time)
+        expect(screen.getByText('Salary')).toBeInTheDocument();
+        expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
+
+        // Type "Rent" in search
+        const searchInput = screen.getByPlaceholderText(/Поиск/);
+        fireEvent.change(searchInput, { target: { value: 'Rent' } });
+
+        // Should only show Rent
+        await waitFor(() => {
+            expect(screen.queryByText('Salary')).not.toBeInTheDocument();
+            expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
+            expect(screen.getByText(/Результаты поиска \(1\)/)).toBeInTheDocument();
+        });
+
+        // Clear search
+        const clearBtn = screen.getByText('×');
+        fireEvent.click(clearBtn);
+
+        // Should show both again
+        await waitFor(() => {
+            expect(screen.getByText('Salary')).toBeInTheDocument();
+            expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
+            expect(screen.getByText('История')).toBeInTheDocument();
+        });
     });
 });

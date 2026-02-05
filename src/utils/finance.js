@@ -122,3 +122,36 @@ export const getLifetimeStats = (transactions, startDate = '2025-11-09') => {
 
     return { income, expense, total: income + expense };
 };
+
+export const getSearchResults = (transactions, query) => {
+    if (!query) return { transactions: {}, count: 0 };
+
+    const searchLower = query.toLowerCase();
+    const filtered = transactions.filter(t => {
+        const textMatch = (t.description || '').toLowerCase().includes(searchLower) ||
+            (t.category || '').toLowerCase().includes(searchLower) ||
+            (t.title || '').toLowerCase().includes(searchLower);
+        const amountMatch = t.amount.toString().includes(query) ||
+            Math.abs(t.visualAmount).toString().includes(query);
+        return textMatch || amountMatch;
+    });
+
+    const grouped = filtered.reduce((groups, t) => {
+        const date = t.date;
+        if (!groups[date]) {
+            groups[date] = { items: [], dailySum: 0 };
+        }
+        groups[date].items.push(t);
+        if (t.type !== 'initial' && t.type !== 'transfer') {
+            groups[date].dailySum += t.visualAmount;
+        }
+        return groups;
+    }, {});
+
+    // Sort items within each date
+    Object.keys(grouped).forEach(date => {
+        grouped[date].items.sort((a, b) => b.id > a.id ? 1 : -1);
+    });
+
+    return { transactions: grouped, count: filtered.length };
+};

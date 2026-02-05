@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformTransactions, calculateBalances, getMonthlyData } from './finance';
+import { transformTransactions, calculateBalances, getMonthlyData, getSearchResults } from './finance';
 
 describe('Finance Utilities', () => {
     const mockData = [
@@ -93,6 +93,52 @@ describe('Finance Utilities', () => {
             const balances = calculateBalances(transformed);
 
             expect(balances.total).toBe(0);
+        });
+        describe('Search', () => {
+            it('returns empty results for empty query', () => {
+                const transformed = transformTransactions(mockData);
+                const result = getSearchResults(transformed, '');
+                expect(result.count).toBe(0);
+                expect(Object.keys(result.transactions)).toHaveLength(0);
+            });
+
+            it('finds transactions by title', () => {
+                const transformed = transformTransactions(mockData);
+                const result = getSearchResults(transformed, 'Salary');
+                expect(result.count).toBe(1);
+                expect(result.transactions['2026-01-05'].items[0].title).toBe('Salary');
+            });
+
+            it('finds transactions by category', () => {
+                const transformed = transformTransactions(mockData);
+                const result = getSearchResults(transformed, 'Food');
+                expect(result.count).toBe(1);
+                expect(result.transactions['2026-01-10'].items[0].category).toBe('Food');
+            });
+
+            it('finds transactions by amount', () => {
+                const transformed = transformTransactions(mockData);
+                const result = getSearchResults(transformed, '200');
+                expect(result.count).toBe(1);
+                expect(result.transactions['2026-01-10'].items[0].amount).toBe(200);
+            });
+
+            it('is case insensitive', () => {
+                const transformed = transformTransactions(mockData);
+                const result = getSearchResults(transformed, 'salary');
+                expect(result.count).toBe(1);
+            });
+
+            it('finds multiple matches across different days', () => {
+                const multiData = [
+                    { _id: '1', amount: '100', title: 'Food', date: '2026-01-01' },
+                    { _id: '2', amount: '200', title: 'Food', date: '2026-01-02' }
+                ];
+                const transformed = transformTransactions(multiData);
+                const result = getSearchResults(transformed, 'Food');
+                expect(result.count).toBe(2);
+                expect(Object.keys(result.transactions)).toHaveLength(2);
+            });
         });
     });
 });
