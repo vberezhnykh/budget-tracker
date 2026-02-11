@@ -24,6 +24,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
+  const [selectedType, setSelectedType] = useState(null);
 
   // Fetch transactions on mount
   useEffect(() => {
@@ -59,8 +60,8 @@ function App() {
   // Calculate current balances (Total lifetime) - stays persistent
   const balances = useMemo(() => calculateBalances(transactions), [transactions]);
 
-  // Filter transactions for the selected month and account/category
-  const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth, selectedAccount, selectedCategory), [transactions, selectedMonth, selectedAccount, selectedCategory]);
+  // Filter transactions for the selected month and account/category/type
+  const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth, selectedAccount, selectedCategory, selectedType), [transactions, selectedMonth, selectedAccount, selectedCategory, selectedType]);
 
   // Yearly data with filters
   const yearlyData = useMemo(() => getYearlyData(transactions, selectedMonth, selectedAccount, selectedCategory), [transactions, selectedMonth, selectedAccount, selectedCategory]);
@@ -69,7 +70,7 @@ function App() {
   const lifetimeStats = useMemo(() => getLifetimeStats(transactions, '2025-11-09', selectedAccount, selectedCategory), [transactions, selectedAccount, selectedCategory]);
 
   // Search results with filters
-  const searchResults = useMemo(() => getSearchResults(transactions, searchQuery, selectedAccount, selectedCategory), [transactions, searchQuery, selectedAccount, selectedCategory]);
+  const searchResults = useMemo(() => getSearchResults(transactions, searchQuery, selectedAccount, selectedCategory, selectedType), [transactions, searchQuery, selectedAccount, selectedCategory, selectedType]);
 
   const toggleAccountFilter = (account) => {
     setSelectedAccount(prev => prev === account ? null : account);
@@ -77,6 +78,10 @@ function App() {
 
   const toggleCategoryFilter = (category) => {
     setSelectedCategory(prev => prev === category ? null : category);
+  };
+
+  const toggleTypeFilter = (type) => {
+    setSelectedType(prev => prev === type ? null : type);
   };
 
   const handleMonthChange = (direction) => {
@@ -254,8 +259,8 @@ function App() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '24px' }}>
           {summaryView === 'stats' ? (
             <div className="glass-panel" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '10px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '10px', flexShrink: 0 }}>
                   <button
                     onClick={() => setTimeRange('month')}
                     style={{
@@ -308,13 +313,37 @@ function App() {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{ background: 'rgba(34, 197, 94, 0.08)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(34, 197, 94, 0.15)' }}>
+                <div
+                  onClick={() => toggleTypeFilter('income')}
+                  style={{
+                    background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.08)',
+                    padding: '18px',
+                    borderRadius: '18px',
+                    border: '1px solid',
+                    borderColor: selectedType === 'income' ? '#4ade80' : 'rgba(34, 197, 94, 0.15)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    transform: selectedType === 'income' ? 'scale(1.02)' : 'scale(1)'
+                  }}
+                >
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Доход</div>
                   <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#4ade80' }}>
                     +€{(timeRange === 'month' ? monthlyData.income : timeRange === 'year' ? yearlyData.income : (lifetimeStats?.income || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-                <div style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
+                <div
+                  onClick={() => toggleTypeFilter('expense')}
+                  style={{
+                    background: selectedType === 'expense' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.08)',
+                    padding: '18px',
+                    borderRadius: '18px',
+                    border: '1px solid',
+                    borderColor: selectedType === 'expense' ? '#f87171' : 'rgba(239, 68, 68, 0.15)',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    transform: selectedType === 'expense' ? 'scale(1.02)' : 'scale(1)'
+                  }}
+                >
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Расход</div>
                   <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#f87171' }}>
                     €{(timeRange === 'month' ? monthlyData.expense : timeRange === 'year' ? yearlyData.expense : (lifetimeStats?.expense || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
@@ -421,16 +450,40 @@ function App() {
                 ))}
               </div>
 
-              {selectedCategory && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
-                    Фильтр: <strong>{selectedCategory}</strong>
-                  </span>
-                  <button onClick={() => setSelectedCategory(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
-                    Сбросить ×
-                  </button>
-                </div>
-              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {selectedAccount && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
+                      Счет: <strong>{selectedAccount === 'card' ? 'Карта' : 'Наличные'}</strong>
+                    </span>
+                    <button onClick={() => setSelectedAccount(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                      Сбросить ×
+                    </button>
+                  </div>
+                )}
+
+                {selectedType && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid', borderColor: selectedType === 'income' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
+                    <span style={{ fontSize: '0.8rem', color: selectedType === 'income' ? '#10b981' : '#ef4444' }}>
+                      Тип: <strong>{selectedType === 'income' ? 'Доходы' : 'Расходы'}</strong>
+                    </span>
+                    <button onClick={() => setSelectedType(null)} style={{ background: 'none', border: 'none', color: selectedType === 'income' ? '#10b981' : '#ef4444', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                      Сбросить ×
+                    </button>
+                  </div>
+                )}
+
+                {selectedCategory && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
+                      Категория: <strong>{selectedCategory}</strong>
+                    </span>
+                    <button onClick={() => setSelectedCategory(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                      Сбросить ×
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {searchQuery ? (

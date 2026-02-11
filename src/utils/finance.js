@@ -52,8 +52,10 @@ export const calculateBalances = (transactions) => {
     return { ...b, total: b.cash + b.card };
 };
 
-export const getMonthlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null) => {
-    let filtered = transactions.filter(t => t.date.startsWith(selectedMonth));
+export const getMonthlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null, typeFilter = null) => {
+    const monthFiltered = transactions.filter(t => t.date.startsWith(selectedMonth));
+
+    let filtered = [...monthFiltered];
 
     if (accountFilter) {
         filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
@@ -63,8 +65,23 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
         filtered = filtered.filter(t => t.category === categoryFilter);
     }
 
+    // Calculations for the cards should use the account/category filtered data, 
+    // but stay independent of the type filter to keep the cards visible.
     const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
     const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
+
+    const categoryTotals = filtered
+        .filter(t => t.type === 'expense')
+        .reduce((acc, t) => {
+            const cat = t.category || 'Другое';
+            acc[cat] = (acc[cat] || 0) + Math.abs(t.visualAmount);
+            return acc;
+        }, {});
+
+    // Apply type filter ONLY for the list display
+    if (typeFilter) {
+        filtered = filtered.filter(t => t.type === typeFilter);
+    }
 
     const grouped = filtered.reduce((groups, t) => {
         const date = t.date;
@@ -103,14 +120,6 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
         });
         delete grouped[date].itemsById;
     });
-
-    const categoryTotals = filtered
-        .filter(t => t.type === 'expense')
-        .reduce((acc, t) => {
-            const cat = t.category || 'Другое';
-            acc[cat] = (acc[cat] || 0) + Math.abs(t.visualAmount);
-            return acc;
-        }, {});
 
     return { transactions: grouped, income, expense, categoryTotals };
 };
@@ -162,7 +171,7 @@ export const getLifetimeStats = (transactions, startDate = '2025-11-09', account
     return { income, expense, total: income + expense };
 };
 
-export const getSearchResults = (transactions, query, accountFilter = null, categoryFilter = null) => {
+export const getSearchResults = (transactions, query, accountFilter = null, categoryFilter = null, typeFilter = null) => {
     if (!query) return { transactions: {}, count: 0 };
 
     const searchLower = query.toLowerCase();
@@ -181,6 +190,10 @@ export const getSearchResults = (transactions, query, accountFilter = null, cate
 
     if (categoryFilter) {
         filtered = filtered.filter(t => t.category === categoryFilter);
+    }
+
+    if (typeFilter) {
+        filtered = filtered.filter(t => t.type === typeFilter);
     }
 
     const grouped = filtered.reduce((groups, t) => {

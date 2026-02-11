@@ -105,11 +105,15 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 onClick={e => e.stopPropagation()}
                 className="glass-panel"
                 style={{
-                    width: 'calc(100% - 32px)',
-                    maxWidth: '550px',
-                    padding: '24px',
+                    background: 'var(--color-surface)',
+                    width: '90%',
+                    maxWidth: '450px',
                     borderRadius: '24px',
-                    animation: 'scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                    padding: '24px',
+                    position: 'relative',
+                    animation: 'slideUp 0.3s ease-out',
+                    maxHeight: '90vh',
+                    overflowY: 'auto',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '20px',
@@ -196,7 +200,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     color: 'var(--color-text-main)',
                                     fontSize: '1.5rem',
                                     fontWeight: 'bold',
-                                    outline: 'none'
+                                    outline: 'none',
+                                    boxSizing: 'border-box'
                                 }}
                             />
                         </div>
@@ -369,7 +374,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     placeholder="Сумма"
                                                     value={split.amount}
                                                     onChange={e => updateSplit(split.id, 'amount', e.target.value)}
-                                                    style={{ flex: 1, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', padding: '10px', borderRadius: '8px', color: 'var(--color-text-main)' }}
+                                                    style={{ flex: 1, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', padding: '10px', borderRadius: '8px', color: 'var(--color-text-main)', boxSizing: 'border-box' }}
                                                 />
                                             </div>
                                         </div>
@@ -498,7 +503,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 fontSize: '1rem',
                                 outline: 'none',
                                 fontFamily: 'inherit',
-                                colorScheme: 'light'
+                                colorScheme: 'light',
+                                boxSizing: 'border-box'
                             }}
                         />
                     </div>
@@ -515,11 +521,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 width: '100%',
                                 background: 'rgba(0,0,0,0.03)',
                                 border: '1px solid rgba(0,0,0,0.08)',
-                                borderRadius: '12px',
-                                padding: '12px',
+                                borderRadius: '16px',
+                                padding: '16px',
                                 color: 'var(--color-text-main)',
-                                fontSize: '1rem',
-                                outline: 'none'
+                                fontSize: '1.25rem',
+                                fontWeight: '700',
+                                outline: 'none',
+                                boxSizing: 'border-box'
                             }}
                         />
                     </div>

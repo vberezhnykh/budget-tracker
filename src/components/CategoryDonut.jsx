@@ -69,16 +69,17 @@ export default function CategoryDonut({ data, onToggle }) {
                 <button
                     onClick={onToggle}
                     style={{
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.1)',
+                        background: 'rgba(0,0,0,0.03)',
+                        border: '1px solid rgba(0,0,0,0.08)',
                         borderRadius: '8px',
                         padding: '4px 12px',
-                        color: '#fff',
+                        color: 'var(--color-primary)',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '4px',
-                        fontSize: '0.8rem'
+                        fontSize: '0.8rem',
+                        fontWeight: '600'
                     }}
                 >
                     <span>←</span> Назад
@@ -125,7 +126,7 @@ export default function CategoryDonut({ data, onToggle }) {
                         justifyContent: 'center',
                         textAlign: 'center'
                     }}>
-                        <div style={{ transform: 'translateY(-50%)' }}>
+                        <div style={{ width: '100%' }}>
                             <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>Всего</div>
                             <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--color-text-main)' }}>€{total.toFixed(0)}</div>
                         </div>
