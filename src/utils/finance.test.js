@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformTransactions, calculateBalances, getMonthlyData, getSearchResults } from './finance';
+import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getSearchResults } from './finance';
 
 describe('Finance Utilities', () => {
     const mockData = [
@@ -48,6 +48,41 @@ describe('Finance Utilities', () => {
 
         // Income (Salary: 500)
         // Expense (Food: 200)
+        expect(result.income).toBe(500);
+        expect(result.expense).toBe(-200);
+        expect(result.categoryTotals['Food']).toBe(200);
+    });
+
+    it('filters monthly data by account correctly', () => {
+        const transformed = transformTransactions(mockData);
+
+        // Card account: initial 1000, expense 200, transfer 100
+        const cardResult = getMonthlyData(transformed, '2026-01', 'card');
+        expect(cardResult.expense).toBe(-200);
+        expect(cardResult.income).toBe(0); // Salary is cash
+        expect(Object.keys(cardResult.transactions)).toHaveLength(3); // initial (Jan 1), expense (Jan 10), transfer (Jan 15)
+
+        // Cash account: income 500, transfer 100
+        const cashResult = getMonthlyData(transformed, '2026-01', 'cash');
+        expect(cashResult.income).toBe(500);
+        expect(cashResult.expense).toBe(0);
+        expect(Object.keys(cashResult.transactions)).toHaveLength(2); // income (Jan 5), transfer (Jan 15)
+    });
+
+    it('filters monthly data by category correctly', () => {
+        const transformed = transformTransactions(mockData);
+        const result = getMonthlyData(transformed, '2026-01', null, 'Salary');
+        expect(result.income).toBe(500);
+        expect(Object.keys(result.transactions)).toHaveLength(1);
+        expect(result.transactions['2026-01-05'].items[0].category).toBe('Salary');
+    });
+
+    it('calculates yearly data correctly', () => {
+        const transformed = transformTransactions(mockData);
+        const result = getYearlyData(transformed, '2026-01');
+        // Total from mockData in 2026:
+        // Income: 500 (Salary)
+        // Expense: 200 (Food)
         expect(result.income).toBe(500);
         expect(result.expense).toBe(-200);
         expect(result.categoryTotals['Food']).toBe(200);

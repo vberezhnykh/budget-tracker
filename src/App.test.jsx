@@ -165,15 +165,14 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
         render(<App />);
 
-        // Open split sub-item
-        await waitFor(() => screen.getByText('Food'));
-        fireEvent.click(screen.getByText('Food'));
+        // Open split sub-item by clicking its amount (use index 1 because index 0 is the group total)
+        await waitFor(() => screen.getAllByText('€50.00'));
+        fireEvent.click(screen.getAllByText('€50.00')[1]);
 
-        // Click delete
+        // Wait for modal to open (find delete button)
         const deleteBtn = await screen.findByText('🗑');
         fireEvent.click(deleteBtn);
 
-        // Verify splitId was passed
         expect(global.fetch).toHaveBeenCalledWith(
             expect.stringContaining('splitId=group-123'),
             expect.objectContaining({ method: 'DELETE' })

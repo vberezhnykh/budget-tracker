@@ -1,0 +1,398 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.16 [39m[90mC:/Users/Валентин/Desktop/budget-tracker[39m
+
+[90mstderr[2m | src/App.test.jsx[2m > [22m[2mApp Integration Tests[2m > [22m[2mdeletes a transaction correctly
+[22m[39mAn update to App inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+[90mstderr[2m | src/App.test.jsx[2m > [22m[2mApp Integration Tests[2m > [22m[2mdeletes a transaction correctly
+[22m[39mAn update to App inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to App inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+
+ [31m❯[39m src/App.test.jsx [2m([22m[2m9 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[33m 1709[2mms[22m[39m
+     [32m✓[39m renders content after loading[32m 162[2mms[22m[39m
+     [32m✓[39m navigates between months[32m 63[2mms[22m[39m
+     [32m✓[39m toggles between monthly stats and analytics view[32m 66[2mms[22m[39m
+     [32m✓[39m opens and closes the add transaction modal[32m 206[2mms[22m[39m
+     [32m✓[39m displays transaction description and account/category correctly[32m 32[2mms[22m[39m
+     [32m✓[39m deletes a transaction correctly[32m 71[2mms[22m[39m
+[31m     [31m×[31m deletes an entire split group[39m[33m 1009[2mms[22m[39m
+     [32m✓[39m toggles between monthly and lifetime stats[32m 45[2mms[22m[39m
+     [32m✓[39m filters transactions by search query[32m 54[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/App.test.jsx[2m > [22mApp Integration Tests[2m > [22mdeletes an entire split group
+[31m[1mTestingLibraryElementError[22m[39m: Found multiple elements with the text: €50.00
+
+Here are the matching elements:
+
+Ignored nodes: comments, script, style
+[36m<div[39m
+  [33mstyle[39m=[32m"font-weight: 700;"[39m
+[36m>[39m
+  [0m€[0m
+  [0m50.00[0m
+[36m</div>[39m
+
+Ignored nodes: comments, script, style
+[36m<div[39m
+  [33mstyle[39m=[32m"font-variant-numeric: tabular-nums;"[39m
+[36m>[39m
+  [0m€[0m
+  [0m50.00[0m
+[36m</div>[39m
+
+(If this is intentional, then use the `*AllBy*` variant of the query (like `queryAllByText`, `getAllByText`, or `findAllByText`)).
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"layout-container"[39m
+      [33mstyle[39m=[32m""[39m
+    [36m>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"glass-panel"[39m
+        [33mstyle[39m=[32m"padding: 24px; margin-bottom: 24px;"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mstyle[39m=[32m"display: flex; align-items: center; gap: 12px; margin-bottom: 28px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mstyle[39m=[32m"font-size: 1.8rem; background: var(--color-primary-gradient); width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px var(--color-primary-glow);"[39m
+          [36m>[39m
+            [0m👛[0m
+          [36m</div>[39m
+          [36m<h1[39m
+            [33mstyle[39m=[32m"font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px;"[39m
+          [36m>[39m
+            [0mBudgetTracker[0m
+          [36m</h1>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mstyle[39m=[32m"text-align: center; margin-bottom: 32px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mstyle[39m=[32m"font-size: 0.9rem; color: var(--color-text-muted); margin-bottom: 8px; letter-spacing: 0.5px;"[39m
+          [36m>[39m
+            [0mОБЩИЙ КАПИТАЛ[0m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"balance-amount"[39m
+            [33mstyle[39m=[32m"font-size: 2.5rem; font-weight: 800;"[39m
+          [36m>[39m
+            [0m€[0m
+            [0m4.000,00[0m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mstyle[39m=[32m"display: flex; gap: 16px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mstyle[39m=[32m"flex: 1 1 0%; padding: 20px; background: rgba(255, 255, 255, 0.03); border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.05); cursor: pointer; transition: all 0.2s ease;"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"display: flex; align-items: center; gap: 8px; margin-bottom: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mstyle[39m=[32m"font-size: 1.2rem;"[39m
+              [36m>[39m
+                [0m💳[0m
+              [36m</span>[39m
+              [36m<div[39m
+                [33mstyle[39m=[32m"font-size: 0.8rem; color: var(--color-text-muted); font-weight: 500;"[39m
+              [36m>[39m
+                [0mКарта[0m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"font-size: 1.3rem; font-weight: 700;"[39m
+            [36m>[39m
+              [0m€[0m
+              [0m4.000,00[0m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mstyle[39m=[32m"flex: 1 1 0%; padding: 20px; background: rgba(255, 255, 255, 0.03); border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.05); cursor: pointer; transition: all 0.2s ease;"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"display: flex; align-items: center; gap: 8px; margin-bottom: 6px;"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mstyle[39m=[32m"font-size: 1.2rem;"[39m
+              [36m>[39m
+                [0m💵[0m
+              [36m</span>[39m
+              [36m<div[39m
+                [33mstyle[39m=[32m"font-size: 0.8rem; color: var(--color-text-muted); font-weight: 500;"[39m
+              [36m>[39m
+                [0mНаличные[0m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"font-size: 1.3rem; font-weight: 700;"[39m
+            [36m>[39m
+              [0m€[0m
+              [0m0,00[0m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<main>[39m
+        [36m<section[39m
+          [33mstyle[39m=[32m"margin-bottom: 32px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mstyle[39m=[32m"display: flex; flex-direction: column; gap: 16px;"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33mclass[39m=[32m"glass-panel"[39m
+              [33mstyle[39m=[32m"width: 100%; border: 1px solid rgba(129, 140, 248, 0.2); color: rgb(129, 140, 248); padding: 14px; border-radius: 16px; font-weight: 600;"[39m
+            [36m>[39m
+              [0m⇄ Обмен / Перевод[0m
+            [36m</button>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"display: flex; gap: 16px;"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"btn-primary"[39m
+                [33mstyle[39m=[32m"flex: 1 1 0%; background: linear-gradient(135deg, rgb(16, 185, 129), rgb(5, 150, 105)); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0m+[0m
+                [36m</span>[39m
+                [0m Доход[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"btn-primary"[39m
+                [33mstyle[39m=[32m"flex: 2 1 0%; background: linear-gradient(135deg, rgb(244, 63, 94), rgb(225, 29, 72)); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3);"[39m
+              [36m>[39m
+                [36m<span>[39m
+                  [0m-[0m
+                [36m</span>[39m
+                [0m Расход[0m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</section>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"glass-panel"[39m
+          [33mstyle[39m=[32m"display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding: 12px 20px;"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mstyle[39m=[32m"background: transparent; color: var(--color-text-muted); font-size: 1.5rem; opacity: 1;"[39m
+          [36m>[39m
+            [0m←[0m
+          [36m</button>[39m
+          [36m<h2[39m
+            [33mstyle[39m=[32m"font-size: 1.1rem; font-weight: 600; text-transform: capitalize;"[39m
+          [36m>[39m
+            [0mянварь 2026[0m
+          [36m</h2>[39m
+          [36m<button[39m
+            [33mdisabled[39m=[32m""[39m
+            [33mstyle[39m=[32m"background: transparent; color: var(--color-text-muted); font-size: 1.5rem; opacity: 0.3;"[39m
+          [36m>[39m
+            [0m→[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mstyle[39m=[32m"display: grid; grid-template-columns: 1fr; gap: 24px; margin-bottom: 24px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"glass-...
+
+Ignored nodes: comments, script, style
+[36m<html>[39m
+  [36m<head />[39m
+  [36m<body>[39m
+    [36m<div>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"layout-container"[39m
+        [33mstyle[39m=[32m""[39m
+      [36m>[39m
+        [36m<header[39m
+          [33mclass[39m=[32m"glass-panel"[39m
+          [33mstyle[39m=[32m"padding: 24px; margin-bottom: 24px;"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mstyle[39m=[32m"display: flex; align-items: center; gap: 12px; margin-bottom: 28px;"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"font-size: 1.8rem; background: var(--color-primary-gradient); width: 48px; height: 48px; border-radius: 14px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px var(--color-primary-glow);"[39m
+            [36m>[39m
+              [0m👛[0m
+            [36m</div>[39m
+            [36m<h1[39m
+              [33mstyle[39m=[32m"font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px;"[39m
+            [36m>[39m
+              [0mBudgetTracker[0m
+            [36m</h1>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mstyle[39m=[32m"text-align: center; margin-bottom: 32px;"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"font-size: 0.9rem; color: var(--color-text-muted); margin-bottom: 8px; letter-spacing: 0.5px;"[39m
+            [36m>[39m
+              [0mОБЩИЙ КАПИТАЛ[0m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"balance-amount"[39m
+              [33mstyle[39m=[32m"font-size: 2.5rem; font-weight: 800;"[39m
+            [36m>[39m
+              [0m€[0m
+              [0m4.000,00[0m
+            [36m</div>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mstyle[39m=[32m"display: flex; gap: 16px;"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"flex: 1 1 0%; padding: 20px; background: rgba(255, 255, 255, 0.03); border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.05); cursor: pointer; transition: all 0.2s ease;"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mstyle[39m=[32m"display: flex; align-items: center; gap: 8px; margin-bottom: 6px;"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mstyle[39m=[32m"font-size: 1.2rem;"[39m
+                [36m>[39m
+                  [0m💳[0m
+                [36m</span>[39m
+                [36m<div[39m
+                  [33mstyle[39m=[32m"font-size: 0.8rem; color: var(--color-text-muted); font-weight: 500;"[39m
+                [36m>[39m
+                  [0mКарта[0m
+                [36m</div>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mstyle[39m=[32m"font-size: 1.3rem; font-weight: 700;"[39m
+              [36m>[39m
+                [0m€[0m
+                [0m4.000,00[0m
+              [36m</div>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"flex: 1 1 0%; padding: 20px; background: rgba(255, 255, 255, 0.03); border-radius: 20px; border: 1px solid rgba(255, 255, 255, 0.05); cursor: pointer; transition: all 0.2s ease;"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mstyle[39m=[32m"display: flex; align-items: center; gap: 8px; margin-bottom: 6px;"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33mstyle[39m=[32m"font-size: 1.2rem;"[39m
+                [36m>[39m
+                  [0m💵[0m
+                [36m</span>[39m
+                [36m<div[39m
+                  [33mstyle[39m=[32m"font-size: 0.8rem; color: var(--color-text-muted); font-weight: 500;"[39m
+                [36m>[39m
+                  [0mНаличные[0m
+                [36m</div>[39m
+              [36m</div>[39m
+              [36m<div[39m
+                [33mstyle[39m=[32m"font-size: 1.3rem; font-weight: 700;"[39m
+              [36m>[39m
+                [0m€[0m
+                [0m0,00[0m
+              [36m</div>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</header>[39m
+        [36m<main>[39m
+          [36m<section[39m
+            [33mstyle[39m=[32m"margin-bottom: 32px;"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mstyle[39m=[32m"display: flex; flex-direction: column; gap: 16px;"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"glass-panel"[39m
+                [33mstyle[39m=[32m"width: 100%; border: 1px solid rgba(129, 140, 248, 0.2); color: rgb(129, 140, 248); padding: 14px; border-radius: 16px; font-weight: 600;"[39m
+              [36m>[39m
+                [0m⇄ Обмен / Перевод[0m
+              [36m</button>[39m
+              [36m<div[39m
+                [33mstyle[39m=[32m"display: flex; gap: 16px;"[39m
+              [36m>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"btn-primary"[39m
+                  [33mstyle[39m=[32m"flex: 1 1 0%; background: linear-gradient(135deg, rgb(16, 185, 129), rgb(5, 150, 105)); box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0m+[0m
+                  [36m</span>[39m
+                  [0m Доход[0m
+                [36m</button>[39m
+                [36m<button[39m
+                  [33mclass[39m=[32m"btn-primary"[39m
+                  [33mstyle[39m=[32m"flex: 2 1 0%; background: linear-gradient(135deg, rgb(244, 63, 94), rgb(225, 29, 72)); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3);"[39m
+                [36m>[39m
+                  [36m<span>[39m
+                    [0m-[0m
+                  [36m</span>[39m
+                  [0m Расход[0m
+                [36m</button>[39m
+              [36m</div>[39m
+            [36m</div>[39m
+          [36m</section>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"glass-panel"[39m
+            [33mstyle[39m=[32m"display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; padding: 12px 20px;"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33mstyle[39m=[32m"background: transparent; color: var(--color-text-muted); font-size: 1.5rem; opacity: 1;"[39m
+            [36m>[39m
+              [0m←[0m
+            [36m</button>[39m
+            [36m<h2[39m
+              [33mstyle[39m=[32m"font-size: 1.1rem; font-weight: 600; text-transform: capitalize;"[39m
+            [36m>[39m
+              [0mянварь 2026[0m
+            [36m</h2>[39m
+            [36m<button[39m
+              [33mdisabled[39m=[32m""[39m
+              [33mstyle[39m=[32m"background: transparent; color: var(--color-text-muted); font-size: 1.5rem; opacity:...
+[90m [2m❯[22m waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:[2m163:27[22m[39m
+[36m [2m❯[22m src/App.test.jsx:[2m169:15[22m[39m
+    [90m167| [39m
+    [90m168| [39m        [90m// Open split sub-item by clicking its amount[39m
+    [90m169| [39m        [35mawait[39m [34mwaitFor[39m(() [33m=>[39m screen[33m.[39m[34mgetByText[39m([32m'€50.00'[39m))[33m;[39m
+    [90m   | [39m              [31m^[39m
+    [90m170| [39m        fireEvent[33m.[39m[34mclick[39m(screen[33m.[39m[34mgetByText[39m([32m'€50.00'[39m))[33m;[39m
+    [90m171| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m8 passed[39m[22m[90m (9)[39m
+[2m   Start at [22m 14:32:59
+[2m   Duration [22m 2.81s[2m (transform 133ms, setup 109ms, import 205ms, tests 1.71s, environment 638ms)[22m
+

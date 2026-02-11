@@ -1,0 +1,41 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.16 [39m[90mC:/Users/Валентин/Desktop/budget-tracker[39m
+
+ [31m❯[39m src/utils/finance.test.js [2m([22m[2m16 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 31[2mms[22m[39m
+     [32m✓[39m transforms transactions correctly[32m 4[2mms[22m[39m
+     [32m✓[39m calculates total balance correctly[32m 1[2mms[22m[39m
+     [32m✓[39m filters monthly data correctly[32m 2[2mms[22m[39m
+     [32m✓[39m filters monthly data by account correctly[32m 4[2mms[22m[39m
+     [32m✓[39m filters monthly data by category correctly[32m 1[2mms[22m[39m
+[31m     [31m×[31m calculates yearly data correctly[39m[32m 8[2mms[22m[39m
+       [32m✓[39m handles empty transaction list[32m 1[2mms[22m[39m
+       [32m✓[39m handles transactions with missing categories[32m 0[2mms[22m[39m
+       [32m✓[39m correctly separates years in monthly filter[32m 1[2mms[22m[39m
+       [32m✓[39m handles zero amount transactions[32m 1[2mms[22m[39m
+         [32m✓[39m returns empty results for empty query[32m 1[2mms[22m[39m
+         [32m✓[39m finds transactions by title[32m 1[2mms[22m[39m
+         [32m✓[39m finds transactions by category[32m 0[2mms[22m[39m
+         [32m✓[39m finds transactions by amount[32m 0[2mms[22m[39m
+         [32m✓[39m is case insensitive[32m 0[2mms[22m[39m
+         [32m✓[39m finds multiple matches across different days[32m 0[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m src/utils/finance.test.js[2m > [22mFinance Utilities[2m > [22mcalculates yearly data correctly
+[31m[1mReferenceError[22m: getYearlyData is not defined[39m
+[36m [2m❯[22m src/utils/finance.test.js:[2m82:24[22m[39m
+    [90m 80| [39m    [34mit[39m([32m'calculates yearly data correctly'[39m[33m,[39m () [33m=>[39m {
+    [90m 81| [39m        [35mconst[39m transformed [33m=[39m [34mtransformTransactions[39m(mockData)[33m;[39m
+    [90m 82| [39m        [35mconst[39m result [33m=[39m [34mgetYearlyData[39m(transformed[33m,[39m [32m'2026-01'[39m)[33m;[39m
+    [90m   | [39m                       [31m^[39m
+    [90m 83| [39m        [90m// Total from mockData in 2026:[39m
+    [90m 84| [39m        [90m// Income: 500 (Salary)[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m15 passed[39m[22m[90m (16)[39m
+[2m   Start at [22m 14:34:35
+[2m   Duration [22m 3.12s[2m (transform 126ms, setup 322ms, import 109ms, tests 31ms, environment 2.12s)[22m
+

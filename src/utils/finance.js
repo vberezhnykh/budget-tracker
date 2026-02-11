@@ -52,8 +52,16 @@ export const calculateBalances = (transactions) => {
     return { ...b, total: b.cash + b.card };
 };
 
-export const getMonthlyData = (transactions, selectedMonth) => {
-    const filtered = transactions.filter(t => t.date.startsWith(selectedMonth));
+export const getMonthlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null) => {
+    let filtered = transactions.filter(t => t.date.startsWith(selectedMonth));
+
+    if (accountFilter) {
+        filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
+    }
+
+    if (categoryFilter) {
+        filtered = filtered.filter(t => t.category === categoryFilter);
+    }
 
     const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
     const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
@@ -91,9 +99,6 @@ export const getMonthlyData = (transactions, selectedMonth) => {
     // Convert itemsById to items array for each date and sort them
     Object.keys(grouped).forEach(date => {
         grouped[date].items = Object.values(grouped[date].itemsById).sort((a, b) => {
-            // Put newer transactions first (using ID or date/time if available)
-            // Since we sorted in API, we can rely on order if we had indices,
-            // but for now let's just use string comparison for IDs or similar
             return b.id > a.id ? 1 : -1;
         });
         delete grouped[date].itemsById;
@@ -110,8 +115,42 @@ export const getMonthlyData = (transactions, selectedMonth) => {
     return { transactions: grouped, income, expense, categoryTotals };
 };
 
-export const getLifetimeStats = (transactions, startDate = '2025-11-09') => {
-    const filtered = transactions.filter(t => t.date >= startDate);
+export const getYearlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null) => {
+    const year = selectedMonth.split('-')[0];
+    let filtered = transactions.filter(t => t.date.startsWith(year));
+
+    if (accountFilter) {
+        filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
+    }
+
+    if (categoryFilter) {
+        filtered = filtered.filter(t => t.category === categoryFilter);
+    }
+
+    const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
+    const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
+
+    const categoryTotals = filtered
+        .filter(t => t.type === 'expense')
+        .reduce((acc, t) => {
+            const cat = t.category || 'Другое';
+            acc[cat] = (acc[cat] || 0) + Math.abs(t.visualAmount);
+            return acc;
+        }, {});
+
+    return { income, expense, categoryTotals };
+};
+
+export const getLifetimeStats = (transactions, startDate = '2025-11-09', accountFilter = null, categoryFilter = null) => {
+    let filtered = transactions.filter(t => t.date >= startDate);
+
+    if (accountFilter) {
+        filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
+    }
+
+    if (categoryFilter) {
+        filtered = filtered.filter(t => t.category === categoryFilter);
+    }
 
     const income = filtered.reduce((acc, t) =>
         (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0
@@ -123,11 +162,11 @@ export const getLifetimeStats = (transactions, startDate = '2025-11-09') => {
     return { income, expense, total: income + expense };
 };
 
-export const getSearchResults = (transactions, query) => {
+export const getSearchResults = (transactions, query, accountFilter = null, categoryFilter = null) => {
     if (!query) return { transactions: {}, count: 0 };
 
     const searchLower = query.toLowerCase();
-    const filtered = transactions.filter(t => {
+    let filtered = transactions.filter(t => {
         const textMatch = (t.description || '').toLowerCase().includes(searchLower) ||
             (t.category || '').toLowerCase().includes(searchLower) ||
             (t.title || '').toLowerCase().includes(searchLower);
@@ -135,6 +174,14 @@ export const getSearchResults = (transactions, query) => {
             Math.abs(t.visualAmount).toString().includes(query);
         return textMatch || amountMatch;
     });
+
+    if (accountFilter) {
+        filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
+    }
+
+    if (categoryFilter) {
+        filtered = filtered.filter(t => t.category === categoryFilter);
+    }
 
     const grouped = filtered.reduce((groups, t) => {
         const date = t.date;

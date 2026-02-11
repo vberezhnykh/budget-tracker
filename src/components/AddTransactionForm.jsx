@@ -62,7 +62,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     };
 
     const categories = formData.type === 'expense'
-        ? ['Продукты', 'Еда вне дома', 'Транспорт', 'Развлечения', 'Шопинг', 'Красота', 'Жилье', 'Питомцы', 'Услуги', 'Другое']
+        ? ['Продукты', 'Еда вне дома', 'Транспорт', 'Развлечения', 'Шопинг', 'Красота', 'Жилье', 'Питомцы', 'Услуги', 'Отпуск', 'Другое']
         : ['Зарплата', 'Фриланс', 'Подарок', 'Кэшбэк', 'Другое'];
 
     const getTitle = () => {
@@ -91,8 +91,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         <div style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(3, 7, 18, 0.8)',
-            backdropFilter: 'blur(4px)',
+            background: 'rgba(30, 41, 59, 0.4)',
+            backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -134,7 +134,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 {!initialData && !isSplit && (
                     <div style={{
                         display: 'flex',
-                        background: 'rgba(0,0,0,0.2)',
+                        background: 'rgba(0,0,0,0.05)',
                         padding: '4px',
                         borderRadius: '12px'
                     }}>
@@ -150,11 +150,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     flex: 1,
                                     padding: '8px',
                                     borderRadius: '8px',
-                                    background: formData.type === t.id ? 'rgba(255,255,255,0.1)' : 'transparent',
-                                    color: formData.type === t.id ? '#fff' : 'var(--color-text-muted)',
-                                    fontWeight: '500',
+                                    background: formData.type === t.id ? '#fff' : 'transparent',
+                                    color: formData.type === t.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                    fontWeight: '600',
                                     fontSize: '0.9rem',
-                                    transition: 'all 0.2s'
+                                    transition: 'all 0.2s',
+                                    boxShadow: formData.type === t.id ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
                                 }}
                             >
                                 {t.label}
@@ -188,11 +189,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 onChange={e => setFormData({ ...formData, amount: e.target.value })}
                                 style={{
                                     width: '100%',
-                                    background: 'rgba(255,255,255,0.05)',
-                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    background: 'rgba(0,0,0,0.03)',
+                                    border: '1px solid rgba(0,0,0,0.08)',
                                     borderRadius: '16px',
                                     padding: '16px 16px 16px 36px',
-                                    color: '#fff',
+                                    color: 'var(--color-text-main)',
                                     fontSize: '1.5rem',
                                     fontWeight: 'bold',
                                     outline: 'none'
@@ -212,10 +213,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         alignItems: 'center',
                                         gap: '12px',
                                         padding: '12px',
-                                        background: 'rgba(255,255,255,0.05)',
+                                        background: 'rgba(0,0,0,0.03)',
                                         borderRadius: '12px',
                                         cursor: 'pointer',
-                                        border: '1px solid rgba(255,255,255,0.1)',
+                                        border: '1px solid rgba(0,0,0,0.05)',
                                         transition: 'all 0.2s'
                                     }}
                                 >
@@ -236,7 +237,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             background: '#fff',
                                             borderRadius: '50%',
                                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
                                         }} />
                                     </div>
                                     <span style={{ fontSize: '0.9rem', fontWeight: '500', color: isSplit ? '#fff' : 'var(--color-text-muted)' }}>
@@ -266,10 +267,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                         padding: '12px',
                                                         borderRadius: '12px',
                                                         border: '1px solid',
-                                                        borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
-                                                        background: formData.account === acc.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
-                                                        color: formData.account === acc.id ? '#fff' : 'var(--color-text-muted)',
-                                                        fontWeight: '500',
+                                                        borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
+                                                        background: formData.account === acc.id ? 'rgba(37, 99, 235, 0.05)' : '#fff',
+                                                        color: formData.account === acc.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                                        fontWeight: '600',
                                                         transition: 'all 0.2s'
                                                     }}
                                                 >
@@ -292,10 +293,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                         padding: '8px 16px',
                                                         borderRadius: '20px',
                                                         border: '1px solid',
-                                                        borderColor: formData.category === cat ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
-                                                        background: formData.category === cat ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                        borderColor: formData.category === cat ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
+                                                        background: formData.category === cat ? 'rgba(37, 99, 235, 0.05)' : '#fff',
                                                         color: formData.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                                         fontSize: '0.875rem',
+                                                        fontWeight: formData.category === cat ? '600' : 'normal',
                                                         transition: 'all 0.2s'
                                                     }}
                                                 >
@@ -307,7 +309,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 </>
                             ) : (
                                 /* Split UI */
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(255,255,255,0.03)', padding: '16px', borderRadius: '16px' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(0,0,0,0.02)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(0,0,0,0.05)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                                         <span>Осталось распределить:</span>
                                         <span style={{ color: remainingAmount === 0 ? '#4ade80' : ((remainingAmount < 0) ? '#ef4444' : '#fbbf24'), fontWeight: 'bold' }}>
@@ -316,7 +318,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     </div>
 
                                     {splits.map((split, index) => (
-                                        <div key={split.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <div key={split.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Категория {index + 1}</span>
                                                 {splits.length > 2 && (
@@ -348,10 +350,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                                 borderRadius: '16px',
                                                                 whiteSpace: 'nowrap',
                                                                 border: '1px solid',
-                                                                borderColor: split.category === cat ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
-                                                                background: split.category === cat ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
+                                                                borderColor: split.category === cat ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
+                                                                background: split.category === cat ? 'rgba(37, 99, 235, 0.05)' : '#fff',
                                                                 color: split.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                                                                fontSize: '0.8rem'
+                                                                fontSize: '0.8rem',
+                                                                fontWeight: split.category === cat ? '600' : 'normal'
                                                             }}
                                                         >
                                                             {cat}
@@ -366,7 +369,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     placeholder="Сумма"
                                                     value={split.amount}
                                                     onChange={e => updateSplit(split.id, 'amount', e.target.value)}
-                                                    style={{ flex: 1, background: 'rgba(0,0,0,0.2)', border: 'none', padding: '10px', borderRadius: '8px', color: '#fff' }}
+                                                    style={{ flex: 1, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', padding: '10px', borderRadius: '8px', color: 'var(--color-text-main)' }}
                                                 />
                                             </div>
                                         </div>
@@ -375,7 +378,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     <button
                                         type="button"
                                         onClick={addSplit}
-                                        style={{ width: '100%', padding: '10px', borderRadius: '12px', background: 'rgba(255,255,255,0.05)', color: 'var(--color-text-muted)', border: '1px dashed rgba(255,255,255,0.2)' }}
+                                        style={{ width: '100%', padding: '10px', borderRadius: '12px', background: '#fff', color: 'var(--color-text-muted)', border: '1px dashed rgba(0,0,0,0.2)', fontWeight: '500' }}
                                     >
                                         + Добавить категорию
                                     </button>
@@ -400,11 +403,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             width: '100%',
                                             padding: '16px',
                                             borderRadius: '16px',
-                                            background: 'rgba(239, 68, 68, 0.1)',
+                                            background: '#fff',
                                             border: '1px solid rgba(239, 68, 68, 0.2)',
-                                            color: '#fff',
-                                            fontWeight: '600',
-                                            cursor: 'pointer'
+                                            color: '#ef4444',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 2px 4px rgba(239, 68, 68, 0.05)'
                                         }}
                                     >
                                         {formData.account === 'card' ? '💳 Карта' : '💵 Наличные'}
@@ -423,11 +427,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             width: '100%',
                                             padding: '16px',
                                             borderRadius: '16px',
-                                            background: 'rgba(34, 197, 94, 0.1)',
+                                            background: '#fff',
                                             border: '1px solid rgba(34, 197, 94, 0.2)',
-                                            color: '#fff',
-                                            fontWeight: '600',
-                                            cursor: 'pointer'
+                                            color: '#10b981',
+                                            fontWeight: '700',
+                                            cursor: 'pointer',
+                                            boxShadow: '0 2px 4px rgba(34, 197, 94, 0.05)'
                                         }}
                                     >
                                         {formData.toAccount === 'card' ? '💳 Карта' : '💵 Наличные'}
@@ -460,10 +465,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             padding: '12px',
                                             borderRadius: '12px',
                                             border: '1px solid',
-                                            borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(255,255,255,0.1)',
-                                            background: formData.account === acc.id ? 'rgba(99, 102, 241, 0.2)' : 'rgba(255,255,255,0.05)',
-                                            color: formData.account === acc.id ? '#fff' : 'var(--color-text-muted)',
-                                            fontWeight: '500',
+                                            borderColor: formData.account === acc.id ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
+                                            background: formData.account === acc.id ? 'rgba(37, 99, 235, 0.05)' : '#fff',
+                                            color: formData.account === acc.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                            fontWeight: '600',
                                             transition: 'all 0.2s'
                                         }}
                                     >
@@ -485,15 +490,15 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             onChange={e => setFormData({ ...formData, date: e.target.value })}
                             style={{
                                 width: '100%',
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                background: 'rgba(0,0,0,0.03)',
+                                border: '1px solid rgba(0,0,0,0.08)',
                                 borderRadius: '12px',
                                 padding: '12px',
-                                color: '#fff',
+                                color: 'var(--color-text-main)',
                                 fontSize: '1rem',
                                 outline: 'none',
                                 fontFamily: 'inherit',
-                                colorScheme: 'dark'
+                                colorScheme: 'light'
                             }}
                         />
                     </div>
@@ -508,11 +513,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
                             style={{
                                 width: '100%',
-                                background: 'rgba(255,255,255,0.05)',
-                                border: '1px solid rgba(255,255,255,0.1)',
+                                background: 'rgba(0,0,0,0.03)',
+                                border: '1px solid rgba(0,0,0,0.08)',
                                 borderRadius: '12px',
                                 padding: '12px',
-                                color: '#fff',
+                                color: 'var(--color-text-main)',
                                 fontSize: '1rem',
                                 outline: 'none'
                             }}
@@ -536,12 +541,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 style={{
                                     padding: '16px',
                                     borderRadius: '12px',
-                                    background: 'rgba(239, 68, 68, 0.1)',
+                                    background: '#fff',
                                     color: '#ef4444',
-                                    fontWeight: '600',
+                                    fontWeight: '700',
                                     border: '1px solid rgba(239, 68, 68, 0.2)',
                                     fontSize: '1.2rem',
-                                    lineHeight: 1
+                                    lineHeight: 1,
+                                    boxShadow: '0 2px 4px rgba(239, 68, 68, 0.05)'
                                 }}
                             >
                                 🗑

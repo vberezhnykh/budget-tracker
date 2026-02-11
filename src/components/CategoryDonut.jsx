@@ -125,8 +125,10 @@ export default function CategoryDonut({ data, onToggle }) {
                         justifyContent: 'center',
                         textAlign: 'center'
                     }}>
-                        <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>Траты</div>
-                        <div style={{ fontWeight: '700', fontSize: '1rem' }}>€{total.toFixed(0)}</div>
+                        <div style={{ transform: 'translateY(-50%)' }}>
+                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>Всего</div>
+                            <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--color-text-main)' }}>€{total.toFixed(0)}</div>
+                        </div>
                     </div>
                 </div>
 
@@ -136,10 +138,10 @@ export default function CategoryDonut({ data, onToggle }) {
                         <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: s.color }} />
-                                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.9)' }}>{s.category}</span>
+                                <span style={{ fontSize: '0.8rem', color: 'var(--color-text-main)' }}>{s.category}</span>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span style={{ fontSize: '0.8rem', fontWeight: '500' }}>€{s.value.toFixed(0)}</span>
+                                <span style={{ fontSize: '0.8rem', fontWeight: '500', color: 'var(--color-text-main)' }}>€{s.value.toFixed(0)}</span>
                                 <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', width: '30px', textAlign: 'right' }}>
                                     {Math.round(s.percent * 100)}%
                                 </span>

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
-import { transformTransactions, calculateBalances, getMonthlyData, getLifetimeStats, getSearchResults } from './utils/finance'
+import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults } from './utils/finance'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -22,11 +22,27 @@ function App() {
   // Transactions state
   const [transactions, setTransactions] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
 
   // Fetch transactions on mount
   useEffect(() => {
     fetchTransactions();
   }, []);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (showAddTransaction || editingTransaction) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    // Cleanup on unmount
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showAddTransaction, editingTransaction]);
 
   const fetchTransactions = async () => {
     try {
@@ -40,17 +56,28 @@ function App() {
     }
   };
 
-  // Calculate current balances (Total lifetime)
+  // Calculate current balances (Total lifetime) - stays persistent
   const balances = useMemo(() => calculateBalances(transactions), [transactions]);
 
-  // Filter transactions for the selected month
-  const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth), [transactions, selectedMonth]);
+  // Filter transactions for the selected month and account/category
+  const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth, selectedAccount, selectedCategory), [transactions, selectedMonth, selectedAccount, selectedCategory]);
 
-  // Calculate lifetime stats
-  const lifetimeStats = useMemo(() => getLifetimeStats(transactions), [transactions]);
+  // Yearly data with filters
+  const yearlyData = useMemo(() => getYearlyData(transactions, selectedMonth, selectedAccount, selectedCategory), [transactions, selectedMonth, selectedAccount, selectedCategory]);
 
-  // Search results
-  const searchResults = useMemo(() => getSearchResults(transactions, searchQuery), [transactions, searchQuery]);
+  // Calculate lifetime stats with filters
+  const lifetimeStats = useMemo(() => getLifetimeStats(transactions, '2025-11-09', selectedAccount, selectedCategory), [transactions, selectedAccount, selectedCategory]);
+
+  // Search results with filters
+  const searchResults = useMemo(() => getSearchResults(transactions, searchQuery, selectedAccount, selectedCategory), [transactions, searchQuery, selectedAccount, selectedCategory]);
+
+  const toggleAccountFilter = (account) => {
+    setSelectedAccount(prev => prev === account ? null : account);
+  };
+
+  const toggleCategoryFilter = (category) => {
+    setSelectedCategory(prev => prev === category ? null : category);
+  };
 
   const handleMonthChange = (direction) => {
     const [year, month] = selectedMonth.split('-').map(Number);
@@ -141,21 +168,8 @@ function App() {
     <div className="layout-container">
       {/* Premium Header */}
       <header className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '28px' }}>
-          <div style={{
-            fontSize: '1.8rem',
-            background: 'var(--color-primary-gradient)',
-            width: '48px',
-            height: '48px',
-            borderRadius: '14px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 4px 15px var(--color-primary-glow)'
-          }}>
-            👛
-          </div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: '800', letterSpacing: '-0.5px' }}>BudgetTracker</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '28px' }}>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)' }}>BudgetTracker</h1>
         </div>
 
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
@@ -167,20 +181,44 @@ function App() {
 
         <div style={{ display: 'flex', gap: '16px' }}>
           {/* Card Account */}
-          <div style={{ flex: 1, padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div
+            onClick={() => toggleAccountFilter('card')}
+            style={{
+              flex: 1,
+              padding: '20px',
+              background: selectedAccount === 'card' ? 'rgba(37, 99, 235, 0.1)' : 'rgba(0,0,0,0.02)',
+              borderRadius: '20px',
+              border: selectedAccount === 'card' ? '2px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: selectedAccount === 'card' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : 'none'
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
               <span style={{ fontSize: '1.2rem' }}>💳</span>
-              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: '500' }}>Карта</div>
+              <div style={{ fontSize: '0.8rem', color: selectedAccount === 'card' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '600' }}>Карта</div>
             </div>
-            <div style={{ fontSize: '1.3rem', fontWeight: '700' }}>€{balances.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--color-text-main)' }}>€{balances.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
           </div>
           {/* Cash Account */}
-          <div style={{ flex: 1, padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <div
+            onClick={() => toggleAccountFilter('cash')}
+            style={{
+              flex: 1,
+              padding: '20px',
+              background: selectedAccount === 'cash' ? 'rgba(37, 99, 235, 0.1)' : 'rgba(0,0,0,0.02)',
+              borderRadius: '20px',
+              border: selectedAccount === 'cash' ? '2px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: selectedAccount === 'cash' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : 'none'
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
               <span style={{ fontSize: '1.2rem' }}>💵</span>
-              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: '500' }}>Наличные</div>
+              <div style={{ fontSize: '0.8rem', color: selectedAccount === 'cash' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '600' }}>Наличные</div>
             </div>
-            <div style={{ fontSize: '1.3rem', fontWeight: '700' }}>€{balances.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
+            <div style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--color-text-main)' }}>€{balances.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
           </div>
         </div>
       </header>
@@ -217,37 +255,54 @@ function App() {
           {summaryView === 'stats' ? (
             <div className="glass-panel" style={{ padding: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-                <div style={{ display: 'flex', gap: '8px', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '10px' }}>
+                <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '10px' }}>
                   <button
                     onClick={() => setTimeRange('month')}
                     style={{
-                      background: timeRange === 'month' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      background: timeRange === 'month' ? '#fff' : 'transparent',
                       border: 'none',
                       borderRadius: '6px',
                       padding: '4px 12px',
-                      color: '#fff',
+                      color: timeRange === 'month' ? 'var(--color-primary)' : 'var(--color-text-muted)',
                       fontSize: '0.75rem',
-                      fontWeight: timeRange === 'month' ? 'bold' : 'normal'
+                      fontWeight: '600',
+                      boxShadow: timeRange === 'month' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
                     }}
                   >
                     Месяц
                   </button>
                   <button
-                    onClick={() => setTimeRange('lifetime')}
+                    onClick={() => setTimeRange('year')}
                     style={{
-                      background: timeRange === 'lifetime' ? 'rgba(255,255,255,0.1)' : 'transparent',
+                      background: timeRange === 'year' ? '#fff' : 'transparent',
                       border: 'none',
                       borderRadius: '6px',
                       padding: '4px 12px',
-                      color: '#fff',
+                      color: timeRange === 'year' ? 'var(--color-primary)' : 'var(--color-text-muted)',
                       fontSize: '0.75rem',
-                      fontWeight: timeRange === 'lifetime' ? 'bold' : 'normal'
+                      fontWeight: '600',
+                      boxShadow: timeRange === 'year' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
+                    }}
+                  >
+                    Год
+                  </button>
+                  <button
+                    onClick={() => setTimeRange('lifetime')}
+                    style={{
+                      background: timeRange === 'lifetime' ? '#fff' : 'transparent',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '4px 12px',
+                      color: timeRange === 'lifetime' ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      boxShadow: timeRange === 'lifetime' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
                     }}
                   >
                     Всё время
                   </button>
                 </div>
-                <button onClick={() => setSummaryView('analytics')} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '6px 12px', color: '#fff', fontSize: '0.8rem' }}>
+                <button onClick={() => setSummaryView('analytics')} style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '6px 12px', color: 'var(--color-text-main)', fontSize: '0.8rem', fontWeight: '500' }}>
                   Аналитика →
                 </button>
               </div>
@@ -256,19 +311,19 @@ function App() {
                 <div style={{ background: 'rgba(34, 197, 94, 0.08)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(34, 197, 94, 0.15)' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Доход</div>
                   <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#4ade80' }}>
-                    +€{(timeRange === 'month' ? monthlyData.income : (lifetimeStats?.income || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    +€{(timeRange === 'month' ? monthlyData.income : timeRange === 'year' ? yearlyData.income : (lifetimeStats?.income || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
                 <div style={{ background: 'rgba(239, 68, 68, 0.08)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(239, 68, 68, 0.15)' }}>
                   <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Расход</div>
                   <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#f87171' }}>
-                    €{(timeRange === 'month' ? monthlyData.expense : (lifetimeStats?.expense || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    €{(timeRange === 'month' ? monthlyData.expense : timeRange === 'year' ? yearlyData.expense : (lifetimeStats?.expense || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '18px', borderRadius: '18px' }}>
+                <div style={{ background: 'rgba(0,0,0,0.02)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.03)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: timeRange === 'month' ? '12px' : '0' }}>
                     <span style={{ color: 'var(--color-text-muted)' }}>Сальдо:</span>
-                    <span style={{ fontWeight: '700', color: ((timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : (lifetimeStats?.total || 0)) >= 0) ? '#fff' : '#f87171' }}>
+                    <span style={{ fontWeight: '700', color: ((timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : (lifetimeStats?.total || 0)) >= 0) ? 'var(--color-text-main)' : '#ef4444' }}>
                       €{(timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : (lifetimeStats?.total || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -278,13 +333,13 @@ function App() {
                       {/* Progress Bar */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem' }}>
                         <span style={{ color: 'var(--color-text-muted)' }}>Лимит €{MONTHLY_LIMIT.toLocaleString()}</span>
-                        <span>{Math.round((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100)}%</span>
+                        <span style={{ fontWeight: '600', color: Math.abs(monthlyData.expense) > MONTHLY_LIMIT ? '#ef4444' : 'var(--color-text-main)' }}>{Math.round((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100)}%</span>
                       </div>
-                      <div style={{ height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
                         <div style={{
                           height: '100%',
                           width: `${Math.min((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100, 100)}%`,
-                          background: Math.abs(monthlyData.expense) > MONTHLY_LIMIT ? '#f87171' : 'var(--color-primary-gradient)',
+                          background: Math.abs(monthlyData.expense) > MONTHLY_LIMIT ? '#ef4444' : 'var(--color-primary-gradient)',
                           transition: 'width 0.4s ease'
                         }} />
                       </div>
@@ -319,10 +374,10 @@ function App() {
                   style={{
                     width: '100%',
                     padding: '12px 16px 12px 40px',
-                    background: 'rgba(255,255,255,0.03)',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: '#fff',
+                    border: '1px solid rgba(0,0,0,0.08)',
                     borderRadius: '12px',
-                    color: '#fff',
+                    color: 'var(--color-text-main)',
                     fontSize: '0.9rem',
                     boxSizing: 'border-box'
                   }}
@@ -337,6 +392,45 @@ function App() {
                   </button>
                 )}
               </div>
+
+              {/* Category Filter Chips */}
+              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                <style>{`
+                  div::-webkit-scrollbar { display: none; }
+                `}</style>
+                {['Продукты', 'Еда вне дома', 'Транспорт', 'Развлечения', 'Шопинг', 'Красота', 'Жилье', 'Питомцы', 'Услуги', 'Отпуск', 'Другое'].map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => toggleCategoryFilter(cat)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '6px 12px',
+                      borderRadius: '20px',
+                      background: selectedCategory === cat ? 'var(--color-primary)' : '#fff',
+                      border: '1px solid ' + (selectedCategory === cat ? 'var(--color-primary)' : 'rgba(0,0,0,0.1)'),
+                      color: selectedCategory === cat ? '#fff' : 'var(--color-text-muted)',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: selectedCategory === cat ? '0 2px 6px rgba(37, 99, 235, 0.2)' : 'none'
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {selectedCategory && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
+                    Фильтр: <strong>{selectedCategory}</strong>
+                  </span>
+                  <button onClick={() => setSelectedCategory(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                    Сбросить ×
+                  </button>
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {searchQuery ? (
@@ -346,31 +440,44 @@ function App() {
                 ) : (
                   Object.keys(searchResults.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
                     <div key={date}>
-                      <div style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ padding: '10px 24px', background: 'rgba(0,0,0,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{formatDate(date)}</span>
                         {searchResults.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: searchResults.transactions[date].dailySum > 0 ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
+                          <span style={{ fontWeight: '600', color: searchResults.transactions[date].dailySum > 0 ? '#10b981' : 'var(--color-text-muted)' }}>
                             {searchResults.transactions[date].dailySum > 0 ? '+' : ''}{searchResults.transactions[date].dailySum.toFixed(2)}€
                           </span>
                         )}
                       </div>
                       {searchResults.transactions[date].items.map(item => (
-                        <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: 'pointer' }}>
+                        <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: '#fff' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(99, 102, 241, 0.1)' : (item.visualAmount > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                            <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                               {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                             </div>
                             <div>
-                              <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
+                              <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
                                 {item.description || item.title}
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                                 {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}
-                                {item.category ? ` • ${item.category}` : ''}
+                                {item.category && (
+                                  <>
+                                    {' • '}
+                                    <span
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleCategoryFilter(item.category);
+                                      }}
+                                      style={{ color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                                    >
+                                      {item.category}
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             </div>
                           </div>
-                          <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff') }}>
+                          <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? '#059669' : 'var(--color-text-main)') }}>
                             {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                           </div>
                         </div>
@@ -385,10 +492,10 @@ function App() {
                 ) : (
                   Object.keys(monthlyData.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
                     <div key={date}>
-                      <div style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ padding: '10px 24px', background: 'rgba(0,0,0,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{formatDate(date)}</span>
                         {monthlyData.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: monthlyData.transactions[date].dailySum > 0 ? '#4ade80' : 'rgba(255,255,255,0.3)' }}>
+                          <span style={{ fontWeight: '600', color: monthlyData.transactions[date].dailySum > 0 ? '#10b981' : 'var(--color-text-muted)' }}>
                             {monthlyData.transactions[date].dailySum > 0 ? '+' : ''}{monthlyData.transactions[date].dailySum.toFixed(2)}€
                           </span>
                         )}
@@ -396,31 +503,37 @@ function App() {
                       {monthlyData.transactions[date].items.map(item => {
                         if (item.type === 'split_group') {
                           return (
-                            <div key={item.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'rgba(255,255,255,0.01)' }}>
+                            <div key={item.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', background: '#fff' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'rgba(0,0,0,0.01)' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                  <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'rgba(129, 140, 248, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                                  <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'rgba(37, 99, 235, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                                     🗂️
                                   </div>
                                   <div>
-                                    <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>{item.description} (Разделено)</div>
+                                    <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                                       {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'} • {item.items.length} катег.
                                     </div>
                                   </div>
                                 </div>
-                                <div style={{ fontWeight: '700' }}>
+                                <div style={{ fontWeight: '700', color: 'var(--color-text-main)' }}>
                                   €{Math.abs(item.visualAmount).toFixed(2)}
                                 </div>
                               </div>
                               {/* Sub-items */}
                               <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
                                 {item.items.map(subItem => (
-                                  <div key={subItem.id} onClick={() => openEditModal(subItem)} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(129, 140, 248, 0.2)', marginBottom: '4px' }}>
-                                    <div style={{ color: 'var(--color-text-muted)' }}>
+                                  <div key={subItem.id} onClick={() => openEditModal(subItem)} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
+                                    <div
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleCategoryFilter(subItem.category);
+                                      }}
+                                      style={{ color: selectedCategory === subItem.category ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: selectedCategory === subItem.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                                    >
                                       {subItem.category}
                                     </div>
-                                    <div style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                    <div style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-main)' }}>
                                       €{Math.abs(subItem.visualAmount).toFixed(2)}
                                     </div>
                                   </div>
@@ -431,22 +544,35 @@ function App() {
                         }
 
                         return (
-                          <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(255,255,255,0.03)', cursor: 'pointer' }}>
+                          <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: '#fff' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                              <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(99, 102, 241, 0.1)' : (item.visualAmount > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                              <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                                 {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                               </div>
                               <div>
-                                <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>
+                                <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
                                   {item.description || item.title}
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                                   {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}
-                                  {item.category ? ` • ${item.category}` : ''}
+                                  {item.category && (
+                                    <>
+                                      {' • '}
+                                      <span
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleCategoryFilter(item.category);
+                                        }}
+                                        style={{ color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                                      >
+                                        {item.category}
+                                      </span>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                            <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? '#818cf8' : (item.visualAmount > 0 ? '#4ade80' : '#fff') }}>
+                            <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? '#059669' : 'var(--color-text-main)') }}>
                               {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                             </div>
                           </div>
