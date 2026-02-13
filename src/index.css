@@ -39,6 +39,7 @@
   box-sizing: border-box;
 }
 
+html,
 body {
   font-family: var(--font-main);
   background-color: var(--color-bg);
@@ -48,6 +49,8 @@ body {
     radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.15) 0px, transparent 50%);
   background-attachment: fixed;
   min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

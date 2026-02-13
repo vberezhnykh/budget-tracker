@@ -104,6 +104,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             zIndex: 100,
             animation: 'fadeIn 0.2s ease-out',
             overflowY: 'auto',
+            overflowX: 'hidden',
             padding: '20px 0'
         }} onClick={onClose}>
             <div
