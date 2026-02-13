@@ -8,7 +8,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start": "node server/index.js",
+    "postinstall": "cd server && npm install"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",

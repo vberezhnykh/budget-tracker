@@ -216,7 +216,7 @@ app.post('/api/analyze', async (req, res) => {
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
     const fs = require('fs');
-    const distPath = path.resolve(process.cwd(), 'dist');
+    const distPath = path.resolve(__dirname, '..', 'dist');
 
     if (fs.existsSync(distPath)) {
         console.log(`✅ Dist folder found at: ${distPath}`);
