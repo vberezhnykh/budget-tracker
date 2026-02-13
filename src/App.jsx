@@ -7,6 +7,11 @@ import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData
 const API_URL = '/api/transactions';
 const MONTHLY_LIMIT = 7000;
 
+const ACCOUNTS = {
+  card: { label: 'Карта', icon: '💳' },
+  cash: { label: 'Наличные', icon: '💵' }
+};
+
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [showAddTransaction, setShowAddTransaction] = useState(false);
@@ -101,7 +106,7 @@ function App() {
       t.title,
       t.type === 'income' ? 'Доход' : t.type === 'expense' ? 'Расход' : t.type === 'transfer' ? 'Перевод' : 'Начало',
       t.category,
-      t.account === 'cash' ? 'Наличные' : 'Карта',
+      ACCOUNTS[t.account]?.label || 'Неизвестно',
       t.amount.toFixed(2),
       t.description || ''
     ]);
@@ -454,7 +459,7 @@ function App() {
                 {selectedAccount && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
-                      Счет: <strong>{selectedAccount === 'card' ? 'Карта' : 'Наличные'}</strong>
+                      Счет: <strong>{ACCOUNTS[selectedAccount]?.label || selectedAccount}</strong>
                     </span>
                     <button onClick={() => setSelectedAccount(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
                       Сбросить ×
@@ -512,7 +517,7 @@ function App() {
                                 {item.description || item.title}
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}
+                                {ACCOUNTS[item.account] ? `${ACCOUNTS[item.account].icon} ${ACCOUNTS[item.account].label}` : '❓ Неизвестно'}
                                 {item.category && (
                                   <>
                                     {' • '}
@@ -565,7 +570,7 @@ function App() {
                                   <div>
                                     <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                      {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'} • {item.items.length} катег.
+                                      {ACCOUNTS[item.account] ? `${ACCOUNTS[item.account].icon} ${ACCOUNTS[item.account].label}` : '❓ Неизвестно'} • {item.items.length} катег.
                                     </div>
                                   </div>
                                 </div>
@@ -607,7 +612,7 @@ function App() {
                                   {item.description || item.title}
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                  {item.account === 'cash' ? '💵 Наличные' : '💳 Карта'}
+                                  {ACCOUNTS[item.account] ? `${ACCOUNTS[item.account].icon} ${ACCOUNTS[item.account].label}` : '❓ Неизвестно'}
                                   {item.category && (
                                     <>
                                       {' • '}

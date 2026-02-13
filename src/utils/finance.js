@@ -13,15 +13,18 @@ export const transformTransactions = (data) => {
         let cardFlow = 0;
         let visualAmount = signedAmount;
 
+        const account = t.account ? t.account.toLowerCase() : 'card';
+        const toAccount = t.toAccount ? t.toAccount.toLowerCase() : null;
+
         if (isTransfer) {
             visualAmount = amount; // Show absolute amount in history list
-            if (t.account === 'cash') cashFlow = -amount;
-            if (t.account === 'card') cardFlow = -amount;
-            if (t.toAccount === 'cash') cashFlow = amount;
-            if (t.toAccount === 'card') cardFlow = amount;
+            if (account === 'cash') cashFlow = -amount;
+            if (account === 'card') cardFlow = -amount;
+            if (toAccount === 'cash') cashFlow = amount;
+            if (toAccount === 'card') cardFlow = amount;
         } else {
-            cashFlow = t.account === 'cash' ? signedAmount : 0;
-            cardFlow = t.account === 'card' ? signedAmount : 0;
+            cashFlow = account === 'cash' ? signedAmount : 0;
+            cardFlow = account === 'card' ? signedAmount : 0;
         }
 
         return {
@@ -34,8 +37,8 @@ export const transformTransactions = (data) => {
             type: t.type,
             category: t.category,
             description: t.description,
-            account: t.account,
-            toAccount: t.toAccount,
+            account: account,
+            toAccount: toAccount,
             date: t.date?.split('T')[0], // Use YYYY-MM-DD
             splitId: t.splitId
         };
