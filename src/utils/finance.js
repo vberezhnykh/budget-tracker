@@ -58,7 +58,10 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
     let filtered = [...monthFiltered];
 
     if (accountFilter) {
-        filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
+        filtered = filtered.filter(t => {
+            if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
+            return t.account === accountFilter;
+        });
     }
 
     if (categoryFilter) {
@@ -129,7 +132,10 @@ export const getYearlyData = (transactions, selectedMonth, accountFilter = null,
     let filtered = transactions.filter(t => t.date.startsWith(year));
 
     if (accountFilter) {
-        filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
+        filtered = filtered.filter(t => {
+            if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
+            return t.account === accountFilter;
+        });
     }
 
     if (categoryFilter) {
@@ -154,7 +160,10 @@ export const getLifetimeStats = (transactions, startDate = '2025-11-09', account
     let filtered = transactions.filter(t => t.date >= startDate);
 
     if (accountFilter) {
-        filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
+        filtered = filtered.filter(t => {
+            if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
+            return t.account === accountFilter;
+        });
     }
 
     if (categoryFilter) {
@@ -185,7 +194,10 @@ export const getSearchResults = (transactions, query, accountFilter = null, cate
     });
 
     if (accountFilter) {
-        filtered = filtered.filter(t => t.account === accountFilter || t.toAccount === accountFilter);
+        filtered = filtered.filter(t => {
+            if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
+            return t.account === accountFilter;
+        });
     }
 
     if (categoryFilter) {

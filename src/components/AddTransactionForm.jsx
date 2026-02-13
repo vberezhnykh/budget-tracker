@@ -51,12 +51,17 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             }));
             onSubmit(splitTransactions);
         } else {
-            onSubmit({
+            const submitData = {
                 ...formData,
                 amount: parseFloat(formData.amount),
                 category: isTransfer ? 'Обмен' : formData.category,
                 id: initialData ? initialData.id : Date.now()
-            });
+            };
+            // Only include toAccount for transfers to avoid polluting the data
+            if (!isTransfer) {
+                delete submitData.toAccount;
+            }
+            onSubmit(submitData);
         }
         onClose();
     };

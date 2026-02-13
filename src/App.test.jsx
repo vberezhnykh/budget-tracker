@@ -229,4 +229,45 @@ describe('App Integration Tests', () => {
             expect(screen.getByText('История')).toBeInTheDocument();
         });
     });
+    it('filters transactions by account when clicking account cards', async () => {
+        const cashTx = {
+            _id: '3',
+            title: 'Coffee',
+            amount: 5,
+            type: 'expense',
+            account: 'cash',
+            date: '2026-01-05T00:00:00Z',
+            category: 'Food'
+        };
+
+        global.fetch.mockImplementation(() => Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([...mockTransactions, cashTx]),
+        }));
+
+        render(<App />);
+
+        await waitFor(() => screen.getByText('Coffee'));
+        expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
+
+        // Click on "Card" balance card
+        const cardFilterBtn = screen.getByText('Карта').closest('div');
+        fireEvent.click(cardFilterBtn);
+
+        // Should show Salary (card) but NOT Coffee (cash)
+        await waitFor(() => {
+            expect(screen.queryAllByText('Salary').length).toBeGreaterThan(0);
+            expect(screen.queryByText('Coffee')).not.toBeInTheDocument();
+        });
+
+        // Click on "Cash" balance card
+        const cashFilterBtn = screen.getByText('Наличные').closest('div');
+        fireEvent.click(cashFilterBtn);
+
+        // Should show Coffee (cash) but NOT Salary (card)
+        await waitFor(() => {
+            expect(screen.getByText('Coffee')).toBeInTheDocument();
+            expect(screen.queryByText('Salary')).not.toBeInTheDocument();
+        });
+    });
 });
