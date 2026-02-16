@@ -225,11 +225,34 @@ if (process.env.NODE_ENV === 'production') {
             console.log(`Files in dist: ${files.join(', ')}`);
         } catch (e) { console.error('Error reading dist:', e.message); }
 
-        app.use(express.static(distPath));
+        // Hashed assets (JS/CSS) — cache forever (filename changes on each build)
+        app.use('/assets', express.static(path.join(distPath, 'assets'), {
+            maxAge: '1y',
+            immutable: true
+        }));
+
+        // All other static files (favicon, etc.) — short cache
+        app.use(express.static(distPath, {
+            maxAge: '1h',
+            setHeaders: (res, filePath) => {
+                // Never cache index.html even if requested directly
+                if (filePath.endsWith('.html')) {
+                    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                    res.setHeader('Pragma', 'no-cache');
+                    res.setHeader('Expires', '0');
+                }
+            }
+        }));
+
+        // SPA fallback — always serve fresh index.html with no-cache headers
         app.get('*', (req, res) => {
             const indexPath = path.join(distPath, 'index.html');
-            if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-            else {
+            if (fs.existsSync(indexPath)) {
+                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+                res.setHeader('Pragma', 'no-cache');
+                res.setHeader('Expires', '0');
+                res.sendFile(indexPath);
+            } else {
                 console.error(`❌ index.html not found in dist: ${indexPath}`);
                 res.status(404).send('index.html not found');
             }

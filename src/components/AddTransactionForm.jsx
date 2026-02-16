@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, onClose, onSubmit, onDelete }) {
     const [formData, setFormData] = useState(initialData ? {
@@ -90,6 +90,22 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         setSplits(splits.map(s => s.id === id ? { ...s, [field]: value } : s));
     };
 
+    // Lock body scroll when modal is open
+    useEffect(() => {
+        const scrollY = window.scrollY;
+        document.body.style.overflow = 'hidden';
+        document.body.style.position = 'fixed';
+        document.body.style.width = '100%';
+        document.body.style.top = `-${scrollY}px`;
+
+        return () => {
+            document.body.style.overflow = '';
+            document.body.style.position = '';
+            document.body.style.width = '';
+            document.body.style.top = '';
+            window.scrollTo(0, scrollY);
+        };
+    }, []);
 
 
     return (
@@ -105,7 +121,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             animation: 'fadeIn 0.2s ease-out',
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: '20px 0'
+            padding: '20px 0',
+            touchAction: 'pan-y',
+            WebkitOverflowScrolling: 'touch'
         }} onClick={onClose}>
             <div
                 onClick={e => e.stopPropagation()}
@@ -120,10 +138,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     animation: 'slideUp 0.3s ease-out',
                     maxHeight: '90vh',
                     overflowY: 'auto',
+                    overflowX: 'hidden',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '20px',
-                    margin: 'auto'
+                    margin: 'auto',
+                    touchAction: 'pan-y'
                 }}
             >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
