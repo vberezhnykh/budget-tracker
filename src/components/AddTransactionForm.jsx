@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export default function AddTransactionForm({ type = 'expense', initialData = null, onClose, onSubmit, onDelete }) {
+export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete }) {
     const [formData, setFormData] = useState(initialData ? {
         ...initialData,
         date: initialData.date || new Date().toISOString().split('T')[0],
@@ -13,7 +13,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         date: new Date().toISOString().split('T')[0],
         type: type, // 'income', 'expense', or 'transfer'
         account: 'cash',
-        toAccount: 'card'
+        toAccount: 'card',
+        excludeFromStats: false
     });
 
     const isTransfer = formData.type === 'transfer';
@@ -66,9 +67,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         onClose();
     };
 
-    const categories = formData.type === 'expense'
-        ? ['Продукты', 'Еда вне дома', 'Транспорт', 'Развлечения', 'Шопинг', 'Красота', 'Жилье', 'Питомцы', 'Услуги', 'Отпуск', 'Другое']
-        : ['Зарплата', 'Фриланс', 'Подарок', 'Кэшбэк', 'Другое'];
+    const categories = (allCategories || []).filter(c => c.type === formData.type);
+
+    // New category inline creation
+    const [isAddingCategory, setIsAddingCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
 
     const getTitle = () => {
         if (initialData) return 'Редактировать';
@@ -88,6 +91,17 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const updateSplit = (id, field, value) => {
         setSplits(splits.map(s => s.id === id ? { ...s, [field]: value } : s));
+    };
+
+    const handleCreateCategory = async () => {
+        const trimmed = newCategoryName.trim();
+        if (!trimmed || !onAddCategory) return;
+        const result = await onAddCategory(trimmed, formData.type);
+        if (result && !result.error) {
+            setFormData({ ...formData, category: trimmed });
+            setNewCategoryName('');
+            setIsAddingCategory(false);
+        }
     };
 
     // Lock body scroll when modal is open
@@ -317,26 +331,141 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                             {categories.map(cat => (
                                                 <button
-                                                    key={cat}
+                                                    key={cat._id}
                                                     type="button"
-                                                    onClick={() => setFormData({ ...formData, category: cat })}
+                                                    onClick={() => setFormData({ ...formData, category: cat.name })}
                                                     style={{
                                                         padding: '8px 16px',
                                                         borderRadius: '20px',
                                                         border: '1px solid',
-                                                        borderColor: formData.category === cat ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
-                                                        background: formData.category === cat ? 'rgba(37, 99, 235, 0.05)' : '#fff',
-                                                        color: formData.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                                        borderColor: formData.category === cat.name ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
+                                                        background: formData.category === cat.name ? 'rgba(37, 99, 235, 0.05)' : '#fff',
+                                                        color: formData.category === cat.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                                         fontSize: '0.875rem',
-                                                        fontWeight: formData.category === cat ? '600' : 'normal',
+                                                        fontWeight: formData.category === cat.name ? '600' : 'normal',
                                                         transition: 'all 0.2s'
                                                     }}
                                                 >
-                                                    {cat}
+                                                    {cat.name}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
+
+                                    {/* Exclude from stats toggle */}
+                                    {!isTransfer && (
+                                        <div
+                                            onClick={() => setFormData({ ...formData, excludeFromStats: !formData.excludeFromStats })}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '10px 14px',
+                                                borderRadius: '12px',
+                                                border: '1px solid',
+                                                borderColor: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.08)',
+                                                background: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.03)' : '#fff',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                                userSelect: 'none'
+                                            }}
+                                        >
+                                            <span style={{ fontSize: '0.85rem', color: formData.excludeFromStats ? '#ef4444' : 'var(--color-text-muted)' }}>
+                                                Не считать в статистике
+                                            </span>
+                                            <div style={{
+                                                width: '40px',
+                                                height: '22px',
+                                                borderRadius: '11px',
+                                                background: formData.excludeFromStats ? '#ef4444' : 'rgba(0,0,0,0.15)',
+                                                position: 'relative',
+                                                transition: 'background 0.2s'
+                                            }}>
+                                                <div style={{
+                                                    width: '18px',
+                                                    height: '18px',
+                                                    borderRadius: '50%',
+                                                    background: '#fff',
+                                                    position: 'absolute',
+                                                    top: '2px',
+                                                    left: formData.excludeFromStats ? '20px' : '2px',
+                                                    transition: 'left 0.2s',
+                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                                }} />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Add New Category */}
+                                    {isAddingCategory ? (
+                                        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                                            <input
+                                                type="text"
+                                                placeholder="Название..."
+                                                value={newCategoryName}
+                                                onChange={e => setNewCategoryName(e.target.value)}
+                                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreateCategory(); } }}
+                                                autoFocus
+                                                style={{
+                                                    flex: 1,
+                                                    padding: '8px 12px',
+                                                    borderRadius: '20px',
+                                                    border: '1px solid rgba(37, 99, 235, 0.3)',
+                                                    background: '#fff',
+                                                    fontSize: '0.875rem',
+                                                    outline: 'none',
+                                                    color: 'var(--color-text-main)',
+                                                    boxSizing: 'border-box'
+                                                }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleCreateCategory}
+                                                disabled={!newCategoryName.trim()}
+                                                style={{
+                                                    padding: '8px 14px',
+                                                    borderRadius: '20px',
+                                                    border: 'none',
+                                                    background: newCategoryName.trim() ? 'var(--color-primary)' : 'rgba(0,0,0,0.05)',
+                                                    color: newCategoryName.trim() ? '#fff' : 'var(--color-text-muted)',
+                                                    fontSize: '0.875rem',
+                                                    fontWeight: '600',
+                                                    cursor: newCategoryName.trim() ? 'pointer' : 'default'
+                                                }}
+                                            >✓</button>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setIsAddingCategory(false); setNewCategoryName(''); }}
+                                                style={{
+                                                    padding: '8px 14px',
+                                                    borderRadius: '20px',
+                                                    border: '1px solid rgba(0,0,0,0.08)',
+                                                    background: '#fff',
+                                                    color: 'var(--color-text-muted)',
+                                                    fontSize: '0.875rem',
+                                                    cursor: 'pointer'
+                                                }}
+                                            >×</button>
+                                        </div>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsAddingCategory(true)}
+                                            style={{
+                                                padding: '8px 16px',
+                                                borderRadius: '20px',
+                                                border: '1px dashed rgba(37, 99, 235, 0.3)',
+                                                background: 'transparent',
+                                                color: 'var(--color-primary)',
+                                                fontSize: '0.875rem',
+                                                fontWeight: '500',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            + Новая
+                                        </button>
+                                    )}
                                 </>
                             ) : (
                                 /* Split UI */
@@ -368,27 +497,27 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 }}
                                             >
                                                 {categories.map(cat => {
-                                                    const isSelectedInOtherSplit = splits.some(s => s.id !== split.id && s.category === cat);
+                                                    const isSelectedInOtherSplit = splits.some(s => s.id !== split.id && s.category === cat.name);
                                                     if (isSelectedInOtherSplit) return null;
 
                                                     return (
                                                         <button
-                                                            key={cat}
+                                                            key={cat._id}
                                                             type="button"
-                                                            onClick={() => updateSplit(split.id, 'category', cat)}
+                                                            onClick={() => updateSplit(split.id, 'category', cat.name)}
                                                             style={{
                                                                 padding: '6px 12px',
                                                                 borderRadius: '16px',
                                                                 whiteSpace: 'nowrap',
                                                                 border: '1px solid',
-                                                                borderColor: split.category === cat ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
-                                                                background: split.category === cat ? 'rgba(37, 99, 235, 0.05)' : '#fff',
-                                                                color: split.category === cat ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                                                                borderColor: split.category === cat.name ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
+                                                                background: split.category === cat.name ? 'rgba(37, 99, 235, 0.05)' : '#fff',
+                                                                color: split.category === cat.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                                                 fontSize: '0.8rem',
-                                                                fontWeight: split.category === cat ? '600' : 'normal'
+                                                                fontWeight: split.category === cat.name ? '600' : 'normal'
                                                             }}
                                                         >
-                                                            {cat}
+                                                            {cat.name}
                                                         </button>
                                                     );
                                                 })}
@@ -617,6 +746,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
           scrollbar-width: none;
         }
       `}</style>
-        </div>
+        </div >
     );
 }

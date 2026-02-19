@@ -5,6 +5,7 @@ import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
+const CATEGORIES_URL = '/api/categories';
 const MONTHLY_LIMIT = 7000;
 
 const ACCOUNTS = {
@@ -26,6 +27,7 @@ function App() {
 
   // Transactions state
   const [transactions, setTransactions] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
@@ -34,6 +36,7 @@ function App() {
   // Fetch transactions on mount
   useEffect(() => {
     fetchTransactions();
+    fetchCategories();
   }, []);
 
   // Lock body scroll when modal is open
@@ -59,6 +62,37 @@ function App() {
     } catch (err) {
       console.error('Fetch error:', err);
       setIsLoading(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    try {
+      const res = await fetch(CATEGORIES_URL);
+      const data = await res.json();
+      setCategories(data);
+    } catch (err) {
+      console.error('Fetch categories error:', err);
+    }
+  };
+
+  const handleAddCategory = async (name, type) => {
+    try {
+      const res = await fetch(CATEGORIES_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, type })
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setCategories(prev => [...prev, saved]);
+        return saved;
+      } else {
+        const err = await res.json();
+        return { error: err.message };
+      }
+    } catch (err) {
+      console.error('Add category error:', err);
+      return { error: err.message };
     }
   };
 
@@ -432,25 +466,25 @@ function App() {
                 <style>{`
                   div::-webkit-scrollbar { display: none; }
                 `}</style>
-                {['Продукты', 'Еда вне дома', 'Транспорт', 'Развлечения', 'Шопинг', 'Красота', 'Жилье', 'Питомцы', 'Услуги', 'Отпуск', 'Другое'].map(cat => (
+                {categories.filter(c => !selectedType || c.type === selectedType).map(cat => (
                   <button
-                    key={cat}
-                    onClick={() => toggleCategoryFilter(cat)}
+                    key={cat._id}
+                    onClick={() => toggleCategoryFilter(cat.name)}
                     style={{
                       flexShrink: 0,
                       padding: '6px 12px',
                       borderRadius: '20px',
-                      background: selectedCategory === cat ? 'var(--color-primary)' : '#fff',
-                      border: '1px solid ' + (selectedCategory === cat ? 'var(--color-primary)' : 'rgba(0,0,0,0.1)'),
-                      color: selectedCategory === cat ? '#fff' : 'var(--color-text-muted)',
+                      background: selectedCategory === cat.name ? 'var(--color-primary)' : '#fff',
+                      border: '1px solid ' + (selectedCategory === cat.name ? 'var(--color-primary)' : 'rgba(0,0,0,0.1)'),
+                      color: selectedCategory === cat.name ? '#fff' : 'var(--color-text-muted)',
                       fontSize: '0.75rem',
                       fontWeight: '600',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
-                      boxShadow: selectedCategory === cat ? '0 2px 6px rgba(37, 99, 235, 0.2)' : 'none'
+                      boxShadow: selectedCategory === cat.name ? '0 2px 6px rgba(37, 99, 235, 0.2)' : 'none'
                     }}
                   >
-                    {cat}
+                    {cat.name}
                   </button>
                 ))}
               </div>
@@ -645,8 +679,8 @@ function App() {
         </div>
       </main>
 
-      {showAddTransaction && <AddTransactionForm type={transactionType} onClose={() => setShowAddTransaction(false)} onSubmit={handleAddTransaction} />}
-      {editingTransaction && <AddTransactionForm initialData={editingTransaction} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} />}
+      {showAddTransaction && <AddTransactionForm type={transactionType} categories={categories} onAddCategory={handleAddCategory} onClose={() => setShowAddTransaction(false)} onSubmit={handleAddTransaction} />}
+      {editingTransaction && <AddTransactionForm initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} />}
     </div>
   );
 }

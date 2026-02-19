@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const Transaction = require('./models/Transaction');
+const Category = require('./models/Category');
 require('dotenv').config();
 const { startBackupService } = require('./services/backupService');
 
@@ -35,10 +36,93 @@ mongoose.connect(process.env.MONGODB_URI, dbOptions)
             await initialBalance.save();
             console.log('Initial balance seeded');
         }
+
+        // Seed default categories if none exist
+        const categoryCount = await Category.countDocuments();
+        if (categoryCount === 0) {
+            const defaultCategories = [
+                // Expense categories
+                { name: 'Продукты', type: 'expense', isDefault: true, order: 1 },
+                { name: 'Еда вне дома', type: 'expense', isDefault: true, order: 2 },
+                { name: 'Транспорт', type: 'expense', isDefault: true, order: 3 },
+                { name: 'Развлечения', type: 'expense', isDefault: true, order: 4 },
+                { name: 'Шопинг', type: 'expense', isDefault: true, order: 5 },
+                { name: 'Красота', type: 'expense', isDefault: true, order: 6 },
+                { name: 'Жилье', type: 'expense', isDefault: true, order: 7 },
+                { name: 'Питомцы', type: 'expense', isDefault: true, order: 8 },
+                { name: 'Услуги', type: 'expense', isDefault: true, order: 9 },
+                { name: 'Отпуск', type: 'expense', isDefault: true, order: 10 },
+                { name: 'Другое', type: 'expense', isDefault: true, order: 11 },
+                // Income categories
+                { name: 'Зарплата', type: 'income', isDefault: true, order: 1 },
+                { name: 'Фриланс', type: 'income', isDefault: true, order: 2 },
+                { name: 'Подарок', type: 'income', isDefault: true, order: 3 },
+                { name: 'Кэшбэк', type: 'income', isDefault: true, order: 4 },
+                { name: 'Другое', type: 'income', isDefault: true, order: 5 },
+            ];
+            await Category.insertMany(defaultCategories);
+            console.log('Default categories seeded');
+        }
     })
     .catch(err => console.log(err));
 
 // Routes
+
+// ---- Categories ----
+
+// Get all categories
+app.get('/api/categories', async (req, res) => {
+    try {
+        const categories = await Category.find().sort({ type: 1, order: 1 });
+        res.json(categories);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Add a new category
+app.post('/api/categories', async (req, res) => {
+    try {
+        const { name, type } = req.body;
+        if (!name || !type) {
+            return res.status(400).json({ message: 'Name and type are required' });
+        }
+        // Get max order for this type
+        const maxOrder = await Category.findOne({ type }).sort({ order: -1 });
+        const newCategory = new Category({
+            name: name.trim(),
+            type,
+            isDefault: false,
+            order: (maxOrder?.order || 0) + 1
+        });
+        const saved = await newCategory.save();
+        res.json(saved);
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(400).json({ message: 'Такая категория уже существует' });
+        }
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Delete a custom category
+app.delete('/api/categories/:id', async (req, res) => {
+    try {
+        const cat = await Category.findById(req.params.id);
+        if (!cat) {
+            return res.status(404).json({ message: 'Category not found' });
+        }
+        if (cat.isDefault) {
+            return res.status(400).json({ message: 'Нельзя удалить стандартную категорию' });
+        }
+        await Category.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Category deleted' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// ---- Transactions ----
 
 // Get all transactions
 app.get('/api/transactions', async (req, res) => {
@@ -71,7 +155,7 @@ app.post('/api/transactions', async (req, res) => {
             return res.json(savedTransactions);
         }
 
-        const { title, amount, type, category, description, account, toAccount, date } = req.body;
+        const { title, amount, type, category, description, account, toAccount, date, excludeFromStats } = req.body;
 
         // Validate required fields
         if (!amount || (!category && type !== 'transfer')) {
@@ -86,7 +170,8 @@ app.post('/api/transactions', async (req, res) => {
             description,
             account,
             toAccount,
-            date
+            date,
+            excludeFromStats: excludeFromStats || false
         });
 
         const savedTransaction = await newTransaction.save();
@@ -100,10 +185,10 @@ app.post('/api/transactions', async (req, res) => {
 // Update transaction
 app.put('/api/transactions/:id', async (req, res) => {
     try {
-        const { title, amount, type, category, description, account, toAccount, date } = req.body;
+        const { title, amount, type, category, description, account, toAccount, date, excludeFromStats } = req.body;
         const updatedTransaction = await Transaction.findByIdAndUpdate(
             req.params.id,
-            { title, amount, type, category, description, account, toAccount, date },
+            { title, amount, type, category, description, account, toAccount, date, excludeFromStats },
             { new: true }
         );
         res.json(updatedTransaction);

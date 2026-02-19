@@ -40,7 +40,8 @@ export const transformTransactions = (data) => {
             account: account,
             toAccount: toAccount,
             date: t.date?.split('T')[0], // Use YYYY-MM-DD
-            splitId: t.splitId
+            splitId: t.splitId,
+            excludeFromStats: t.excludeFromStats || false
         };
     });
 };
@@ -73,11 +74,11 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
 
     // Calculations for the cards should use the account/category filtered data, 
     // but stay independent of the type filter to keep the cards visible.
-    const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
-    const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
+    const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0);
+    const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0);
 
     const categoryTotals = filtered
-        .filter(t => t.type === 'expense')
+        .filter(t => t.type === 'expense' && !t.excludeFromStats)
         .reduce((acc, t) => {
             const cat = t.category || 'Другое';
             acc[cat] = (acc[cat] || 0) + Math.abs(t.visualAmount);
@@ -113,7 +114,7 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
             groups[date].itemsById[t.id] = t;
         }
 
-        if (t.type !== 'initial' && t.type !== 'transfer') {
+        if (t.type !== 'initial' && t.type !== 'transfer' && !t.excludeFromStats) {
             groups[date].dailySum += t.visualAmount;
         }
         return groups;
@@ -145,11 +146,11 @@ export const getYearlyData = (transactions, selectedMonth, accountFilter = null,
         filtered = filtered.filter(t => t.category === categoryFilter);
     }
 
-    const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
-    const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0);
+    const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0);
+    const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0);
 
     const categoryTotals = filtered
-        .filter(t => t.type === 'expense')
+        .filter(t => t.type === 'expense' && !t.excludeFromStats)
         .reduce((acc, t) => {
             const cat = t.category || 'Другое';
             acc[cat] = (acc[cat] || 0) + Math.abs(t.visualAmount);
@@ -174,10 +175,10 @@ export const getLifetimeStats = (transactions, startDate = '2025-11-09', account
     }
 
     const income = filtered.reduce((acc, t) =>
-        (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0
+        (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0
     );
     const expense = filtered.reduce((acc, t) =>
-        (t.visualAmount < 0 && t.type !== 'transfer') ? acc + t.visualAmount : acc, 0
+        (t.visualAmount < 0 && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0
     );
 
     return { income, expense, total: income + expense };

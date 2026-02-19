@@ -2,23 +2,42 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import AddTransactionForm from './AddTransactionForm';
 
+const mockCategories = [
+    { _id: '1', name: 'Продукты', type: 'expense', isDefault: true, order: 1 },
+    { _id: '2', name: 'Еда вне дома', type: 'expense', isDefault: true, order: 2 },
+    { _id: '3', name: 'Транспорт', type: 'expense', isDefault: true, order: 3 },
+    { _id: '4', name: 'Развлечения', type: 'expense', isDefault: true, order: 4 },
+    { _id: '5', name: 'Шопинг', type: 'expense', isDefault: true, order: 5 },
+    { _id: '6', name: 'Красота', type: 'expense', isDefault: true, order: 6 },
+    { _id: '7', name: 'Жилье', type: 'expense', isDefault: true, order: 7 },
+    { _id: '8', name: 'Питомцы', type: 'expense', isDefault: true, order: 8 },
+    { _id: '9', name: 'Услуги', type: 'expense', isDefault: true, order: 9 },
+    { _id: '10', name: 'Отпуск', type: 'expense', isDefault: true, order: 10 },
+    { _id: '11', name: 'Другое', type: 'expense', isDefault: true, order: 11 },
+    { _id: '12', name: 'Зарплата', type: 'income', isDefault: true, order: 1 },
+    { _id: '13', name: 'Фриланс', type: 'income', isDefault: true, order: 2 },
+    { _id: '14', name: 'Подарок', type: 'income', isDefault: true, order: 3 },
+    { _id: '15', name: 'Кэшбэк', type: 'income', isDefault: true, order: 4 },
+    { _id: '16', name: 'Другое', type: 'income', isDefault: true, order: 5 },
+];
+
 describe('AddTransactionForm Component', () => {
     const mockOnSubmit = vi.fn();
     const mockOnClose = vi.fn();
     const mockOnDelete = vi.fn();
 
     it('renders with correct title for income', () => {
-        render(<AddTransactionForm type="income" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        render(<AddTransactionForm type="income" categories={mockCategories} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
         expect(screen.getByText('Новый доход')).toBeInTheDocument();
     });
 
     it('renders with correct title for expense', () => {
-        render(<AddTransactionForm type="expense" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        render(<AddTransactionForm type="expense" categories={mockCategories} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
         expect(screen.getByText('Новый расход')).toBeInTheDocument();
     });
 
     it('validates required fields before enabling save button', () => {
-        render(<AddTransactionForm type="expense" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        render(<AddTransactionForm type="expense" categories={mockCategories} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
         const saveButton = screen.getByText('Сохранить');
 
         expect(saveButton).toBeDisabled();
@@ -36,7 +55,7 @@ describe('AddTransactionForm Component', () => {
     });
 
     it('submits correct data for an expense', () => {
-        render(<AddTransactionForm type="expense" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        render(<AddTransactionForm type="expense" categories={mockCategories} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50.5' } });
         fireEvent.click(screen.getByText('Транспорт'));
@@ -54,7 +73,7 @@ describe('AddTransactionForm Component', () => {
     });
 
     it('handles transfer type correctly', () => {
-        render(<AddTransactionForm type="transfer" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        render(<AddTransactionForm type="transfer" categories={mockCategories} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         expect(screen.getByText(/Обмен \/ Перевод/i)).toBeInTheDocument();
         expect(screen.getByText('ОТКУДА')).toBeInTheDocument();
@@ -72,7 +91,7 @@ describe('AddTransactionForm Component', () => {
     });
 
     it('calls onClose when background is clicked', () => {
-        const { container } = render(<AddTransactionForm onClose={mockOnClose} />);
+        const { container } = render(<AddTransactionForm categories={mockCategories} onClose={mockOnClose} />);
         // The overlay is the first div
         fireEvent.click(container.firstChild);
         expect(mockOnClose).toHaveBeenCalled();
@@ -82,7 +101,7 @@ describe('AddTransactionForm Component', () => {
         window.confirm = vi.fn(() => true);
         const editData = { id: 'test-id', amount: 100, category: 'Food', type: 'expense', account: 'cash' };
 
-        render(<AddTransactionForm initialData={editData} onDelete={mockOnDelete} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        render(<AddTransactionForm initialData={editData} categories={mockCategories} onDelete={mockOnDelete} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         const deleteButton = screen.getByText('🗑');
         fireEvent.click(deleteButton);
@@ -92,7 +111,7 @@ describe('AddTransactionForm Component', () => {
     });
 
     it('renders split transaction UI when toggled', async () => {
-        render(<AddTransactionForm type="expense" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        render(<AddTransactionForm type="expense" categories={mockCategories} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         // Enter amount to enable split toggle
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
@@ -108,7 +127,7 @@ describe('AddTransactionForm Component', () => {
     });
 
     it('validates splits sum and submits array of transactions', async () => {
-        render(<AddTransactionForm type="expense" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        render(<AddTransactionForm type="expense" categories={mockCategories} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         // Enter total amount
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });

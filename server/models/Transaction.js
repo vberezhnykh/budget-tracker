@@ -43,6 +43,10 @@ const TransactionSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
+    },
+    excludeFromStats: {
+        type: Boolean,
+        default: false
     }
 });
 
