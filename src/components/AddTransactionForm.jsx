@@ -650,16 +650,21 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             onChange={e => setFormData({ ...formData, date: e.target.value })}
                             style={{
                                 width: '100%',
+                                display: 'block',
+                                margin: 0,
                                 background: 'rgba(0,0,0,0.03)',
                                 border: '1px solid rgba(0,0,0,0.08)',
-                                borderRadius: '12px',
-                                padding: '12px',
+                                borderRadius: '16px',
+                                padding: '16px',
                                 color: 'var(--color-text-main)',
-                                fontSize: '1rem',
+                                fontSize: '1.25rem',
+                                fontWeight: '700',
                                 outline: 'none',
                                 fontFamily: 'inherit',
                                 colorScheme: 'light',
-                                boxSizing: 'border-box'
+                                boxSizing: 'border-box',
+                                WebkitAppearance: 'none',
+                                appearance: 'none'
                             }}
                         />
                     </div>
