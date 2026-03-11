@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
-import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults } from './utils/finance'
+import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -111,6 +111,15 @@ function App() {
   // Search results with filters
   const searchResults = useMemo(() => getSearchResults(transactions, searchQuery, selectedAccount, selectedCategory, selectedType), [transactions, searchQuery, selectedAccount, selectedCategory, selectedType]);
 
+  // Comparison data for indicators
+  const comparisonData = useMemo(() => getComparisonData(transactions, selectedMonth), [transactions, selectedMonth]);
+
+  const isActualCurrentMonth = useMemo(() => {
+    const now = new Date();
+    const currentMonthStr = now.toISOString().slice(0, 7);
+    return selectedMonth === currentMonthStr;
+  }, [selectedMonth]);
+
   const toggleAccountFilter = (account) => {
     setSelectedAccount(prev => prev === account ? null : account);
   };
@@ -206,6 +215,16 @@ function App() {
   const isPrevDisabled = selectedMonth === '2025-11';
   const isNextDisabled = selectedMonth === new Date().toISOString().slice(0, 7);
 
+  const accountBalances = useMemo(() => {
+    const fmt = (v) => `${v < 0 ? '-' : ''}€${Math.abs(v).toLocaleString('de-DE', { minimumFractionDigits: 2 })}`;
+    const cardText = fmt(balances.card);
+    const cashText = fmt(balances.cash);
+    const maxLen = Math.max(cardText.length, cashText.length);
+    const fontSize = maxLen > 12 ? '0.8rem' : maxLen > 10 ? '0.9rem' : '1.3rem';
+    return { cardText, cashText, fontSize };
+  }, [balances]);
+
+
   if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#fff' }}>Загрузка...</div>;
 
   return (
@@ -229,6 +248,8 @@ function App() {
             onClick={() => toggleAccountFilter('card')}
             style={{
               flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
               padding: '20px',
               background: selectedAccount === 'card' ? 'rgba(37, 99, 235, 0.1)' : 'rgba(0,0,0,0.02)',
               borderRadius: '20px',
@@ -242,13 +263,15 @@ function App() {
               <span style={{ fontSize: '1.2rem' }}>💳</span>
               <div style={{ fontSize: '0.8rem', color: selectedAccount === 'card' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '600' }}>Карта</div>
             </div>
-            <div style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--color-text-main)' }}>€{balances.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
+            <div style={{ fontSize: accountBalances.fontSize, fontWeight: '700', color: 'var(--color-text-main)', whiteSpace: 'nowrap' }}>{accountBalances.cardText}</div>
           </div>
           {/* Cash Account */}
           <div
             onClick={() => toggleAccountFilter('cash')}
             style={{
               flex: 1,
+              minWidth: 0,
+              overflow: 'hidden',
               padding: '20px',
               background: selectedAccount === 'cash' ? 'rgba(37, 99, 235, 0.1)' : 'rgba(0,0,0,0.02)',
               borderRadius: '20px',
@@ -262,7 +285,7 @@ function App() {
               <span style={{ fontSize: '1.2rem' }}>💵</span>
               <div style={{ fontSize: '0.8rem', color: selectedAccount === 'cash' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '600' }}>Наличные</div>
             </div>
-            <div style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--color-text-main)' }}>€{balances.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</div>
+            <div style={{ fontSize: accountBalances.fontSize, fontWeight: '700', color: 'var(--color-text-main)', whiteSpace: 'nowrap' }}>{accountBalances.cashText}</div>
           </div>
         </div>
       </header>
@@ -387,6 +410,11 @@ function App() {
                   <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#f87171' }}>
                     €{(timeRange === 'month' ? monthlyData.expense : timeRange === 'year' ? yearlyData.expense : (lifetimeStats?.expense || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                   </div>
+                  {timeRange === 'month' && isActualCurrentMonth && (
+                    <div style={{ fontSize: '0.7rem', color: 'rgba(239, 68, 68, 0.6)', marginTop: '2px', fontWeight: '500' }}>
+                      Месяц назад: €{comparisonData.expense.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    </div>
+                  )}
                 </div>
                 <div style={{ background: 'rgba(0,0,0,0.02)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.03)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: timeRange === 'month' ? '12px' : '0' }}>
@@ -395,6 +423,11 @@ function App() {
                       €{(timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : (lifetimeStats?.total || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
+                  {timeRange === 'month' && isActualCurrentMonth && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textAlign: 'right', marginTop: '-10px', marginBottom: '12px', fontWeight: '500' }}>
+                      Месяц назад: <span style={{ color: comparisonData.saldo >= 0 ? '#10b981' : '#f87171' }}>{comparisonData.saldo > 0 ? '+' : ''}€{comparisonData.saldo.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  )}
 
                   {timeRange === 'month' && (
                     <>
@@ -541,14 +574,14 @@ function App() {
                         )}
                       </div>
                       {searchResults.transactions[date].items.map(item => (
-                        <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: '#fff' }}>
+                        <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                             <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                               {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                             </div>
                             <div>
                               <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
-                                {item.description || item.title}
+                                {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                                 {ACCOUNTS[item.account] ? `${ACCOUNTS[item.account].icon} ${ACCOUNTS[item.account].label}` : '❓ Неизвестно'}
@@ -636,14 +669,14 @@ function App() {
                         }
 
                         return (
-                          <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: '#fff' }}>
+                          <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                               <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                                 {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                               </div>
                               <div>
                                 <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
-                                  {item.description || item.title}
+                                  {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
                                   {ACCOUNTS[item.account] ? `${ACCOUNTS[item.account].icon} ${ACCOUNTS[item.account].label}` : '❓ Неизвестно'}

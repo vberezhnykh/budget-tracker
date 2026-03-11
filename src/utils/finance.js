@@ -131,6 +131,54 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
     return { transactions: grouped, income, expense, categoryTotals };
 };
 
+export const getComparisonData = (transactions, selectedMonth) => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const now = new Date();
+    const isCurrentMonth = now.getFullYear() === year && (now.getMonth() + 1) === month;
+
+    // Determine the comparison day
+    let comparisonDay;
+    if (isCurrentMonth) {
+        comparisonDay = now.getDate();
+    } else {
+        // For past months, we compare the full month or up to the last day of that month
+        // But "this day month ago" usually implies relative progress.
+        // Let's use the last day of the selected month if it's in the past.
+        const lastDayOfMonth = new Date(year, month, 0).getDate();
+        comparisonDay = lastDayOfMonth;
+    }
+
+    // Previous month string YYYY-MM
+    let prevMonthYear = year;
+    let prevMonth = month - 1;
+    if (prevMonth === 0) {
+        prevMonth = 12;
+        prevMonthYear -= 1;
+    }
+    const prevMonthStr = `${prevMonthYear}-${String(prevMonth).padStart(2, '0')}`;
+
+    // Filter transactions for previous month up to comparisonDay
+    const prevMonthTransactions = transactions.filter(t => {
+        if (!t.date.startsWith(prevMonthStr)) return false;
+        const day = parseInt(t.date.split('-')[2]);
+        return day <= comparisonDay;
+    });
+
+    const income = prevMonthTransactions.reduce((acc, t) =>
+        (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0
+    );
+    const expense = prevMonthTransactions.reduce((acc, t) =>
+        (t.visualAmount < 0 && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0
+    );
+
+    return {
+        saldo: income + expense,
+        expense: Math.abs(expense),
+        day: comparisonDay,
+        prevMonthName: new Date(prevMonthYear, prevMonth - 1, 1).toLocaleDateString('ru-RU', { month: 'long' })
+    };
+};
+
 export const getYearlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null) => {
     const year = selectedMonth.split('-')[0];
     let filtered = transactions.filter(t => t.date.startsWith(year));
