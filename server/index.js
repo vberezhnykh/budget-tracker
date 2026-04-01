@@ -5,7 +5,6 @@ const path = require('path');
 const Transaction = require('./models/Transaction');
 const Category = require('./models/Category');
 require('dotenv').config();
-const { startBackupService } = require('./services/backupService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -349,9 +348,6 @@ if (process.env.NODE_ENV === 'production') {
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-
-    // Start backup service
-    startBackupService();
 
     // Prevention of Render's "Sleep" mode
     const url = process.env.RENDER_EXTERNAL_URL;
