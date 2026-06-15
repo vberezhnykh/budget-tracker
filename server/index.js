@@ -20,17 +20,37 @@ if (process.env.RENDER_EXTERNAL_URL) {
 }
 
 // Middleware
-app.use(cors({
-    origin: function (origin, callback) {
-        if (!origin) return callback(null, true);
-        if (allowedOrigins.indexOf(origin) !== -1 || !isProduction) {
-            return callback(null, true);
-        } else {
-            return callback(new Error('Not allowed by CORS'));
+const corsOptionsDelegate = function (req, callback) {
+    const origin = req.header('Origin');
+    let isAllowed = false;
+
+    if (!origin) {
+        isAllowed = true;
+    } else if (!isProduction) {
+        isAllowed = true;
+    } else if (allowedOrigins.indexOf(origin) !== -1) {
+        isAllowed = true;
+    } else {
+        try {
+            const originHost = new URL(origin).host;
+            const requestHost = req.header('x-forwarded-host') || req.header('host');
+            if (originHost === requestHost) {
+                isAllowed = true;
+            }
+        } catch (e) {
+            // Invalid URL in origin header
         }
-    },
-    credentials: true
-}));
+    }
+
+    if (isAllowed) {
+        callback(null, { origin: true, credentials: true });
+    } else {
+        // Instead of throwing an Error (which returns a 500 Internal Server Error page),
+        // we just disable CORS for this origin, which allows standard browser CORS blocking.
+        callback(null, { origin: false });
+    }
+};
+app.use(cors(corsOptionsDelegate));
 app.use(express.json({ limit: '1mb' }));
 
 // Database Connection
