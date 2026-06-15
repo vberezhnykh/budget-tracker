@@ -35,8 +35,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        // Allow save if: (amount exists) AND (isTransfer OR category chosen OR (isSplit AND split is valid))
-        const canSave = formData.amount && (isTransfer || formData.category || (isSplit && isSplitValid));
+        // Allow save if: (amount > 0) AND (isTransfer OR category chosen OR (isSplit AND split is valid))
+        const amountValid = parseFloat(formData.amount) > 0;
+        const canSave = amountValid && (isTransfer || formData.category || (isSplit && isSplitValid));
         if (!canSave) return;
 
         if (isSplit && splits.length > 0) {
@@ -188,7 +189,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         {[
                             { id: 'expense', label: 'Расход' },
                             { id: 'income', label: 'Доход' },
-                            { id: 'transfer', label: 'Обмен' }
+                            ...(accounts.length >= 2 ? [{ id: 'transfer', label: 'Обмен' }] : [])
                         ].map(t => (
                             <button
                                 key={t.id}
@@ -757,13 +758,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         <button
                             type="submit"
                             className="btn-primary"
-                            disabled={isSplit ? !isSplitValid : (!formData.amount || (!isTransfer && !formData.category))}
+                            disabled={!(parseFloat(formData.amount) > 0) || (isSplit ? !isSplitValid : (!isTransfer && !formData.category))}
                             style={{
                                 flex: 1,
                                 padding: '16px',
                                 fontSize: '1.1rem',
-                                opacity: (isSplit ? !isSplitValid : (!formData.amount || (!isTransfer && !formData.category))) ? 0.5 : 1,
-                                cursor: (isSplit ? !isSplitValid : (!formData.amount || (!isTransfer && !formData.category))) ? 'not-allowed' : 'pointer'
+                                opacity: (!(parseFloat(formData.amount) > 0) || (isSplit ? !isSplitValid : (!isTransfer && !formData.category))) ? 0.5 : 1,
+                                cursor: (!(parseFloat(formData.amount) > 0) || (isSplit ? !isSplitValid : (!isTransfer && !formData.category))) ? 'not-allowed' : 'pointer'
                             }}
                         >
                             Сохранить

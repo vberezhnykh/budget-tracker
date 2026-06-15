@@ -17,7 +17,9 @@ const TransactionSchema = new mongoose.Schema({
     },
     category: {
         type: String,
-        required: true
+        required: function() {
+            return this.type !== 'transfer';
+        }
     },
     description: {
         type: String,

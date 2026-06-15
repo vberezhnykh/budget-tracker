@@ -14,6 +14,8 @@ const COLORS = [
 ];
 
 export default function CategoryDonut({ data, onToggle }) {
+    if (!data) return null;
+    
     const rawCategories = Object.keys(data);
     const total = rawCategories.reduce((acc, cat) => acc + data[cat], 0);
 
@@ -94,6 +96,21 @@ export default function CategoryDonut({ data, onToggle }) {
                 <div style={{ position: 'relative', width: '150px', height: '150px' }}>
                     <svg viewBox="-1 -1 2 2" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
                         {segments.map((s, i) => {
+                            if (s.percent === 1) {
+                                return (
+                                    <circle
+                                        key={i}
+                                        r="1"
+                                        cx="0"
+                                        cy="0"
+                                        fill={s.color}
+                                        stroke="var(--color-bg)"
+                                        strokeWidth="0.01"
+                                        style={{ transition: 'all 0.3s ease' }}
+                                    />
+                                );
+                            }
+
                             const [startX, startY] = getCoordinatesForPercent(s.startPercent);
                             const [endX, endY] = getCoordinatesForPercent(s.startPercent + s.percent);
                             const largeArcFlag = s.percent > 0.5 ? 1 : 0;

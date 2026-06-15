@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
 import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
@@ -77,6 +77,10 @@ function App() {
 
   // Accounts state
   const [accounts, setAccounts] = useState([]);
+  const accountsRef = useRef([]);
+  useEffect(() => {
+    accountsRef.current = accounts;
+  }, [accounts]);
   const [showAccountsSettings, setShowAccountsSettings] = useState(false);
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState('card');
@@ -135,8 +139,9 @@ function App() {
   const fetchTransactions = async (currentAccounts) => {
     try {
       const res = await fetch(API_URL);
+      if (!res.ok) throw new Error('Failed to fetch transactions');
       const data = await res.json();
-      const accountsList = currentAccounts || accounts;
+      const accountsList = currentAccounts || accountsRef.current;
       setTransactions(transformTransactions(data, accountsList));
       setIsLoading(false);
     } catch (err) {
@@ -224,22 +229,30 @@ function App() {
 
   const exportToCSV = () => {
     const headers = ['Дата', 'Название', 'Тип', 'Категория', 'Счет', 'Сумма', 'Описание'];
-    const rows = transactions.sort((a, b) => new Date(b.date) - new Date(a.date)).map(t => [
+    const escapeCsv = (val) => {
+      if (!val) return '""';
+      let str = String(val);
+      if (/^[=+\-@]/.test(str)) str = "'" + str;
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+    const rows = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).map(t => [
       t.date,
       t.title,
       t.type === 'income' ? 'Доход' : t.type === 'expense' ? 'Расход' : t.type === 'transfer' ? 'Перевод' : 'Начало',
       t.category,
-      accounts.find(a => a._id === t.account)?.name || 'Неизвестно',
+      accountsRef.current.find(a => a._id === t.account)?.name || 'Неизвестно',
       t.amount.toFixed(2),
       t.description || ''
     ]);
 
-    const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+    const csvContent = [headers.join(','), ...rows.map(row => row.map(escapeCsv).join(','))].join('\n');
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    link.href = url;
     link.download = `budget_report_${selectedMonth}.csv`;
     link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 100);
   };
 
   const handleAddTransaction = async (newTx) => {
@@ -250,6 +263,7 @@ function App() {
         body: JSON.stringify(newTx)
       });
       if (res.ok) fetchTransactions();
+      else console.error('Add failed:', await res.text());
     } catch (err) { console.error('Add error:', err); }
   };
 
@@ -261,6 +275,7 @@ function App() {
         body: JSON.stringify(updatedTx)
       });
       if (res.ok) fetchTransactions();
+      else console.error('Update failed:', await res.text());
     } catch (err) { console.error('Update error:', err); }
   };
 
@@ -271,7 +286,7 @@ function App() {
       if (res.ok) {
         fetchTransactions();
         setEditingTransaction(null);
-      }
+      } else console.error('Delete failed:', await res.text());
     } catch (err) { console.error('Delete error:', err); }
   };
 
@@ -342,7 +357,7 @@ function App() {
 
   const formatDate = (dateStr) => {
     const options = { weekday: 'long', day: 'numeric', month: 'long' };
-    return new Date(dateStr).toLocaleDateString('ru-RU', options);
+    return new Date(dateStr + 'T12:00:00').toLocaleDateString('ru-RU', options);
   };
 
   const getAccountDisplay = (accountId) => {
@@ -550,7 +565,7 @@ function App() {
         <div className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', padding: '12px 20px' }}>
           <button onClick={() => handleMonthChange(-1)} disabled={isPrevDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.5rem', opacity: isPrevDisabled ? 0.3 : 1 }}>←</button>
           <h2 style={{ fontSize: '1.1rem', fontWeight: '600', textTransform: 'capitalize' }}>
-            {new Date(selectedMonth).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '')}
+            {new Date(selectedMonth + '-01T12:00:00').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '')}
           </h2>
           <button onClick={() => handleMonthChange(1)} disabled={isNextDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.5rem', opacity: isNextDisabled ? 0.3 : 1 }}>→</button>
         </div>
@@ -657,8 +672,8 @@ function App() {
                 <div style={{ background: 'rgba(0,0,0,0.02)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.03)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: timeRange === 'month' ? '12px' : '0' }}>
                     <span style={{ color: 'var(--color-text-muted)' }}>Сальдо:</span>
-                    <span style={{ fontWeight: '700', color: ((timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : (lifetimeStats?.total || 0)) >= 0) ? 'var(--color-text-main)' : '#ef4444' }}>
-                      €{(timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : (lifetimeStats?.total || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    <span style={{ fontWeight: '700', color: ((timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : timeRange === 'year' ? (yearlyData.income + yearlyData.expense) : (lifetimeStats?.total || 0)) >= 0) ? 'var(--color-text-main)' : '#ef4444' }}>
+                      €{(timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : timeRange === 'year' ? (yearlyData.income + yearlyData.expense) : (lifetimeStats?.total || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                   {timeRange === 'month' && isActualCurrentMonth && (
