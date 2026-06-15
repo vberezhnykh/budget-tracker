@@ -4,6 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const Transaction = require('./models/Transaction');
 const Category = require('./models/Category');
+const Account = require('./models/Account');
 require('dotenv').config();
 
 const app = express();
@@ -20,23 +21,73 @@ const dbOptions = !isProduction ? { dbName: 'budget-tracker-dev' } : {};
 mongoose.connect(process.env.MONGODB_URI, dbOptions)
     .then(async () => {
         console.log(`MongoDB Connected (${isProduction ? 'Production' : 'Development: budget-tracker-dev'})`);
-        // Seed initial balance if not exists
+        
+        // 1. Seed default accounts if none exist
+        let accounts = await Account.find();
+        if (accounts.length === 0) {
+            const defaultAccounts = [
+                { name: 'Мой Revolut', type: 'card', icon: '💳', isDefault: true, order: 1 },
+                { name: 'Жена BOC', type: 'card', icon: '💳', isDefault: true, order: 2 },
+                { name: 'Жена Revolut', type: 'card', icon: '💳', isDefault: true, order: 3 },
+                { name: 'Наличные', type: 'cash', icon: '💵', isDefault: true, order: 4 }
+            ];
+            accounts = await Account.insertMany(defaultAccounts);
+            console.log('Default accounts seeded');
+
+            // --- DATA MIGRATION ---
+            // Map old hardcoded 'card' and 'cash' strings to the new database account IDs
+            const cardAccount = accounts.find(a => a.name === 'Жена BOC');
+            const cashAccount = accounts.find(a => a.name === 'Наличные');
+
+            if (cardAccount && cashAccount) {
+                console.log('⏳ Running migration for existing transactions...');
+                
+                // Migrate transactions where account is 'card' or 'cash'
+                const migrateAccountRes = await Transaction.updateMany(
+                    { account: 'card' },
+                    { account: cardAccount._id.toString() }
+                );
+                const migrateCashRes = await Transaction.updateMany(
+                    { account: 'cash' },
+                    { account: cashAccount._id.toString() }
+                );
+                
+                // Migrate transactions where toAccount is 'card' or 'cash'
+                const migrateToAccountRes = await Transaction.updateMany(
+                    { toAccount: 'card' },
+                    { toAccount: cardAccount._id.toString() }
+                );
+                const migrateToCashRes = await Transaction.updateMany(
+                    { toAccount: 'cash' },
+                    { toAccount: cashAccount._id.toString() }
+                );
+
+                console.log(`✅ Migration complete!`);
+                console.log(`  Updated account: 'card' -> 'Жена BOC' ID: ${migrateAccountRes.modifiedCount} docs`);
+                console.log(`  Updated account: 'cash' -> 'Наличные' ID: ${migrateCashRes.modifiedCount} docs`);
+                console.log(`  Updated toAccount: 'card' -> 'Жена BOC' ID: ${migrateToAccountRes.modifiedCount} docs`);
+                console.log(`  Updated toAccount: 'cash' -> 'Наличные' ID: ${migrateToCashRes.modifiedCount} docs`);
+            }
+        }
+
+        // 2. Seed initial balance if not exists
         const initialExists = await Transaction.findOne({ type: 'initial' });
         if (!initialExists) {
+            const cashAccount = await Account.findOne({ name: 'Наличные' });
             const initialBalance = new Transaction({
                 title: "Стартовый баланс",
                 amount: 5650,
                 type: "initial",
                 category: "Другое",
                 description: "Стартовый баланс",
-                account: "cash",
+                account: cashAccount ? cashAccount._id.toString() : "cash",
                 date: "2025-11-09"
             });
             await initialBalance.save();
             console.log('Initial balance seeded');
         }
 
-        // Seed default categories if none exist
+        // 3. Seed default categories if none exist
         const categoryCount = await Category.countDocuments();
         if (categoryCount === 0) {
             const defaultCategories = [
@@ -65,7 +116,95 @@ mongoose.connect(process.env.MONGODB_URI, dbOptions)
     })
     .catch(err => console.log(err));
 
-// Routes
+// ---- Accounts ----
+
+// Get all accounts
+app.get('/api/accounts', async (req, res) => {
+    try {
+        const accounts = await Account.find().sort({ order: 1 });
+        res.json(accounts);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Add a new account
+app.post('/api/accounts', async (req, res) => {
+    try {
+        const { name, type, icon } = req.body;
+        if (!name || !type) {
+            return res.status(400).json({ message: 'Name and type are required' });
+        }
+        
+        // Find max order
+        const maxOrder = await Account.findOne().sort({ order: -1 });
+        const newAccount = new Account({
+            name: name.trim(),
+            type,
+            icon: icon || (type === 'cash' ? '💵' : '💳'),
+            isDefault: false,
+            order: (maxOrder?.order || 0) + 1
+        });
+        
+        const saved = await newAccount.save();
+        res.json(saved);
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(400).json({ message: 'Счёт с таким именем уже существует' });
+        }
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Update an account
+app.put('/api/accounts/:id', async (req, res) => {
+    try {
+        const { name, icon, order } = req.body;
+        const account = await Account.findById(req.params.id);
+        if (!account) {
+            return res.status(404).json({ message: 'Account not found' });
+        }
+        
+        if (name) account.name = name.trim();
+        if (icon) account.icon = icon;
+        if (order !== undefined) account.order = order;
+        
+        const saved = await account.save();
+        res.json(saved);
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(400).json({ message: 'Счёт с таким именем уже существует' });
+        }
+        res.status(400).json({ message: err.message });
+    }
+});
+
+// Delete a custom account
+app.delete('/api/accounts/:id', async (req, res) => {
+    try {
+        const account = await Account.findById(req.params.id);
+        if (!account) {
+            return res.status(404).json({ message: 'Account not found' });
+        }
+        
+        // Check if there are any transactions associated with this account
+        const txCount = await Transaction.countDocuments({
+            $or: [
+                { account: req.params.id },
+                { toAccount: req.params.id }
+            ]
+        });
+        
+        if (txCount > 0) {
+            return res.status(400).json({ message: 'Нельзя удалить счёт, по которому есть транзакции' });
+        }
+        
+        await Account.findByIdAndDelete(req.params.id);
+        res.json({ message: 'Account deleted' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
 
 // ---- Categories ----
 

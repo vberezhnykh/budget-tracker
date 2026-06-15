@@ -2,29 +2,32 @@
  * Finance utility functions for transforming API data and calculating balances.
  */
 
-export const transformTransactions = (data) => {
+export const transformTransactions = (data, accounts = []) => {
+    const accountTypeMap = {};
+    if (accounts && accounts.length > 0) {
+        accounts.forEach(acc => {
+            accountTypeMap[acc._id] = acc.type;
+        });
+    }
+
     return data.map(t => {
         const amount = parseFloat(t.amount);
         // Initial balance and Income are POSITIVE, Expense is NEGATIVE
         const signedAmount = (t.type === 'income' || t.type === 'initial') ? amount : -amount;
         const isTransfer = t.type === 'transfer';
 
-        let cashFlow = 0;
-        let cardFlow = 0;
         let visualAmount = signedAmount;
+        const accountFlows = {};
 
-        const account = t.account ? t.account.toLowerCase() : 'card';
-        const toAccount = t.toAccount ? t.toAccount.toLowerCase() : null;
+        const account = t.account || 'card';
+        const toAccount = t.toAccount || null;
 
         if (isTransfer) {
             visualAmount = amount; // Show absolute amount in history list
-            if (account === 'cash') cashFlow = -amount;
-            if (account === 'card') cardFlow = -amount;
-            if (toAccount === 'cash') cashFlow = amount;
-            if (toAccount === 'card') cardFlow = amount;
+            if (account) accountFlows[account] = (accountFlows[account] || 0) - amount;
+            if (toAccount) accountFlows[toAccount] = (accountFlows[toAccount] || 0) + amount;
         } else {
-            cashFlow = account === 'cash' ? signedAmount : 0;
-            cardFlow = account === 'card' ? signedAmount : 0;
+            if (account) accountFlows[account] = (accountFlows[account] || 0) + signedAmount;
         }
 
         return {
@@ -32,13 +35,14 @@ export const transformTransactions = (data) => {
             title: t.title || t.category,
             amount: amount,
             visualAmount: visualAmount,
-            cashFlow: cashFlow,
-            cardFlow: cardFlow,
+            accountFlows: accountFlows,
             type: t.type,
             category: t.category,
             description: t.description,
             account: account,
             toAccount: toAccount,
+            accountType: accountTypeMap[account] || (account === 'cash' ? 'cash' : 'card'),
+            toAccountType: toAccount ? (accountTypeMap[toAccount] || (toAccount === 'cash' ? 'cash' : 'card')) : null,
             date: t.date?.split('T')[0], // Use YYYY-MM-DD
             splitId: t.splitId,
             excludeFromStats: t.excludeFromStats || false
@@ -46,14 +50,47 @@ export const transformTransactions = (data) => {
     });
 };
 
-export const calculateBalances = (transactions) => {
-    const b = transactions.reduce((acc, curr) => {
-        return {
-            cash: acc.cash + curr.cashFlow,
-            card: acc.card + curr.cardFlow
-        };
-    }, { cash: 0, card: 0 });
-    return { ...b, total: b.cash + b.card };
+export const calculateBalances = (transactions, accounts = []) => {
+    const byAccount = transactions.reduce((acc, curr) => {
+        if (curr.accountFlows) {
+            Object.entries(curr.accountFlows).forEach(([accId, flow]) => {
+                acc[accId] = (acc[accId] || 0) + flow;
+            });
+        }
+        return acc;
+    }, {});
+
+    const total = Object.values(byAccount).reduce((sum, bal) => sum + bal, 0);
+
+    const byType = { card: 0, cash: 0 };
+    if (accounts && accounts.length > 0) {
+        accounts.forEach(acc => {
+            const bal = byAccount[acc._id] || 0;
+            if (acc.type === 'cash') {
+                byType.cash += bal;
+            } else {
+                byType.card += bal;
+            }
+        });
+    } else {
+        // Fallback for tests if accounts list is not supplied
+        byType.cash = byAccount['cash'] || 0;
+        byType.card = byAccount['card'] || 0;
+    }
+
+    return { byAccount, byType, total };
+};
+
+const matchesAccount = (t, accountFilter) => {
+    if (accountFilter.startsWith('type:')) {
+        const targetType = accountFilter.split(':')[1];
+        if (t.type === 'transfer') {
+            return t.accountType === targetType || t.toAccountType === targetType;
+        }
+        return t.accountType === targetType;
+    }
+    if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
+    return t.account === accountFilter;
 };
 
 export const getMonthlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null, typeFilter = null) => {
@@ -62,10 +99,7 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
     let filtered = [...monthFiltered];
 
     if (accountFilter) {
-        filtered = filtered.filter(t => {
-            if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
-            return t.account === accountFilter;
-        });
+        filtered = filtered.filter(t => matchesAccount(t, accountFilter));
     }
 
     if (categoryFilter) {
@@ -184,10 +218,7 @@ export const getYearlyData = (transactions, selectedMonth, accountFilter = null,
     let filtered = transactions.filter(t => t.date.startsWith(year));
 
     if (accountFilter) {
-        filtered = filtered.filter(t => {
-            if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
-            return t.account === accountFilter;
-        });
+        filtered = filtered.filter(t => matchesAccount(t, accountFilter));
     }
 
     if (categoryFilter) {
@@ -212,10 +243,7 @@ export const getLifetimeStats = (transactions, startDate = '2025-11-09', account
     let filtered = transactions.filter(t => t.date >= startDate);
 
     if (accountFilter) {
-        filtered = filtered.filter(t => {
-            if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
-            return t.account === accountFilter;
-        });
+        filtered = filtered.filter(t => matchesAccount(t, accountFilter));
     }
 
     if (categoryFilter) {
@@ -246,10 +274,7 @@ export const getSearchResults = (transactions, query, accountFilter = null, cate
     });
 
     if (accountFilter) {
-        filtered = filtered.filter(t => {
-            if (t.type === 'transfer') return t.account === accountFilter || t.toAccount === accountFilter;
-            return t.account === accountFilter;
-        });
+        filtered = filtered.filter(t => matchesAccount(t, accountFilter));
     }
 
     if (categoryFilter) {

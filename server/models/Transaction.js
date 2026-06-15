@@ -25,12 +25,10 @@ const TransactionSchema = new mongoose.Schema({
     },
     account: {
         type: String,
-        enum: ['card', 'cash'],
         default: 'card'
     },
     toAccount: {
-        type: String,
-        enum: ['card', 'cash']
+        type: String
     },
     date: {
         type: Date,

@@ -6,12 +6,62 @@ import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
 const CATEGORIES_URL = '/api/categories';
+const ACCOUNTS_URL = '/api/accounts';
 const MONTHLY_LIMIT = 7000;
 
-const ACCOUNTS = {
-  card: { label: 'Карта', icon: '💳' },
-  cash: { label: 'Наличные', icon: '💵' }
-};
+function AccountListItem({ account, onDelete, onEdit }) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '12px 16px',
+      background: 'rgba(0, 0, 0, 0.02)',
+      borderRadius: '16px',
+      border: '1px solid rgba(0, 0, 0, 0.05)'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <span style={{ fontSize: '1.25rem' }}>{account.icon || (account.type === 'cash' ? '💵' : '💳')}</span>
+        <div>
+          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)' }}>{account.name}</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+            {account.type === 'cash' ? 'Наличные' : 'Карта'} {account.isDefault ? '(Стандартный)' : ''}
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button 
+          onClick={onEdit}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--color-primary)',
+            cursor: 'pointer',
+            fontSize: '0.8rem',
+            fontWeight: '600',
+            padding: '4px'
+          }}
+        >
+          Изменить
+        </button>
+        <button 
+          onClick={onDelete}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: '#ef4444',
+            cursor: 'pointer',
+            fontSize: '0.8rem',
+            fontWeight: '600',
+            padding: '4px'
+          }}
+        >
+          Удалить
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -25,6 +75,14 @@ function App() {
   const [summaryView, setSummaryView] = useState('stats'); // 'stats' or 'analytics'
   const [timeRange, setTimeRange] = useState('month'); // 'month' or 'lifetime'
 
+  // Accounts state
+  const [accounts, setAccounts] = useState([]);
+  const [showAccountsSettings, setShowAccountsSettings] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formType, setFormType] = useState('card');
+  const [formIcon, setFormIcon] = useState('💳');
+  const [editingAccountId, setEditingAccountId] = useState(null);
+
   // Transactions state
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -33,10 +91,19 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedType, setSelectedType] = useState(null);
 
-  // Fetch transactions on mount
+  // Fetch data on mount
   useEffect(() => {
-    fetchTransactions();
-    fetchCategories();
+    const initData = async () => {
+      try {
+        const loadedAccounts = await fetchAccounts();
+        await fetchTransactions(loadedAccounts);
+        await fetchCategories();
+      } catch (err) {
+        console.error('Initialization error:', err);
+        setIsLoading(false);
+      }
+    };
+    initData();
   }, []);
 
   // Lock body scroll when modal is open
@@ -53,11 +120,24 @@ function App() {
     };
   }, [showAddTransaction, editingTransaction]);
 
-  const fetchTransactions = async () => {
+  const fetchAccounts = async () => {
+    try {
+      const res = await fetch(ACCOUNTS_URL);
+      const data = await res.json();
+      setAccounts(data);
+      return data;
+    } catch (err) {
+      console.error('Fetch accounts error:', err);
+      return [];
+    }
+  };
+
+  const fetchTransactions = async (currentAccounts) => {
     try {
       const res = await fetch(API_URL);
       const data = await res.json();
-      setTransactions(transformTransactions(data));
+      const accountsList = currentAccounts || accounts;
+      setTransactions(transformTransactions(data, accountsList));
       setIsLoading(false);
     } catch (err) {
       console.error('Fetch error:', err);
@@ -97,7 +177,7 @@ function App() {
   };
 
   // Calculate current balances (Total lifetime) - stays persistent
-  const balances = useMemo(() => calculateBalances(transactions), [transactions]);
+  const balances = useMemo(() => calculateBalances(transactions, accounts), [transactions, accounts]);
 
   // Filter transactions for the selected month and account/category/type
   const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth, selectedAccount, selectedCategory, selectedType), [transactions, selectedMonth, selectedAccount, selectedCategory, selectedType]);
@@ -149,7 +229,7 @@ function App() {
       t.title,
       t.type === 'income' ? 'Доход' : t.type === 'expense' ? 'Расход' : t.type === 'transfer' ? 'Перевод' : 'Начало',
       t.category,
-      ACCOUNTS[t.account]?.label || 'Неизвестно',
+      accounts.find(a => a._id === t.account)?.name || 'Неизвестно',
       t.amount.toFixed(2),
       t.description || ''
     ]);
@@ -195,6 +275,59 @@ function App() {
     } catch (err) { console.error('Delete error:', err); }
   };
 
+  const handleSaveAccount = async (e) => {
+    e.preventDefault();
+    if (!formName.trim()) return;
+
+    try {
+      let res;
+      if (editingAccountId) {
+        res = await fetch(`${ACCOUNTS_URL}/${editingAccountId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: formName, icon: formIcon })
+        });
+      } else {
+        res = await fetch(ACCOUNTS_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: formName, type: formType, icon: formIcon })
+        });
+      }
+
+      if (res.ok) {
+        setFormName('');
+        setFormType('card');
+        setFormIcon('💳');
+        setEditingAccountId(null);
+        const freshAccounts = await fetchAccounts();
+        await fetchTransactions(freshAccounts);
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Ошибка сохранения счёта');
+      }
+    } catch (err) {
+      console.error('Save account error:', err);
+    }
+  };
+
+  const handleDeleteAccount = async (id, name) => {
+    if (!confirm(`Вы уверены, что хотите удалить счёт "${name}"?`)) return;
+
+    try {
+      const res = await fetch(`${ACCOUNTS_URL}/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        const freshAccounts = await fetchAccounts();
+        await fetchTransactions(freshAccounts);
+      } else {
+        const err = await res.json();
+        alert(err.message || 'Не удалось удалить счёт');
+      }
+    } catch (err) {
+      console.error('Delete account error:', err);
+    }
+  };
+
   const openAddModal = (type) => {
     setTransactionType(type);
     setEditingTransaction(null);
@@ -212,18 +345,18 @@ function App() {
     return new Date(dateStr).toLocaleDateString('ru-RU', options);
   };
 
+  const getAccountDisplay = (accountId) => {
+    const acc = accounts.find(a => a._id === accountId);
+    if (acc) {
+      return `${acc.icon || '💳'} ${acc.name}`;
+    }
+    if (accountId === 'card') return '💳 Карта';
+    if (accountId === 'cash') return '💵 Наличные';
+    return '❓ Неизвестно';
+  };
+
   const isPrevDisabled = selectedMonth === '2025-11';
   const isNextDisabled = selectedMonth === new Date().toISOString().slice(0, 7);
-
-  const accountBalances = useMemo(() => {
-    const fmt = (v) => `${v < 0 ? '-' : ''}€${Math.abs(v).toLocaleString('de-DE', { minimumFractionDigits: 2 })}`;
-    const cardText = fmt(balances.card);
-    const cashText = fmt(balances.cash);
-    const maxLen = Math.max(cardText.length, cashText.length);
-    const fontSize = maxLen > 12 ? '0.8rem' : maxLen > 10 ? '0.9rem' : '1.3rem';
-    return { cardText, cashText, fontSize };
-  }, [balances]);
-
 
   if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#fff' }}>Загрузка...</div>;
 
@@ -231,8 +364,30 @@ function App() {
     <div className="layout-container">
       {/* Premium Header */}
       <header className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '28px' }}>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)' }}>BudgetTracker</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+          <div style={{ width: '24px' }}></div>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
+          <button 
+            onClick={() => setShowAccountsSettings(true)}
+            style={{ 
+              background: 'rgba(0,0,0,0.03)', 
+              border: 'none', 
+              borderRadius: '50%', 
+              width: '38px', 
+              height: '38px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              cursor: 'pointer',
+              fontSize: '1.2rem',
+              color: 'var(--color-text-main)',
+              transition: 'all 0.2s ease',
+              outline: 'none'
+            }}
+            title="Управление счетами"
+          >
+            ⚙️
+          </button>
         </div>
 
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
@@ -242,50 +397,133 @@ function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '16px' }}>
-          {/* Card Account */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+          {/* Card Account Group */}
           <div
-            onClick={() => toggleAccountFilter('card')}
             style={{
               flex: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              padding: '20px',
-              background: selectedAccount === 'card' ? 'rgba(37, 99, 235, 0.1)' : 'rgba(0,0,0,0.02)',
-              borderRadius: '20px',
-              border: selectedAccount === 'card' ? '2px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
-              cursor: 'pointer',
+              minWidth: '240px',
+              display: 'flex',
+              flexDirection: 'column',
+              background: selectedAccount === 'type:card' || (selectedAccount && accounts.find(a => a._id === selectedAccount)?.type === 'card') ? 'rgba(37, 99, 235, 0.05)' : 'rgba(0,0,0,0.02)',
+              borderRadius: '24px',
+              border: selectedAccount === 'type:card' || (selectedAccount && accounts.find(a => a._id === selectedAccount)?.type === 'card') ? '1.5px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
               transition: 'all 0.2s ease',
-              boxShadow: selectedAccount === 'card' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : 'none'
+              padding: '16px',
+              cursor: 'pointer'
             }}
+            onClick={() => toggleAccountFilter('type:card')}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <span style={{ fontSize: '1.2rem' }}>💳</span>
-              <div style={{ fontSize: '0.8rem', color: selectedAccount === 'card' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '600' }}>Карта</div>
+            <div 
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>💳</span>
+                <div style={{ fontSize: '0.85rem', color: selectedAccount === 'type:card' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700' }}>Безналичные</div>
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text-main)' }}>
+                €{balances.byType.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+              </div>
             </div>
-            <div style={{ fontSize: accountBalances.fontSize, fontWeight: '700', color: 'var(--color-text-main)', whiteSpace: 'nowrap' }}>{accountBalances.cardText}</div>
+            
+            {/* List of cards */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(0,0,0,0.04)', paddingTop: '8px', marginTop: '4px' }}>
+              {accounts.filter(a => a.type === 'card').map(acc => {
+                const bal = balances.byAccount[acc._id] || 0;
+                const isSelected = selectedAccount === acc._id;
+                return (
+                  <div
+                    key={acc._id}
+                    onClick={(e) => {
+                      e.stopPropagation(); // don't trigger parent click
+                      toggleAccountFilter(acc._id);
+                    }}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '6px 10px',
+                      borderRadius: '12px',
+                      background: isSelected ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
+                      border: isSelected ? '1px solid var(--color-primary)' : '1px solid transparent',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                      <span>{acc.icon || '💳'}</span>
+                      <span style={{ color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)', fontWeight: isSelected ? '600' : 'normal' }}>{acc.name}</span>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-muted)' }}>
+                      €{bal.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          {/* Cash Account */}
+
+          {/* Cash Account Group */}
           <div
-            onClick={() => toggleAccountFilter('cash')}
             style={{
               flex: 1,
-              minWidth: 0,
-              overflow: 'hidden',
-              padding: '20px',
-              background: selectedAccount === 'cash' ? 'rgba(37, 99, 235, 0.1)' : 'rgba(0,0,0,0.02)',
-              borderRadius: '20px',
-              border: selectedAccount === 'cash' ? '2px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
-              cursor: 'pointer',
+              minWidth: '240px',
+              display: 'flex',
+              flexDirection: 'column',
+              background: selectedAccount === 'type:cash' || (selectedAccount && accounts.find(a => a._id === selectedAccount)?.type === 'cash') ? 'rgba(37, 99, 235, 0.05)' : 'rgba(0,0,0,0.02)',
+              borderRadius: '24px',
+              border: selectedAccount === 'type:cash' || (selectedAccount && accounts.find(a => a._id === selectedAccount)?.type === 'cash') ? '1.5px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
               transition: 'all 0.2s ease',
-              boxShadow: selectedAccount === 'cash' ? '0 4px 12px rgba(37, 99, 235, 0.15)' : 'none'
+              padding: '16px',
+              cursor: 'pointer'
             }}
+            onClick={() => toggleAccountFilter('type:cash')}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-              <span style={{ fontSize: '1.2rem' }}>💵</span>
-              <div style={{ fontSize: '0.8rem', color: selectedAccount === 'cash' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '600' }}>Наличные</div>
+            <div 
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>💵</span>
+                <div style={{ fontSize: '0.85rem', color: selectedAccount === 'type:cash' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700' }}>Наличные</div>
+              </div>
+              <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text-main)' }}>
+                €{balances.byType.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+              </div>
             </div>
-            <div style={{ fontSize: accountBalances.fontSize, fontWeight: '700', color: 'var(--color-text-main)', whiteSpace: 'nowrap' }}>{accountBalances.cashText}</div>
+
+            {/* List of cash accounts */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(0,0,0,0.04)', paddingTop: '8px', marginTop: '4px' }}>
+              {accounts.filter(a => a.type === 'cash').map(acc => {
+                const bal = balances.byAccount[acc._id] || 0;
+                const isSelected = selectedAccount === acc._id;
+                return (
+                  <div
+                    key={acc._id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleAccountFilter(acc._id);
+                    }}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '6px 10px',
+                      borderRadius: '12px',
+                      background: isSelected ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
+                      border: isSelected ? '1px solid var(--color-primary)' : '1px solid transparent',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
+                      <span>{acc.icon || '💵'}</span>
+                      <span style={{ color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)', fontWeight: isSelected ? '600' : 'normal' }}>{acc.name}</span>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-muted)' }}>
+                      €{bal.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </header>
@@ -526,7 +764,7 @@ function App() {
                 {selectedAccount && (
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
                     <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
-                      Счет: <strong>{ACCOUNTS[selectedAccount]?.label || selectedAccount}</strong>
+                      Счет: <strong>{selectedAccount === 'type:card' ? 'Все карты' : selectedAccount === 'type:cash' ? 'Все наличные' : (accounts.find(a => a._id === selectedAccount)?.name || selectedAccount)}</strong>
                     </span>
                     <button onClick={() => setSelectedAccount(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
                       Сбросить ×
@@ -584,7 +822,7 @@ function App() {
                                 {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                {ACCOUNTS[item.account] ? `${ACCOUNTS[item.account].icon} ${ACCOUNTS[item.account].label}` : '❓ Неизвестно'}
+                                {getAccountDisplay(item.account)}
                                 {item.category && (
                                   <>
                                     {' • '}
@@ -637,7 +875,7 @@ function App() {
                                   <div>
                                     <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
                                     <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                      {ACCOUNTS[item.account] ? `${ACCOUNTS[item.account].icon} ${ACCOUNTS[item.account].label}` : '❓ Неизвестно'} • {item.items.length} катег.
+                                      {getAccountDisplay(item.account)} • {item.items.length} катег.
                                     </div>
                                   </div>
                                 </div>
@@ -679,7 +917,7 @@ function App() {
                                   {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                  {ACCOUNTS[item.account] ? `${ACCOUNTS[item.account].icon} ${ACCOUNTS[item.account].label}` : '❓ Неизвестно'}
+                                  {getAccountDisplay(item.account)}
                                   {item.category && (
                                     <>
                                       {' • '}
@@ -712,8 +950,215 @@ function App() {
         </div>
       </main>
 
-      {showAddTransaction && <AddTransactionForm type={transactionType} categories={categories} onAddCategory={handleAddCategory} onClose={() => setShowAddTransaction(false)} onSubmit={handleAddTransaction} />}
-      {editingTransaction && <AddTransactionForm initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} />}
+      {showAddTransaction && <AddTransactionForm type={transactionType} categories={categories} onAddCategory={handleAddCategory} onClose={() => setShowAddTransaction(false)} onSubmit={handleAddTransaction} accounts={accounts} />}
+      {editingTransaction && <AddTransactionForm initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} />}
+
+      {showAccountsSettings && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(15, 23, 42, 0.4)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px'
+          }}
+          onClick={() => {
+            setShowAccountsSettings(false);
+            setEditingAccountId(null);
+            setFormName('');
+            setFormIcon('💳');
+            setFormType('card');
+          }}
+        >
+          <div 
+            style={{
+              background: '#fff',
+              borderRadius: '24px',
+              width: '100%',
+              maxWidth: '500px',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: '24px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px',
+              position: 'relative'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--color-text-main)', margin: 0 }}>Управление счетами</h2>
+              <button 
+                onClick={() => {
+                  setShowAccountsSettings(false);
+                  setEditingAccountId(null);
+                  setFormName('');
+                  setFormIcon('💳');
+                  setFormType('card');
+                }}
+                style={{
+                  background: 'rgba(0,0,0,0.05)',
+                  border: 'none',
+                  borderRadius: '50%',
+                  width: '32px',
+                  height: '32px',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--color-text-muted)',
+                  fontWeight: 'bold'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Account Form */}
+            <form onSubmit={handleSaveAccount} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(0,0,0,0.01)', padding: '16px', borderRadius: '16px', border: '1px dashed rgba(0,0,0,0.1)' }}>
+              <h3 style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>
+                {editingAccountId ? 'Редактировать счёт' : 'Добавить новый счёт'}
+              </h3>
+              
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input 
+                  type="text" 
+                  placeholder="Имя счёта (например, Мой Revolut)" 
+                  value={formName} 
+                  onChange={(e) => setFormName(e.target.value)}
+                  required
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.15)',
+                    fontSize: '0.85rem',
+                    outline: 'none'
+                  }}
+                />
+                
+                <input 
+                  type="text" 
+                  placeholder="Иконка/Эмодзи" 
+                  value={formIcon} 
+                  onChange={(e) => setFormIcon(e.target.value)}
+                  style={{
+                    width: '60px',
+                    padding: '10px 0',
+                    textAlign: 'center',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(0,0,0,0.15)',
+                    fontSize: '1rem',
+                    outline: 'none'
+                  }}
+                  title="Эмодзи для счёта"
+                />
+              </div>
+
+              {!editingAccountId && (
+                <div style={{ display: 'flex', gap: '16px', fontSize: '0.85rem' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="formType" 
+                      value="card" 
+                      checked={formType === 'card'} 
+                      onChange={() => {
+                        setFormType('card');
+                        setFormIcon('💳');
+                      }} 
+                    />
+                    Карта 💳
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="formType" 
+                      value="cash" 
+                      checked={formType === 'cash'} 
+                      onChange={() => {
+                        setFormType('cash');
+                        setFormIcon('💵');
+                      }} 
+                    />
+                    Наличные 💵
+                  </label>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                <button 
+                  type="submit" 
+                  className="btn-primary" 
+                  style={{
+                    flex: 1,
+                    padding: '10px',
+                    borderRadius: '12px',
+                    fontSize: '0.85rem',
+                    fontWeight: '600',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {editingAccountId ? 'Сохранить изменения' : 'Добавить счёт'}
+                </button>
+                
+                {editingAccountId && (
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setFormName('');
+                      setFormType('card');
+                      setFormIcon('💳');
+                      setEditingAccountId(null);
+                    }}
+                    style={{
+                      background: 'rgba(0,0,0,0.05)',
+                      border: 'none',
+                      padding: '10px 16px',
+                      borderRadius: '12px',
+                      fontSize: '0.85rem',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      color: 'var(--color-text-main)'
+                    }}
+                  >
+                    Отмена
+                  </button>
+                )}
+              </div>
+            </form>
+
+            {/* Accounts List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Список счетов</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
+                {accounts.map(acc => (
+                  <AccountListItem 
+                    key={acc._id} 
+                    account={acc}
+                    onEdit={() => {
+                      setFormName(acc.name);
+                      setFormType(acc.type);
+                      setFormIcon(acc.icon || (acc.type === 'cash' ? '💵' : '💳'));
+                      setEditingAccountId(acc._id);
+                    }}
+                    onDelete={() => handleDeleteAccount(acc._id, acc.name)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

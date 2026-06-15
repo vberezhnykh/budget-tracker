@@ -25,16 +25,39 @@ const mockTransactions = [
     }
 ];
 
+let currentTransactions = [...mockTransactions];
+let currentAccounts = [
+    { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true },
+    { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
+];
+
 // Setup fetch mock
-global.fetch = vi.fn(() =>
-    Promise.resolve({
+global.fetch = vi.fn((url) => {
+    if (typeof url === 'string' && url.includes('/api/accounts')) {
+        return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(currentAccounts),
+        });
+    }
+    if (typeof url === 'string' && url.includes('/api/categories')) {
+        return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve([]),
+        });
+    }
+    return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve(mockTransactions),
-    })
-);
+        json: () => Promise.resolve(currentTransactions),
+    });
+});
 
 describe('App Integration Tests', () => {
     beforeEach(() => {
+        currentTransactions = [...mockTransactions];
+        currentAccounts = [
+            { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true },
+            { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
+        ];
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(new Date('2026-01-15'));
         vi.clearAllMocks();
@@ -84,7 +107,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(backBtn);
 
         await waitFor(() => {
-            expect(screen.getByText(/Месяц/)).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Месяц' })).toBeInTheDocument();
         });
     });
 
@@ -157,10 +180,7 @@ describe('App Integration Tests', () => {
             description: 'Grouped'
         };
 
-        global.fetch.mockImplementationOnce(() => Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve([...mockTransactions, splitItem])
-        }));
+        currentTransactions = [...mockTransactions, splitItem];
 
         window.confirm = vi.fn(() => true);
         render(<App />);
@@ -240,10 +260,7 @@ describe('App Integration Tests', () => {
             category: 'Food'
         };
 
-        global.fetch.mockImplementation(() => Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve([...mockTransactions, cashTx]),
-        }));
+        currentTransactions = [...mockTransactions, cashTx];
 
         render(<App />);
 
@@ -261,7 +278,7 @@ describe('App Integration Tests', () => {
         });
 
         // Click on "Cash" balance card
-        const cashFilterBtn = screen.getByText('Наличные').closest('div');
+        const cashFilterBtn = screen.getAllByText('Наличные')[0].closest('div');
         fireEvent.click(cashFilterBtn);
 
         // Should show Coffee (cash) but NOT Salary (card)

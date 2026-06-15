@@ -13,19 +13,17 @@ describe('Finance Utilities', () => {
         const transformed = transformTransactions(mockData);
 
         // Initial balance (Card: +1000)
-        expect(transformed[0].cashFlow).toBe(0);
-        expect(transformed[0].cardFlow).toBe(1000);
+        expect(transformed[0].accountFlows['card']).toBe(1000);
 
         // Income (Cash: +500)
-        expect(transformed[1].cashFlow).toBe(500);
-        expect(transformed[1].cardFlow).toBe(0);
+        expect(transformed[1].accountFlows['cash']).toBe(500);
 
         // Expense (Card: -200)
-        expect(transformed[2].cardFlow).toBe(-200);
+        expect(transformed[2].accountFlows['card']).toBe(-200);
 
         // Transfer (Card: -100, Cash: +100)
-        expect(transformed[3].cardFlow).toBe(-100);
-        expect(transformed[3].cashFlow).toBe(100);
+        expect(transformed[3].accountFlows['card']).toBe(-100);
+        expect(transformed[3].accountFlows['cash']).toBe(100);
         expect(transformed[3].visualAmount).toBe(100); // Visual should stay positive for transfers
     });
 
@@ -37,8 +35,8 @@ describe('Finance Utilities', () => {
         // Card: 1000 - 200 - 100 = 700
         // Cash: 500 + 100 = 600
         // Total: 1300
-        expect(balances.card).toBe(700);
-        expect(balances.cash).toBe(600);
+        expect(balances.byAccount['card']).toBe(700);
+        expect(balances.byAccount['cash']).toBe(600);
         expect(balances.total).toBe(1300);
     });
 
