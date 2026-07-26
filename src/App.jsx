@@ -17,7 +17,6 @@ const SETTINGS_URL = '/api/settings';
 const DEFAULT_MONTHLY_LIMIT = 7000;
 
 function App() {
-  const [activeTab, setActiveTab] = useState('overview');
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [transactionType, setTransactionType] = useState('expense');
   const [editingTransaction, setEditingTransaction] = useState(null);

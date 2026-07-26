@@ -32,29 +32,35 @@ let currentAccounts = [
     { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
 ];
 
-// Setup fetch mock
-global.fetch = vi.fn((url, options) => {
-    if (typeof url === 'string' && url.includes('/api/accounts')) {
-        if (options?.method === 'DELETE') {
-            const id = url.split('/').pop();
-            currentAccounts = currentAccounts.filter(a => a._id !== id);
+// Setup fetch mock. Stubbed fresh in the describe block's beforeEach (rather
+// than assigned once at module scope) so it can be paired with
+// vi.unstubAllGlobals() in afterEach, same idiom as LoginScreen.test.jsx and
+// the accountReorder tests below.
+let fetchMock;
+function createFetchMock() {
+    return vi.fn((url, options) => {
+        if (typeof url === 'string' && url.includes('/api/accounts')) {
+            if (options?.method === 'DELETE') {
+                const id = url.split('/').pop();
+                currentAccounts = currentAccounts.filter(a => a._id !== id);
+            }
+            return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve(currentAccounts),
+            });
+        }
+        if (typeof url === 'string' && url.includes('/api/categories')) {
+            return Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve([]),
+            });
         }
         return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve(currentAccounts),
+            json: () => Promise.resolve(currentTransactions),
         });
-    }
-    if (typeof url === 'string' && url.includes('/api/categories')) {
-        return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve([]),
-        });
-    }
-    return Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(currentTransactions),
     });
-});
+}
 
 // jsdom doesn't implement scrollIntoView; the carousel guards the call, but
 // tests need a spy to verify *which* slide it was asked to scroll to.
@@ -84,6 +90,8 @@ describe('App Integration Tests', () => {
             { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true },
             { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
         ];
+        fetchMock = createFetchMock();
+        vi.stubGlobal('fetch', fetchMock);
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(new Date('2026-01-15'));
         vi.clearAllMocks();
@@ -91,6 +99,7 @@ describe('App Integration Tests', () => {
 
     afterEach(() => {
         vi.useRealTimers();
+        vi.unstubAllGlobals();
     });
 
     it('renders content after loading', async () => {
@@ -184,13 +193,23 @@ describe('App Integration Tests', () => {
 
         // Find delete button and click it
         const deleteBtn = await screen.findByText('🗑');
+        const callsBeforeDelete = fetchMock.mock.calls.length;
         fireEvent.click(deleteBtn);
 
         expect(window.confirm).toHaveBeenCalled();
-        expect(global.fetch).toHaveBeenCalledWith(
+        expect(fetchMock).toHaveBeenCalledWith(
             expect.stringContaining('/api/transactions/2'),
             expect.objectContaining({ method: 'DELETE' })
         );
+
+        // handleDeleteTransaction fires the DELETE then, on success, kicks off
+        // an un-awaited fetchTransactions() refetch. Wait for that follow-up
+        // request (and the setState it drives) to actually land so it settles
+        // inside act() before the test ends, instead of leaking into whatever
+        // runs next and triggering React's "update not wrapped in act" warning.
+        await waitFor(() => {
+            expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBeforeDelete + 1);
+        });
     });
 
     it('deletes an entire split group', async () => {
@@ -217,12 +236,19 @@ describe('App Integration Tests', () => {
 
         // Wait for modal to open (find delete button)
         const deleteBtn = await screen.findByText('🗑');
+        const callsBeforeDelete = fetchMock.mock.calls.length;
         fireEvent.click(deleteBtn);
 
-        expect(global.fetch).toHaveBeenCalledWith(
+        expect(fetchMock).toHaveBeenCalledWith(
             expect.stringContaining('splitId=group-123'),
             expect.objectContaining({ method: 'DELETE' })
         );
+
+        // Same as above: wait for the post-delete refetch so its setState
+        // settles inside act() before the test finishes.
+        await waitFor(() => {
+            expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBeforeDelete + 1);
+        });
     });
 
     it('toggles between monthly and lifetime stats', async () => {
