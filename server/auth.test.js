@@ -245,4 +245,78 @@ describe('createAuthMiddleware - configured', () => {
         expect(next).toHaveBeenCalledTimes(1);
         expect(res.statusCode).toBeNull();
     });
+
+    // Express's routing is case-insensitive by default (case sensitive
+    // routing is off unless explicitly enabled), so a route registered as
+    // '/api/transactions' also serves 'GET /API/transactions'. The
+    // middleware must recognize any casing of the '/api/' prefix and gate
+    // it exactly like the lowercase path - otherwise varying the request
+    // casing bypasses auth entirely, since the request would fail the
+    // prefix check, fall through to next(), and reach the route unchecked.
+    it('rejects an uppercase-prefixed path (/API/transactions) with no session cookie, same as lowercase', () => {
+        const middleware = createAuthMiddleware(true);
+        const { req, res } = makeReqRes('/API/transactions');
+        const next = vi.fn();
+
+        middleware(req, res, next);
+
+        expect(res.statusCode).toBe(401);
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('rejects a mixed-case path (/Api/Transactions) with no session cookie, same as lowercase', () => {
+        const middleware = createAuthMiddleware(true);
+        const { req, res } = makeReqRes('/Api/Transactions');
+        const next = vi.fn();
+
+        middleware(req, res, next);
+
+        expect(res.statusCode).toBe(401);
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('rejects an uppercase-prefixed path even with a valid session cookie is not required for the bypass - a missing/invalid cookie alone still 401s', () => {
+        const middleware = createAuthMiddleware(true);
+        const { req, res } = makeReqRes('/API/transactions', { session: 'garbage.value' });
+        const next = vi.fn();
+
+        middleware(req, res, next);
+
+        expect(res.statusCode).toBe(401);
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('allows an uppercase-prefixed path (/API/transactions) with a valid session cookie', () => {
+        const token = createToken('test-secret');
+        const middleware = createAuthMiddleware(true);
+        const { req, res } = makeReqRes('/API/transactions', { session: token });
+        const next = vi.fn();
+
+        middleware(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.statusCode).toBeNull();
+    });
+
+    it('/API/HEALTH is still excluded regardless of casing (case-insensitive routing means this spelling reaches the route)', () => {
+        const middleware = createAuthMiddleware(true);
+        const { req, res } = makeReqRes('/API/HEALTH');
+        const next = vi.fn();
+
+        middleware(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.statusCode).toBeNull();
+    });
+
+    it('/API/LOGIN is still excluded regardless of casing (case-insensitive routing means this spelling reaches the route)', () => {
+        const middleware = createAuthMiddleware(true);
+        const { req, res } = makeReqRes('/API/LOGIN');
+        const next = vi.fn();
+
+        middleware(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.statusCode).toBeNull();
+    });
 });

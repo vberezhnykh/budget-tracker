@@ -116,10 +116,23 @@ function cookieOptions(isProduction, maxAge) {
 //   - development: request is allowed through, so local work without a
 //     configured .env isn't blocked. A warning is logged once at startup,
 //     not per-request.
+//
+// The path is lowercased before either the prefix check or the exclusion
+// checks below. Express's routing is case-insensitive by default (`case
+// sensitive routing` is off unless explicitly enabled), so a route like
+// `/api/transactions` also matches `GET /API/transactions`. Without
+// lowercasing here, that request would fail the case-sensitive
+// `startsWith('/api/')` test, fall through to `next()`, and reach the route
+// with no auth check at all - a full authentication bypass. Do not swap this
+// back to a case-sensitive comparison, and do not "fix" it by enabling
+// Express's case sensitive routing instead - that changes routing behavior
+// app-wide and hasn't been verified safe; the lowercasing here is a
+// middleware-local fix that only affects this check.
 function createAuthMiddleware(isProduction) {
     return function authMiddleware(req, res, next) {
-        if (!req.path.startsWith('/api/')) return next();
-        if (req.path === '/api/login' || req.path === '/api/health') return next();
+        const path = req.path.toLowerCase();
+        if (!path.startsWith('/api/')) return next();
+        if (path === '/api/login' || path === '/api/health') return next();
 
         const { sessionSecret, isConfigured } = getAuthConfig();
         if (!isConfigured) {
