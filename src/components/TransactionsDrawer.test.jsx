@@ -146,6 +146,51 @@ describe('TransactionsDrawer Component', () => {
         expect(screen.getByRole('button', { name: 'Открыть список операций' })).toHaveAttribute('aria-expanded', 'false');
     });
 
+    it('settles the collapsed sheet at translateY(offsetHeight - 72px), not window.innerHeight * 0.88 - 72px', () => {
+        // This pins the measured-height formula in getTravel(). It previously
+        // derived travel from window.innerHeight * 0.88, which disagrees with
+        // the CSS resting transform on iOS Safari: the `88vh` in the resting
+        // transform resolves against the large viewport (URL bar hidden),
+        // while window.innerHeight reports the smaller visual viewport (URL
+        // bar visible). commitExpanded() writes travel as an imperative
+        // pixel transform, so it's directly observable here - but only when
+        // the drag springs back to the SAME expanded state it started from.
+        // If the drag instead flips `expanded`, the parent's setExpanded
+        // triggers a real re-render, and React's own reconciliation
+        // overwrites the just-written pixel transform with the component's
+        // declarative `translateY(calc(88vh - 72px))` string (verified by
+        // temporarily asserting the transform right after a flipping drag -
+        // it comes back as that CSS string, not a pixel value, regardless of
+        // which getTravel() formula produced it). A springing-back release
+        // calls setExpanded with the unchanged boolean, so React bails out
+        // of re-rendering and the imperative pixel transform survives -
+        // making this the only place the formula itself is observable, and
+        // it lines up with exactly the case the code comment above
+        // getTravel() describes: the collapsed peek strip's resting height.
+        render(<Wrapper />);
+
+        const sheet = screen.getByTestId('transactions-drawer');
+        const stubbedHeight = 800;
+        stubSheetHeight(sheet, stubbedHeight);
+        const peekHeight = 72;
+        const expectedTravel = stubbedHeight - peekHeight; // 728
+
+        const handle = screen.getByRole('button', { name: 'Открыть список операций' });
+
+        const nowSpy = vi.spyOn(performance, 'now');
+        nowSpy.mockReturnValueOnce(0); // startTime, captured on pointerDown
+        fireEvent.pointerDown(handle, { pointerId: 1, clientY: 500 });
+        // Move up 20px - short of the 25% (182px) commit-by-distance
+        // threshold - so the drawer springs back to collapsed rather than
+        // expanding, exactly like the "springs back" test above.
+        fireEvent.pointerMove(handle, { pointerId: 1, clientY: 480 });
+        nowSpy.mockReturnValueOnce(1000); // elapsed, captured on pointerUp
+        fireEvent.pointerUp(handle, { pointerId: 1, clientY: 480 });
+
+        expect(screen.getByRole('button', { name: 'Открыть список операций' })).toHaveAttribute('aria-expanded', 'false');
+        expect(sheet.style.transform).toBe(`translateY(${expectedTravel}px)`);
+    });
+
     it('renders the contextual title plain when no account filter is selected', () => {
         render(<Wrapper title="Список операций" />);
         expect(screen.getByText('Список операций')).toBeInTheDocument();
