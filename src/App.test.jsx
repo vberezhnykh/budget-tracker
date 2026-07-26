@@ -432,7 +432,7 @@ describe('App Integration Tests', () => {
 
         // Delete it via the accounts settings panel.
         fireEvent.click(screen.getByTitle('Управление счетами'));
-        const deleteButtons = await screen.findAllByText('Удалить');
+        const deleteButtons = await screen.findAllByRole('button', { name: 'Удалить' });
         fireEvent.click(deleteButtons[deleteButtons.length - 1]);
 
         expect(window.confirm).toHaveBeenCalled();

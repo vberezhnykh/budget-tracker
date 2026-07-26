@@ -50,33 +50,47 @@ function AccountListItem({ account, onDelete, onEdit }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-        <button 
+        <button
           onClick={onEdit}
+          aria-label="Изменить"
           style={{
-            background: 'none',
+            background: 'rgba(0, 0, 0, 0.04)',
             border: 'none',
+            borderRadius: '10px',
             color: 'var(--color-primary)',
             cursor: 'pointer',
-            fontSize: '0.8rem',
+            fontSize: '1rem',
             fontWeight: '600',
-            padding: '4px'
+            padding: '8px',
+            minWidth: '36px',
+            minHeight: '36px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
           }}
         >
-          Изменить
+          ✏️
         </button>
-        <button 
+        <button
           onClick={onDelete}
+          aria-label="Удалить"
           style={{
-            background: 'none',
+            background: 'rgba(239, 68, 68, 0.08)',
             border: 'none',
+            borderRadius: '10px',
             color: '#ef4444',
             cursor: 'pointer',
-            fontSize: '0.8rem',
+            fontSize: '1rem',
             fontWeight: '600',
-            padding: '4px'
+            padding: '8px',
+            minWidth: '36px',
+            minHeight: '36px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
           }}
         >
-          Удалить
+          🗑️
         </button>
       </div>
     </div>
