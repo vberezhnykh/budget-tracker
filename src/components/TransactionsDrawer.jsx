@@ -3,10 +3,20 @@ import { useRef } from 'react';
 // Bottom-sheet chrome (CoinKeeper-style) wrapping the transaction history.
 // Geometry:
 // - Root sheet is 88vh tall, fixed to the bottom edge.
-// - Collapsed state leaves a 72px "peek" strip visible (the handle) by
-//   translating the sheet down by (88vh - 72px).
+// - Collapsed state leaves a PEEK_HEIGHT "peek" strip visible by
+//   translating the sheet down by (88vh - PEEK_HEIGHT).
+// - That peek strip is split into two parts, stacked vertically:
+//   - HANDLE_HEIGHT: the interactive grabber strip (drag/tap to expand).
+//   - EDGE_GUARD: a non-interactive strip below it, flush with the bottom
+//     edge. On iOS, a swipe starting at the very bottom edge is the
+//     system app-switcher gesture - if our draggable handle reached all
+//     the way down, that system swipe would also land on it and open the
+//     drawer unintentionally. The guard keeps the handle clear of that
+//     zone without moving the sheet itself off the bottom edge.
 // - Expanded state is translateY(0).
-const PEEK_HEIGHT = 72;
+export const HANDLE_HEIGHT = 72;
+export const EDGE_GUARD = 34;
+export const PEEK_HEIGHT = HANDLE_HEIGHT + EDGE_GUARD;
 const SNAP_TRANSITION = 'transform 0.28s ease';
 const TAP_MAX_MOVEMENT = 8; // px
 const TAP_MAX_DURATION = 250; // ms
@@ -180,12 +190,14 @@ export default function TransactionsDrawer({
           boxShadow: '0 -10px 15px -3px rgba(0, 0, 0, 0.1), 0 -4px 6px -4px rgba(0, 0, 0, 0.1)',
           display: 'flex',
           flexDirection: 'column',
-          transform: expanded ? 'translateY(0)' : 'translateY(calc(88vh - 72px))',
+          transform: expanded ? 'translateY(0)' : `translateY(calc(88vh - ${PEEK_HEIGHT}px))`,
           transition: SNAP_TRANSITION,
         }}
       >
-        {/* Drag handle / peek strip - the ONLY element that receives the
-            pointer gesture, so the list below remains scrollable. */}
+        {/* Drag handle - the ONLY element that receives the pointer
+            gesture, so the list below remains scrollable. Stops
+            HANDLE_HEIGHT above the bottom edge; the EDGE_GUARD strip
+            below it is non-interactive. */}
         <div
           role="button"
           tabIndex={0}
@@ -198,7 +210,7 @@ export default function TransactionsDrawer({
           onKeyDown={handleKeyDown}
           style={{
             flexShrink: 0,
-            height: `${PEEK_HEIGHT}px`,
+            height: `${HANDLE_HEIGHT}px`,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -222,6 +234,18 @@ export default function TransactionsDrawer({
             {title}
           </span>
         </div>
+
+        {/* Dead strip flush with the bottom edge - keeps the interactive
+            handle above it, so a swipe starting at the very bottom edge
+            (the iOS system gesture zone) never begins a drawer drag. */}
+        <div
+          aria-hidden="true"
+          style={{
+            flexShrink: 0,
+            height: `${EDGE_GUARD}px`,
+            pointerEvents: 'none',
+          }}
+        />
 
         {/* Scrollable region - everything below the handle. */}
         <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain' }}>

@@ -50,13 +50,69 @@ describe('AddTransactionForm Component', () => {
         // Fill amount
         const amountInput = screen.getByPlaceholderText('0.00');
         fireEvent.change(amountInput, { target: { value: '100' } });
-        expect(saveButton).toBeDisabled(); // Still need category
+        expect(saveButton).toBeDisabled(); // Still need category and account
 
         // Select category
         const categoryButton = screen.getByText('Продукты');
         fireEvent.click(categoryButton);
+        expect(saveButton).toBeDisabled(); // Still need an account - no preset was passed
+
+        // Select account
+        fireEvent.click(screen.getByText('💳 Карта'));
 
         expect(saveButton).not.toBeDisabled();
+    });
+
+    it('preselects the account from presetAccountId when one is passed', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="cash" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        // Amount + category alone are enough to save - the account came
+        // preselected from presetAccountId, without clicking an account button.
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
+        fireEvent.click(screen.getByText('Продукты'));
+        expect(screen.getByText('Сохранить')).not.toBeDisabled();
+
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash' }));
+    });
+
+    it('requires an explicit account choice when no presetAccountId is given', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
+        fireEvent.click(screen.getByText('Продукты'));
+
+        // Neither account button is preselected...
+        expect(screen.getByText('💳 Карта')).toHaveStyle({ borderColor: 'rgba(0,0,0,0.08)' });
+        expect(screen.getByText('💵 Наличные')).toHaveStyle({ borderColor: 'rgba(0,0,0,0.08)' });
+        // ...and saving is blocked until one is picked.
+        expect(screen.getByText('Сохранить')).toBeDisabled();
+    });
+
+    it('enables the save button once an account is picked', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
+        fireEvent.click(screen.getByText('Продукты'));
+        expect(screen.getByText('Сохранить')).toBeDisabled();
+
+        fireEvent.click(screen.getByText('💳 Карта'));
+
+        expect(screen.getByText('Сохранить')).not.toBeDisabled();
+    });
+
+    it('keeps an edited transaction on its own account, even if presetAccountId is passed', () => {
+        const editData = { id: 'test-id', amount: 100, category: 'Food', type: 'expense', account: 'cash' };
+
+        render(<AddTransactionForm initialData={editData} presetAccountId="card" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        // Saving without touching the account field must keep the
+        // transaction's own account ('cash'), not the preset ('card').
+        expect(screen.getByText('Сохранить')).not.toBeDisabled();
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash' }));
     });
 
     it('submits correct data for an expense', () => {
@@ -150,6 +206,11 @@ describe('AddTransactionForm Component', () => {
         fireEvent.change(splitInputs[1], { target: { value: '60' } });
         const transportCategories = screen.getAllByText('Транспорт');
         fireEvent.click(transportCategories[1]); // Select for second split (index 1 because category list is rendered for each split)
+
+        // Split mode still has its own "Списать с" account picker, and no
+        // presetAccountId was passed here - an account must be picked before
+        // saving is allowed.
+        fireEvent.click(screen.getByText('💳 Карта'));
 
         // Submit
         fireEvent.click(screen.getByText('Сохранить'));

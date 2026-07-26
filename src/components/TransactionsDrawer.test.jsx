@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import TransactionsDrawer from './TransactionsDrawer';
+import TransactionsDrawer, { PEEK_HEIGHT } from './TransactionsDrawer';
 
 const baseProps = {
     title: 'Список операций',
@@ -108,7 +108,7 @@ describe('TransactionsDrawer Component', () => {
         render(<Wrapper />);
 
         const sheet = screen.getByTestId('transactions-drawer');
-        stubSheetHeight(sheet, 800); // travel = 800 - 72 = 728
+        stubSheetHeight(sheet, 800); // travel = 800 - PEEK_HEIGHT
 
         const handle = screen.getByRole('button', { name: 'Открыть список операций' });
 
@@ -127,7 +127,7 @@ describe('TransactionsDrawer Component', () => {
         render(<Wrapper />);
 
         const sheet = screen.getByTestId('transactions-drawer');
-        stubSheetHeight(sheet, 800); // travel = 800 - 72 = 728
+        stubSheetHeight(sheet, 800); // travel = 800 - PEEK_HEIGHT
 
         const handle = screen.getByRole('button', { name: 'Открыть список операций' });
 
@@ -146,7 +146,7 @@ describe('TransactionsDrawer Component', () => {
         expect(screen.getByRole('button', { name: 'Открыть список операций' })).toHaveAttribute('aria-expanded', 'false');
     });
 
-    it('settles the collapsed sheet at translateY(offsetHeight - 72px), not window.innerHeight * 0.88 - 72px', () => {
+    it('settles the collapsed sheet at translateY(offsetHeight - PEEK_HEIGHT), not window.innerHeight * 0.88 - PEEK_HEIGHT', () => {
         // This pins the measured-height formula in getTravel(). It previously
         // derived travel from window.innerHeight * 0.88, which disagrees with
         // the CSS resting transform on iOS Safari: the `88vh` in the resting
@@ -172,8 +172,7 @@ describe('TransactionsDrawer Component', () => {
         const sheet = screen.getByTestId('transactions-drawer');
         const stubbedHeight = 800;
         stubSheetHeight(sheet, stubbedHeight);
-        const peekHeight = 72;
-        const expectedTravel = stubbedHeight - peekHeight; // 728
+        const expectedTravel = stubbedHeight - PEEK_HEIGHT; // 800 - 106 = 694
 
         const handle = screen.getByRole('button', { name: 'Открыть список операций' });
 

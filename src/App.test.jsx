@@ -292,10 +292,11 @@ describe('App Integration Tests', () => {
         await waitFor(() => screen.getByText('Coffee'));
         expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
 
-        // The header is now a carousel of slides (total capital, card group,
-        // cash group, then one slide per account). Clicking a slide applies
-        // its filter directly (no chevrons/expand step anymore).
-        const cardFilterBtn = screen.getByText('БЕЗНАЛИЧНЫЕ').closest('div');
+        // The header is a carousel of slides: total capital, then one slide
+        // per account (the type:card/type:cash group slides were dropped -
+        // that split now lives in the stats block instead). Clicking a
+        // slide applies its filter directly (no chevrons/expand step).
+        const cardFilterBtn = screen.getByText('КАРТА').closest('div');
         fireEvent.click(cardFilterBtn);
 
         // Should show Salary (card) but NOT Coffee (cash)
@@ -304,10 +305,8 @@ describe('App Integration Tests', () => {
             expect(screen.queryByText('Coffee')).not.toBeInTheDocument();
         });
 
-        // Click on "Cash" balance slide. The "cash" test account is also
-        // named "Наличные", so the uppercased label matches twice; the group
-        // slide (filter 'type:cash') renders before the per-account slide.
-        const cashFilterBtn = screen.getAllByText('НАЛИЧНЫЕ')[0].closest('div');
+        // Click on the "Наличные" account slide.
+        const cashFilterBtn = screen.getByText('НАЛИЧНЫЕ').closest('div');
         fireEvent.click(cashFilterBtn);
 
         // Should show Coffee (cash) but NOT Salary (card)
@@ -332,16 +331,16 @@ describe('App Integration Tests', () => {
         render(<App />);
         await waitFor(() => screen.getByText('Coffee'));
 
-        // Slide order: total(0), type:card(1), type:cash(2), "Карта" account(3),
-        // "Наличные" account(4). Slide 3 is the per-account "Карта" slide -
-        // deliberately NOT the last slide, since the old buggy arithmetic
-        // (slideWidth computed from the hidden <style> tag) clamped every
-        // real swipe to the LAST slide regardless of where the user stopped.
+        // Slide order: total(0), "Карта" account(1), "Наличные" account(2).
+        // Slide 1 is the per-account "Карта" slide - deliberately NOT the
+        // last slide, since the old buggy arithmetic (slideWidth computed
+        // from the hidden <style> tag) clamped every real swipe to the LAST
+        // slide regardless of where the user stopped.
         const container = screen.getByTestId('balance-carousel');
         const slideEls = stubCarouselGeometry(container);
-        expect(slideEls.length).toBe(5);
+        expect(slideEls.length).toBe(3);
 
-        const targetIndex = 3;
+        const targetIndex = 1;
         const slideWidth = 300;
         const gap = 12;
         const spacerWidth = 20;
@@ -376,12 +375,12 @@ describe('App Integration Tests', () => {
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        const cardDot = screen.getByRole('button', { name: 'Показать Безналичные' });
+        const cardDot = screen.getByRole('button', { name: 'Показать Карта' });
         fireEvent.click(cardDot);
 
         await waitFor(() => {
             const chip = screen.getByText(/Счет:/).closest('div');
-            expect(chip).toHaveTextContent('Все карты');
+            expect(chip).toHaveTextContent('Карта');
         });
         expect(cardDot).toHaveAttribute('aria-current', 'true');
     });
@@ -390,7 +389,7 @@ describe('App Integration Tests', () => {
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        const cardSlide = screen.getByText('БЕЗНАЛИЧНЫЕ').closest('[data-carousel-slide]');
+        const cardSlide = screen.getByText('КАРТА').closest('[data-carousel-slide]');
         fireEvent.click(cardSlide);
         await waitFor(() => {
             expect(screen.getByText(/Счет:/)).toBeInTheDocument();

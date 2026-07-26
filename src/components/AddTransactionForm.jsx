@@ -1,13 +1,23 @@
 import { useState, useEffect } from 'react';
 
-export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [] }) {
+export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
     const defaultToAccount = accounts.find(a => a.type === 'card' && a._id !== defaultAccount)?._id || accounts.find(a => a._id !== defaultAccount)?._id || 'card';
+
+    // For a brand-new income/expense transaction, the account must be an
+    // explicit user choice - unless a specific account was already active
+    // (presetAccountId) when the form was opened. The transfer flow keeps
+    // its own defaultAccount/defaultToAccount pairing untouched: it has its
+    // own two explicit from/to selects, and an empty account there would
+    // break that pairing for no gain.
+    const initialAccount = initialData
+        ? (initialData.account || defaultAccount)
+        : (type === 'transfer' ? defaultAccount : (presetAccountId || ''));
 
     const [formData, setFormData] = useState(initialData ? {
         ...initialData,
         date: initialData.date || new Date().toISOString().split('T')[0],
-        account: initialData.account || defaultAccount,
+        account: initialAccount,
         toAccount: initialData.toAccount || (initialData.account === defaultToAccount ? defaultAccount : defaultToAccount)
     } : {
         amount: '',
@@ -15,7 +25,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         description: '',
         date: new Date().toISOString().split('T')[0],
         type: type, // 'income', 'expense', or 'transfer'
-        account: defaultAccount,
+        account: initialAccount,
         toAccount: defaultToAccount,
         excludeFromStats: false
     });
@@ -33,12 +43,17 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     // Validation for split: check if split mode is active, remaining amount is approx 0, and all splits have data
     const isSplitValid = isSplit && Math.abs(remainingAmount) < 0.01 && splits.every(s => s.amount && s.category);
 
+    // Shared save-gate for both the submit button (disabled state) and the
+    // submit handler (so the gate can't be bypassed some other way, e.g. an
+    // Enter keypress). An account must be chosen unless transferring - that
+    // flow has its own from/to selects and always starts pre-filled.
+    const isSaveDisabled = !(parseFloat(formData.amount) > 0)
+        || (!isTransfer && !formData.account)
+        || (isSplit ? !isSplitValid : (!isTransfer && !formData.category));
+
     const handleSubmit = (e) => {
         e.preventDefault();
-        // Allow save if: (amount > 0) AND (isTransfer OR category chosen OR (isSplit AND split is valid))
-        const amountValid = parseFloat(formData.amount) > 0;
-        const canSave = amountValid && (isTransfer || formData.category || (isSplit && isSplitValid));
-        if (!canSave) return;
+        if (isSaveDisabled) return;
 
         if (isSplit && splits.length > 0) {
             const splitGroupId = `split_${Date.now()}`;
@@ -758,13 +773,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         <button
                             type="submit"
                             className="btn-primary"
-                            disabled={!(parseFloat(formData.amount) > 0) || (isSplit ? !isSplitValid : (!isTransfer && !formData.category))}
+                            disabled={isSaveDisabled}
                             style={{
                                 flex: 1,
                                 padding: '16px',
                                 fontSize: '1.1rem',
-                                opacity: (!(parseFloat(formData.amount) > 0) || (isSplit ? !isSplitValid : (!isTransfer && !formData.category))) ? 0.5 : 1,
-                                cursor: (!(parseFloat(formData.amount) > 0) || (isSplit ? !isSplitValid : (!isTransfer && !formData.category))) ? 'not-allowed' : 'pointer'
+                                opacity: isSaveDisabled ? 0.5 : 1,
+                                cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
                             }}
                         >
                             Сохранить

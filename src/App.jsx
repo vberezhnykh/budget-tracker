@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
-import TransactionsDrawer from './components/TransactionsDrawer'
+import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer'
 import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
 
 // API URL - relative path for production data fetching
@@ -216,12 +216,15 @@ function App() {
   const balances = useMemo(() => calculateBalances(transactions, accounts), [transactions, accounts]);
 
   // Declarative slide list for the header balance carousel: total capital,
-  // then the two type groups, then one slide per individual account.
+  // then one slide per individual account. The type-group slides
+  // ('type:card' / 'type:cash') were dropped from the carousel - that
+  // split is now shown as a static line in the stats block instead - but
+  // the filter values themselves remain valid (see getAccountFilterLabel
+  // and the filtering utilities in utils/finance.js), simply unreachable
+  // from here.
   const slides = useMemo(() => {
     const base = [
       { key: 'total', icon: '💰', name: 'Общий капитал', amount: balances.total, filter: null },
-      { key: 'type:card', icon: '💳', name: 'Безналичные', amount: balances.byType.card, filter: 'type:card' },
-      { key: 'type:cash', icon: '💵', name: 'Наличные', amount: balances.byType.cash, filter: 'type:cash' },
     ];
     const accountSlides = accounts.map(acc => ({
       key: acc._id,
@@ -602,6 +605,7 @@ function App() {
                 style={{
                   flex: '0 0 88%',
                   scrollSnapAlign: 'center',
+                  scrollSnapStop: 'always',
                   boxSizing: 'border-box',
                   textAlign: 'center',
                   background: isActive ? 'rgba(37, 99, 235, 0.05)' : 'rgba(0,0,0,0.02)',
@@ -677,7 +681,7 @@ function App() {
         </div>
       </header>
 
-      <main style={{ paddingBottom: '88px' }}>
+      <main style={{ paddingBottom: `${PEEK_HEIGHT + 16}px` }}>
         {/* Quick Actions */}
         <section style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -816,6 +820,20 @@ function App() {
                     </div>
                   )}
 
+                  {/* Current balance split by account type. Unlike the rows
+                      above (period income/expense/saldo), these are current
+                      balances - the divider marks that boundary so they
+                      don't read as more period data. */}
+                  <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)', margin: '12px 0' }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
+                    <span style={{ color: 'var(--color-text-muted)' }}>💳 Безналичные</span>
+                    <span style={{ fontWeight: '600', color: 'var(--color-text-main)' }}>€{balances.byType.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--color-text-muted)' }}>💵 Наличные</span>
+                    <span style={{ fontWeight: '600', color: 'var(--color-text-main)' }}>€{balances.byType.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
+                  </div>
+
                   {timeRange === 'month' && (
                     <>
                       {/* Progress Bar */}
@@ -845,7 +863,20 @@ function App() {
         </div>
       </main>
 
-      {showAddTransaction && <AddTransactionForm type={transactionType} categories={categories} onAddCategory={handleAddCategory} onClose={() => setShowAddTransaction(false)} onSubmit={handleAddTransaction} accounts={accounts} />}
+      {showAddTransaction && (
+        <AddTransactionForm
+          type={transactionType}
+          categories={categories}
+          onAddCategory={handleAddCategory}
+          onClose={() => setShowAddTransaction(false)}
+          onSubmit={handleAddTransaction}
+          accounts={accounts}
+          // Only a real account id preselects - the total-capital slide
+          // (null) and any residual type:* filter value must fall through
+          // to no preset, forcing an explicit choice.
+          presetAccountId={accounts.some(a => a._id === selectedAccount) ? selectedAccount : undefined}
+        />
+      )}
       {editingTransaction && <AddTransactionForm initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} />}
 
       {/* Bottom drawer: transaction history, always mounted (collapsed =
