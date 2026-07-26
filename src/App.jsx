@@ -86,7 +86,10 @@ function App() {
   const [formType, setFormType] = useState('card');
   const [formIcon, setFormIcon] = useState('💳');
   const [editingAccountId, setEditingAccountId] = useState(null);
-  const [expandedGroups, setExpandedGroups] = useState({ card: false, cash: false });
+
+  // Balance carousel refs (scroll container + rAF throttle handle for the scroll listener)
+  const carouselRef = useRef(null);
+  const carouselRafRef = useRef(null);
 
   // Transactions state
   const [transactions, setTransactions] = useState([]);
@@ -124,6 +127,13 @@ function App() {
       document.body.style.overflow = 'unset';
     };
   }, [showAddTransaction, editingTransaction]);
+
+  // Cancel any pending rAF-throttled carousel scroll handler on unmount
+  useEffect(() => {
+    return () => {
+      if (carouselRafRef.current) cancelAnimationFrame(carouselRafRef.current);
+    };
+  }, []);
 
   const fetchAccounts = async () => {
     try {
@@ -185,6 +195,24 @@ function App() {
   // Calculate current balances (Total lifetime) - stays persistent
   const balances = useMemo(() => calculateBalances(transactions, accounts), [transactions, accounts]);
 
+  // Declarative slide list for the header balance carousel: total capital,
+  // then the two type groups, then one slide per individual account.
+  const slides = useMemo(() => {
+    const base = [
+      { key: 'total', icon: '💰', name: 'Общий капитал', amount: balances.total, filter: null },
+      { key: 'type:card', icon: '💳', name: 'Безналичные', amount: balances.byType.card, filter: 'type:card' },
+      { key: 'type:cash', icon: '💵', name: 'Наличные', amount: balances.byType.cash, filter: 'type:cash' },
+    ];
+    const accountSlides = accounts.map(acc => ({
+      key: acc._id,
+      icon: acc.icon || (acc.type === 'cash' ? '💵' : '💳'),
+      name: acc.name,
+      amount: balances.byAccount[acc._id] || 0,
+      filter: acc._id,
+    }));
+    return [...base, ...accountSlides];
+  }, [accounts, balances]);
+
   // Filter transactions for the selected month and account/category/type
   const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth, selectedAccount, selectedCategory, selectedType), [transactions, selectedMonth, selectedAccount, selectedCategory, selectedType]);
 
@@ -206,8 +234,32 @@ function App() {
     return selectedMonth === currentMonthStr;
   }, [selectedMonth]);
 
-  const toggleAccountFilter = (account) => {
-    setSelectedAccount(prev => prev === account ? null : account);
+  // Selecting a carousel slide (by tap, or by scroll settling on it) always
+  // sets the filter directly - no toggle-off behavior, since exactly one
+  // slide is "active" at all times. Guard against redundant state updates so
+  // programmatic scrolling (from a tap) doesn't fight the onScroll handler.
+  const handleSlideClick = (slide, index) => {
+    setSelectedAccount(prev => (prev === slide.filter ? prev : slide.filter));
+    const slideEl = carouselRef.current?.children[index];
+    // jsdom (unit tests) doesn't implement scrollIntoView - guard the call.
+    slideEl?.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  };
+
+  const handleCarouselScroll = () => {
+    if (carouselRafRef.current) return;
+    carouselRafRef.current = requestAnimationFrame(() => {
+      carouselRafRef.current = null;
+      const container = carouselRef.current;
+      if (!container || !container.children.length) return;
+      const firstSlide = container.children[0];
+      const containerStyle = window.getComputedStyle(container);
+      const gap = parseFloat(containerStyle.columnGap || containerStyle.gap) || 0;
+      const slideWidth = firstSlide.offsetWidth + gap;
+      if (!slideWidth) return;
+      const index = Math.max(0, Math.min(Math.round(container.scrollLeft / slideWidth), slides.length - 1));
+      const filter = slides[index]?.filter ?? null;
+      setSelectedAccount(prev => (prev === filter ? prev : filter));
+    });
   };
 
   const toggleCategoryFilter = (category) => {
@@ -374,12 +426,6 @@ function App() {
   const isPrevDisabled = selectedMonth === '2025-11';
   const isNextDisabled = selectedMonth === new Date().toISOString().slice(0, 7);
 
-  // A group stays open while one of its own accounts is the active filter,
-  // otherwise the selected account would disappear from view.
-  const selectedAccountType = accounts.find(a => a._id === selectedAccount)?.type;
-  const isCardExpanded = expandedGroups.card || selectedAccountType === 'card';
-  const isCashExpanded = expandedGroups.cash || selectedAccountType === 'cash';
-
   if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#fff' }}>Загрузка...</div>;
 
   return (
@@ -412,199 +458,93 @@ function App() {
           </button>
         </div>
 
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <div style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: '8px', letterSpacing: '0.5px' }}>ОБЩИЙ КАПИТАЛ</div>
-          <div className="balance-amount" style={{ fontSize: '2.5rem', fontWeight: '800' }}>
-            €{balances.total.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-          </div>
+        {/* Balance Carousel: total capital, type groups, then one slide per account */}
+        <div
+          ref={carouselRef}
+          onScroll={handleCarouselScroll}
+          style={{
+            display: 'flex',
+            overflowX: 'auto',
+            scrollSnapType: 'x mandatory',
+            WebkitOverflowScrolling: 'touch',
+            gap: '12px',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none'
+          }}
+        >
+          <style>{`
+            div::-webkit-scrollbar { display: none; }
+          `}</style>
+          {slides.map((slide, index) => {
+            const isActive = slide.filter === selectedAccount;
+            return (
+              <div
+                key={slide.key}
+                onClick={() => handleSlideClick(slide, index)}
+                style={{
+                  flex: '0 0 88%',
+                  scrollSnapAlign: 'center',
+                  boxSizing: 'border-box',
+                  textAlign: 'center',
+                  background: isActive ? 'rgba(37, 99, 235, 0.05)' : 'rgba(0,0,0,0.02)',
+                  borderRadius: '24px',
+                  border: isActive ? '1.5px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
+                  transition: 'all 0.2s ease',
+                  padding: '24px 16px',
+                  cursor: 'pointer'
+                }}
+              >
+                <div style={{ fontSize: '1.6rem', marginBottom: '8px' }}>{slide.icon}</div>
+                <div style={{ fontSize: '0.9rem', color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.5px' }}>
+                  {slide.name.toUpperCase()}
+                </div>
+                <div className="balance-amount" style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
+                  €{slide.amount.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
-          {/* Card Account Group */}
-          <div
-            style={{
-              flex: 1,
-              minWidth: '240px',
-              display: 'flex',
-              flexDirection: 'column',
-              background: selectedAccount === 'type:card' || (selectedAccount && accounts.find(a => a._id === selectedAccount)?.type === 'card') ? 'rgba(37, 99, 235, 0.05)' : 'rgba(0,0,0,0.02)',
-              borderRadius: '24px',
-              border: selectedAccount === 'type:card' || (selectedAccount && accounts.find(a => a._id === selectedAccount)?.type === 'card') ? '1.5px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
-              transition: 'all 0.2s ease',
-              padding: '16px',
-              cursor: 'pointer'
-            }}
-            onClick={() => toggleAccountFilter('type:card')}
-          >
-            <div 
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '1.2rem' }}>💳</span>
-                <div style={{ fontSize: '0.85rem', color: selectedAccount === 'type:card' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700' }}>Безналичные</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text-main)' }}>
-                  €{balances.byType.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation(); // don't trigger parent click / type filter
-                    setExpandedGroups(prev => ({ ...prev, card: !prev.card }));
-                  }}
-                  aria-expanded={isCardExpanded}
-                  aria-label={isCardExpanded ? 'Скрыть счета' : 'Показать счета'}
+        {/* Carousel dot indicators */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', marginTop: '12px' }}>
+          {slides.map((slide, index) => {
+            const isActive = slide.filter === selectedAccount;
+            return (
+              <button
+                key={slide.key}
+                type="button"
+                onClick={() => handleSlideClick(slide, index)}
+                aria-label={`Показать ${slide.name}`}
+                aria-current={isActive}
+                style={{
+                  flexShrink: 0,
+                  // Dot stays 6px, but the button carries padding so the touch
+                  // target is finger-sized rather than 6px.
+                  width: '22px',
+                  height: '22px',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <span
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--color-text-muted)',
-                    fontSize: '1rem',
-                    lineHeight: 1,
-                    padding: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'transform 0.2s ease',
-                    transform: isCardExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
+                    display: 'block',
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    background: isActive ? 'var(--color-primary)' : 'rgba(0,0,0,0.15)',
+                    transition: 'background 0.2s ease'
                   }}
-                >
-                  ⌄
-                </button>
-              </div>
-            </div>
-
-            {/* List of cards */}
-            {isCardExpanded && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(0,0,0,0.04)', paddingTop: '8px', marginTop: '4px' }}>
-              {accounts.filter(a => a.type === 'card').map(acc => {
-                const bal = balances.byAccount[acc._id] || 0;
-                const isSelected = selectedAccount === acc._id;
-                return (
-                  <div
-                    key={acc._id}
-                    onClick={(e) => {
-                      e.stopPropagation(); // don't trigger parent click
-                      toggleAccountFilter(acc._id);
-                    }}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '6px 10px',
-                      borderRadius: '12px',
-                      background: isSelected ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
-                      border: isSelected ? '1px solid var(--color-primary)' : '1px solid transparent',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
-                      <span>{acc.icon || '💳'}</span>
-                      <span style={{ color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)', fontWeight: isSelected ? '600' : 'normal' }}>{acc.name}</span>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-muted)' }}>
-                      €{bal.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            )}
-          </div>
-
-          {/* Cash Account Group */}
-          <div
-            style={{
-              flex: 1,
-              minWidth: '240px',
-              display: 'flex',
-              flexDirection: 'column',
-              background: selectedAccount === 'type:cash' || (selectedAccount && accounts.find(a => a._id === selectedAccount)?.type === 'cash') ? 'rgba(37, 99, 235, 0.05)' : 'rgba(0,0,0,0.02)',
-              borderRadius: '24px',
-              border: selectedAccount === 'type:cash' || (selectedAccount && accounts.find(a => a._id === selectedAccount)?.type === 'cash') ? '1.5px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
-              transition: 'all 0.2s ease',
-              padding: '16px',
-              cursor: 'pointer'
-            }}
-            onClick={() => toggleAccountFilter('type:cash')}
-          >
-            <div 
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '1.2rem' }}>💵</span>
-                <div style={{ fontSize: '0.85rem', color: selectedAccount === 'type:cash' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700' }}>Наличные</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text-main)' }}>
-                  €{balances.byType.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation(); // don't trigger parent click / type filter
-                    setExpandedGroups(prev => ({ ...prev, cash: !prev.cash }));
-                  }}
-                  aria-expanded={isCashExpanded}
-                  aria-label={isCashExpanded ? 'Скрыть счета' : 'Показать счета'}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: 'var(--color-text-muted)',
-                    fontSize: '1rem',
-                    lineHeight: 1,
-                    padding: '4px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    transition: 'transform 0.2s ease',
-                    transform: isCashExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
-                  }}
-                >
-                  ⌄
-                </button>
-              </div>
-            </div>
-
-            {/* List of cash accounts */}
-            {isCashExpanded && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(0,0,0,0.04)', paddingTop: '8px', marginTop: '4px' }}>
-              {accounts.filter(a => a.type === 'cash').map(acc => {
-                const bal = balances.byAccount[acc._id] || 0;
-                const isSelected = selectedAccount === acc._id;
-                return (
-                  <div
-                    key={acc._id}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleAccountFilter(acc._id);
-                    }}
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '6px 10px',
-                      borderRadius: '12px',
-                      background: isSelected ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
-                      border: isSelected ? '1px solid var(--color-primary)' : '1px solid transparent',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem' }}>
-                      <span>{acc.icon || '💵'}</span>
-                      <span style={{ color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)', fontWeight: isSelected ? '600' : 'normal' }}>{acc.name}</span>
-                    </div>
-                    <div style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--color-text-muted)' }}>
-                      €{bal.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            )}
-          </div>
+                />
+              </button>
+            );
+          })}
         </div>
       </header>
 

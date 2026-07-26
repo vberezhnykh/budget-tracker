@@ -267,13 +267,10 @@ describe('App Integration Tests', () => {
         await waitFor(() => screen.getByText('Coffee'));
         expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
 
-        // Account lists are collapsed by default now; expand the card group
-        // via its chevron button before looking for the individual account.
-        const cardExpandBtn = screen.getAllByRole('button', { name: 'Показать счета' })[0];
-        fireEvent.click(cardExpandBtn);
-
-        // Click on "Card" balance card
-        const cardFilterBtn = screen.getByText('Карта').closest('div');
+        // The header is now a carousel of slides (total capital, card group,
+        // cash group, then one slide per account). Clicking a slide applies
+        // its filter directly (no chevrons/expand step anymore).
+        const cardFilterBtn = screen.getByText('БЕЗНАЛИЧНЫЕ').closest('div');
         fireEvent.click(cardFilterBtn);
 
         // Should show Salary (card) but NOT Coffee (cash)
@@ -282,8 +279,10 @@ describe('App Integration Tests', () => {
             expect(screen.queryByText('Coffee')).not.toBeInTheDocument();
         });
 
-        // Click on "Cash" balance card
-        const cashFilterBtn = screen.getAllByText('Наличные')[0].closest('div');
+        // Click on "Cash" balance slide. The "cash" test account is also
+        // named "Наличные", so the uppercased label matches twice; the group
+        // slide (filter 'type:cash') renders before the per-account slide.
+        const cashFilterBtn = screen.getAllByText('НАЛИЧНЫЕ')[0].closest('div');
         fireEvent.click(cashFilterBtn);
 
         // Should show Coffee (cash) but NOT Salary (card)
