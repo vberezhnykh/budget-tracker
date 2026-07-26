@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import TransactionsDrawer from './TransactionsDrawer';
 
 const baseProps = {
@@ -69,7 +69,18 @@ function Wrapper({ initialExpanded = false, ...props }) {
     return <TransactionsDrawer expanded={expanded} setExpanded={setExpanded} {...baseProps} {...props} />;
 }
 
+// jsdom never lays anything out, so the sheet's offsetHeight is always 0.
+// Stub it to a realistic value so getTravel() (offsetHeight - PEEK_HEIGHT)
+// returns a non-zero travel distance for the drag tests to exercise.
+function stubSheetHeight(container, height = 800) {
+    Object.defineProperty(container, 'offsetHeight', { configurable: true, value: height });
+}
+
 describe('TransactionsDrawer Component', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
     it('is collapsed by default and the handle exposes aria-expanded="false"', () => {
         render(<Wrapper />);
         const handle = screen.getByRole('button', { name: 'Открыть список операций' });
@@ -91,6 +102,48 @@ describe('TransactionsDrawer Component', () => {
 
         const collapsedHandle = screen.getByRole('button', { name: 'Открыть список операций' });
         expect(collapsedHandle).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('expands when dragged past the commit threshold', () => {
+        render(<Wrapper />);
+
+        const sheet = screen.getByTestId('transactions-drawer');
+        stubSheetHeight(sheet, 800); // travel = 800 - 72 = 728
+
+        const handle = screen.getByRole('button', { name: 'Открыть список операций' });
+
+        const nowSpy = vi.spyOn(performance, 'now');
+        nowSpy.mockReturnValueOnce(0); // startTime, captured on pointerDown
+        fireEvent.pointerDown(handle, { pointerId: 1, clientY: 500 });
+        // Move up 300px - well past the 25% (182px) commit threshold.
+        fireEvent.pointerMove(handle, { pointerId: 1, clientY: 200 });
+        nowSpy.mockReturnValueOnce(1000); // elapsed, captured on pointerUp
+        fireEvent.pointerUp(handle, { pointerId: 1, clientY: 200 });
+
+        expect(screen.getByRole('button', { name: 'Закрыть список операций' })).toHaveAttribute('aria-expanded', 'true');
+    });
+
+    it('springs back to the starting state on a small drag that clears the tap threshold but not the commit threshold', () => {
+        render(<Wrapper />);
+
+        const sheet = screen.getByTestId('transactions-drawer');
+        stubSheetHeight(sheet, 800); // travel = 800 - 72 = 728
+
+        const handle = screen.getByRole('button', { name: 'Открыть список операций' });
+
+        const nowSpy = vi.spyOn(performance, 'now');
+        nowSpy.mockReturnValueOnce(0); // startTime, captured on pointerDown
+        fireEvent.pointerDown(handle, { pointerId: 1, clientY: 500 });
+        // Move up 20px - clears TAP_MAX_MOVEMENT (8px), so this isn't a tap,
+        // but is far short of the 25% (182px) commit-by-distance threshold.
+        fireEvent.pointerMove(handle, { pointerId: 1, clientY: 480 });
+        // A large elapsed time (1000ms) keeps velocity (20px / 1000ms = 0.02)
+        // well under the 0.5 px/ms commit-by-velocity threshold too, so
+        // real wall-clock jitter in the test can't accidentally commit it.
+        nowSpy.mockReturnValueOnce(1000); // elapsed, captured on pointerUp
+        fireEvent.pointerUp(handle, { pointerId: 1, clientY: 480 });
+
+        expect(screen.getByRole('button', { name: 'Открыть список операций' })).toHaveAttribute('aria-expanded', 'false');
     });
 
     it('renders the contextual title plain when no account filter is selected', () => {

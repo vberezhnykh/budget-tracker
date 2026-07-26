@@ -7,7 +7,6 @@ import { useRef } from 'react';
 //   translating the sheet down by (88vh - 72px).
 // - Expanded state is translateY(0).
 const PEEK_HEIGHT = 72;
-const SHEET_HEIGHT_VH = 0.88;
 const SNAP_TRANSITION = 'transform 0.28s ease';
 const TAP_MAX_MOVEMENT = 8; // px
 const TAP_MAX_DURATION = 250; // ms
@@ -28,12 +27,6 @@ export default function TransactionsDrawer({
   selectedCategory,
   selectedType,
   selectedAccount,
-  // Accepted per the component's documented prop contract, but no longer
-  // read directly here - the account/label mapping now lives solely in
-  // getAccountFilterLabel (shared with App.jsx's drawer title) so the two
-  // can never disagree.
-  // eslint-disable-next-line no-unused-vars
-  accounts,
   toggleCategoryFilter,
   setSelectedAccount,
   setSelectedType,
@@ -48,10 +41,18 @@ export default function TransactionsDrawer({
   const dragRef = useRef(null);
 
   // Travel distance (px) between the collapsed and expanded positions.
-  // Mirrors the CSS calc(88vh - 72px) offset used for the non-dragging case.
+  // Measured from the sheet's own rendered height rather than derived from
+  // window.innerHeight, because on iOS Safari those two disagree: the CSS
+  // `88vh` resolves against the large viewport (URL bar hidden), while
+  // window.innerHeight reports the current, possibly-smaller visual
+  // viewport (URL bar visible). Deriving travel from innerHeight would then
+  // under-translate the sheet when collapsing, leaving the peek strip
+  // taller than PEEK_HEIGHT. offsetHeight reflects however `88vh` actually
+  // resolved in this browser at this moment, so it can never disagree with
+  // the CSS transform used for the non-dragging case.
   const getTravel = () => {
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 0;
-    return Math.max(0, viewportHeight * SHEET_HEIGHT_VH - PEEK_HEIGHT);
+    const sheetHeight = sheetRef.current?.offsetHeight ?? 0;
+    return Math.max(0, sheetHeight - PEEK_HEIGHT);
   };
 
   const applyTransform = (translateY) => {

@@ -863,7 +863,6 @@ function App() {
         selectedCategory={selectedCategory}
         selectedType={selectedType}
         selectedAccount={selectedAccount}
-        accounts={accounts}
         toggleCategoryFilter={toggleCategoryFilter}
         setSelectedAccount={setSelectedAccount}
         setSelectedType={setSelectedType}
