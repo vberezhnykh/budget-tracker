@@ -16,7 +16,10 @@ const {
     buildHealthPayload,
     cookieOptions,
     createAuthMiddleware,
-    logStartupConfigStatus
+    logStartupConfigStatus,
+    isLoginRateLimited,
+    recordLoginFailure,
+    recordLoginSuccess
 } = require('./auth');
 require('dotenv').config();
 
@@ -24,7 +27,23 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 const isProduction = process.env.NODE_ENV === 'production';
-logStartupConfigStatus(isProduction);
+// Only ever intended for local development: explicitly opts an unconfigured
+// server into serving loopback-only requests instead of a 503. See
+// server/auth.js (createAuthMiddleware) for the loopback check that also
+// gates this, and server/.env.example for the full warning.
+const authDisabled = process.env.AUTH_DISABLED === 'true';
+logStartupConfigStatus(isProduction, authDisabled);
+
+// The app runs behind a reverse proxy (Render's load balancer) in
+// production, so the socket's remote address is the proxy, not the real
+// client. Trusting exactly one hop tells Express to derive req.ip from the
+// rightmost untrusted entry of X-Forwarded-For (i.e. the one the proxy
+// itself appended), rather than either using the proxy's own address or
+// naively trusting a client-suppliable header value outright. This is what
+// both the login rate limiter and the AUTH_DISABLED loopback check rely on
+// for req.ip to mean "the actual caller".
+app.set('trust proxy', 1);
+
 const allowedOrigins = [
     'http://localhost:5173',
     'http://127.0.0.1:5173'
@@ -71,13 +90,23 @@ app.use(cookieParser());
 // Auth gate for the API. Mounted before any route definitions (not after),
 // so it can't be bypassed by route ordering. Excludes /api/login (you need
 // to be able to reach it while unauthenticated) and /api/health (used by
-// uptime pings). See server/auth.js for the fail-closed/fail-open behavior
-// when APP_PASSWORD/SESSION_SECRET are missing.
-app.use(createAuthMiddleware(isProduction));
+// uptime pings). See server/auth.js for the fail-closed behavior when
+// APP_PASSWORD/SESSION_SECRET are missing or too weak, and for the
+// AUTH_DISABLED/loopback-only bypass.
+app.use(createAuthMiddleware(authDisabled));
 
 // ---- Auth ----
 
 app.post('/api/login', (req, res) => {
+    const clientIp = req.ip;
+
+    // Rate limit before touching config/credentials at all, so a locked-out
+    // IP can't use this endpoint to distinguish "unconfigured server" from
+    // "wrong password" either.
+    if (isLoginRateLimited(clientIp)) {
+        return res.status(429).json({ message: 'Слишком много попыток входа. Попробуйте позже.' });
+    }
+
     const { appPassword, sessionSecret, isConfigured } = getAuthConfig();
     if (!isConfigured) {
         return res.status(503).json({ message: 'Сервер не настроен: отсутствуют переменные окружения APP_PASSWORD/SESSION_SECRET.' });
@@ -85,10 +114,12 @@ app.post('/api/login', (req, res) => {
 
     const { password } = req.body || {};
     if (!checkPassword(password, appPassword)) {
+        recordLoginFailure(clientIp);
         return res.status(401).json({ message: 'Неверный пароль' });
     }
 
-    const token = createToken(sessionSecret);
+    recordLoginSuccess(clientIp);
+    const token = createToken(sessionSecret, appPassword);
     res.cookie(COOKIE_NAME, token, cookieOptions(isProduction, TOKEN_TTL_MS));
     res.json({ ok: true });
 });
@@ -373,22 +404,36 @@ app.get('/api/settings', async (req, res) => {
 });
 
 // Update settings, creating the single document on first save.
+//
+// monthlyLimit must be a finite, strictly positive number: Number.isNaN
+// alone lets through Infinity (e.g. JSON `1e999` parses to Infinity) and 0,
+// both of which make the frontend's limit percentage render as NaN% or
+// Infinity%. Number.isFinite rules out Infinity/-Infinity/NaN in one check;
+// `> 0` rules out zero and negatives. The Settings schema enforces the same
+// constraint at the model layer (see server/models/Settings.js) so it can't
+// be bypassed by any other write path either.
 app.put('/api/settings', async (req, res) => {
     try {
         const { monthlyLimit } = req.body;
         const parsedLimit = Number(monthlyLimit);
-        if (monthlyLimit === undefined || monthlyLimit === null || monthlyLimit === '' || Number.isNaN(parsedLimit) || parsedLimit < 0) {
+        if (monthlyLimit === undefined || monthlyLimit === null || monthlyLimit === '' || !Number.isFinite(parsedLimit) || parsedLimit <= 0) {
             return res.status(400).json({ message: 'Некорректное значение лимита' });
         }
 
-        let settings = await Settings.findOne();
-        if (!settings) {
-            settings = new Settings({ monthlyLimit: parsedLimit });
-        } else {
-            settings.monthlyLimit = parsedLimit;
-        }
-
-        const saved = await settings.save();
+        // Atomic upsert instead of findOne + new Settings(...): the previous
+        // read-then-write was not atomic, so two concurrent first writes
+        // could each find no document and each create one, leaving two
+        // singleton documents behind (a later read would then pick an
+        // arbitrary one). findOneAndUpdate with upsert performs the
+        // find-or-create as a single atomic operation at the database level.
+        // runValidators re-applies the schema validation above (which
+        // findOneAndUpdate skips by default) so the model-level constraint
+        // still holds on this write path.
+        const saved = await Settings.findOneAndUpdate(
+            {},
+            { monthlyLimit: parsedLimit },
+            { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
+        );
         res.json(saved);
     } catch (err) {
         res.status(400).json({ message: err.message });

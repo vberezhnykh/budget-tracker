@@ -7,7 +7,17 @@ const mongoose = require('mongoose');
 const SettingsSchema = new mongoose.Schema({
     monthlyLimit: {
         type: Number,
-        default: 7000
+        default: 7000,
+        // Must be a finite, strictly positive number - mirrors the
+        // Number.isFinite/> 0 check in the PUT /api/settings route, but
+        // enforced at the model layer too so no write path (present or
+        // future) can persist 0, a negative value, NaN, or Infinity (e.g.
+        // from JSON like `1e999`, which parses to Infinity and would
+        // otherwise render as "Infinity%" on the frontend's limit bar).
+        validate: {
+            validator: (v) => Number.isFinite(v) && v > 0,
+            message: 'monthlyLimit must be a finite number greater than 0'
+        }
     }
 });
 
