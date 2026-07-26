@@ -62,11 +62,15 @@ Element.prototype.scrollIntoView = vi.fn();
 // jsdom never lays anything out, so offsetLeft/offsetWidth/clientWidth are
 // always 0. Stub them on the carousel container and its slides so the
 // nearest-centre calculation in App.jsx has real numbers to work with.
-function stubCarouselGeometry(container, slideWidth = 300, gap = 12) {
+// A leading spacer (spacerWidth) plus one gap sits before slide 0 in the
+// real layout, so every slide's offsetLeft is pushed right by that amount -
+// mirror that here instead of assuming slide 0 starts at 0.
+function stubCarouselGeometry(container, slideWidth = 300, gap = 12, spacerWidth = 20) {
     Object.defineProperty(container, 'clientWidth', { configurable: true, value: slideWidth });
     const slideEls = Array.from(container.querySelectorAll('[data-carousel-slide]'));
+    const leadingInset = spacerWidth + gap;
     slideEls.forEach((el, i) => {
-        Object.defineProperty(el, 'offsetLeft', { configurable: true, value: i * (slideWidth + gap) });
+        Object.defineProperty(el, 'offsetLeft', { configurable: true, value: leadingInset + i * (slideWidth + gap) });
         Object.defineProperty(el, 'offsetWidth', { configurable: true, value: slideWidth });
     });
     return slideEls;
@@ -340,7 +344,10 @@ describe('App Integration Tests', () => {
         const targetIndex = 3;
         const slideWidth = 300;
         const gap = 12;
-        container.scrollLeft = targetIndex * (slideWidth + gap);
+        const spacerWidth = 20;
+        // Same leading inset stubCarouselGeometry applied to every slide's
+        // offsetLeft, so this scroll position still lands on slide 3 ("Карта").
+        container.scrollLeft = spacerWidth + gap + targetIndex * (slideWidth + gap);
 
         // The filter is only committed once scroll events stop arriving for
         // ~120ms (settle-debounce) - fake the timers driving that.

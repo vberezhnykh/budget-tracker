@@ -558,6 +558,20 @@ function App() {
             msOverflowStyle: 'none'
           }}
         >
+          {/* Leading spacer: with center snap-alignment there is no slack before
+              slide 0, so its centre snap position would need a negative scroll
+              offset (impossible). This spacer supplies that slack so slide 0
+              can still reach centre alignment at scrollLeft 0. Not a slide, so
+              no data-carousel-slide - getCarouselSlideElements() must not see it. */}
+          <div
+            aria-hidden="true"
+            style={{
+              flexGrow: 0,
+              flexShrink: 0,
+              flexBasis: 'max(0px, 6% - 12px)',
+              pointerEvents: 'none'
+            }}
+          />
           {slides.map((slide, index) => {
             const isActive = slide.filter === selectedAccount;
             return (
@@ -588,6 +602,17 @@ function App() {
               </div>
             );
           })}
+          {/* Trailing spacer: mirrors the leading one so the last slide has
+              equal slack after it and can also reach centre snap alignment. */}
+          <div
+            aria-hidden="true"
+            style={{
+              flexGrow: 0,
+              flexShrink: 0,
+              flexBasis: 'max(0px, 6% - 12px)',
+              pointerEvents: 'none'
+            }}
+          />
         </div>
 
         {/* Carousel dot indicators */}
