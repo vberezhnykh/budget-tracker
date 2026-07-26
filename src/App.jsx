@@ -3,6 +3,7 @@ import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, us
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
+import LoginScreen from './components/LoginScreen'
 import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer'
 import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
@@ -104,6 +105,13 @@ function App() {
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Auth: null = "don't know yet" (still checking / never asked), true =
+  // logged in, false = show the login screen. Deliberately not persisted to
+  // localStorage - the httpOnly session cookie is the only source of truth,
+  // and this state is just the UI's best current guess at what that cookie
+  // says, driven entirely by 401 responses from the API (see apiFetch below).
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
+
   // State for selected. Defaults to current month YYYY-MM
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [summaryView, setSummaryView] = useState('stats'); // 'stats' or 'analytics'
@@ -164,18 +172,26 @@ function App() {
 
   // Fetch data on mount
   useEffect(() => {
-    const initData = async () => {
-      try {
-        const loadedAccounts = await fetchAccounts();
-        await fetchTransactions(loadedAccounts);
-        await fetchCategories();
-      } catch (err) {
-        console.error('Initialization error:', err);
-        setIsLoading(false);
-      }
-    };
     initData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const initData = async () => {
+    try {
+      setIsLoading(true);
+      const loadedAccounts = await fetchAccounts();
+      // fetchAccounts returns null specifically when the request came back
+      // 401 - apiFetch already flipped isAuthenticated to false in that case,
+      // so there's nothing further to load until the user logs back in.
+      if (loadedAccounts === null) return;
+      setIsAuthenticated(true);
+      await fetchTransactions(loadedAccounts);
+      await fetchCategories();
+    } catch (err) {
+      console.error('Initialization error:', err);
+      setIsLoading(false);
+    }
+  };
 
   // Lock body scroll when a modal or the expanded history drawer is open.
   // The drawer's own list still scrolls - it's inside the fixed sheet with
@@ -201,9 +217,25 @@ function App() {
     };
   }, []);
 
+  // Thin fetch wrapper used for every /api/* call. A 401 means the session
+  // cookie is missing/expired - flip to the login screen right away rather
+  // than letting each call site duplicate that check. This is the single
+  // place that drives isAuthenticated back to false mid-session.
+  const apiFetch = async (url, options) => {
+    const res = await fetch(url, options);
+    if (res.status === 401) {
+      setIsAuthenticated(false);
+    }
+    return res;
+  };
+
   const fetchAccounts = async () => {
     try {
-      const res = await fetch(ACCOUNTS_URL);
+      const res = await apiFetch(ACCOUNTS_URL);
+      if (res.status === 401) {
+        setIsLoading(false);
+        return null;
+      }
       const data = await res.json();
       setAccounts(data);
       return data;
@@ -215,7 +247,7 @@ function App() {
 
   const fetchTransactions = async (currentAccounts) => {
     try {
-      const res = await fetch(API_URL);
+      const res = await apiFetch(API_URL);
       if (!res.ok) throw new Error('Failed to fetch transactions');
       const data = await res.json();
       const accountsList = currentAccounts || accountsRef.current;
@@ -229,7 +261,7 @@ function App() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch(CATEGORIES_URL);
+      const res = await apiFetch(CATEGORIES_URL);
       const data = await res.json();
       setCategories(data);
     } catch (err) {
@@ -239,7 +271,7 @@ function App() {
 
   const handleAddCategory = async (name, type) => {
     try {
-      const res = await fetch(CATEGORIES_URL, {
+      const res = await apiFetch(CATEGORIES_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, type })
@@ -448,7 +480,7 @@ function App() {
 
   const handleAddTransaction = async (newTx) => {
     try {
-      const res = await fetch(API_URL, {
+      const res = await apiFetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTx)
@@ -460,7 +492,7 @@ function App() {
 
   const handleUpdateTransaction = async (updatedTx) => {
     try {
-      const res = await fetch(`${API_URL}/${updatedTx.id}`, {
+      const res = await apiFetch(`${API_URL}/${updatedTx.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedTx)
@@ -473,7 +505,7 @@ function App() {
   const handleDeleteTransaction = async (id, splitId = null) => {
     try {
       const url = splitId ? `${API_URL}/${id}?splitId=${splitId}` : `${API_URL}/${id}`;
-      const res = await fetch(url, { method: 'DELETE' });
+      const res = await apiFetch(url, { method: 'DELETE' });
       if (res.ok) {
         fetchTransactions();
         setEditingTransaction(null);
@@ -488,13 +520,13 @@ function App() {
     try {
       let res;
       if (editingAccountId) {
-        res = await fetch(`${ACCOUNTS_URL}/${editingAccountId}`, {
+        res = await apiFetch(`${ACCOUNTS_URL}/${editingAccountId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: formName, icon: formIcon })
         });
       } else {
-        res = await fetch(ACCOUNTS_URL, {
+        res = await apiFetch(ACCOUNTS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ name: formName, type: formType, icon: formIcon })
@@ -521,7 +553,7 @@ function App() {
     if (!confirm(`Вы уверены, что хотите удалить счёт "${name}"?`)) return;
 
     try {
-      const res = await fetch(`${ACCOUNTS_URL}/${id}`, { method: 'DELETE' });
+      const res = await apiFetch(`${ACCOUNTS_URL}/${id}`, { method: 'DELETE' });
       if (res.ok) {
         const freshAccounts = await fetchAccounts();
         await fetchTransactions(freshAccounts);
@@ -531,6 +563,22 @@ function App() {
       }
     } catch (err) {
       console.error('Delete account error:', err);
+    }
+  };
+
+  // Logout lives in the "Управление счетами" settings modal rather than as
+  // new chrome on the main screen. The POST clears the httpOnly cookie
+  // server-side; either way (success or network failure) we drop straight
+  // to the login screen, since staying "logged in" client-side while the
+  // cookie may already be gone would just be a broken UI.
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
+      setShowAccountsSettings(false);
+      setIsAuthenticated(false);
     }
   };
 
@@ -577,7 +625,14 @@ function App() {
   const isPrevDisabled = selectedMonth === '2025-11';
   const isNextDisabled = selectedMonth === new Date().toISOString().slice(0, 7);
 
-  if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#fff' }}>Загрузка...</div>;
+  // isAuthenticated === false is the one state that always wins: a 401 mid-
+  // session (expired/cleared cookie) must return the user to the login
+  // screen even if data from before is still sitting in state.
+  if (isAuthenticated === false) {
+    return <LoginScreen onSuccess={() => { setIsAuthenticated(null); initData(); }} />;
+  }
+
+  if (isLoading || isAuthenticated === null) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#fff' }}>Загрузка...</div>;
 
   return (
     <div className="layout-container">
@@ -1158,6 +1213,25 @@ function App() {
                 </DndContext>
               </div>
             </div>
+
+            {/* Session: the only place a logout control lives - deliberately
+                not added as new chrome on the main screen. */}
+            <button
+              type="button"
+              onClick={handleLogout}
+              style={{
+                background: 'rgba(239, 68, 68, 0.08)',
+                border: 'none',
+                borderRadius: '12px',
+                color: '#ef4444',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: '600',
+                padding: '10px'
+              }}
+            >
+              Выйти
+            </button>
           </div>
         </div>
       )}

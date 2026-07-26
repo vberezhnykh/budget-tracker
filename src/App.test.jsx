@@ -610,3 +610,101 @@ describe('handleAccountDragEnd', () => {
         consoleSpy.mockRestore();
     });
 });
+
+// Authentication: App drives its unauthenticated/authenticated state purely
+// off 401 responses from the API (never localStorage - the session cookie
+// is httpOnly, so JS can't read it either way). Each test here stubs its own
+// fetch implementation rather than relying on the shared one above, since
+// the shared mock always answers /api/accounts with 200.
+describe('Authentication flow', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    const authAccounts = [
+        { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true }
+    ];
+
+    it('shows the login screen when the initial accounts fetch comes back 401', async () => {
+        vi.stubGlobal('fetch', vi.fn((url) => {
+            if (typeof url === 'string' && url.includes('/api/accounts')) {
+                return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ message: 'Не авторизован' }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }));
+
+        render(<App />);
+
+        await waitFor(() => {
+            expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
+        });
+        // The login screen has its own "BudgetTracker" heading, so assert on
+        // something that only exists in the authenticated main UI instead.
+        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+    });
+
+    it('reveals the app after a successful login', async () => {
+        let authenticated = false;
+        vi.stubGlobal('fetch', vi.fn((url) => {
+            if (typeof url === 'string' && url.includes('/api/login')) {
+                authenticated = true;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+            }
+            if (typeof url === 'string' && url.includes('/api/accounts')) {
+                if (!authenticated) {
+                    return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ message: 'Не авторизован' }) });
+                }
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(authAccounts) });
+            }
+            if (typeof url === 'string' && url.includes('/api/categories')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }));
+
+        render(<App />);
+
+        await waitFor(() => screen.getByLabelText('Пароль'));
+
+        fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'family-secret' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('BudgetTracker')).toBeInTheDocument();
+        }, { timeout: 3000 });
+        expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument();
+    });
+
+    it('returns to the login screen when a mid-session request comes back 401 (expired/cleared session)', async () => {
+        let accountsCallCount = 0;
+        vi.stubGlobal('fetch', vi.fn((url) => {
+            if (typeof url === 'string' && url.includes('/api/accounts')) {
+                accountsCallCount += 1;
+                // First call (initial load) succeeds; every call after that
+                // simulates the session having expired in the meantime.
+                if (accountsCallCount === 1) {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve(authAccounts) });
+                }
+                return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ message: 'Не авторизован' }) });
+            }
+            if (typeof url === 'string' && url.includes('/api/categories')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }));
+
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Any authenticated-looking screen still needs a live session for
+        // further calls - saving a new account here is what hits /api/accounts
+        // again and discovers the session is gone.
+        fireEvent.click(screen.getByTitle('Управление счетами'));
+        fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Новый счёт' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
+
+        await waitFor(() => {
+            expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
+        });
+    });
+});

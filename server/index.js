@@ -1,16 +1,28 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 const Transaction = require('./models/Transaction');
 const Category = require('./models/Category');
 const Account = require('./models/Account');
+const {
+    COOKIE_NAME,
+    TOKEN_TTL_MS,
+    checkPassword,
+    createToken,
+    getAuthConfig,
+    cookieOptions,
+    createAuthMiddleware,
+    logStartupConfigStatus
+} = require('./auth');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 const isProduction = process.env.NODE_ENV === 'production';
+logStartupConfigStatus(isProduction);
 const allowedOrigins = [
     'http://localhost:5173',
     'http://127.0.0.1:5173'
@@ -52,6 +64,37 @@ const corsOptionsDelegate = function (req, callback) {
 };
 app.use(cors(corsOptionsDelegate));
 app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
+
+// Auth gate for the API. Mounted before any route definitions (not after),
+// so it can't be bypassed by route ordering. Excludes /api/login (you need
+// to be able to reach it while unauthenticated) and /api/health (used by
+// uptime pings). See server/auth.js for the fail-closed/fail-open behavior
+// when APP_PASSWORD/SESSION_SECRET are missing.
+app.use(createAuthMiddleware(isProduction));
+
+// ---- Auth ----
+
+app.post('/api/login', (req, res) => {
+    const { appPassword, sessionSecret, isConfigured } = getAuthConfig();
+    if (!isConfigured) {
+        return res.status(503).json({ message: 'Сервер не настроен: отсутствуют переменные окружения APP_PASSWORD/SESSION_SECRET.' });
+    }
+
+    const { password } = req.body || {};
+    if (!checkPassword(password, appPassword)) {
+        return res.status(401).json({ message: 'Неверный пароль' });
+    }
+
+    const token = createToken(sessionSecret);
+    res.cookie(COOKIE_NAME, token, cookieOptions(isProduction, TOKEN_TTL_MS));
+    res.json({ ok: true });
+});
+
+app.post('/api/logout', (req, res) => {
+    res.clearCookie(COOKIE_NAME, cookieOptions(isProduction));
+    res.json({ ok: true });
+});
 
 // Database Connection
 const dbOptions = !isProduction ? { dbName: 'budget-tracker-dev' } : {};
