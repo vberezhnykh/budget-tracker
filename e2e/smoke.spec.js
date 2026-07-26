@@ -222,4 +222,53 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 2);
     }
   });
+
+  test('carousel dot hit areas tile without overlapping', async ({ page }) => {
+    // The dots' hit areas were enlarged to 40x40px (from a visual 6px dot in
+    // a 22px footprint) via a negative margin on all sides, to keep the
+    // row's own size unchanged. That works vertically (no vertical
+    // neighbours to overlap), but horizontally it made adjacent 40px boxes
+    // overlap by 18px - and in the overlap, the later sibling in DOM order
+    // wins pointer events, so tapping slightly right of a dot's visible
+    // centre selected the *next* account instead. This asserts, from real
+    // rendered geometry, that adjacent dots' hit boxes never overlap and
+    // that every dot's own visible marker sits inside its own hit box.
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    const dots = page.locator('button[aria-label^="Показать"]');
+    const count = await dots.count();
+    expect(count).toBe(accounts.length + 1);
+
+    const boxes = [];
+    for (let i = 0; i < count; i++) {
+      const box = await dots.nth(i).boundingBox();
+      expect(box).not.toBeNull();
+      boxes.push(box);
+
+      // The visible marker must fall inside its own button's box - not
+      // pulled outside it by the hit-area enlargement.
+      const markerBox = await dots.nth(i).locator('span').boundingBox();
+      expect(markerBox).not.toBeNull();
+      expect(markerBox.x).toBeGreaterThanOrEqual(box.x);
+      expect(markerBox.y).toBeGreaterThanOrEqual(box.y);
+      expect(markerBox.x + markerBox.width).toBeLessThanOrEqual(box.x + box.width);
+      expect(markerBox.y + markerBox.height).toBeLessThanOrEqual(box.y + box.height);
+    }
+
+    // Adjacent dots (in DOM order) must not overlap horizontally when on the
+    // same row - an overlap means the later sibling's box paints over the
+    // earlier sibling's visible dot, so pointer events in the shared region
+    // always resolve to the later one, regardless of which dot the user
+    // actually meant to tap.
+    for (let i = 0; i < boxes.length - 1; i++) {
+      const a = boxes[i];
+      const b = boxes[i + 1];
+      const sameRow = Math.abs(a.y - b.y) < 1;
+      if (sameRow) {
+        expect(a.x + a.width).toBeLessThanOrEqual(b.x + 0.5);
+      }
+    }
+  });
 });

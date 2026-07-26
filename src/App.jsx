@@ -829,14 +829,21 @@ function App() {
                 aria-current={isActive}
                 style={{
                   flexShrink: 0,
-                  // Dot's own footprint stays 22px (so row height/spacing/
-                  // wrapping are unaffected), but the hit target is enlarged
-                  // to 40px via negative margin - the box grows to 40x40 while
-                  // the -9px margin (half of 40-22) pulls it back to occupying
-                  // exactly the original 22x22 in the surrounding flex layout.
+                  // Hit target is enlarged to 40x40 for touch, but only the
+                  // vertical margin is pulled back with a negative value -
+                  // there are no vertical neighbours, so that can't overlap
+                  // anything and keeps the row from growing taller. The
+                  // horizontal margin is left at 0 so adjacent 40px boxes
+                  // tile edge-to-edge instead of overlapping (a negative
+                  // horizontal margin here made a wider dot's box paint over
+                  // its neighbour, so taps meant for one dot's visible
+                  // marker landed on the next dot instead). The row is
+                  // wider as a result and may wrap (flexWrap: 'wrap' above
+                  // already handles that) - that's an acceptable trade for
+                  // correct tap targeting.
                   width: '40px',
                   height: '40px',
-                  margin: '-9px',
+                  margin: '-9px 0',
                   padding: 0,
                   display: 'flex',
                   alignItems: 'center',
