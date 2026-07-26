@@ -187,8 +187,11 @@ describe('App Integration Tests', () => {
 
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        // Find Rent transaction and click it
-        const rentTx = screen.getByText('Monthly flat rent');
+        // Each editable row exposes a full-row button (see the accessible
+        // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
+        // than the row div itself carrying the click handler, so it's found
+        // by its accessible name instead of the inner text node.
+        const rentTx = screen.getByRole('button', { name: /Monthly flat rent/ });
         fireEvent.click(rentTx);
 
         // Find delete button and click it
@@ -230,9 +233,11 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
         render(<App />);
 
-        // Open split sub-item by clicking its amount (use index 1 because index 0 is the group total)
+        // Open split sub-item via its full-row button (see the accessible
+        // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
+        // than clicking its amount text directly.
         await waitFor(() => screen.getAllByText('€50.00'));
-        fireEvent.click(screen.getAllByText('€50.00')[1]);
+        fireEvent.click(screen.getByRole('button', { name: /Grouped \(Разделено\)/ }));
 
         // Wait for modal to open (find delete button)
         const deleteBtn = await screen.findByText('🗑');
@@ -469,6 +474,137 @@ describe('App Integration Tests', () => {
         });
         expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'true');
     });
+
+    // Finding 3: a non-ok response (or one whose body isn't actually an
+    // array - e.g. the 503 an unconfigured server returns, `{ message }`
+    // instead of a list) used to get assigned straight into state, and the
+    // later `.map(...)` over it threw, tripping the error boundary. It must
+    // instead surface the server's own message via the notice banner and
+    // leave state alone, rather than crashing or staying silently blank.
+    it('shows the server message via the notice banner instead of crashing when /api/accounts responds with a non-array body', async () => {
+        vi.stubGlobal('fetch', vi.fn((url) => {
+            if (typeof url === 'string' && url.includes('/api/accounts')) {
+                return Promise.resolve({
+                    ok: false,
+                    status: 503,
+                    json: () => Promise.resolve({ message: 'Сервер не настроен: отсутствуют переменные окружения APP_PASSWORD/SESSION_SECRET.' })
+                });
+            }
+            if (typeof url === 'string' && url.includes('/api/categories')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }));
+
+        render(<App />);
+
+        // Must not crash into the error boundary's generic screen, and must
+        // show the server's own message rather than staying blank.
+        await waitFor(() => {
+            expect(screen.getByText(/Сервер не настроен/)).toBeInTheDocument();
+        });
+        expect(screen.getByText('BudgetTracker')).toBeInTheDocument();
+
+        vi.unstubAllGlobals();
+    });
+
+    // Finding 4: the server now rejects saving a non-finite/non-positive
+    // monthlyLimit, but a stale value could still be sitting in the settings
+    // document from before that validation existed. fetchSettings' own guard
+    // (typeof === 'number' && !isNaN) lets a legitimate-looking 0 through, so
+    // the render-side guard is what actually has to catch it here.
+    it('renders 0% and a collapsed bar instead of NaN%/Infinity% when the stored monthly limit is not usable', async () => {
+        vi.stubGlobal('fetch', vi.fn((url) => {
+            if (typeof url === 'string' && url.includes('/api/settings')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ monthlyLimit: 0 }) });
+            }
+            if (typeof url === 'string' && url.includes('/api/accounts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(currentAccounts) });
+            }
+            if (typeof url === 'string' && url.includes('/api/categories')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve(currentTransactions) });
+        }));
+
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        expect(screen.queryByText(/NaN%/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Infinity%/)).not.toBeInTheDocument();
+        expect(screen.getByText('0%')).toBeInTheDocument();
+
+        vi.unstubAllGlobals();
+    });
+
+    // Finding 1: logout must only switch the UI to the logged-out state once
+    // the server has actually confirmed the session cookie is cleared. This
+    // is nested here (rather than a sibling describe) so it inherits the
+    // shared beforeEach that renders the ordinary authenticated app and
+    // stubs `fetch` with fetchMock - the "Управление счетами" panel and its
+    // "Выйти" button need that same authenticated state to be reachable.
+    describe('Logout', () => {
+        it('keeps the authenticated state and reports the failure via the notice banner when /api/logout fails', async () => {
+            render(<App />);
+            await waitFor(() => screen.getByText('BudgetTracker'));
+
+            const baseMock = fetchMock;
+            vi.stubGlobal('fetch', vi.fn((url, options) => {
+                if (typeof url === 'string' && url.includes('/api/logout')) {
+                    return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ message: 'boom' }) });
+                }
+                return baseMock(url, options);
+            }));
+
+            fireEvent.click(screen.getByTitle('Управление счетами'));
+            fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
+
+            await waitFor(() => {
+                expect(screen.getByRole('alert')).toBeInTheDocument();
+            });
+            // Still authenticated: the main UI is showing, not the login screen -
+            // a stale cookie left over from a failed logout must not look like a
+            // successful one.
+            expect(screen.getByTestId('balance-carousel')).toBeInTheDocument();
+            expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument();
+        });
+
+        it('drops to the login screen once /api/logout actually confirms success', async () => {
+            render(<App />);
+            await waitFor(() => screen.getByText('BudgetTracker'));
+
+            fireEvent.click(screen.getByTitle('Управление счетами'));
+            fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
+
+            await waitFor(() => {
+                expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
+            });
+        });
+
+        it('reports a network failure via the notice banner and stays authenticated', async () => {
+            render(<App />);
+            await waitFor(() => screen.getByText('BudgetTracker'));
+
+            const baseMock = fetchMock;
+            vi.stubGlobal('fetch', vi.fn((url, options) => {
+                if (typeof url === 'string' && url.includes('/api/logout')) {
+                    return Promise.reject(new Error('network down'));
+                }
+                return baseMock(url, options);
+            }));
+            const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+            fireEvent.click(screen.getByTitle('Управление счетами'));
+            fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
+
+            await waitFor(() => {
+                expect(screen.getByRole('alert')).toBeInTheDocument();
+            });
+            expect(screen.getByTestId('balance-carousel')).toBeInTheDocument();
+
+            consoleSpy.mockRestore();
+        });
+    });
 });
 
 // computeAccountReorder is the pure piece of the drag-to-reorder feature: it
@@ -535,6 +671,12 @@ describe('computeAccountReorder', () => {
 // rollback on failure) can be exercised directly - a real pointer or
 // keyboard drag isn't reproducible in jsdom because dnd-kit's sensors rely
 // on layout measurements (getBoundingClientRect) that jsdom never provides.
+//
+// It now persists through an injected `apiFetch` (App.jsx passes its own
+// 401-aware wrapper) rather than reaching for the raw global `fetch`, so
+// these tests supply their own `apiFetch` mock directly instead of stubbing
+// the global - exercising the injection itself, not just falling back to
+// the default parameter.
 describe('handleAccountDragEnd', () => {
     const baseAccounts = [
         { _id: 'a', name: 'A', order: 0 },
@@ -542,24 +684,20 @@ describe('handleAccountDragEnd', () => {
         { _id: 'c', name: 'C', order: 2 }
     ];
 
-    afterEach(() => {
-        vi.unstubAllGlobals();
-    });
-
     it('updates state optimistically and PUTs only the changed accounts with their new order', async () => {
         const puts = [];
-        vi.stubGlobal('fetch', vi.fn((url, options) => {
+        const apiFetch = vi.fn((url, options) => {
             if (options?.method === 'PUT') {
                 puts.push({ url, body: JSON.parse(options.body) });
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-        }));
+        });
         const setAccounts = vi.fn();
 
         await handleAccountDragEnd(
             { active: { id: 'a' }, over: { id: 'c' } },
-            { accounts: baseAccounts, setAccounts }
+            { accounts: baseAccounts, setAccounts, apiFetch }
         );
 
         // Optimistic update: state was set once, synchronously, to the reordered list.
@@ -568,7 +706,7 @@ describe('handleAccountDragEnd', () => {
         expect(optimistic.map(a => a._id)).toEqual(['b', 'c', 'a']);
 
         // All three accounts shifted by this particular move, so all three were PUT -
-        // each with only an `order` body, to its own id.
+        // each with only an `order` body, to its own id - through the injected apiFetch.
         expect(puts.length).toBe(3);
         expect(puts.map(p => p.url).sort()).toEqual(
             ['/api/accounts/a', '/api/accounts/b', '/api/accounts/c'].sort()
@@ -580,21 +718,20 @@ describe('handleAccountDragEnd', () => {
     });
 
     it('sends no request and does not touch state when the drop is a no-op', async () => {
-        const fetchMock = vi.fn();
-        vi.stubGlobal('fetch', fetchMock);
+        const apiFetch = vi.fn();
         const setAccounts = vi.fn();
 
         await handleAccountDragEnd(
             { active: { id: 'a' }, over: { id: 'a' } },
-            { accounts: baseAccounts, setAccounts }
+            { accounts: baseAccounts, setAccounts, apiFetch }
         );
 
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(apiFetch).not.toHaveBeenCalled();
         expect(setAccounts).not.toHaveBeenCalled();
     });
 
     it('rolls back to the previous order and reports the error via onError when a PUT is rejected', async () => {
-        vi.stubGlobal('fetch', vi.fn((url, options) => {
+        const apiFetch = vi.fn((url, options) => {
             if (options?.method === 'PUT' && url.endsWith('/b')) {
                 return Promise.resolve({ ok: false, json: () => Promise.resolve({ message: 'Save failed' }) });
             }
@@ -602,13 +739,13 @@ describe('handleAccountDragEnd', () => {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
-        }));
+        });
         const setAccounts = vi.fn();
         const onError = vi.fn();
 
         await handleAccountDragEnd(
             { active: { id: 'a' }, over: { id: 'c' } },
-            { accounts: baseAccounts, setAccounts, onError }
+            { accounts: baseAccounts, setAccounts, apiFetch, onError }
         );
 
         // First call is the optimistic reorder, second (last) call rolls it back
@@ -621,12 +758,12 @@ describe('handleAccountDragEnd', () => {
 
     it('rolls back and logs when the request throws (network failure)', async () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('network down'))));
+        const apiFetch = vi.fn(() => Promise.reject(new Error('network down')));
         const setAccounts = vi.fn();
 
         await handleAccountDragEnd(
             { active: { id: 'a' }, over: { id: 'c' } },
-            { accounts: baseAccounts, setAccounts }
+            { accounts: baseAccounts, setAccounts, apiFetch }
         );
 
         expect(setAccounts).toHaveBeenCalledTimes(2);
@@ -634,6 +771,24 @@ describe('handleAccountDragEnd', () => {
         expect(consoleSpy).toHaveBeenCalled();
 
         consoleSpy.mockRestore();
+    });
+
+    it('persists through the App-supplied apiFetch wrapper, not the raw global fetch (keeps 401 handling consistent with every other mutation)', async () => {
+        const globalFetch = vi.fn();
+        vi.stubGlobal('fetch', globalFetch);
+
+        const apiFetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) }));
+        const setAccounts = vi.fn();
+
+        await handleAccountDragEnd(
+            { active: { id: 'a' }, over: { id: 'c' } },
+            { accounts: baseAccounts, setAccounts, apiFetch }
+        );
+
+        expect(apiFetch).toHaveBeenCalled();
+        expect(globalFetch).not.toHaveBeenCalled();
+
+        vi.unstubAllGlobals();
     });
 });
 

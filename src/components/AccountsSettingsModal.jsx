@@ -138,11 +138,17 @@ export default function AccountsSettingsModal({
     if (ok) resetForm();
   };
 
+  // Mirrors the server's own validation (see PUT /api/settings in
+  // server/index.js): the limit must be a finite, strictly positive number.
+  // Number.isFinite rules out NaN and +/-Infinity (e.g. a stray "1e999") in
+  // one check; `<= 0` rules out zero and negatives. Without this, a bad
+  // value could reach onSaveSettings and later render as NaN%/Infinity% in
+  // the limit progress bar.
   const handleSaveLimit = async (e) => {
     e.preventDefault();
     const parsed = Number(limitInput);
-    if (!limitInput.trim() || Number.isNaN(parsed) || parsed < 0) {
-      showNotice('Введите корректный лимит (неотрицательное число)');
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      showNotice('Введите корректный лимит (положительное число)');
       return;
     }
     const ok = await onSaveSettings(parsed);

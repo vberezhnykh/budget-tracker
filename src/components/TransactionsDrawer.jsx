@@ -60,8 +60,11 @@ export default function TransactionsDrawer({
     return item.category ? `${name}, ${item.category}, ${amount}` : `${name}, ${amount}`;
   };
 
-  // Enter/Space activate a row exactly like a click - Space is prevented
-  // from also scrolling the drawer's list.
+  // Enter/Space activate a target (a row's overlay button, or a category
+  // filter span) exactly like a click - Space is prevented from also
+  // scrolling the drawer's list. The row overlays below are real <button>s,
+  // so they get this for free; it's still needed for the category filter
+  // spans (role="button"), which have no native keyboard handling.
   const handleRowKeyDown = (e, onActivate) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -403,15 +406,34 @@ export default function TransactionsDrawer({
                           </span>
                         )}
                       </div>
-                      {searchResults.transactions[date].items.map(item => (
+                      {searchResults.transactions[date].items.map(item => {
+                        // openEditModal() deliberately no-ops for seeded
+                        // 'initial' transactions - a focusable, clickable
+                        // control that does nothing is worse than not
+                        // exposing one, so those rows get no row-level
+                        // button at all (see the non-search view below for
+                        // the same rule).
+                        const isEditable = item.type !== 'initial';
+                        return (
                         <div
                           key={item.id}
-                          role="button"
-                          tabIndex={0}
-                          aria-label={getTransactionAriaLabel(item)}
-                          onClick={() => openEditModal(item)}
-                          onKeyDown={(e) => handleRowKeyDown(e, () => openEditModal(item))}
-                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
+                          style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
+                          {isEditable && (
+                            // Full-row "stretched" button: a plain <div role="button">
+                            // wrapping the whole row (the previous shape) would make
+                            // the category filter below an interactive element nested
+                            // inside another one - invalid regardless of keyboard
+                            // reachability. This overlay provides the row's click/
+                            // keyboard affordance without being an ancestor of the
+                            // category control (see its position: relative + z-index,
+                            // which lifts it back above this overlay).
+                            <button
+                              type="button"
+                              aria-label={getTransactionAriaLabel(item)}
+                              onClick={() => openEditModal(item)}
+                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', margin: 0, padding: 0, border: 'none', background: 'none', cursor: 'pointer', zIndex: 0 }}
+                            />
+                          )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                             <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                               {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
@@ -426,11 +448,11 @@ export default function TransactionsDrawer({
                                   <>
                                     {' • '}
                                     <span
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleCategoryFilter(item.category);
-                                      }}
-                                      style={{ color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => toggleCategoryFilter(item.category)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, () => toggleCategoryFilter(item.category))}
+                                      style={{ position: 'relative', zIndex: 1, color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
                                     >
                                       {item.category}
                                     </span>
@@ -443,7 +465,8 @@ export default function TransactionsDrawer({
                             {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ))
                 )
@@ -485,23 +508,29 @@ export default function TransactionsDrawer({
                               {/* Sub-items */}
                               <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
                                 {item.items.map(subItem => (
+                                  // Split sub-items are never seeded 'initial' transactions
+                                  // (those aren't split), so unlike the top-level rows below
+                                  // this one is always editable - only the nesting fix
+                                  // (stretched overlay button + separately focusable
+                                  // category control) applies here.
                                   <div
                                     key={subItem.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    aria-label={`${item.description} (Разделено): ${getTransactionAriaLabel(subItem)}`}
-                                    onClick={() => openEditModal(subItem)}
-                                    onKeyDown={(e) => handleRowKeyDown(e, () => openEditModal(subItem))}
-                                    style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
-                                    <div
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleCategoryFilter(subItem.category);
-                                      }}
-                                      style={{ color: selectedCategory === subItem.category ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: selectedCategory === subItem.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                                    style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
+                                    <button
+                                      type="button"
+                                      aria-label={`${item.description} (Разделено): ${getTransactionAriaLabel(subItem)}`}
+                                      onClick={() => openEditModal(subItem)}
+                                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', margin: 0, padding: 0, border: 'none', background: 'none', cursor: 'pointer', zIndex: 0 }}
+                                    />
+                                    <span
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => toggleCategoryFilter(subItem.category)}
+                                      onKeyDown={(e) => handleRowKeyDown(e, () => toggleCategoryFilter(subItem.category))}
+                                      style={{ position: 'relative', zIndex: 1, color: selectedCategory === subItem.category ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: selectedCategory === subItem.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
                                     >
                                       {subItem.category}
-                                    </div>
+                                    </span>
                                     <div style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-main)' }}>
                                       €{Math.abs(subItem.visualAmount).toFixed(2)}
                                     </div>
@@ -512,15 +541,26 @@ export default function TransactionsDrawer({
                           );
                         }
 
+                        // openEditModal() deliberately no-ops for seeded 'initial'
+                        // transactions - a focusable, clickable control that does
+                        // nothing is worse than not exposing one, so those rows get
+                        // no row-level button, tabIndex, or click/keyboard handler.
+                        const isEditable = item.type !== 'initial';
                         return (
                           <div
                             key={item.id}
-                            role="button"
-                            tabIndex={0}
-                            aria-label={getTransactionAriaLabel(item)}
-                            onClick={() => openEditModal(item)}
-                            onKeyDown={(e) => handleRowKeyDown(e, () => openEditModal(item))}
-                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
+                            style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
+                            {isEditable && (
+                              // Full-row "stretched" button, kept out of the category
+                              // control's ancestry - see the search-results view above
+                              // for the full rationale.
+                              <button
+                                type="button"
+                                aria-label={getTransactionAriaLabel(item)}
+                                onClick={() => openEditModal(item)}
+                                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', margin: 0, padding: 0, border: 'none', background: 'none', cursor: 'pointer', zIndex: 0 }}
+                              />
+                            )}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                               <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                                 {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
@@ -535,11 +575,11 @@ export default function TransactionsDrawer({
                                     <>
                                       {' • '}
                                       <span
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          toggleCategoryFilter(item.category);
-                                        }}
-                                        style={{ color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => toggleCategoryFilter(item.category)}
+                                        onKeyDown={(e) => handleRowKeyDown(e, () => toggleCategoryFilter(item.category))}
+                                        style={{ position: 'relative', zIndex: 1, color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
                                       >
                                         {item.category}
                                       </span>

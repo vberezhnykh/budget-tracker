@@ -69,7 +69,7 @@ function App() {
   }, []);
 
   const onAccountDragEnd = (event) => {
-    handleAccountDragEnd(event, { accounts: accountsRef.current, setAccounts, apiUrl: ACCOUNTS_URL, onError: showNotice });
+    handleAccountDragEnd(event, { accounts: accountsRef.current, setAccounts, apiUrl: ACCOUNTS_URL, apiFetch, onError: showNotice });
   };
 
   // Balance carousel refs:
@@ -112,7 +112,11 @@ function App() {
       const loadedAccounts = await fetchAccounts();
       // fetchAccounts returns null specifically when the request came back
       // 401 - apiFetch already flipped isAuthenticated to false in that case,
-      // so there's nothing further to load until the user logs back in.
+      // so there's nothing further to load until the user logs back in. Any
+      // other failure (e.g. a 503 from unconfigured auth) already reported
+      // itself via showNotice and returns undefined, not null - initData
+      // falls through and still renders the main UI (with empty data) rather
+      // than getting stuck on the loading screen forever.
       if (loadedAccounts === null) return;
       setIsAuthenticated(true);
       await fetchTransactions(loadedAccounts);
@@ -160,6 +164,16 @@ function App() {
     return res;
   };
 
+  // Guards against two failure shapes that used to fall straight into
+  // setState: a non-ok response (e.g. the 503 the server returns with a
+  // Russian message when its auth config is missing) whose JSON body is
+  // `{ message }` rather than the expected array, and any other response
+  // that parses but isn't actually an array. Either one used to get stored
+  // as-is, and the later `.map(...)` over it threw - tripping the error
+  // boundary and showing the generic crash screen instead of anything
+  // actionable. Reported through showNotice so there's a comprehensible
+  // message instead of a blank/crashed app; existing state is left alone
+  // rather than clobbered with the bad payload.
   const fetchAccounts = async () => {
     try {
       const res = await apiFetch(ACCOUNTS_URL);
@@ -167,7 +181,12 @@ function App() {
         setIsLoading(false);
         return null;
       }
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(data)) {
+        showNotice((data && data.message) || 'Не удалось загрузить счета');
+        setIsLoading(false);
+        return undefined;
+      }
       setAccounts(data);
       return data;
     } catch (err) {
@@ -179,8 +198,16 @@ function App() {
   const fetchTransactions = async (currentAccounts) => {
     try {
       const res = await apiFetch(API_URL);
-      if (!res.ok) throw new Error('Failed to fetch transactions');
-      const data = await res.json();
+      if (res.status === 401) {
+        setIsLoading(false);
+        return;
+      }
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(data)) {
+        showNotice((data && data.message) || 'Не удалось загрузить операции');
+        setIsLoading(false);
+        return;
+      }
       const accountsList = currentAccounts || accountsRef.current;
       setTransactions(transformTransactions(data, accountsList));
       setIsLoading(false);
@@ -193,7 +220,12 @@ function App() {
   const fetchCategories = async () => {
     try {
       const res = await apiFetch(CATEGORIES_URL);
-      const data = await res.json();
+      if (res.status === 401) return;
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !Array.isArray(data)) {
+        showNotice((data && data.message) || 'Не удалось загрузить категории');
+        return;
+      }
       setCategories(data);
     } catch (err) {
       console.error('Fetch categories error:', err);
@@ -542,17 +574,25 @@ function App() {
 
   // Logout lives in the "Управление счетами" settings modal rather than as
   // new chrome on the main screen. The POST clears the httpOnly cookie
-  // server-side; either way (success or network failure) we drop straight
-  // to the login screen, since staying "logged in" client-side while the
-  // cookie may already be gone would just be a broken UI.
+  // server-side. Only drop to the login screen once that's actually
+  // confirmed (an ok response) - if the request fails or errors, the cookie
+  // is still valid, so switching the UI to "logged out" would be a lie: the
+  // user would believe they're safely logged out (relevant on a shared/
+  // borrowed device) while a refresh would silently restore access. Report
+  // the failure instead and leave the authenticated state untouched so the
+  // user knows to retry.
   const handleLogout = async () => {
     try {
-      await fetch('/api/logout', { method: 'POST' });
+      const res = await fetch('/api/logout', { method: 'POST' });
+      if (res.ok) {
+        setShowAccountsSettings(false);
+        setIsAuthenticated(false);
+      } else {
+        showNotice('Не удалось выйти. Попробуйте ещё раз.');
+      }
     } catch (err) {
       console.error('Logout error:', err);
-    } finally {
-      setShowAccountsSettings(false);
-      setIsAuthenticated(false);
+      showNotice('Не удалось выйти. Попробуйте ещё раз.');
     }
   };
 
@@ -598,6 +638,16 @@ function App() {
 
   const isPrevDisabled = selectedMonth === '2025-11';
   const isNextDisabled = selectedMonth === new Date().toISOString().slice(0, 7);
+
+  // Defensive against a bad stored monthlyLimit (0, negative, or non-finite -
+  // the server now rejects saving those, but an old/unmigrated value could
+  // still be sitting in the settings document). Dividing by such a limit
+  // would otherwise render NaN% or Infinity% in the progress bar below.
+  const isLimitUsable = Number.isFinite(monthlyLimit) && monthlyLimit > 0;
+  const limitRatio = isLimitUsable ? Math.abs(monthlyData.expense) / monthlyLimit : 0;
+  const isOverLimit = isLimitUsable && Math.abs(monthlyData.expense) > monthlyLimit;
+  const limitPercentDisplay = Number.isFinite(limitRatio) ? Math.round(limitRatio * 100) : 0;
+  const limitBarWidthDisplay = Number.isFinite(limitRatio) ? Math.min(limitRatio * 100, 100) : 0;
 
   // isAuthenticated === false is the one state that always wins: a 401 mid-
   // session (expired/cleared cookie) must return the user to the login
@@ -981,13 +1031,13 @@ function App() {
                       {/* Progress Bar */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem' }}>
                         <span style={{ color: 'var(--color-text-muted)' }}>Лимит €{monthlyLimit.toLocaleString()}</span>
-                        <span style={{ fontWeight: '600', color: Math.abs(monthlyData.expense) > monthlyLimit ? '#ef4444' : 'var(--color-text-main)' }}>{Math.round((Math.abs(monthlyData.expense) / monthlyLimit) * 100)}%</span>
+                        <span style={{ fontWeight: '600', color: isOverLimit ? '#ef4444' : 'var(--color-text-main)' }}>{limitPercentDisplay}%</span>
                       </div>
                       <div style={{ height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
                         <div style={{
                           height: '100%',
-                          width: `${Math.min((Math.abs(monthlyData.expense) / monthlyLimit) * 100, 100)}%`,
-                          background: Math.abs(monthlyData.expense) > monthlyLimit ? '#ef4444' : 'var(--color-primary-gradient)',
+                          width: `${limitBarWidthDisplay}%`,
+                          background: isOverLimit ? '#ef4444' : 'var(--color-primary-gradient)',
                           transition: 'width 0.4s ease'
                         }} />
                       </div>

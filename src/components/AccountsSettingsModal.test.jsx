@@ -135,4 +135,42 @@ describe('AccountsSettingsModal', () => {
         expect(props.onSaveSettings).not.toHaveBeenCalled();
         expect(props.showNotice).toHaveBeenCalled();
     });
+
+    // Finding 4: the server rejects non-finite and non-positive limits (see
+    // PUT /api/settings in server/index.js) - the client mirrors that
+    // exactly so a bad value never reaches onSaveSettings, and never ends up
+    // rendering as NaN%/Infinity% in App.jsx's limit progress bar.
+    it('rejects a zero limit locally, without calling onSaveSettings', () => {
+        const { props } = renderModal();
+
+        const limitInput = screen.getByRole('spinbutton');
+        fireEvent.change(limitInput, { target: { value: '0' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Сохранить лимит' }));
+
+        expect(props.onSaveSettings).not.toHaveBeenCalled();
+        expect(props.showNotice).toHaveBeenCalled();
+    });
+
+    it('rejects a non-finite limit locally, without calling onSaveSettings', () => {
+        const { props } = renderModal();
+
+        const limitInput = screen.getByRole('spinbutton');
+        // Number('1e1000') is Infinity - a value a plain NaN check wouldn't catch.
+        fireEvent.change(limitInput, { target: { value: '1e1000' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Сохранить лимит' }));
+
+        expect(props.onSaveSettings).not.toHaveBeenCalled();
+        expect(props.showNotice).toHaveBeenCalled();
+    });
+
+    it('rejects a blank limit locally, without calling onSaveSettings', () => {
+        const { props } = renderModal();
+
+        const limitInput = screen.getByRole('spinbutton');
+        fireEvent.change(limitInput, { target: { value: '' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Сохранить лимит' }));
+
+        expect(props.onSaveSettings).not.toHaveBeenCalled();
+        expect(props.showNotice).toHaveBeenCalled();
+    });
 });

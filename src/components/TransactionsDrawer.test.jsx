@@ -216,4 +216,80 @@ describe('TransactionsDrawer Component', () => {
 
         expect(screen.getByRole('button', { name: 'Открыть список операций' })).toHaveAttribute('aria-expanded', 'false');
     });
+
+    // Finding 5a: the category filter used to be a click-only <span> nested
+    // inside the row's role="button" element - unreachable by keyboard and
+    // invalid nesting regardless. It's now a separately focusable
+    // role="button" span that is NOT a descendant of the row's own button
+    // (a full-row overlay <button>), so it must be reachable and
+    // activatable entirely on its own.
+    it('exposes each category filter as its own focusable, keyboard-activatable control', () => {
+        const toggleCategoryFilter = vi.fn();
+        render(<Wrapper toggleCategoryFilter={toggleCategoryFilter} />);
+
+        const categoryChip = screen.getByRole('button', { name: 'Food' });
+        categoryChip.focus();
+        expect(categoryChip).toHaveFocus();
+
+        fireEvent.keyDown(categoryChip, { key: 'Enter' });
+        expect(toggleCategoryFilter).toHaveBeenCalledWith('Food');
+    });
+
+    it('activates a category filter with Space too, without also opening the edit modal', () => {
+        const toggleCategoryFilter = vi.fn();
+        const openEditModal = vi.fn();
+        render(<Wrapper toggleCategoryFilter={toggleCategoryFilter} openEditModal={openEditModal} />);
+
+        const categoryChip = screen.getByRole('button', { name: 'Job' });
+        fireEvent.keyDown(categoryChip, { key: ' ' });
+
+        expect(toggleCategoryFilter).toHaveBeenCalledWith('Job');
+        expect(openEditModal).not.toHaveBeenCalled();
+    });
+
+    it('still opens the edit modal by clicking anywhere else on an editable row', () => {
+        const openEditModal = vi.fn();
+        render(<Wrapper openEditModal={openEditModal} />);
+
+        fireEvent.click(screen.getByRole('button', { name: /Coffee/ }));
+
+        expect(openEditModal).toHaveBeenCalledWith(expect.objectContaining({ id: 'cash-1' }));
+    });
+
+    // Finding 5b: openEditModal() deliberately no-ops for seeded 'initial'
+    // transactions - a focusable, clickable control that does nothing is
+    // worse than not exposing one at all, so those rows must render no
+    // row-level button, tabIndex, or click/keyboard handler.
+    it('omits the row button entirely for a seeded "initial" transaction, since openEditModal no-ops for it', () => {
+        const openEditModal = vi.fn();
+        const initialMonthlyData = {
+            transactions: {
+                '2026-01-01': {
+                    dailySum: 0,
+                    items: [
+                        {
+                            id: 'init-1',
+                            title: 'Starting balance',
+                            description: '',
+                            type: 'initial',
+                            account: 'card',
+                            category: '',
+                            visualAmount: 1000,
+                            excludeFromStats: false
+                        }
+                    ]
+                }
+            }
+        };
+        render(<Wrapper monthlyData={initialMonthlyData} openEditModal={openEditModal} />);
+
+        expect(screen.getByText('Starting balance')).toBeInTheDocument();
+        // No accessible button exists for this row at all - not merely a
+        // non-functional one - since role="button"/tabIndex/handlers are
+        // omitted outright.
+        expect(screen.queryByRole('button', { name: /Starting balance/ })).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByText('Starting balance'));
+        expect(openEditModal).not.toHaveBeenCalled();
+    });
 });

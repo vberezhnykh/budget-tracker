@@ -46,7 +46,13 @@ export function computeAccountReorder(accounts, activeId, overId) {
 // raise an error through - hence `onError`, a callback the caller (App.jsx)
 // supplies to route the message into its own notice banner instead of this
 // module reaching for `alert` or any DOM/React API directly.
-export async function handleAccountDragEnd({ active, over }, { accounts, setAccounts, apiUrl = '/api/accounts', onError }) {
+//
+// `apiFetch` defaults to the global `fetch` but is meant to be the caller's
+// own apiFetch wrapper (see App.jsx) - every other mutation in the app goes
+// through that wrapper so a 401 flips the UI to the login screen; using raw
+// fetch here was an oversight that left this one path inconsistent with the
+// rest of the app on session expiry.
+export async function handleAccountDragEnd({ active, over }, { accounts, setAccounts, apiUrl = '/api/accounts', apiFetch = fetch, onError }) {
   if (!active || !over) return;
 
   const { reordered, changed } = computeAccountReorder(accounts, active.id, over.id);
@@ -56,7 +62,7 @@ export async function handleAccountDragEnd({ active, over }, { accounts, setAcco
 
   try {
     const responses = await Promise.all(changed.map(acc =>
-      fetch(`${apiUrl}/${acc._id}`, {
+      apiFetch(`${apiUrl}/${acc._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order: acc.order })
