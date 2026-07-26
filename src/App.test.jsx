@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
+import { computeAccountReorder, handleAccountDragEnd } from './utils/accountReorder';
 
 // Mock the API response
 const mockTransactions = [
@@ -441,5 +442,171 @@ describe('App Integration Tests', () => {
             expect(screen.queryByText(/Счет:/)).not.toBeInTheDocument();
         });
         expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'true');
+    });
+});
+
+// computeAccountReorder is the pure piece of the drag-to-reorder feature: it
+// takes the accounts in their current display order plus dnd-kit's
+// active/over ids and returns the reordered list (with `order` recomputed)
+// plus only the accounts whose `order` actually changed. It's tested in
+// isolation from React and dnd-kit since it has no dependency on either.
+describe('computeAccountReorder', () => {
+    const orderedAccounts = [
+        { _id: 'a', name: 'A', order: 0 },
+        { _id: 'b', name: 'B', order: 1 },
+        { _id: 'c', name: 'C', order: 2 },
+        { _id: 'd', name: 'D', order: 3 }
+    ];
+
+    it('moves an account down and reassigns the order slots it passed through', () => {
+        const { reordered, changed } = computeAccountReorder(orderedAccounts, 'a', 'c');
+
+        expect(reordered.map(a => a._id)).toEqual(['b', 'c', 'a', 'd']);
+        expect(reordered.find(a => a._id === 'b').order).toBe(0);
+        expect(reordered.find(a => a._id === 'c').order).toBe(1);
+        expect(reordered.find(a => a._id === 'a').order).toBe(2);
+        expect(reordered.find(a => a._id === 'd').order).toBe(3);
+        expect(changed.map(a => a._id).sort()).toEqual(['a', 'b', 'c']);
+    });
+
+    it('moves an account up and leaves accounts before the move untouched', () => {
+        const { reordered, changed } = computeAccountReorder(orderedAccounts, 'd', 'b');
+
+        expect(reordered.map(a => a._id)).toEqual(['a', 'd', 'b', 'c']);
+        expect(reordered.find(a => a._id === 'a').order).toBe(0);
+        expect(changed.map(a => a._id).sort()).toEqual(['b', 'c', 'd']);
+        expect(changed.find(a => a._id === 'a')).toBeUndefined();
+    });
+
+    it('is a no-op when dropped onto itself', () => {
+        const { reordered, changed } = computeAccountReorder(orderedAccounts, 'b', 'b');
+
+        expect(reordered).toBe(orderedAccounts);
+        expect(changed).toEqual([]);
+    });
+
+    it('only reports accounts whose order actually changed', () => {
+        const { reordered, changed } = computeAccountReorder(orderedAccounts, 'd', 'b');
+
+        // Every entry in `changed` must genuinely differ from its original order...
+        changed.forEach(acc => {
+            const original = orderedAccounts.find(a => a._id === acc._id);
+            expect(acc.order).not.toBe(original.order);
+        });
+        // ...and everything NOT in `changed` must be unchanged.
+        reordered
+            .filter(acc => !changed.some(c => c._id === acc._id))
+            .forEach(acc => {
+                const original = orderedAccounts.find(a => a._id === acc._id);
+                expect(acc.order).toBe(original.order);
+            });
+        expect(changed.length).toBe(3);
+    });
+});
+
+// handleAccountDragEnd is the onDragEnd handler dnd-kit's DndContext calls,
+// extracted so its persistence logic (optimistic update, selective PUT,
+// rollback on failure) can be exercised directly - a real pointer or
+// keyboard drag isn't reproducible in jsdom because dnd-kit's sensors rely
+// on layout measurements (getBoundingClientRect) that jsdom never provides.
+describe('handleAccountDragEnd', () => {
+    const baseAccounts = [
+        { _id: 'a', name: 'A', order: 0 },
+        { _id: 'b', name: 'B', order: 1 },
+        { _id: 'c', name: 'C', order: 2 }
+    ];
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('updates state optimistically and PUTs only the changed accounts with their new order', async () => {
+        const puts = [];
+        vi.stubGlobal('fetch', vi.fn((url, options) => {
+            if (options?.method === 'PUT') {
+                puts.push({ url, body: JSON.parse(options.body) });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }));
+        const setAccounts = vi.fn();
+
+        await handleAccountDragEnd(
+            { active: { id: 'a' }, over: { id: 'c' } },
+            { accounts: baseAccounts, setAccounts }
+        );
+
+        // Optimistic update: state was set once, synchronously, to the reordered list.
+        expect(setAccounts).toHaveBeenCalledTimes(1);
+        const optimistic = setAccounts.mock.calls[0][0];
+        expect(optimistic.map(a => a._id)).toEqual(['b', 'c', 'a']);
+
+        // All three accounts shifted by this particular move, so all three were PUT -
+        // each with only an `order` body, to its own id.
+        expect(puts.length).toBe(3);
+        expect(puts.map(p => p.url).sort()).toEqual(
+            ['/api/accounts/a', '/api/accounts/b', '/api/accounts/c'].sort()
+        );
+        puts.forEach(p => expect(Object.keys(p.body)).toEqual(['order']));
+        expect(puts.find(p => p.url === '/api/accounts/a').body).toEqual({ order: 2 });
+        expect(puts.find(p => p.url === '/api/accounts/b').body).toEqual({ order: 0 });
+        expect(puts.find(p => p.url === '/api/accounts/c').body).toEqual({ order: 1 });
+    });
+
+    it('sends no request and does not touch state when the drop is a no-op', async () => {
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+        const setAccounts = vi.fn();
+
+        await handleAccountDragEnd(
+            { active: { id: 'a' }, over: { id: 'a' } },
+            { accounts: baseAccounts, setAccounts }
+        );
+
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(setAccounts).not.toHaveBeenCalled();
+    });
+
+    it('rolls back to the previous order and alerts when a PUT is rejected', async () => {
+        window.alert = vi.fn();
+        vi.stubGlobal('fetch', vi.fn((url, options) => {
+            if (options?.method === 'PUT' && url.endsWith('/b')) {
+                return Promise.resolve({ ok: false, json: () => Promise.resolve({ message: 'Save failed' }) });
+            }
+            if (options?.method === 'PUT') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }));
+        const setAccounts = vi.fn();
+
+        await handleAccountDragEnd(
+            { active: { id: 'a' }, over: { id: 'c' } },
+            { accounts: baseAccounts, setAccounts }
+        );
+
+        // First call is the optimistic reorder, second (last) call rolls it back
+        // to the exact array the handler was given.
+        expect(setAccounts).toHaveBeenCalledTimes(2);
+        expect(setAccounts.mock.calls[0][0].map(a => a._id)).toEqual(['b', 'c', 'a']);
+        expect(setAccounts.mock.calls[1][0]).toBe(baseAccounts);
+        expect(window.alert).toHaveBeenCalledWith('Save failed');
+    });
+
+    it('rolls back and logs when the request throws (network failure)', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('network down'))));
+        const setAccounts = vi.fn();
+
+        await handleAccountDragEnd(
+            { active: { id: 'a' }, over: { id: 'c' } },
+            { accounts: baseAccounts, setAccounts }
+        );
+
+        expect(setAccounts).toHaveBeenCalledTimes(2);
+        expect(setAccounts.mock.calls[1][0]).toBe(baseAccounts);
+        expect(consoleSpy).toHaveBeenCalled();
+
+        consoleSpy.mockRestore();
     });
 });

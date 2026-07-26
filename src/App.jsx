@@ -1,8 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
 import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer'
 import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
+import { handleAccountDragEnd } from './utils/accountReorder'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -11,8 +14,16 @@ const ACCOUNTS_URL = '/api/accounts';
 const MONTHLY_LIMIT = 7000;
 
 function AccountListItem({ account, onDelete, onEdit }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: account._id });
+
+  const rowStyle = {
+    transform: transform ? `translate3d(0, ${transform.y}px, 0)` : undefined,
+    transition,
+  };
+
   return (
-    <div style={{
+    <div ref={setNodeRef} style={{
+      ...rowStyle,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -22,6 +33,14 @@ function AccountListItem({ account, onDelete, onEdit }) {
       border: '1px solid rgba(0, 0, 0, 0.05)'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <span
+          {...attributes}
+          {...listeners}
+          aria-label={`Изменить порядок: ${account.name}`}
+          style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: '1.1rem', lineHeight: 1, padding: '4px' }}
+        >
+          ⠿
+        </span>
         <span style={{ fontSize: '1.25rem' }}>{account.icon || (account.type === 'cash' ? '💵' : '💳')}</span>
         <div>
           <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)' }}>{account.name}</div>
@@ -87,6 +106,19 @@ function App() {
   const [formType, setFormType] = useState('card');
   const [formIcon, setFormIcon] = useState('💳');
   const [editingAccountId, setEditingAccountId] = useState(null);
+
+  // Drag-to-reorder sensors for the account list in the "Управление счетами"
+  // modal. A minimum drag distance keeps an imprecise tap on the grip from
+  // being mistaken for a drag, and the keyboard sensor is the only reorder
+  // path reachable without a pointer.
+  const accountDndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const onAccountDragEnd = (event) => {
+    handleAccountDragEnd(event, { accounts: accountsRef.current, setAccounts, apiUrl: ACCOUNTS_URL });
+  };
 
   // Balance carousel refs:
   // - carouselRef: the scroll container
@@ -1093,19 +1125,23 @@ function App() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Список счетов</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
-                {accounts.map(acc => (
-                  <AccountListItem 
-                    key={acc._id} 
-                    account={acc}
-                    onEdit={() => {
-                      setFormName(acc.name);
-                      setFormType(acc.type);
-                      setFormIcon(acc.icon || (acc.type === 'cash' ? '💵' : '💳'));
-                      setEditingAccountId(acc._id);
-                    }}
-                    onDelete={() => handleDeleteAccount(acc._id, acc.name)}
-                  />
-                ))}
+                <DndContext sensors={accountDndSensors} collisionDetection={closestCenter} onDragEnd={onAccountDragEnd}>
+                  <SortableContext items={accounts.map(acc => acc._id)} strategy={verticalListSortingStrategy}>
+                    {accounts.map(acc => (
+                      <AccountListItem
+                        key={acc._id}
+                        account={acc}
+                        onEdit={() => {
+                          setFormName(acc.name);
+                          setFormType(acc.type);
+                          setFormIcon(acc.icon || (acc.type === 'cash' ? '💵' : '💳'));
+                          setEditingAccountId(acc._id);
+                        }}
+                        onDelete={() => handleDeleteAccount(acc._id, acc.name)}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
               </div>
             </div>
           </div>
