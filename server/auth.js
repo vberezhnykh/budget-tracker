@@ -96,17 +96,19 @@ function getAuthConfig() {
 //
 // /api/health is one of the two routes excluded from auth entirely (see
 // createAuthMiddleware below), so this payload is reachable by anyone,
-// unauthenticated. Reporting *which* env var is unset is a deliberate,
-// temporary-ish tradeoff: it grants no access and reveals no secret, and
-// it's the only way to debug a host's configuration when we can't read its
-// runtime logs. Only ever surface variable NAMES here - never values,
-// lengths, or any prefix/suffix of a value.
+// unauthenticated. It used to also include `missing` (the specific env var
+// names that weren't set) to debug a host's configuration from outside; that
+// was a deliberate, temporary-ish tradeoff while the deployment was being
+// configured. It's done its job - the deployment is configured and verified
+// - so it's been dropped: an unauthenticated endpoint shouldn't enumerate
+// internal configuration beyond a single boolean. If this recurs,
+// `configured: false` plus the startup log line (logStartupConfigStatus,
+// which already names the specific variables) is enough to diagnose it.
 function buildHealthPayload() {
-    const { isConfigured, missing } = getAuthConfig();
+    const { isConfigured } = getAuthConfig();
     return {
         status: 'ok',
-        configured: isConfigured,
-        missing
+        configured: isConfigured
     };
 }
 

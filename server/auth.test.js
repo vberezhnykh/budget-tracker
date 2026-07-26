@@ -114,37 +114,33 @@ describe('buildHealthPayload', () => {
         process.env = { ...ORIGINAL_ENV };
     });
 
-    it('reports configured: true with an empty missing list when both vars are set', () => {
+    it('reports configured: true when both vars are set', () => {
         process.env.APP_PASSWORD = 'pw';
         process.env.SESSION_SECRET = 'secret';
         const payload = buildHealthPayload();
         expect(payload.status).toBe('ok');
         expect(payload.configured).toBe(true);
-        expect(payload.missing).toEqual([]);
     });
 
-    it('reports configured: false and names both vars when neither is set', () => {
+    it('reports configured: false when neither var is set', () => {
         delete process.env.APP_PASSWORD;
         delete process.env.SESSION_SECRET;
         const payload = buildHealthPayload();
         expect(payload.configured).toBe(false);
-        expect(payload.missing).toEqual(['APP_PASSWORD', 'SESSION_SECRET']);
     });
 
-    it('names only APP_PASSWORD when SESSION_SECRET is the one that is set', () => {
+    it('reports configured: false when only SESSION_SECRET is set', () => {
         delete process.env.APP_PASSWORD;
         process.env.SESSION_SECRET = 'secret';
         const payload = buildHealthPayload();
         expect(payload.configured).toBe(false);
-        expect(payload.missing).toEqual(['APP_PASSWORD']);
     });
 
-    it('names only SESSION_SECRET when APP_PASSWORD is the one that is set', () => {
+    it('reports configured: false when only APP_PASSWORD is set', () => {
         process.env.APP_PASSWORD = 'pw';
         delete process.env.SESSION_SECRET;
         const payload = buildHealthPayload();
         expect(payload.configured).toBe(false);
-        expect(payload.missing).toEqual(['SESSION_SECRET']);
     });
 
     it('never includes the actual values, only variable names', () => {

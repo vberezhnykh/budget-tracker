@@ -567,8 +567,7 @@ describe('handleAccountDragEnd', () => {
         expect(setAccounts).not.toHaveBeenCalled();
     });
 
-    it('rolls back to the previous order and alerts when a PUT is rejected', async () => {
-        window.alert = vi.fn();
+    it('rolls back to the previous order and reports the error via onError when a PUT is rejected', async () => {
         vi.stubGlobal('fetch', vi.fn((url, options) => {
             if (options?.method === 'PUT' && url.endsWith('/b')) {
                 return Promise.resolve({ ok: false, json: () => Promise.resolve({ message: 'Save failed' }) });
@@ -579,10 +578,11 @@ describe('handleAccountDragEnd', () => {
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
         }));
         const setAccounts = vi.fn();
+        const onError = vi.fn();
 
         await handleAccountDragEnd(
             { active: { id: 'a' }, over: { id: 'c' } },
-            { accounts: baseAccounts, setAccounts }
+            { accounts: baseAccounts, setAccounts, onError }
         );
 
         // First call is the optimistic reorder, second (last) call rolls it back
@@ -590,7 +590,7 @@ describe('handleAccountDragEnd', () => {
         expect(setAccounts).toHaveBeenCalledTimes(2);
         expect(setAccounts.mock.calls[0][0].map(a => a._id)).toEqual(['b', 'c', 'a']);
         expect(setAccounts.mock.calls[1][0]).toBe(baseAccounts);
-        expect(window.alert).toHaveBeenCalledWith('Save failed');
+        expect(onError).toHaveBeenCalledWith('Save failed');
     });
 
     it('rolls back and logs when the request throws (network failure)', async () => {

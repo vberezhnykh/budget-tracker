@@ -129,6 +129,26 @@ function App() {
   const [formIcon, setFormIcon] = useState('💳');
   const [editingAccountId, setEditingAccountId] = useState(null);
 
+  // In-app notice banner, replacing blocking alert()s for errors raised by
+  // account save/delete/reorder. { type: 'error' | 'success', message } or
+  // null when nothing is showing. noticeTimeoutRef holds the auto-dismiss
+  // timer so a fresh notice (or unmount) can clear a still-pending one -
+  // otherwise a leaked timer could fire setNotice(null) after unmount.
+  const [notice, setNotice] = useState(null);
+  const noticeTimeoutRef = useRef(null);
+
+  const showNotice = (message, type = 'error') => {
+    if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+    setNotice({ type, message });
+    noticeTimeoutRef.current = setTimeout(() => setNotice(null), 5000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+    };
+  }, []);
+
   // Drag-to-reorder sensors for the account list in the "Управление счетами"
   // modal. A minimum drag distance keeps an imprecise tap on the grip from
   // being mistaken for a drag, and the keyboard sensor is the only reorder
@@ -139,7 +159,7 @@ function App() {
   );
 
   const onAccountDragEnd = (event) => {
-    handleAccountDragEnd(event, { accounts: accountsRef.current, setAccounts, apiUrl: ACCOUNTS_URL });
+    handleAccountDragEnd(event, { accounts: accountsRef.current, setAccounts, apiUrl: ACCOUNTS_URL, onError: showNotice });
   };
 
   // Balance carousel refs:
@@ -542,7 +562,7 @@ function App() {
         await fetchTransactions(freshAccounts);
       } else {
         const err = await res.json();
-        alert(err.message || 'Ошибка сохранения счёта');
+        showNotice(err.message || 'Ошибка сохранения счёта');
       }
     } catch (err) {
       console.error('Save account error:', err);
@@ -559,7 +579,7 @@ function App() {
         await fetchTransactions(freshAccounts);
       } else {
         const err = await res.json();
-        alert(err.message || 'Не удалось удалить счёт');
+        showNotice(err.message || 'Не удалось удалить счёт');
       }
     } catch (err) {
       console.error('Delete account error:', err);
@@ -636,6 +656,51 @@ function App() {
 
   return (
     <div className="layout-container">
+      {notice && (
+        <div
+          role="alert"
+          className="glass-panel"
+          style={{
+            position: 'fixed',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1100,
+            width: 'calc(100% - 40px)',
+            maxWidth: '420px',
+            padding: '14px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            borderLeft: `4px solid ${notice.type === 'success' ? '#22c55e' : '#ef4444'}`,
+          }}
+        >
+          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--color-text-main)' }}>
+            {notice.message}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+              setNotice(null);
+            }}
+            aria-label="Закрыть"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '1.1rem',
+              lineHeight: 1,
+              color: 'var(--color-text-muted)',
+              flexShrink: 0,
+              padding: 0,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {/* Premium Header */}
       <header className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>

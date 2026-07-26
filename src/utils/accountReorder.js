@@ -38,10 +38,15 @@ export function computeAccountReorder(accounts, activeId, overId) {
 // can't provide the layout measurements dnd-kit's sensors rely on).
 // Persists only the accounts whose order changed, updates state
 // optimistically, and rolls back on failure - mirroring the
-// handleSaveAccount/handleDeleteAccount error convention in App.jsx (alert
-// with the server's message, or a fallback, on a non-ok response;
-// console.error on a network exception).
-export async function handleAccountDragEnd({ active, over }, { accounts, setAccounts, apiUrl = '/api/accounts' }) {
+// handleSaveAccount/handleDeleteAccount error convention in App.jsx (surface
+// the server's message, or a fallback, on a non-ok response; console.error
+// on a network exception).
+//
+// This is a plain module, not a component, so it has no UI of its own to
+// raise an error through - hence `onError`, a callback the caller (App.jsx)
+// supplies to route the message into its own notice banner instead of this
+// module reaching for `alert` or any DOM/React API directly.
+export async function handleAccountDragEnd({ active, over }, { accounts, setAccounts, apiUrl = '/api/accounts', onError }) {
   if (!active || !over) return;
 
   const { reordered, changed } = computeAccountReorder(accounts, active.id, over.id);
@@ -61,7 +66,7 @@ export async function handleAccountDragEnd({ active, over }, { accounts, setAcco
     if (failedRes) {
       setAccounts(accounts);
       const err = await failedRes.json().catch(() => ({}));
-      alert(err.message || 'Не удалось сохранить порядок счетов');
+      if (onError) onError(err.message || 'Не удалось сохранить порядок счетов');
     }
   } catch (err) {
     console.error('Reorder accounts error:', err);
