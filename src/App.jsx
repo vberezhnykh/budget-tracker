@@ -87,9 +87,21 @@ function App() {
   const [formIcon, setFormIcon] = useState('💳');
   const [editingAccountId, setEditingAccountId] = useState(null);
 
-  // Balance carousel refs (scroll container + rAF throttle handle for the scroll listener)
+  // Balance carousel refs:
+  // - carouselRef: the scroll container
+  // - carouselRafRef: rAF throttle handle for the scroll listener
+  // - carouselSettleTimeoutRef: debounce handle - the active filter is only
+  //   committed once scroll events stop arriving for a short while, so
+  //   swiping/animating past several slides doesn't filter by each one
+  // - carouselProgrammaticRef: true while a tap or an external filter change
+  //   is driving the scroll, so the settle handler doesn't fight it
+  // - carouselSyncedIndexRef: index of the slide our own code last drove the
+  //   carousel/filter to, used to avoid redundant programmatic scrolls
   const carouselRef = useRef(null);
   const carouselRafRef = useRef(null);
+  const carouselSettleTimeoutRef = useRef(null);
+  const carouselProgrammaticRef = useRef(false);
+  const carouselSyncedIndexRef = useRef(0);
 
   // Transactions state
   const [transactions, setTransactions] = useState([]);
@@ -128,10 +140,11 @@ function App() {
     };
   }, [showAddTransaction, editingTransaction]);
 
-  // Cancel any pending rAF-throttled carousel scroll handler on unmount
+  // Cancel any pending rAF-throttled carousel scroll handler / settle-debounce timer on unmount
   useEffect(() => {
     return () => {
       if (carouselRafRef.current) cancelAnimationFrame(carouselRafRef.current);
+      if (carouselSettleTimeoutRef.current) clearTimeout(carouselSettleTimeoutRef.current);
     };
   }, []);
 
@@ -234,13 +247,71 @@ function App() {
     return selectedMonth === currentMonthStr;
   }, [selectedMonth]);
 
+  // Slide elements are located via the data-carousel-slide attribute rather
+  // than container.children, so a stray non-slide child (e.g. a <style> tag)
+  // can never shift every index off by one.
+  const getCarouselSlideElements = () => {
+    const container = carouselRef.current;
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('[data-carousel-slide]'));
+  };
+
+  // (Re)start the settle-debounce: the active filter is only committed once
+  // scroll events (real or programmatic) stop arriving for a short while, so
+  // a swipe or an animated scroll that passes over several slides doesn't
+  // filter by each intermediate one.
+  const scheduleCarouselSettle = () => {
+    if (carouselSettleTimeoutRef.current) clearTimeout(carouselSettleTimeoutRef.current);
+    carouselSettleTimeoutRef.current = setTimeout(commitSettledCarouselSlide, 120);
+  };
+
+  const commitSettledCarouselSlide = () => {
+    carouselSettleTimeoutRef.current = null;
+    const wasProgrammatic = carouselProgrammaticRef.current;
+    carouselProgrammaticRef.current = false;
+    // A tap (or an external filter sync) already set the exact destination
+    // filter/index up front - don't let the settled scroll position override it.
+    if (wasProgrammatic) return;
+
+    const container = carouselRef.current;
+    const slideEls = getCarouselSlideElements();
+    if (!container || !slideEls.length) return;
+
+    // Pick the slide whose centre is nearest the container's visible centre,
+    // from real element positions - not a single assumed slide width.
+    const containerCenter = container.scrollLeft + container.clientWidth / 2;
+    let nearestIndex = -1;
+    let nearestDistance = Infinity;
+    let hasLayout = false;
+    slideEls.forEach((el, i) => {
+      if (el.offsetWidth > 0 || el.offsetLeft > 0) hasLayout = true;
+      const center = el.offsetLeft + el.offsetWidth / 2;
+      const distance = Math.abs(center - containerCenter);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = i;
+      }
+    });
+    // jsdom (unit tests without stubbed geometry) reports everything as 0x0 -
+    // bail rather than confidently picking the wrong slide.
+    if (!hasLayout || nearestIndex === -1) return;
+
+    carouselSyncedIndexRef.current = nearestIndex;
+    const filter = slides[nearestIndex]?.filter ?? null;
+    setSelectedAccount(prev => (prev === filter ? prev : filter));
+  };
+
   // Selecting a carousel slide (by tap, or by scroll settling on it) always
   // sets the filter directly - no toggle-off behavior, since exactly one
-  // slide is "active" at all times. Guard against redundant state updates so
-  // programmatic scrolling (from a tap) doesn't fight the onScroll handler.
+  // slide is "active" at all times.
   const handleSlideClick = (slide, index) => {
     setSelectedAccount(prev => (prev === slide.filter ? prev : slide.filter));
-    const slideEl = carouselRef.current?.children[index];
+    carouselSyncedIndexRef.current = index;
+    carouselProgrammaticRef.current = true;
+    // Guarantee the programmatic flag clears even if the tap causes no
+    // scroll events at all (e.g. the slide is already centred).
+    scheduleCarouselSettle();
+    const slideEl = getCarouselSlideElements()[index];
     // jsdom (unit tests) doesn't implement scrollIntoView - guard the call.
     slideEl?.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   };
@@ -249,18 +320,29 @@ function App() {
     if (carouselRafRef.current) return;
     carouselRafRef.current = requestAnimationFrame(() => {
       carouselRafRef.current = null;
-      const container = carouselRef.current;
-      if (!container || !container.children.length) return;
-      const firstSlide = container.children[0];
-      const containerStyle = window.getComputedStyle(container);
-      const gap = parseFloat(containerStyle.columnGap || containerStyle.gap) || 0;
-      const slideWidth = firstSlide.offsetWidth + gap;
-      if (!slideWidth) return;
-      const index = Math.max(0, Math.min(Math.round(container.scrollLeft / slideWidth), slides.length - 1));
-      const filter = slides[index]?.filter ?? null;
-      setSelectedAccount(prev => (prev === filter ? prev : filter));
+      scheduleCarouselSettle();
     });
   };
+
+  // Keep the carousel in sync with filter changes that didn't originate from
+  // the carousel itself (the "reset filter" control, or an account that got
+  // deleted out from under the current selection). Also resets a selection
+  // that no longer matches any slide.
+  useEffect(() => {
+    if (selectedAccount && !slides.some(s => s.filter === selectedAccount)) {
+      setSelectedAccount(null);
+      return;
+    }
+    const index = slides.findIndex(s => s.filter === selectedAccount);
+    if (index === -1 || index === carouselSyncedIndexRef.current) return;
+    const slideEl = getCarouselSlideElements()[index];
+    if (!slideEl) return;
+    carouselSyncedIndexRef.current = index;
+    carouselProgrammaticRef.current = true;
+    scheduleCarouselSettle();
+    slideEl.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAccount, slides]);
 
   const toggleCategoryFilter = (category) => {
     setSelectedCategory(prev => prev === category ? null : category);
@@ -459,9 +541,13 @@ function App() {
         </div>
 
         {/* Balance Carousel: total capital, type groups, then one slide per account */}
+        <style>{`
+          div::-webkit-scrollbar { display: none; }
+        `}</style>
         <div
           ref={carouselRef}
           onScroll={handleCarouselScroll}
+          data-testid="balance-carousel"
           style={{
             display: 'flex',
             overflowX: 'auto',
@@ -472,14 +558,12 @@ function App() {
             msOverflowStyle: 'none'
           }}
         >
-          <style>{`
-            div::-webkit-scrollbar { display: none; }
-          `}</style>
           {slides.map((slide, index) => {
             const isActive = slide.filter === selectedAccount;
             return (
               <div
                 key={slide.key}
+                data-carousel-slide
                 onClick={() => handleSlideClick(slide, index)}
                 style={{
                   flex: '0 0 88%',
