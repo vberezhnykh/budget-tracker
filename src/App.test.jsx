@@ -267,6 +267,11 @@ describe('App Integration Tests', () => {
         await waitFor(() => screen.getByText('Coffee'));
         expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
 
+        // Account lists are collapsed by default now; expand the card group
+        // via its chevron button before looking for the individual account.
+        const cardExpandBtn = screen.getAllByRole('button', { name: 'Показать счета' })[0];
+        fireEvent.click(cardExpandBtn);
+
         // Click on "Card" balance card
         const cardFilterBtn = screen.getByText('Карта').closest('div');
         fireEvent.click(cardFilterBtn);

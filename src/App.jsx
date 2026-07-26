@@ -86,6 +86,7 @@ function App() {
   const [formType, setFormType] = useState('card');
   const [formIcon, setFormIcon] = useState('💳');
   const [editingAccountId, setEditingAccountId] = useState(null);
+  const [expandedGroups, setExpandedGroups] = useState({ card: false, cash: false });
 
   // Transactions state
   const [transactions, setTransactions] = useState([]);
@@ -373,6 +374,12 @@ function App() {
   const isPrevDisabled = selectedMonth === '2025-11';
   const isNextDisabled = selectedMonth === new Date().toISOString().slice(0, 7);
 
+  // A group stays open while one of its own accounts is the active filter,
+  // otherwise the selected account would disappear from view.
+  const selectedAccountType = accounts.find(a => a._id === selectedAccount)?.type;
+  const isCardExpanded = expandedGroups.card || selectedAccountType === 'card';
+  const isCashExpanded = expandedGroups.cash || selectedAccountType === 'cash';
+
   if (isLoading) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#fff' }}>Загрузка...</div>;
 
   return (
@@ -436,12 +443,40 @@ function App() {
                 <span style={{ fontSize: '1.2rem' }}>💳</span>
                 <div style={{ fontSize: '0.85rem', color: selectedAccount === 'type:card' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700' }}>Безналичные</div>
               </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text-main)' }}>
-                €{balances.byType.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text-main)' }}>
+                  €{balances.byType.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation(); // don't trigger parent click / type filter
+                    setExpandedGroups(prev => ({ ...prev, card: !prev.card }));
+                  }}
+                  aria-expanded={isCardExpanded}
+                  aria-label={isCardExpanded ? 'Скрыть счета' : 'Показать счета'}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--color-text-muted)',
+                    fontSize: '1rem',
+                    lineHeight: 1,
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'transform 0.2s ease',
+                    transform: isCardExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
+                  }}
+                >
+                  ⌄
+                </button>
               </div>
             </div>
-            
+
             {/* List of cards */}
+            {isCardExpanded && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(0,0,0,0.04)', paddingTop: '8px', marginTop: '4px' }}>
               {accounts.filter(a => a.type === 'card').map(acc => {
                 const bal = balances.byAccount[acc._id] || 0;
@@ -475,6 +510,7 @@ function App() {
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* Cash Account Group */}
@@ -500,12 +536,40 @@ function App() {
                 <span style={{ fontSize: '1.2rem' }}>💵</span>
                 <div style={{ fontSize: '0.85rem', color: selectedAccount === 'type:cash' ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700' }}>Наличные</div>
               </div>
-              <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text-main)' }}>
-                €{balances.byType.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ fontSize: '1.1rem', fontWeight: '700', color: 'var(--color-text-main)' }}>
+                  €{balances.byType.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation(); // don't trigger parent click / type filter
+                    setExpandedGroups(prev => ({ ...prev, cash: !prev.cash }));
+                  }}
+                  aria-expanded={isCashExpanded}
+                  aria-label={isCashExpanded ? 'Скрыть счета' : 'Показать счета'}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--color-text-muted)',
+                    fontSize: '1rem',
+                    lineHeight: 1,
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'transform 0.2s ease',
+                    transform: isCashExpanded ? 'rotate(180deg)' : 'rotate(0deg)'
+                  }}
+                >
+                  ⌄
+                </button>
               </div>
             </div>
 
             {/* List of cash accounts */}
+            {isCashExpanded && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid rgba(0,0,0,0.04)', paddingTop: '8px', marginTop: '4px' }}>
               {accounts.filter(a => a.type === 'cash').map(acc => {
                 const bal = balances.byAccount[acc._id] || 0;
@@ -539,6 +603,7 @@ function App() {
                 );
               })}
             </div>
+            )}
           </div>
         </div>
       </header>
