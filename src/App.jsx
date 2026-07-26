@@ -32,24 +32,24 @@ function AccountListItem({ account, onDelete, onEdit }) {
       borderRadius: '16px',
       border: '1px solid rgba(0, 0, 0, 0.05)'
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
         <span
           {...attributes}
           {...listeners}
           aria-label={`Изменить порядок: ${account.name}`}
-          style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: '1.1rem', lineHeight: 1, padding: '4px' }}
+          style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: '1.1rem', lineHeight: 1, padding: '4px 2px', flexShrink: 0 }}
         >
           ⠿
         </span>
-        <span style={{ fontSize: '1.25rem' }}>{account.icon || (account.type === 'cash' ? '💵' : '💳')}</span>
-        <div>
-          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)' }}>{account.name}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+        <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{account.icon || (account.type === 'cash' ? '💵' : '💳')}</span>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {account.type === 'cash' ? 'Наличные' : 'Карта'} {account.isDefault ? '(Стандартный)' : ''}
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: '8px' }}>
+      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
         <button 
           onClick={onEdit}
           style={{
