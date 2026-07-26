@@ -12,6 +12,7 @@ const {
     checkPassword,
     createToken,
     getAuthConfig,
+    buildHealthPayload,
     cookieOptions,
     createAuthMiddleware,
     logStartupConfigStatus
@@ -469,6 +470,18 @@ app.delete('/api/transactions/:id', async (req, res) => {
 
 
 
+// Registered before the production static-serving / SPA catch-all below.
+// That catch-all (`app.get('*', ...)`) matches every unmatched GET, so if
+// this route were registered after it (as it used to be), Express would
+// never reach it in production - /api/health would silently return
+// index.html instead of JSON, which is exactly what was happening against
+// the live deployment (and why the Render self-ping below and any host
+// health check were only ever proving the static files were served, not
+// that the API process was healthy).
+app.get('/api/health', (req, res) => {
+    res.status(200).json(buildHealthPayload());
+});
+
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
     const fs = require('fs');
@@ -517,10 +530,6 @@ if (process.env.NODE_ENV === 'production') {
         console.error(`❌ Dist folder NOT FOUND at: ${distPath}`);
     }
 }
-
-app.get('/api/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
-});
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

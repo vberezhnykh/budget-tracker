@@ -91,6 +91,25 @@ function getAuthConfig() {
     };
 }
 
+// Builds the JSON body for GET /api/health. Pulled out of the route closure
+// so it can be unit tested directly without spinning up Express.
+//
+// /api/health is one of the two routes excluded from auth entirely (see
+// createAuthMiddleware below), so this payload is reachable by anyone,
+// unauthenticated. Reporting *which* env var is unset is a deliberate,
+// temporary-ish tradeoff: it grants no access and reveals no secret, and
+// it's the only way to debug a host's configuration when we can't read its
+// runtime logs. Only ever surface variable NAMES here - never values,
+// lengths, or any prefix/suffix of a value.
+function buildHealthPayload() {
+    const { isConfigured, missing } = getAuthConfig();
+    return {
+        status: 'ok',
+        configured: isConfigured,
+        missing
+    };
+}
+
 // Cookie options shared by the login (set) and logout (clear) handlers, so
 // the two can never drift apart (a cookie cleared with different flags than
 // it was set with won't actually be removed by the browser).
@@ -174,6 +193,7 @@ module.exports = {
     createToken,
     verifyToken,
     getAuthConfig,
+    buildHealthPayload,
     cookieOptions,
     createAuthMiddleware,
     logStartupConfigStatus
