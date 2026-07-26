@@ -6,6 +6,7 @@ const path = require('path');
 const Transaction = require('./models/Transaction');
 const Category = require('./models/Category');
 const Account = require('./models/Account');
+const Settings = require('./models/Settings');
 const {
     COOKIE_NAME,
     TOKEN_TTL_MS,
@@ -348,6 +349,49 @@ app.delete('/api/categories/:id', async (req, res) => {
         res.json({ message: 'Category deleted' });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+// ---- Settings ----
+// A single shared document (see server/models/Settings.js) holding
+// app-wide settings - currently just monthlyLimit, driving the limit
+// progress bar in the stats panel. Stored server-side (rather than per-
+// browser) so it's shared across devices.
+
+const DEFAULT_MONTHLY_LIMIT = 7000;
+
+// Get settings. Returns the default rather than 404/erroring when no
+// document exists yet, so an existing database keeps working untouched -
+// the document is only created the first time someone saves a new value.
+app.get('/api/settings', async (req, res) => {
+    try {
+        const settings = await Settings.findOne();
+        res.json({ monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Update settings, creating the single document on first save.
+app.put('/api/settings', async (req, res) => {
+    try {
+        const { monthlyLimit } = req.body;
+        const parsedLimit = Number(monthlyLimit);
+        if (monthlyLimit === undefined || monthlyLimit === null || monthlyLimit === '' || Number.isNaN(parsedLimit) || parsedLimit < 0) {
+            return res.status(400).json({ message: 'Некорректное значение лимита' });
+        }
+
+        let settings = await Settings.findOne();
+        if (!settings) {
+            settings = new Settings({ monthlyLimit: parsedLimit });
+        } else {
+            settings.monthlyLimit = parsedLimit;
+        }
+
+        const saved = await settings.save();
+        res.json(saved);
+    } catch (err) {
+        res.status(400).json({ message: err.message });
     }
 });
 

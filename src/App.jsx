@@ -1,10 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core'
-import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
 import LoginScreen from './components/LoginScreen'
 import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer'
+import AccountsSettingsModal from './components/AccountsSettingsModal'
 import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
 
@@ -12,91 +11,10 @@ import { handleAccountDragEnd } from './utils/accountReorder'
 const API_URL = '/api/transactions';
 const CATEGORIES_URL = '/api/categories';
 const ACCOUNTS_URL = '/api/accounts';
-const MONTHLY_LIMIT = 7000;
-
-function AccountListItem({ account, onDelete, onEdit }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: account._id });
-
-  const rowStyle = {
-    transform: transform ? `translate3d(0, ${transform.y}px, 0)` : undefined,
-    transition,
-  };
-
-  return (
-    <div ref={setNodeRef} style={{
-      ...rowStyle,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: '12px 16px',
-      background: 'rgba(0, 0, 0, 0.02)',
-      borderRadius: '16px',
-      border: '1px solid rgba(0, 0, 0, 0.05)'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
-        <span
-          {...attributes}
-          {...listeners}
-          aria-label={`Изменить порядок: ${account.name}`}
-          style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: '1.1rem', lineHeight: 1, padding: '4px 2px', flexShrink: 0 }}
-        >
-          ⠿
-        </span>
-        <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{account.icon || (account.type === 'cash' ? '💵' : '💳')}</span>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {account.type === 'cash' ? 'Наличные' : 'Карта'} {account.isDefault ? '(Стандартный)' : ''}
-          </div>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-        <button
-          onClick={onEdit}
-          aria-label="Изменить"
-          style={{
-            background: 'rgba(0, 0, 0, 0.04)',
-            border: 'none',
-            borderRadius: '10px',
-            color: 'var(--color-primary)',
-            cursor: 'pointer',
-            fontSize: '1rem',
-            fontWeight: '600',
-            padding: '8px',
-            minWidth: '36px',
-            minHeight: '36px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          ✏️
-        </button>
-        <button
-          onClick={onDelete}
-          aria-label="Удалить"
-          style={{
-            background: 'rgba(239, 68, 68, 0.08)',
-            border: 'none',
-            borderRadius: '10px',
-            color: '#ef4444',
-            cursor: 'pointer',
-            fontSize: '1rem',
-            fontWeight: '600',
-            padding: '8px',
-            minWidth: '36px',
-            minHeight: '36px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          🗑️
-        </button>
-      </div>
-    </div>
-  );
-}
+const SETTINGS_URL = '/api/settings';
+// Used until the server's settings document has loaded (or if it 404s on an
+// older deployment) - mirrors the server's own default in server/index.js.
+const DEFAULT_MONTHLY_LIMIT = 7000;
 
 function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -124,10 +42,12 @@ function App() {
     accountsRef.current = accounts;
   }, [accounts]);
   const [showAccountsSettings, setShowAccountsSettings] = useState(false);
-  const [formName, setFormName] = useState('');
-  const [formType, setFormType] = useState('card');
-  const [formIcon, setFormIcon] = useState('💳');
-  const [editingAccountId, setEditingAccountId] = useState(null);
+
+  // Monthly spending limit, driving the limit progress bar in the stats
+  // panel. Shared across devices via GET/PUT /api/settings rather than
+  // per-browser, so it starts at the server's own default until that fetch
+  // resolves (see fetchSettings/initData below).
+  const [monthlyLimit, setMonthlyLimit] = useState(DEFAULT_MONTHLY_LIMIT);
 
   // In-app notice banner, replacing blocking alert()s for errors raised by
   // account save/delete/reorder. { type: 'error' | 'success', message } or
@@ -148,15 +68,6 @@ function App() {
       if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
     };
   }, []);
-
-  // Drag-to-reorder sensors for the account list in the "Управление счетами"
-  // modal. A minimum drag distance keeps an imprecise tap on the grip from
-  // being mistaken for a drag, and the keyboard sensor is the only reorder
-  // path reachable without a pointer.
-  const accountDndSensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
 
   const onAccountDragEnd = (event) => {
     handleAccountDragEnd(event, { accounts: accountsRef.current, setAccounts, apiUrl: ACCOUNTS_URL, onError: showNotice });
@@ -207,6 +118,7 @@ function App() {
       setIsAuthenticated(true);
       await fetchTransactions(loadedAccounts);
       await fetchCategories();
+      await fetchSettings();
     } catch (err) {
       console.error('Initialization error:', err);
       setIsLoading(false);
@@ -286,6 +198,23 @@ function App() {
       setCategories(data);
     } catch (err) {
       console.error('Fetch categories error:', err);
+    }
+  };
+
+  // Loads the shared monthlyLimit from the server. If the response is
+  // missing, not ok, or doesn't carry a usable number (e.g. an unstubbed
+  // /api/settings in a test mock), the existing default stays in place
+  // rather than throwing - this must never block the rest of initData.
+  const fetchSettings = async () => {
+    try {
+      const res = await apiFetch(SETTINGS_URL);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && typeof data.monthlyLimit === 'number' && !Number.isNaN(data.monthlyLimit)) {
+        setMonthlyLimit(data.monthlyLimit);
+      }
+    } catch (err) {
+      console.error('Fetch settings error:', err);
     }
   };
 
@@ -533,10 +462,12 @@ function App() {
     } catch (err) { console.error('Delete error:', err); }
   };
 
-  const handleSaveAccount = async (e) => {
-    e.preventDefault();
-    if (!formName.trim()) return;
-
+  // formName/formType/formIcon/editingAccountId are local UI state owned by
+  // AccountsSettingsModal now - it passes them in as arguments rather than
+  // this function reading them off App state, since App only owns the
+  // accounts data and the API mutation itself. Returns whether the save
+  // succeeded so the modal knows whether to reset its form.
+  const handleSaveAccount = async (formName, formType, formIcon, editingAccountId) => {
     try {
       let res;
       if (editingAccountId) {
@@ -554,18 +485,17 @@ function App() {
       }
 
       if (res.ok) {
-        setFormName('');
-        setFormType('card');
-        setFormIcon('💳');
-        setEditingAccountId(null);
         const freshAccounts = await fetchAccounts();
         await fetchTransactions(freshAccounts);
+        return true;
       } else {
         const err = await res.json();
         showNotice(err.message || 'Ошибка сохранения счёта');
+        return false;
       }
     } catch (err) {
       console.error('Save account error:', err);
+      return false;
     }
   };
 
@@ -583,6 +513,31 @@ function App() {
       }
     } catch (err) {
       console.error('Delete account error:', err);
+    }
+  };
+
+  // Saves the shared monthlyLimit to the server. Returns whether it
+  // succeeded so the modal knows whether to surface a success notice.
+  const handleSaveSettings = async (newLimit) => {
+    try {
+      const res = await apiFetch(SETTINGS_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ monthlyLimit: newLimit })
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setMonthlyLimit(typeof saved.monthlyLimit === 'number' ? saved.monthlyLimit : newLimit);
+        return true;
+      } else {
+        const err = await res.json();
+        showNotice(err.message || 'Не удалось сохранить лимит');
+        return false;
+      }
+    } catch (err) {
+      console.error('Save settings error:', err);
+      showNotice('Не удалось сохранить лимит');
+      return false;
     }
   };
 
@@ -1026,14 +981,14 @@ function App() {
                     <>
                       {/* Progress Bar */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem' }}>
-                        <span style={{ color: 'var(--color-text-muted)' }}>Лимит €{MONTHLY_LIMIT.toLocaleString()}</span>
-                        <span style={{ fontWeight: '600', color: Math.abs(monthlyData.expense) > MONTHLY_LIMIT ? '#ef4444' : 'var(--color-text-main)' }}>{Math.round((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100)}%</span>
+                        <span style={{ color: 'var(--color-text-muted)' }}>Лимит €{monthlyLimit.toLocaleString()}</span>
+                        <span style={{ fontWeight: '600', color: Math.abs(monthlyData.expense) > monthlyLimit ? '#ef4444' : 'var(--color-text-main)' }}>{Math.round((Math.abs(monthlyData.expense) / monthlyLimit) * 100)}%</span>
                       </div>
                       <div style={{ height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
                         <div style={{
                           height: '100%',
-                          width: `${Math.min((Math.abs(monthlyData.expense) / MONTHLY_LIMIT) * 100, 100)}%`,
-                          background: Math.abs(monthlyData.expense) > MONTHLY_LIMIT ? '#ef4444' : 'var(--color-primary-gradient)',
+                          width: `${Math.min((Math.abs(monthlyData.expense) / monthlyLimit) * 100, 100)}%`,
+                          background: Math.abs(monthlyData.expense) > monthlyLimit ? '#ef4444' : 'var(--color-primary-gradient)',
                           transition: 'width 0.4s ease'
                         }} />
                       </div>
@@ -1094,233 +1049,17 @@ function App() {
       />
 
       {showAccountsSettings && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(15, 23, 42, 0.4)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '20px'
-          }}
-          onClick={() => {
-            setShowAccountsSettings(false);
-            setEditingAccountId(null);
-            setFormName('');
-            setFormIcon('💳');
-            setFormType('card');
-          }}
-        >
-          <div 
-            style={{
-              background: '#fff',
-              borderRadius: '24px',
-              width: '100%',
-              maxWidth: '500px',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              padding: '24px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '20px',
-              position: 'relative'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--color-text-main)', margin: 0 }}>Управление счетами</h2>
-              <button 
-                onClick={() => {
-                  setShowAccountsSettings(false);
-                  setEditingAccountId(null);
-                  setFormName('');
-                  setFormIcon('💳');
-                  setFormType('card');
-                }}
-                style={{
-                  background: 'rgba(0,0,0,0.05)',
-                  border: 'none',
-                  borderRadius: '50%',
-                  width: '32px',
-                  height: '32px',
-                  cursor: 'pointer',
-                  fontSize: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--color-text-muted)',
-                  fontWeight: 'bold'
-                }}
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Account Form */}
-            <form onSubmit={handleSaveAccount} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(0,0,0,0.01)', padding: '16px', borderRadius: '16px', border: '1px dashed rgba(0,0,0,0.1)' }}>
-              <h3 style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>
-                {editingAccountId ? 'Редактировать счёт' : 'Добавить новый счёт'}
-              </h3>
-              
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <input 
-                  type="text" 
-                  placeholder="Имя счёта (например, Мой Revolut)" 
-                  value={formName} 
-                  onChange={(e) => setFormName(e.target.value)}
-                  required
-                  style={{
-                    flex: 1,
-                    padding: '10px 14px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(0,0,0,0.15)',
-                    fontSize: '0.85rem',
-                    outline: 'none'
-                  }}
-                />
-                
-                <input 
-                  type="text" 
-                  placeholder="Иконка/Эмодзи" 
-                  value={formIcon} 
-                  onChange={(e) => setFormIcon(e.target.value)}
-                  style={{
-                    width: '60px',
-                    padding: '10px 0',
-                    textAlign: 'center',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(0,0,0,0.15)',
-                    fontSize: '1rem',
-                    outline: 'none'
-                  }}
-                  title="Эмодзи для счёта"
-                />
-              </div>
-
-              {!editingAccountId && (
-                <div style={{ display: 'flex', gap: '16px', fontSize: '0.85rem' }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                    <input 
-                      type="radio" 
-                      name="formType" 
-                      value="card" 
-                      checked={formType === 'card'} 
-                      onChange={() => {
-                        setFormType('card');
-                        setFormIcon('💳');
-                      }} 
-                    />
-                    Карта 💳
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
-                    <input 
-                      type="radio" 
-                      name="formType" 
-                      value="cash" 
-                      checked={formType === 'cash'} 
-                      onChange={() => {
-                        setFormType('cash');
-                        setFormIcon('💵');
-                      }} 
-                    />
-                    Наличные 💵
-                  </label>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                <button 
-                  type="submit" 
-                  className="btn-primary" 
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    borderRadius: '12px',
-                    fontSize: '0.85rem',
-                    fontWeight: '600',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {editingAccountId ? 'Сохранить изменения' : 'Добавить счёт'}
-                </button>
-                
-                {editingAccountId && (
-                  <button 
-                    type="button" 
-                    onClick={() => {
-                      setFormName('');
-                      setFormType('card');
-                      setFormIcon('💳');
-                      setEditingAccountId(null);
-                    }}
-                    style={{
-                      background: 'rgba(0,0,0,0.05)',
-                      border: 'none',
-                      padding: '10px 16px',
-                      borderRadius: '12px',
-                      fontSize: '0.85rem',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      color: 'var(--color-text-main)'
-                    }}
-                  >
-                    Отмена
-                  </button>
-                )}
-              </div>
-            </form>
-
-            {/* Accounts List */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Список счетов</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
-                <DndContext sensors={accountDndSensors} collisionDetection={closestCenter} onDragEnd={onAccountDragEnd}>
-                  <SortableContext items={accounts.map(acc => acc._id)} strategy={verticalListSortingStrategy}>
-                    {accounts.map(acc => (
-                      <AccountListItem
-                        key={acc._id}
-                        account={acc}
-                        onEdit={() => {
-                          setFormName(acc.name);
-                          setFormType(acc.type);
-                          setFormIcon(acc.icon || (acc.type === 'cash' ? '💵' : '💳'));
-                          setEditingAccountId(acc._id);
-                        }}
-                        onDelete={() => handleDeleteAccount(acc._id, acc.name)}
-                      />
-                    ))}
-                  </SortableContext>
-                </DndContext>
-              </div>
-            </div>
-
-            {/* Session: the only place a logout control lives - deliberately
-                not added as new chrome on the main screen. */}
-            <button
-              type="button"
-              onClick={handleLogout}
-              style={{
-                background: 'rgba(239, 68, 68, 0.08)',
-                border: 'none',
-                borderRadius: '12px',
-                color: '#ef4444',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                fontWeight: '600',
-                padding: '10px'
-              }}
-            >
-              Выйти
-            </button>
-          </div>
-        </div>
+        <AccountsSettingsModal
+          accounts={accounts}
+          monthlyLimit={monthlyLimit}
+          onClose={() => setShowAccountsSettings(false)}
+          onSaveAccount={handleSaveAccount}
+          onDeleteAccount={handleDeleteAccount}
+          onDragEnd={onAccountDragEnd}
+          onSaveSettings={handleSaveSettings}
+          onLogout={handleLogout}
+          showNotice={showNotice}
+        />
       )}
     </div>
   );
