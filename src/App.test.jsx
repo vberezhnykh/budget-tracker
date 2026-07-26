@@ -297,7 +297,7 @@ describe('App Integration Tests', () => {
         // per account (the type:card/type:cash group slides were dropped -
         // that split now lives in the stats block instead). Clicking a
         // slide applies its filter directly (no chevrons/expand step).
-        const cardFilterBtn = screen.getByText('КАРТА').closest('div');
+        const cardFilterBtn = screen.getByText('Карта').closest('div');
         fireEvent.click(cardFilterBtn);
 
         // Should show Salary (card) but NOT Coffee (cash)
@@ -307,7 +307,7 @@ describe('App Integration Tests', () => {
         });
 
         // Click on the "Наличные" account slide.
-        const cashFilterBtn = screen.getByText('НАЛИЧНЫЕ').closest('div');
+        const cashFilterBtn = screen.getByText('Наличные').closest('div');
         fireEvent.click(cashFilterBtn);
 
         // Should show Coffee (cash) but NOT Salary (card)
@@ -390,7 +390,7 @@ describe('App Integration Tests', () => {
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        const cardSlide = screen.getByText('КАРТА').closest('[data-carousel-slide]');
+        const cardSlide = screen.getByText('Карта').closest('[data-carousel-slide]');
         fireEvent.click(cardSlide);
         await waitFor(() => {
             expect(screen.getByText(/Счет:/)).toBeInTheDocument();
@@ -405,7 +405,7 @@ describe('App Integration Tests', () => {
             expect(screen.queryByText(/Счет:/)).not.toBeInTheDocument();
         });
 
-        const totalSlide = screen.getByText('ОБЩИЙ КАПИТАЛ').closest('[data-carousel-slide]');
+        const totalSlide = screen.getByText('Общий капитал').closest('[data-carousel-slide]');
         expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
         const lastCallTarget = Element.prototype.scrollIntoView.mock.contexts.at(-1);
         expect(lastCallTarget).toBe(totalSlide);
@@ -420,10 +420,10 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
 
         render(<App />);
-        await waitFor(() => screen.getByText('КОШЕЛЁК'));
+        await waitFor(() => screen.getByText('Кошелёк'));
 
         // Select the account we're about to delete.
-        const walletSlide = screen.getByText('КОШЕЛЁК').closest('[data-carousel-slide]');
+        const walletSlide = screen.getByText('Кошелёк').closest('[data-carousel-slide]');
         fireEvent.click(walletSlide);
         await waitFor(() => {
             const chip = screen.getByText(/Счет:/).closest('div');

@@ -50,6 +50,25 @@ export default function TransactionsDrawer({
   const sheetRef = useRef(null);
   const dragRef = useRef(null);
 
+  // Accessible name for a transaction row - mirrors what's already shown
+  // visually (name/description, category, signed amount) so screen-reader
+  // users get the same information sighted users read off the row.
+  const getTransactionAriaLabel = (item) => {
+    const name = item.description || item.title;
+    const sign = item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : '';
+    const amount = `${sign}€${Math.abs(item.visualAmount).toFixed(2)}`;
+    return item.category ? `${name}, ${item.category}, ${amount}` : `${name}, ${amount}`;
+  };
+
+  // Enter/Space activate a row exactly like a click - Space is prevented
+  // from also scrolling the drawer's list.
+  const handleRowKeyDown = (e, onActivate) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onActivate();
+    }
+  };
+
   // Travel distance (px) between the collapsed and expanded positions.
   // Measured from the sheet's own rendered height rather than derived from
   // window.innerHeight, because on iOS Safari those two disagree: the CSS
@@ -233,6 +252,23 @@ export default function TransactionsDrawer({
           <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--color-text-muted)' }}>
             {title}
           </span>
+          {/* Purely visual close/open affordance - the handle's role="button",
+              aria-expanded and aria-label already carry the accessible state,
+              so this is hidden from the accessibility tree. A CSS triangle
+              pointing down at rest (expanded) and rotated to point up when
+              collapsed, matching the direction the sheet will travel. */}
+          <span
+            aria-hidden="true"
+            style={{
+              width: 0,
+              height: 0,
+              borderLeft: '5px solid transparent',
+              borderRight: '5px solid transparent',
+              borderTop: '5px solid var(--color-text-muted)',
+              transform: expanded ? 'rotate(0deg)' : 'rotate(180deg)',
+              transition: 'transform 0.2s ease',
+            }}
+          />
         </div>
 
         {/* Dead strip flush with the bottom edge - keeps the interactive
@@ -368,7 +404,14 @@ export default function TransactionsDrawer({
                         )}
                       </div>
                       {searchResults.transactions[date].items.map(item => (
-                        <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
+                        <div
+                          key={item.id}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={getTransactionAriaLabel(item)}
+                          onClick={() => openEditModal(item)}
+                          onKeyDown={(e) => handleRowKeyDown(e, () => openEditModal(item))}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                             <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                               {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
@@ -442,7 +485,14 @@ export default function TransactionsDrawer({
                               {/* Sub-items */}
                               <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
                                 {item.items.map(subItem => (
-                                  <div key={subItem.id} onClick={() => openEditModal(subItem)} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
+                                  <div
+                                    key={subItem.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-label={`${item.description} (Разделено): ${getTransactionAriaLabel(subItem)}`}
+                                    onClick={() => openEditModal(subItem)}
+                                    onKeyDown={(e) => handleRowKeyDown(e, () => openEditModal(subItem))}
+                                    style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
                                     <div
                                       onClick={(e) => {
                                         e.stopPropagation();
@@ -463,7 +513,14 @@ export default function TransactionsDrawer({
                         }
 
                         return (
-                          <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
+                          <div
+                            key={item.id}
+                            role="button"
+                            tabIndex={0}
+                            aria-label={getTransactionAriaLabel(item)}
+                            onClick={() => openEditModal(item)}
+                            onKeyDown={(e) => handleRowKeyDown(e, () => openEditModal(item))}
+                            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                               <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
                                 {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}

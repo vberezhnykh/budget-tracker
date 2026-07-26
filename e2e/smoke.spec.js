@@ -30,7 +30,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await expect(page.getByText('BudgetTracker')).toBeVisible();
     const container = page.getByTestId('balance-carousel');
     await expect(container).toBeVisible();
-    await expect(page.getByText('ОБЩИЙ КАПИТАЛ')).toBeVisible();
+    await expect(page.getByText('Общий капитал')).toBeVisible();
   });
 
   test('carousel selects the exact slide scrolled to, not just the last one', async ({ page }) => {

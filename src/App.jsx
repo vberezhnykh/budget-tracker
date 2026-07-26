@@ -763,11 +763,22 @@ function App() {
           />
           {slides.map((slide, index) => {
             const isActive = slide.filter === selectedAccount;
+            const balanceText = `€${slide.amount.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`;
             return (
               <div
                 key={slide.key}
                 data-carousel-slide
+                role="button"
+                tabIndex={0}
+                aria-label={`${slide.name}: ${balanceText}`}
+                aria-current={isActive}
                 onClick={() => handleSlideClick(slide, index)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleSlideClick(slide, index);
+                  }
+                }}
                 style={{
                   flex: '0 0 88%',
                   scrollSnapAlign: 'center',
@@ -784,10 +795,10 @@ function App() {
               >
                 <div style={{ fontSize: '1.6rem', marginBottom: '8px' }}>{slide.icon}</div>
                 <div style={{ fontSize: '0.9rem', color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.5px' }}>
-                  {slide.name.toUpperCase()}
+                  {slide.name}
                 </div>
                 <div className="balance-amount" style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
-                  €{slide.amount.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                  {balanceText}
                 </div>
               </div>
             );
@@ -818,10 +829,14 @@ function App() {
                 aria-current={isActive}
                 style={{
                   flexShrink: 0,
-                  // Dot stays 6px, but the button carries padding so the touch
-                  // target is finger-sized rather than 6px.
-                  width: '22px',
-                  height: '22px',
+                  // Dot's own footprint stays 22px (so row height/spacing/
+                  // wrapping are unaffected), but the hit target is enlarged
+                  // to 40px via negative margin - the box grows to 40x40 while
+                  // the -9px margin (half of 40-22) pulls it back to occupying
+                  // exactly the original 22x22 in the surrounding flex layout.
+                  width: '40px',
+                  height: '40px',
+                  margin: '-9px',
                   padding: 0,
                   display: 'flex',
                   alignItems: 'center',
