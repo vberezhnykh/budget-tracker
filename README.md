@@ -15,6 +15,19 @@ Backend-переменные окружения задаются в `server/.env
 разработке выводится предупреждение, а запросы проходят без авторизации,
 чтобы не блокировать локальную работу без настроенного `.env`.
 
+## Тесты
+
+- `npm test` - модульные тесты (vitest + jsdom).
+- `npm run test:e2e` - смоук-тесты в реальном браузере (Playwright + Chromium,
+  см. `e2e/`). Нужны для класса багов, которые jsdom в принципе не видит
+  (jsdom не делает layout: `offsetWidth`/`offsetLeft`/`getBoundingClientRect`
+  всегда 0, `vh` не резолвится, скролл не происходит) - например, карусель
+  счетов, съезжающая не туда при свайпе, или шторка операций, оседающая не
+  на той высоте. База данных/backend для этого не нужны: Playwright сам
+  поднимает dev-сервер Vite, а каждый вызов `/api/**` подменяется фикстурой
+  (см. `e2e/fixtures.js`). Перед первым запуском один раз выполните
+  `npx playwright install chromium`.
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
