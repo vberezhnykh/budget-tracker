@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import AddTransactionForm from './components/AddTransactionForm'
 import CategoryDonut from './components/CategoryDonut'
+import TransactionsDrawer from './components/TransactionsDrawer'
 import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
 
 // API URL - relative path for production data fetching
@@ -111,6 +112,10 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedType, setSelectedType] = useState(null);
 
+  // Bottom drawer (transaction history) - collapsed by default, App owns
+  // the expanded/collapsed state since the drawer is a controlled component.
+  const [historyDrawerExpanded, setHistoryDrawerExpanded] = useState(false);
+
   // Fetch data on mount
   useEffect(() => {
     const initData = async () => {
@@ -126,9 +131,11 @@ function App() {
     initData();
   }, []);
 
-  // Lock body scroll when modal is open
+  // Lock body scroll when a modal or the expanded history drawer is open.
+  // The drawer's own list still scrolls - it's inside the fixed sheet with
+  // its own overflowY: 'auto'.
   useEffect(() => {
-    if (showAddTransaction || editingTransaction) {
+    if (showAddTransaction || editingTransaction || historyDrawerExpanded) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -138,7 +145,7 @@ function App() {
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [showAddTransaction, editingTransaction]);
+  }, [showAddTransaction, editingTransaction, historyDrawerExpanded]);
 
   // Cancel any pending rAF-throttled carousel scroll handler / settle-debounce timer on unmount
   useEffect(() => {
@@ -505,6 +512,19 @@ function App() {
     return '❓ Неизвестно';
   };
 
+  // Single source of truth for the "Счет" account-filter label, shared by
+  // the active-filter chip and the drawer's contextual title so they can
+  // never disagree.
+  const getAccountFilterLabel = (accountFilter) => {
+    if (accountFilter === 'type:card') return 'Все карты';
+    if (accountFilter === 'type:cash') return 'Все наличные';
+    return accounts.find(a => a._id === accountFilter)?.name || accountFilter;
+  };
+
+  const historyDrawerTitle = selectedAccount
+    ? `Список операций «${getAccountFilterLabel(selectedAccount)}»`
+    : 'Список операций';
+
   const isPrevDisabled = selectedMonth === '2025-11';
   const isNextDisabled = selectedMonth === new Date().toISOString().slice(0, 7);
 
@@ -657,7 +677,7 @@ function App() {
         </div>
       </header>
 
-      <main>
+      <main style={{ paddingBottom: '88px' }}>
         {/* Quick Actions */}
         <section style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -822,265 +842,38 @@ function App() {
 
           {/* AI Analytics Removed */}
 
-          {/* Transaction History */}
-          <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
-            <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
-                <button onClick={exportToCSV} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '8px', color: 'var(--color-text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>💾</span> Экспорт
-                </button>
-              </div>
-
-              {/* Search Bar */}
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  placeholder="Поиск по названию или сумме..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px 12px 40px',
-                    background: '#fff',
-                    border: '1px solid rgba(0,0,0,0.08)',
-                    borderRadius: '12px',
-                    color: 'var(--color-text-main)',
-                    fontSize: '0.9rem',
-                    boxSizing: 'border-box'
-                  }}
-                />
-                <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-
-              {/* Category Filter Chips */}
-              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                <style>{`
-                  div::-webkit-scrollbar { display: none; }
-                `}</style>
-                {categories.filter(c => !selectedType || c.type === selectedType).map(cat => (
-                  <button
-                    key={cat._id}
-                    onClick={() => toggleCategoryFilter(cat.name)}
-                    style={{
-                      flexShrink: 0,
-                      padding: '6px 12px',
-                      borderRadius: '20px',
-                      background: selectedCategory === cat.name ? 'var(--color-primary)' : '#fff',
-                      border: '1px solid ' + (selectedCategory === cat.name ? 'var(--color-primary)' : 'rgba(0,0,0,0.1)'),
-                      color: selectedCategory === cat.name ? '#fff' : 'var(--color-text-muted)',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease',
-                      boxShadow: selectedCategory === cat.name ? '0 2px 6px rgba(37, 99, 235, 0.2)' : 'none'
-                    }}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {selectedAccount && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
-                      Счет: <strong>{selectedAccount === 'type:card' ? 'Все карты' : selectedAccount === 'type:cash' ? 'Все наличные' : (accounts.find(a => a._id === selectedAccount)?.name || selectedAccount)}</strong>
-                    </span>
-                    <button onClick={() => setSelectedAccount(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
-                      Сбросить ×
-                    </button>
-                  </div>
-                )}
-
-                {selectedType && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid', borderColor: selectedType === 'income' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
-                    <span style={{ fontSize: '0.8rem', color: selectedType === 'income' ? '#10b981' : '#ef4444' }}>
-                      Тип: <strong>{selectedType === 'income' ? 'Доходы' : 'Расходы'}</strong>
-                    </span>
-                    <button onClick={() => setSelectedType(null)} style={{ background: 'none', border: 'none', color: selectedType === 'income' ? '#10b981' : '#ef4444', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
-                      Сбросить ×
-                    </button>
-                  </div>
-                )}
-
-                {selectedCategory && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
-                      Категория: <strong>{selectedCategory}</strong>
-                    </span>
-                    <button onClick={() => setSelectedCategory(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
-                      Сбросить ×
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {searchQuery ? (
-                // Search Results View
-                searchResults.count === 0 ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Ничего не найдено</div>
-                ) : (
-                  Object.keys(searchResults.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
-                    <div key={date}>
-                      <div style={{ padding: '10px 24px', background: 'rgba(0,0,0,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{formatDate(date)}</span>
-                        {searchResults.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: searchResults.transactions[date].dailySum > 0 ? '#10b981' : 'var(--color-text-muted)' }}>
-                            {searchResults.transactions[date].dailySum > 0 ? '+' : ''}{searchResults.transactions[date].dailySum.toFixed(2)}€
-                          </span>
-                        )}
-                      </div>
-                      {searchResults.transactions[date].items.map(item => (
-                        <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                              {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
-                            </div>
-                            <div>
-                              <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
-                                {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
-                              </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                {getAccountDisplay(item.account)}
-                                {item.category && (
-                                  <>
-                                    {' • '}
-                                    <span
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleCategoryFilter(item.category);
-                                      }}
-                                      style={{ color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-                                    >
-                                      {item.category}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? '#059669' : 'var(--color-text-main)') }}>
-                            {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ))
-                )
-              ) : (
-                // Monthly Data View
-                Object.keys(monthlyData.transactions).length === 0 ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Нет операций</div>
-                ) : (
-                  Object.keys(monthlyData.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
-                    <div key={date}>
-                      <div style={{ padding: '10px 24px', background: 'rgba(0,0,0,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{formatDate(date)}</span>
-                        {monthlyData.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: monthlyData.transactions[date].dailySum > 0 ? '#10b981' : 'var(--color-text-muted)' }}>
-                            {monthlyData.transactions[date].dailySum > 0 ? '+' : ''}{monthlyData.transactions[date].dailySum.toFixed(2)}€
-                          </span>
-                        )}
-                      </div>
-                      {monthlyData.transactions[date].items.map(item => {
-                        if (item.type === 'split_group') {
-                          return (
-                            <div key={item.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', background: '#fff' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'rgba(0,0,0,0.01)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                  <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'rgba(37, 99, 235, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                                    🗂️
-                                  </div>
-                                  <div>
-                                    <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                      {getAccountDisplay(item.account)} • {item.items.length} катег.
-                                    </div>
-                                  </div>
-                                </div>
-                                <div style={{ fontWeight: '700', color: 'var(--color-text-main)' }}>
-                                  €{Math.abs(item.visualAmount).toFixed(2)}
-                                </div>
-                              </div>
-                              {/* Sub-items */}
-                              <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
-                                {item.items.map(subItem => (
-                                  <div key={subItem.id} onClick={() => openEditModal(subItem)} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
-                                    <div
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleCategoryFilter(subItem.category);
-                                      }}
-                                      style={{ color: selectedCategory === subItem.category ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: selectedCategory === subItem.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-                                    >
-                                      {subItem.category}
-                                    </div>
-                                    <div style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-main)' }}>
-                                      €{Math.abs(subItem.visualAmount).toFixed(2)}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div key={item.id} onClick={() => openEditModal(item)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: 'pointer', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                              <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
-                                {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
-                                  {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                  {getAccountDisplay(item.account)}
-                                  {item.category && (
-                                    <>
-                                      {' • '}
-                                      <span
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          toggleCategoryFilter(item.category);
-                                        }}
-                                        style={{ color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-                                      >
-                                        {item.category}
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? '#059669' : 'var(--color-text-main)') }}>
-                              {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))
-                )
-              )}
-            </div>
-          </div>
         </div>
       </main>
 
       {showAddTransaction && <AddTransactionForm type={transactionType} categories={categories} onAddCategory={handleAddCategory} onClose={() => setShowAddTransaction(false)} onSubmit={handleAddTransaction} accounts={accounts} />}
       {editingTransaction && <AddTransactionForm initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} />}
+
+      {/* Bottom drawer: transaction history, always mounted (collapsed =
+          transformed off-screen, not unmounted) so filters applied elsewhere
+          keep reflecting in it immediately. */}
+      <TransactionsDrawer
+        expanded={historyDrawerExpanded}
+        setExpanded={setHistoryDrawerExpanded}
+        title={historyDrawerTitle}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        searchResults={searchResults}
+        monthlyData={monthlyData}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        selectedType={selectedType}
+        selectedAccount={selectedAccount}
+        accounts={accounts}
+        toggleCategoryFilter={toggleCategoryFilter}
+        setSelectedAccount={setSelectedAccount}
+        setSelectedType={setSelectedType}
+        setSelectedCategory={setSelectedCategory}
+        exportToCSV={exportToCSV}
+        openEditModal={openEditModal}
+        getAccountDisplay={getAccountDisplay}
+        formatDate={formatDate}
+        getAccountFilterLabel={getAccountFilterLabel}
+      />
 
       {showAccountsSettings && (
         <div 

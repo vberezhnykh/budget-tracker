@@ -135,7 +135,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 100,
+            zIndex: 1000,
             animation: 'fadeIn 0.2s ease-out',
             overflowY: 'auto',
             overflowX: 'hidden',
