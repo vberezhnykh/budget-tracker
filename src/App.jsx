@@ -871,6 +871,19 @@ function App() {
             );
           })}
         </div>
+
+        {/* Month Navigation: lives here as global chrome, not inside <main>,
+            because the selected month filters both the stats panel and the
+            transaction list in the drawer below - it isn't scoped to either
+            one, so it belongs in the header alongside the other page-wide
+            controls rather than being duplicated or bolted onto one section. */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', padding: '4px 8px' }}>
+          <button onClick={() => handleMonthChange(-1)} disabled={isPrevDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.1rem', opacity: isPrevDisabled ? 0.3 : 1, padding: '10px', minWidth: '40px', minHeight: '40px' }}>←</button>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: '600', textTransform: 'capitalize' }}>
+            {new Date(selectedMonth + '-01T12:00:00').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '')}
+          </h2>
+          <button onClick={() => handleMonthChange(1)} disabled={isNextDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.1rem', opacity: isNextDisabled ? 0.3 : 1, padding: '10px', minWidth: '40px', minHeight: '40px' }}>→</button>
+        </div>
       </header>
 
       <main style={{ paddingBottom: `${PEEK_HEIGHT + 16}px` }}>
@@ -889,20 +902,11 @@ function App() {
           </div>
         </section>
 
-        {/* Month Navigation */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '4px 8px' }}>
-          <button onClick={() => handleMonthChange(-1)} disabled={isPrevDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.1rem', opacity: isPrevDisabled ? 0.3 : 1, padding: '10px', minWidth: '40px', minHeight: '40px' }}>←</button>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: '600', textTransform: 'capitalize' }}>
-            {new Date(selectedMonth + '-01T12:00:00').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '')}
-          </h2>
-          <button onClick={() => handleMonthChange(1)} disabled={isNextDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.1rem', opacity: isNextDisabled ? 0.3 : 1, padding: '10px', minWidth: '40px', minHeight: '40px' }}>→</button>
-        </div>
-
         {/* Summary Card with Budget Limit */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '24px' }}>
           {summaryView === 'stats' ? (
             <div className="glass-panel" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '8px' }}>
                 <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '10px', flexShrink: 0 }}>
                   <button
                     onClick={() => setTimeRange('month')}
@@ -910,7 +914,7 @@ function App() {
                       background: timeRange === 'month' ? '#fff' : 'transparent',
                       border: 'none',
                       borderRadius: '6px',
-                      padding: '4px 12px',
+                      padding: '4px 8px',
                       color: timeRange === 'month' ? 'var(--color-primary)' : 'var(--color-text-muted)',
                       fontSize: '0.75rem',
                       fontWeight: '600',
@@ -925,7 +929,7 @@ function App() {
                       background: timeRange === 'year' ? '#fff' : 'transparent',
                       border: 'none',
                       borderRadius: '6px',
-                      padding: '4px 12px',
+                      padding: '4px 8px',
                       color: timeRange === 'year' ? 'var(--color-primary)' : 'var(--color-text-muted)',
                       fontSize: '0.75rem',
                       fontWeight: '600',
@@ -940,7 +944,7 @@ function App() {
                       background: timeRange === 'lifetime' ? '#fff' : 'transparent',
                       border: 'none',
                       borderRadius: '6px',
-                      padding: '4px 12px',
+                      padding: '4px 8px',
                       color: timeRange === 'lifetime' ? 'var(--color-primary)' : 'var(--color-text-muted)',
                       fontSize: '0.75rem',
                       fontWeight: '600',
@@ -950,7 +954,7 @@ function App() {
                     Всё время
                   </button>
                 </div>
-                <button onClick={() => setSummaryView('analytics')} style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '6px 12px', color: 'var(--color-text-main)', fontSize: '0.8rem', fontWeight: '500' }}>
+                <button onClick={() => setSummaryView('analytics')} style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '6px 8px', color: 'var(--color-text-main)', fontSize: '0.75rem', fontWeight: '500' }}>
                   Аналитика →
                 </button>
               </div>

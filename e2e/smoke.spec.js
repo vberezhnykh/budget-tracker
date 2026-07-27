@@ -324,15 +324,16 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
-  test('month navigation row is compact but its arrows keep a 40x40 tap target', async ({ page }) => {
-    // The month row used to be a full-width glass-panel card (padding
-    // 12px 20px, 1.5rem arrows) purely to show "<- Month Year ->". On a
-    // phone that decorated card ate ~55px of vertical space for one line
-    // of text. It was flattened into a plain row (no glass-panel, smaller
-    // padding/font) to reclaim that space - but shrinking the arrow glyphs
-    // must not shrink their tappable area, since they are the only way to
-    // change month. jsdom can't measure real rendered box sizes, hence a
-    // real-browser check here.
+  test('month navigation lives in the header, not main, and its arrows keep a 40x40 tap target', async ({ page }) => {
+    // The month row was moved from its own block in <main> into the header
+    // card (as global chrome - the selected month filters both the stats
+    // panel and the drawer's transaction list, so it isn't scoped to
+    // either one) so it shares the header's existing padding instead of
+    // adding its own separate block to the page. Shrinking the arrow
+    // glyphs must still not shrink their tappable area, since they are the
+    // only way to change month. jsdom can't measure real rendered box
+    // sizes or DOM ancestry against real layout, hence a real-browser
+    // check here.
     await mockApi(page);
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
@@ -342,25 +343,15 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await expect(prevButton).toBeVisible();
     await expect(nextButton).toBeVisible();
 
-    // The row is the arrows' shared parent - grab its own rendered height,
-    // plus the gap between it and the next section (the summary card),
-    // which together represent the total vertical footprint this row
-    // occupies on the page (its box height plus its marginBottom).
-    const { rowHeight, footprint } = await prevButton.evaluate((el) => {
-      const row = el.parentElement;
-      const rowRect = row.getBoundingClientRect();
-      const nextRect = row.nextElementSibling.getBoundingClientRect();
-      return { rowHeight: rowRect.height, footprint: nextRect.y - rowRect.y };
-    });
-
-    // Measured before this change, on this exact mobile viewport: the row
-    // itself (a full glass-panel card, 12px 20px padding, 1.5rem arrows)
-    // was ~55px tall, and the full footprint including its 24px
-    // marginBottom before the summary section was ~78px. The flattened row
-    // (no glass-panel, 4px 8px padding, 1.1rem arrows, 12px marginBottom)
-    // must be meaningfully smaller on both counts.
-    expect(rowHeight).toBeLessThan(53);
-    expect(footprint).toBeLessThan(70);
+    // The row must render inside <header>, not <main> - this is the change
+    // itself, not an incidental detail, so assert ancestry directly rather
+    // than just trusting visual position.
+    const ancestry = await prevButton.evaluate((el) => ({
+      insideHeader: !!el.closest('header'),
+      insideMain: !!el.closest('main'),
+    }));
+    expect(ancestry.insideHeader).toBe(true);
+    expect(ancestry.insideMain).toBe(false);
 
     const prevBox = await prevButton.boundingBox();
     const nextBox = await nextButton.boundingBox();
@@ -388,5 +379,53 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // Neither arrow box overlaps the centred month heading.
     expect(prevBox.x + prevBox.width).toBeLessThanOrEqual(headingBox.x + 0.5);
     expect(headingBox.x + headingBox.width).toBeLessThanOrEqual(nextBox.x + 0.5);
+  });
+
+  test('range tabs and the Аналитика button share one row in the stats panel', async ({ page }) => {
+    // The tab group (Месяц/Год/Всё время) and the "Аналитика ->" button
+    // were already a single flex row with justifyContent: 'space-between',
+    // but flexWrap: 'wrap' plus their combined natural width meant they
+    // wrapped onto two lines at a 390px viewport, costing an extra row of
+    // vertical space. Their paddings/gap were tightened so all four
+    // controls fit on one line without touching the row's structure or the
+    // wrap safety net. jsdom performs no real text/flex layout, so it can
+    // never see the wrap - only real rendered geometry can.
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    const monthTab = page.getByRole('button', { name: 'Месяц', exact: true });
+    const yearTab = page.getByRole('button', { name: 'Год', exact: true });
+    const lifetimeTab = page.getByRole('button', { name: 'Всё время', exact: true });
+    const analyticsBtn = page.getByRole('button', { name: /Аналитика/ });
+
+    const controls = [monthTab, yearTab, lifetimeTab, analyticsBtn];
+    const boxes = [];
+    for (const control of controls) {
+      await expect(control).toBeVisible();
+      const box = await control.boundingBox();
+      expect(box).not.toBeNull();
+      boxes.push(box);
+    }
+
+    // All four share the same row - their vertical centres line up, within
+    // a couple of pixels. This is the assertion that would have caught the
+    // pre-fix wrap: with the original wider paddings the tab group and the
+    // button land on two visibly different rows here.
+    const centres = boxes.map((box) => box.y + box.height / 2);
+    for (const centre of centres) {
+      expect(Math.abs(centre - centres[0])).toBeLessThanOrEqual(2);
+    }
+
+    // None of the four controls overflows the stats panel horizontally.
+    const panelBox = await monthTab.evaluate((el) => {
+      const panel = el.closest('.glass-panel');
+      const rect = panel.getBoundingClientRect();
+      return { x: rect.x, right: rect.x + rect.width };
+    });
+    for (const box of boxes) {
+      expect(box.x).toBeGreaterThanOrEqual(panelBox.x - 0.5);
+      expect(box.x + box.width).toBeLessThanOrEqual(panelBox.right + 0.5);
+    }
   });
 });
