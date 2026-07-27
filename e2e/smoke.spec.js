@@ -271,4 +271,56 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       }
     }
   });
+
+  test('quick-action buttons (income/expense/transfer) sit on one row, fit the viewport, and are not text-clipped', async ({ page }) => {
+    // These three buttons used to be a full-width transfer button stacked
+    // above an income/expense row. They were merged onto a single row of
+    // three equal-width buttons to reclaim vertical space. jsdom can't see
+    // whether the shorter "⇄ Обмен" label actually fits at 1/3 width on a
+    // real 390px phone, whether the row overflows the page, or whether all
+    // three end up the same height - only real layout can, hence this test.
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    const income = page.getByRole('button', { name: /\+ Доход/i });
+    const expense = page.getByRole('button', { name: /- Расход/i });
+    const transfer = page.getByRole('button', { name: /⇄ Обмен/i });
+
+    const buttons = [income, expense, transfer];
+    const boxes = [];
+    for (const button of buttons) {
+      await expect(button).toBeVisible();
+      const box = await button.boundingBox();
+      expect(box).not.toBeNull();
+      boxes.push(box);
+    }
+
+    // All three sit on the same row - their vertical centres line up, within
+    // a couple of pixels (allowing for sub-pixel rounding differences
+    // between the glass-panel and btn-primary classes).
+    const centres = boxes.map((box) => box.y + box.height / 2);
+    for (const centre of centres) {
+      expect(Math.abs(centre - centres[0])).toBeLessThanOrEqual(2);
+    }
+
+    // None of the three overflows the page horizontally.
+    const viewport = page.viewportSize();
+    for (const box of boxes) {
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    }
+
+    // None of the three labels is clipped - scrollWidth (the content's real,
+    // unclipped width) must not exceed clientWidth (the box actually
+    // rendered). This is exactly the kind of narrow-viewport label-overflow
+    // defect jsdom cannot see, since it never performs real text layout.
+    for (const button of buttons) {
+      const { scrollWidth, clientWidth } = await button.evaluate((el) => ({
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      }));
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+    }
+  });
 });

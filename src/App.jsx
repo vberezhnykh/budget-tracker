@@ -876,18 +876,16 @@ function App() {
       <main style={{ paddingBottom: `${PEEK_HEIGHT + 16}px` }}>
         {/* Quick Actions */}
         <section style={{ marginBottom: '32px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <button onClick={() => openAddModal('transfer')} className="glass-panel" style={{ width: '100%', border: '1px solid rgba(129, 140, 248, 0.2)', color: '#818cf8', padding: '14px', borderRadius: '16px', fontWeight: '600' }}>
-              ⇄ Обмен / Перевод
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button onClick={() => openAddModal('income')} className="btn-primary" style={{ flex: 1, background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', padding: '12px 8px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+              <span>+</span> Доход
             </button>
-            <div style={{ display: 'flex', gap: '16px' }}>
-              <button onClick={() => openAddModal('income')} className="btn-primary" style={{ flex: 1, background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)' }}>
-                <span>+</span> Доход
-              </button>
-              <button onClick={() => openAddModal('expense')} className="btn-primary" style={{ flex: 2, background: 'linear-gradient(135deg, #f43f5e, #e11d48)', boxShadow: '0 4px 15px rgba(244, 63, 94, 0.3)' }}>
-                <span>-</span> Расход
-              </button>
-            </div>
+            <button onClick={() => openAddModal('expense')} className="btn-primary" style={{ flex: 1, background: 'linear-gradient(135deg, #f43f5e, #e11d48)', boxShadow: '0 4px 15px rgba(244, 63, 94, 0.3)', padding: '12px 8px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+              <span>-</span> Расход
+            </button>
+            <button onClick={() => openAddModal('transfer')} className="glass-panel" style={{ flex: 1, border: '1px solid rgba(129, 140, 248, 0.2)', color: '#818cf8', padding: '12px 8px', borderRadius: '16px', fontWeight: '600', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+              ⇄ Обмен
+            </button>
           </div>
         </section>
 
