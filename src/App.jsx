@@ -890,12 +890,12 @@ function App() {
         </section>
 
         {/* Month Navigation */}
-        <div className="glass-panel" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', padding: '12px 20px' }}>
-          <button onClick={() => handleMonthChange(-1)} disabled={isPrevDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.5rem', opacity: isPrevDisabled ? 0.3 : 1 }}>←</button>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: '600', textTransform: 'capitalize' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', padding: '4px 8px' }}>
+          <button onClick={() => handleMonthChange(-1)} disabled={isPrevDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.1rem', opacity: isPrevDisabled ? 0.3 : 1, padding: '10px', minWidth: '40px', minHeight: '40px' }}>←</button>
+          <h2 style={{ fontSize: '0.95rem', fontWeight: '600', textTransform: 'capitalize' }}>
             {new Date(selectedMonth + '-01T12:00:00').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '')}
           </h2>
-          <button onClick={() => handleMonthChange(1)} disabled={isNextDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.5rem', opacity: isNextDisabled ? 0.3 : 1 }}>→</button>
+          <button onClick={() => handleMonthChange(1)} disabled={isNextDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.1rem', opacity: isNextDisabled ? 0.3 : 1, padding: '10px', minWidth: '40px', minHeight: '40px' }}>→</button>
         </div>
 
         {/* Summary Card with Budget Limit */}

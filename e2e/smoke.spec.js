@@ -323,4 +323,70 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
     }
   });
+
+  test('month navigation row is compact but its arrows keep a 40x40 tap target', async ({ page }) => {
+    // The month row used to be a full-width glass-panel card (padding
+    // 12px 20px, 1.5rem arrows) purely to show "<- Month Year ->". On a
+    // phone that decorated card ate ~55px of vertical space for one line
+    // of text. It was flattened into a plain row (no glass-panel, smaller
+    // padding/font) to reclaim that space - but shrinking the arrow glyphs
+    // must not shrink their tappable area, since they are the only way to
+    // change month. jsdom can't measure real rendered box sizes, hence a
+    // real-browser check here.
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    const prevButton = page.getByRole('button', { name: '←', exact: true });
+    const nextButton = page.getByRole('button', { name: '→', exact: true });
+    await expect(prevButton).toBeVisible();
+    await expect(nextButton).toBeVisible();
+
+    // The row is the arrows' shared parent - grab its own rendered height,
+    // plus the gap between it and the next section (the summary card),
+    // which together represent the total vertical footprint this row
+    // occupies on the page (its box height plus its marginBottom).
+    const { rowHeight, footprint } = await prevButton.evaluate((el) => {
+      const row = el.parentElement;
+      const rowRect = row.getBoundingClientRect();
+      const nextRect = row.nextElementSibling.getBoundingClientRect();
+      return { rowHeight: rowRect.height, footprint: nextRect.y - rowRect.y };
+    });
+
+    // Measured before this change, on this exact mobile viewport: the row
+    // itself (a full glass-panel card, 12px 20px padding, 1.5rem arrows)
+    // was ~55px tall, and the full footprint including its 24px
+    // marginBottom before the summary section was ~78px. The flattened row
+    // (no glass-panel, 4px 8px padding, 1.1rem arrows, 12px marginBottom)
+    // must be meaningfully smaller on both counts.
+    expect(rowHeight).toBeLessThan(53);
+    expect(footprint).toBeLessThan(70);
+
+    const prevBox = await prevButton.boundingBox();
+    const nextBox = await nextButton.boundingBox();
+    expect(prevBox).not.toBeNull();
+    expect(nextBox).not.toBeNull();
+
+    // Tap targets must stay finger-sized even though the glyph shrank.
+    for (const box of [prevBox, nextBox]) {
+      expect(box.width).toBeGreaterThanOrEqual(40);
+      expect(box.height).toBeGreaterThanOrEqual(40);
+    }
+
+    // The two arrows sit at opposite ends of the row with the month name
+    // between them, so a correctly-laid-out row has no overlap risk - but
+    // a prior fix elsewhere in this app enlarged a tap target with a
+    // negative margin and caused adjacent targets to overlap by 18px, so
+    // this is verified by measurement rather than assumed.
+    expect(prevBox.x + prevBox.width).toBeLessThanOrEqual(nextBox.x);
+
+    const heading = page.locator('h2', { hasText: /\d{4}/ });
+    await expect(heading).toBeVisible();
+    const headingBox = await heading.boundingBox();
+    expect(headingBox).not.toBeNull();
+
+    // Neither arrow box overlaps the centred month heading.
+    expect(prevBox.x + prevBox.width).toBeLessThanOrEqual(headingBox.x + 0.5);
+    expect(headingBox.x + headingBox.width).toBeLessThanOrEqual(nextBox.x + 0.5);
+  });
 });
