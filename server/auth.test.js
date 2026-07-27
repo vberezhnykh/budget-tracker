@@ -14,9 +14,9 @@ import {
 } from './auth.js';
 
 // Fixture values that satisfy the strength requirements in getAuthConfig
-// (APP_PASSWORD >= 12 chars, SESSION_SECRET >= 32 chars) - used whenever a
+// (APP_PASSWORD >= 8 chars, SESSION_SECRET >= 32 chars) - used whenever a
 // test needs both vars to actually count as "configured".
-const STRONG_APP_PASSWORD = 'x'.repeat(12);
+const STRONG_APP_PASSWORD = 'x'.repeat(8);
 const STRONG_SESSION_SECRET = 'y'.repeat(32);
 
 describe('createToken / verifyToken', () => {
@@ -142,8 +142,17 @@ describe('getAuthConfig', () => {
 
     // Finding 3: a present-but-weak value must not count as configured.
     describe('strength validation', () => {
-        it('treats an APP_PASSWORD shorter than 12 characters as unconfigured (weak, not missing)', () => {
-            process.env.APP_PASSWORD = 'short-pw123'; // 11 chars
+        it('accepts an 8-character APP_PASSWORD as configured', () => {
+            process.env.APP_PASSWORD = 'x'.repeat(8);
+            process.env.SESSION_SECRET = STRONG_SESSION_SECRET;
+            const config = getAuthConfig();
+            expect(config.isConfigured).toBe(true);
+            expect(config.missing).toEqual([]);
+            expect(config.weak).toEqual([]);
+        });
+
+        it('treats an APP_PASSWORD shorter than 8 characters as unconfigured (weak, not missing)', () => {
+            process.env.APP_PASSWORD = 'x'.repeat(7); // 7 chars, below the 8-char minimum
             process.env.SESSION_SECRET = STRONG_SESSION_SECRET;
             const config = getAuthConfig();
             expect(config.isConfigured).toBe(false);
@@ -169,7 +178,7 @@ describe('getAuthConfig', () => {
         });
 
         it('accepts a password/secret exactly at the minimum length', () => {
-            process.env.APP_PASSWORD = 'x'.repeat(12);
+            process.env.APP_PASSWORD = 'x'.repeat(8);
             process.env.SESSION_SECRET = 'y'.repeat(32);
             const config = getAuthConfig();
             expect(config.isConfigured).toBe(true);
@@ -184,12 +193,14 @@ describe('buildHealthPayload', () => {
         process.env = { ...ORIGINAL_ENV };
     });
 
-    it('reports configured: true when both vars are set', () => {
+    it('reports configured: true, missing: [], weak: [] when both vars are set and strong', () => {
         process.env.APP_PASSWORD = STRONG_APP_PASSWORD;
         process.env.SESSION_SECRET = STRONG_SESSION_SECRET;
         const payload = buildHealthPayload();
         expect(payload.status).toBe('ok');
         expect(payload.configured).toBe(true);
+        expect(payload.missing).toEqual([]);
+        expect(payload.weak).toEqual([]);
     });
 
     it('reports configured: false when neither var is set', () => {
@@ -213,13 +224,61 @@ describe('buildHealthPayload', () => {
         expect(payload.configured).toBe(false);
     });
 
-    it('never includes the actual values, only variable names', () => {
-        process.env.APP_PASSWORD = 'super-secret-password';
-        process.env.SESSION_SECRET = 'super-secret-key';
+    // The health diagnostic (missing/weak) restores exactly the information
+    // needed to remotely tell "not set" from "set but too short" apart -
+    // see the comment above buildHealthPayload for why this was reversed.
+    describe('missing/weak reporting', () => {
+        it('names APP_PASSWORD as missing when it is absent (SESSION_SECRET fine)', () => {
+            delete process.env.APP_PASSWORD;
+            process.env.SESSION_SECRET = STRONG_SESSION_SECRET;
+            const payload = buildHealthPayload();
+            expect(payload.configured).toBe(false);
+            expect(payload.missing).toEqual(['APP_PASSWORD']);
+            expect(payload.weak).toEqual([]);
+        });
+
+        it('names APP_PASSWORD as weak when it is present but too short (SESSION_SECRET fine)', () => {
+            process.env.APP_PASSWORD = 'x'.repeat(7);
+            process.env.SESSION_SECRET = STRONG_SESSION_SECRET;
+            const payload = buildHealthPayload();
+            expect(payload.configured).toBe(false);
+            expect(payload.missing).toEqual([]);
+            expect(payload.weak).toEqual(['APP_PASSWORD']);
+        });
+
+        it('names SESSION_SECRET as weak when it is present but too short (APP_PASSWORD fine)', () => {
+            process.env.APP_PASSWORD = STRONG_APP_PASSWORD;
+            process.env.SESSION_SECRET = 'y'.repeat(31);
+            const payload = buildHealthPayload();
+            expect(payload.configured).toBe(false);
+            expect(payload.missing).toEqual([]);
+            expect(payload.weak).toEqual(['SESSION_SECRET']);
+        });
+
+        it('names both vars appropriately when both are broken (one missing, one weak)', () => {
+            delete process.env.APP_PASSWORD;
+            process.env.SESSION_SECRET = 'y'.repeat(31);
+            const payload = buildHealthPayload();
+            expect(payload.configured).toBe(false);
+            expect(payload.missing).toEqual(['APP_PASSWORD']);
+            expect(payload.weak).toEqual(['SESSION_SECRET']);
+        });
+    });
+
+    it('never includes the actual values, only variable names - covers both missing and weak', () => {
+        process.env.APP_PASSWORD = 'short'; // present but weak
+        process.env.SESSION_SECRET = 'super-secret-key'; // present but weak (< 32 chars)
         const payload = buildHealthPayload();
         const serialized = JSON.stringify(payload);
-        expect(serialized).not.toContain('super-secret-password');
+        expect(payload.weak).toEqual(expect.arrayContaining(['APP_PASSWORD', 'SESSION_SECRET']));
+        expect(serialized).not.toContain('short');
         expect(serialized).not.toContain('super-secret-key');
+
+        delete process.env.APP_PASSWORD;
+        process.env.SESSION_SECRET = 'super-secret-password-value-that-is-long-enough';
+        const missingPayload = buildHealthPayload();
+        const missingSerialized = JSON.stringify(missingPayload);
+        expect(missingSerialized).not.toContain('super-secret-password-value-that-is-long-enough');
     });
 });
 

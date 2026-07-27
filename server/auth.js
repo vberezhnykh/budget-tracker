@@ -110,7 +110,20 @@ function verifyToken(token, secret, appPassword) {
 // or a short placeholder secret is functionally the same as having none -
 // it fails to any real guessing attempt - so both are treated as "not
 // configured" rather than silently accepted.
-const MIN_APP_PASSWORD_LENGTH = 12;
+//
+// The two thresholds differ because the two values are different kinds of
+// secret. APP_PASSWORD is chosen and memorised by a human (one of the two
+// family members using this app), and is additionally backstopped by the
+// login rate limiter below (LOGIN_MAX_ATTEMPTS per LOGIN_WINDOW_MS), so 8 is
+// a floor that's still memorisable while keeping trivially-guessable values
+// out - it is not the only defense against brute-forcing it. SESSION_SECRET
+// is never typed or memorised by anyone; it's machine-generated (see the
+// `crypto.randomBytes(32).toString('hex')` recipe in .env.example, which
+// yields 64 hex characters) and it's the HMAC key that authenticates every
+// session cookie, so it stays at 32: there's no usability cost to requiring
+// the full generated length, and it protects every session, not one login
+// attempt at a time.
+const MIN_APP_PASSWORD_LENGTH = 8;
 const MIN_SESSION_SECRET_LENGTH = 32;
 
 // A value counts as too weak if it's shorter than the minimum, or if it's
@@ -162,19 +175,31 @@ function getAuthConfig() {
 //
 // /api/health is one of the two routes excluded from auth entirely (see
 // createAuthMiddleware below), so this payload is reachable by anyone,
-// unauthenticated. It used to also include `missing` (the specific env var
-// names that weren't set) to debug a host's configuration from outside; that
-// was a deliberate, temporary-ish tradeoff while the deployment was being
-// configured. It's done its job - the deployment is configured and verified
-// - so it's been dropped: an unauthenticated endpoint shouldn't enumerate
-// internal configuration beyond a single boolean. If this recurs,
-// `configured: false` plus the startup log line (logStartupConfigStatus,
-// which already names the specific variables) is enough to diagnose it.
+// unauthenticated. `missing` and `weak` (the specific env var names that are
+// absent vs. present-but-too-short) were trimmed down to a single
+// `configured` boolean on the theory that an unauthenticated endpoint
+// shouldn't enumerate internal configuration. That trim is being reversed:
+// this is the second time it has left a live deployment undiagnosable from
+// outside while it was down (the first time, tightening
+// MIN_APP_PASSWORD_LENGTH to 12 in production took the app down with no way
+// to tell, from outside, whether APP_PASSWORD or SESSION_SECRET was the
+// problem, or whether it was missing vs. just too weak). The asymmetry that
+// justified the trim doesn't actually hold: an unauthenticated caller
+// learning that APP_PASSWORD is unset or too short gains nothing actionable
+// - the API is exactly as closed to them either way, since every /api/*
+// route still fails closed on top of this - while the operator loses the
+// only way to diagnose a down deployment remotely (the startup log line from
+// logStartupConfigStatus is only reachable if you already have shell/log
+// access, which is precisely what's unavailable mid-incident from a phone).
+// `missing`/`weak` name variables only, never values, so nothing here is a
+// secret: see getAuthConfig, which already computes both lists.
 function buildHealthPayload() {
-    const { isConfigured } = getAuthConfig();
+    const { isConfigured, missing, weak } = getAuthConfig();
     return {
         status: 'ok',
-        configured: isConfigured
+        configured: isConfigured,
+        missing,
+        weak
     };
 }
 
