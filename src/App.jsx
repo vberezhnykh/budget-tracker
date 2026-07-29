@@ -784,6 +784,7 @@ function App() {
                   }
                 }}
                 style={{
+                  position: 'relative',
                   flex: '0 0 88%',
                   scrollSnapAlign: 'center',
                   scrollSnapStop: 'always',
@@ -793,12 +794,21 @@ function App() {
                   borderRadius: '24px',
                   border: isActive ? '1.5px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
                   transition: 'all 0.2s ease',
-                  padding: '24px 16px',
+                  padding: '18px 16px',
                   cursor: 'pointer'
                 }}
               >
-                <div style={{ fontSize: '1.6rem', marginBottom: '8px' }}>{slide.icon}</div>
-                <div style={{ fontSize: '0.9rem', color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.5px' }}>
+                {/* The account symbol sits in the card's top-right corner instead of
+                    taking a full row of its own, so the card stays compact. It is
+                    absolutely positioned and non-interactive: the name/amount block
+                    below keeps the card's height, and centred text is unaffected. */}
+                <div
+                  aria-hidden="true"
+                  style={{ position: 'absolute', top: '12px', right: '14px', fontSize: '1.25rem', lineHeight: 1, pointerEvents: 'none' }}
+                >
+                  {slide.icon}
+                </div>
+                <div style={{ fontSize: '0.9rem', color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.5px', padding: '0 28px' }}>
                   {slide.name}
                 </div>
                 <div className="balance-amount" style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
