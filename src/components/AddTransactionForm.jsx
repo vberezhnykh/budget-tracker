@@ -165,13 +165,15 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             background: 'rgba(30, 41, 59, 0.4)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
-            alignItems: 'center',
+            // The sheet sits on the bottom edge rather than floating in the
+            // middle: it uses the full width and the full height it needs,
+            // and the gap left above it is what still reads as "a card".
+            alignItems: 'flex-end',
             justifyContent: 'center',
             zIndex: 1000,
             animation: 'fadeIn 0.2s ease-out',
             overflowY: 'auto',
             overflowX: 'hidden',
-            padding: '20px 0',
             touchAction: 'pan-y',
             WebkitOverflowScrolling: 'touch'
         }} onClick={onClose}>
@@ -180,19 +182,23 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 className="glass-panel"
                 style={{
                     background: 'var(--color-surface)',
-                    width: '90%',
-                    maxWidth: '450px',
-                    borderRadius: '24px',
-                    padding: '24px',
+                    width: '100%',
+                    maxWidth: '520px',
+                    // Only the top corners are rounded - the bottom ones would
+                    // otherwise cut into the screen edge the sheet rests on.
+                    borderRadius: '24px 24px 0 0',
+                    // The extra bottom padding clears the iOS home indicator,
+                    // which now overlaps the sheet's own last row.
+                    padding: '24px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
                     position: 'relative',
                     animation: 'slideUp 0.3s ease-out',
-                    maxHeight: '90vh',
+                    maxHeight: '92vh',
                     overflowY: 'auto',
                     overflowX: 'hidden',
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '20px',
-                    margin: 'auto',
+                    margin: 0,
                     touchAction: 'pan-y'
                 }}
             >
