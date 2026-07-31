@@ -166,22 +166,24 @@ export default function AccountsSettingsModal({
         background: 'rgba(15, 23, 42, 0.4)',
         backdropFilter: 'blur(8px)',
         display: 'flex',
-        alignItems: 'center',
+        // Same bottom-sheet shape as the transaction form: full width, resting
+        // on the bottom edge, with the gap above it doing the "this is a card"
+        // work (see AddTransactionForm).
+        alignItems: 'flex-end',
         justifyContent: 'center',
-        zIndex: 1000,
-        padding: '20px'
+        zIndex: 1000
       }}
       onClick={handleClose}
     >
       <div
         style={{
           background: '#fff',
-          borderRadius: '24px',
+          borderRadius: '24px 24px 0 0',
           width: '100%',
-          maxWidth: '500px',
-          maxHeight: '90vh',
+          maxWidth: '520px',
+          maxHeight: '92vh',
           overflowY: 'auto',
-          padding: '24px',
+          padding: '24px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
           display: 'flex',
           flexDirection: 'column',
