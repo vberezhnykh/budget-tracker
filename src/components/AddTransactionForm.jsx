@@ -74,7 +74,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             const submitData = {
                 ...formData,
                 amount: parseFloat(formData.amount),
-                category: isTransfer ? 'Обмен' : formData.category,
+                category: isTransfer ? 'Перевод' : formData.category,
                 id: initialData ? initialData.id : Date.now()
             };
             // Only include toAccount for transfers to avoid polluting the data
@@ -86,6 +86,23 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         onClose();
     };
 
+    // Both transfer selects go through here so the two sides can never point
+    // at the same account: picking an account that is already on the other
+    // side pushes that side to the first different account available.
+    const setTransferAccount = (side, id) => {
+        const otherSide = side === 'account' ? 'toAccount' : 'account';
+        const other = formData[otherSide] === id
+            ? (accounts.find(a => a._id !== id)?._id || '')
+            : formData[otherSide];
+        setFormData({ ...formData, [side]: id, [otherSide]: other });
+    };
+
+    const swapTransferAccounts = () => {
+        setFormData({ ...formData, account: formData.toAccount, toAccount: formData.account });
+    };
+
+    const getAccountLabel = (acc) => `${acc.icon || (acc.type === 'cash' ? '💵' : '💳')} ${acc.name}`;
+
     const categories = (allCategories || []).filter(c => c.type === formData.type);
 
     // New category inline creation
@@ -94,7 +111,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const getTitle = () => {
         if (initialData) return 'Редактировать';
-        if (isTransfer) return 'Обмен / Перевод';
+        if (isTransfer) return 'Перевод';
         return formData.type === 'income' ? 'Новый доход' : 'Новый расход';
     };
 
@@ -204,7 +221,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         {[
                             { id: 'expense', label: 'Расход' },
                             { id: 'income', label: 'Доход' },
-                            ...(accounts.length >= 2 ? [{ id: 'transfer', label: 'Обмен' }] : [])
+                            ...(accounts.length >= 2 ? [{ id: 'transfer', label: 'Перевод' }] : [])
                         ].map(t => (
                             <button
                                 key={t.id}
@@ -573,74 +590,116 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     )}
 
                     {isTransfer && (
-                        /* Transfer specific UI */
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>ОТКУДА</label>
-                                    <select
-                                        value={formData.account}
-                                        onChange={(e) => {
-                                            const newFrom = e.target.value;
-                                            let newTo = formData.toAccount;
-                                            if (newFrom === newTo) {
-                                                newTo = accounts.find(a => a._id !== newFrom)?._id || '';
-                                            }
-                                            setFormData({ ...formData, account: newFrom, toAccount: newTo });
-                                        }}
+                        /* Transfer direction. The two accounts are stacked as
+                           full-width rows instead of two narrow side-by-side
+                           selects: at phone width those clipped anything longer
+                           than a word, which is exactly the part that has to be
+                           readable here. Each row carries its own colour-coded
+                           arrow badge, and the swap button on the divider
+                           reverses the direction in one tap. */
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <div style={{
+                                position: 'relative',
+                                background: 'rgba(0,0,0,0.02)',
+                                border: '1px solid rgba(0,0,0,0.08)',
+                                borderRadius: '16px'
+                            }}>
+                                {[
+                                    { side: 'account', label: 'Откуда', value: formData.account, accent: '#ef4444', badge: '↑' },
+                                    { side: 'toAccount', label: 'Куда', value: formData.toAccount, accent: '#10b981', badge: '↓' }
+                                ].map((row, index) => (
+                                    <div
+                                        key={row.side}
                                         style={{
-                                            width: '100%',
-                                            padding: '14px',
-                                            borderRadius: '16px',
-                                            background: '#fff',
-                                            border: '1px solid rgba(0,0,0,0.15)',
-                                            color: '#ef4444',
-                                            fontWeight: '700',
-                                            cursor: 'pointer',
-                                            fontSize: '0.9rem',
-                                            outline: 'none'
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '12px',
+                                            padding: '12px 14px',
+                                            // Room for the swap button so a long
+                                            // account name never runs under it.
+                                            paddingRight: '62px',
+                                            borderTop: index === 0 ? 'none' : '1px solid rgba(0,0,0,0.08)'
                                         }}
                                     >
-                                        {accounts.map(acc => (
-                                            <option key={acc._id} value={acc._id}>
-                                                {acc.icon || (acc.type === 'cash' ? '💵' : '💳')} {acc.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div style={{ fontSize: '1.5rem', paddingTop: '20px', color: 'var(--color-text-muted)' }}>→</div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>КУДА</label>
-                                    <select
-                                        value={formData.toAccount}
-                                        onChange={(e) => {
-                                            const newTo = e.target.value;
-                                            let newFrom = formData.account;
-                                            if (newTo === newFrom) {
-                                                newFrom = accounts.find(a => a._id !== newTo)?._id || '';
-                                            }
-                                            setFormData({ ...formData, toAccount: newTo, account: newFrom });
-                                        }}
-                                        style={{
-                                            width: '100%',
-                                            padding: '14px',
-                                            borderRadius: '16px',
-                                            background: '#fff',
-                                            border: '1px solid rgba(0,0,0,0.15)',
-                                            color: '#10b981',
+                                        <div style={{
+                                            width: '30px',
+                                            height: '30px',
+                                            flexShrink: 0,
+                                            borderRadius: '50%',
+                                            background: `${row.accent}1a`,
+                                            color: row.accent,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
                                             fontWeight: '700',
-                                            cursor: 'pointer',
-                                            fontSize: '0.9rem',
-                                            outline: 'none'
-                                        }}
-                                    >
-                                        {accounts.map(acc => (
-                                            <option key={acc._id} value={acc._id}>
-                                                {acc.icon || (acc.type === 'cash' ? '💵' : '💳')} {acc.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+                                            fontSize: '1rem'
+                                        }}>
+                                            {row.badge}
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <label
+                                                htmlFor={`transfer-${row.side}`}
+                                                style={{
+                                                    display: 'block',
+                                                    color: 'var(--color-text-muted)',
+                                                    fontSize: '0.7rem',
+                                                    fontWeight: '600',
+                                                    letterSpacing: '0.6px',
+                                                    textTransform: 'uppercase',
+                                                    marginBottom: '2px'
+                                                }}
+                                            >
+                                                {row.label}
+                                            </label>
+                                            <select
+                                                id={`transfer-${row.side}`}
+                                                value={row.value}
+                                                onChange={(e) => setTransferAccount(row.side, e.target.value)}
+                                                style={{
+                                                    width: '100%',
+                                                    background: 'transparent',
+                                                    border: 'none',
+                                                    padding: 0,
+                                                    color: 'var(--color-text-main)',
+                                                    fontFamily: 'inherit',
+                                                    fontSize: '1rem',
+                                                    fontWeight: '700',
+                                                    cursor: 'pointer',
+                                                    outline: 'none'
+                                                }}
+                                            >
+                                                {accounts.map(acc => (
+                                                    <option key={acc._id} value={acc._id}>
+                                                        {getAccountLabel(acc)}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={swapTransferAccounts}
+                                    aria-label="Поменять счета местами"
+                                    style={{
+                                        position: 'absolute',
+                                        top: '50%',
+                                        right: '14px',
+                                        transform: 'translateY(-50%)',
+                                        width: '38px',
+                                        height: '38px',
+                                        borderRadius: '50%',
+                                        background: '#fff',
+                                        border: '1px solid rgba(0,0,0,0.1)',
+                                        color: 'var(--color-primary)',
+                                        fontSize: '1.1rem',
+                                        lineHeight: 1,
+                                        cursor: 'pointer',
+                                        boxShadow: '0 1px 4px rgba(0,0,0,0.08)'
+                                    }}
+                                >
+                                    ⇅
+                                </button>
                             </div>
                             <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 }}>
                                 Общий баланс не изменится

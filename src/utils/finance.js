@@ -37,7 +37,11 @@ export const transformTransactions = (data, accounts = []) => {
             visualAmount: visualAmount,
             accountFlows: accountFlows,
             type: t.type,
-            category: t.category,
+            // Transfers used to be saved under the category "Обмен"; the app
+            // now calls them "Перевод" everywhere. Normalising on the way in
+            // keeps history rows, the category filter and newly saved
+            // transfers speaking the same word without touching stored data.
+            category: isTransfer && t.category === 'Обмен' ? 'Перевод' : t.category,
             description: t.description,
             account: account,
             toAccount: toAccount,

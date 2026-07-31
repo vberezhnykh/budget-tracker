@@ -292,4 +292,34 @@ describe('TransactionsDrawer Component', () => {
         fireEvent.click(screen.getByText('Starting balance'));
         expect(openEditModal).not.toHaveBeenCalled();
     });
+
+    it('names both ends of a transfer row, not just the source account', () => {
+        const transferMonthlyData = {
+            transactions: {
+                '2026-01-03': {
+                    dailySum: 0,
+                    items: [
+                        {
+                            id: 'transfer-1',
+                            title: 'Перевод',
+                            description: '',
+                            type: 'transfer',
+                            account: 'cash',
+                            toAccount: 'card',
+                            category: 'Перевод',
+                            visualAmount: 200,
+                            excludeFromStats: false
+                        }
+                    ]
+                }
+            }
+        };
+        render(<Wrapper monthlyData={transferMonthlyData} />);
+
+        expect(screen.getByText(
+            (_, el) => el?.textContent === '💵 Наличные → 💳 Карта • Перевод',
+            { selector: 'div' }
+        )).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /💵 Наличные → 💳 Карта/ })).toBeInTheDocument();
+    });
 });

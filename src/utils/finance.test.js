@@ -27,6 +27,21 @@ describe('Finance Utilities', () => {
         expect(transformed[3].visualAmount).toBe(100); // Visual should stay positive for transfers
     });
 
+    it('renames the legacy "Обмен" transfer category to "Перевод"', () => {
+        const transformed = transformTransactions([
+            { _id: 't1', amount: '100', type: 'transfer', account: 'card', toAccount: 'cash', category: 'Обмен', date: '2026-01-15T00:00:00Z' },
+            { _id: 't2', amount: '100', type: 'transfer', account: 'card', toAccount: 'cash', category: 'Депозит', date: '2026-01-16T00:00:00Z' },
+            { _id: 't3', amount: '50', type: 'expense', account: 'card', category: 'Обмен', date: '2026-01-17T00:00:00Z' }
+        ]);
+
+        expect(transformed[0].category).toBe('Перевод');
+        // A transfer saved under some other category keeps it, and a
+        // non-transfer named "Обмен" is left alone - only the legacy
+        // transfer default is renamed.
+        expect(transformed[1].category).toBe('Депозит');
+        expect(transformed[2].category).toBe('Обмен');
+    });
+
     it('calculates total balance correctly', () => {
         const transformed = transformTransactions(mockData);
         const balances = calculateBalances(transformed);

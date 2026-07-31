@@ -50,14 +50,26 @@ export default function TransactionsDrawer({
   const sheetRef = useRef(null);
   const dragRef = useRef(null);
 
+  // Account line of a transaction row. A transfer moves money between two
+  // accounts, so naming only the source would read exactly like an ordinary
+  // expense - both ends are shown instead.
+  const getRowAccountDisplay = (item) => (
+    item.type === 'transfer' && item.toAccount
+      ? `${getAccountDisplay(item.account)} → ${getAccountDisplay(item.toAccount)}`
+      : getAccountDisplay(item.account)
+  );
+
   // Accessible name for a transaction row - mirrors what's already shown
-  // visually (name/description, category, signed amount) so screen-reader
-  // users get the same information sighted users read off the row.
+  // visually (name/description, accounts, category, signed amount) so
+  // screen-reader users get the same information sighted users read off the row.
   const getTransactionAriaLabel = (item) => {
     const name = item.description || item.title;
     const sign = item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : '';
     const amount = `${sign}€${Math.abs(item.visualAmount).toFixed(2)}`;
-    return item.category ? `${name}, ${item.category}, ${amount}` : `${name}, ${amount}`;
+    const parts = [name, getRowAccountDisplay(item)];
+    if (item.category) parts.push(item.category);
+    parts.push(amount);
+    return parts.join(', ');
   };
 
   // Enter/Space activate a target (a row's overlay button, or a category
@@ -443,7 +455,7 @@ export default function TransactionsDrawer({
                                 {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                {getAccountDisplay(item.account)}
+                                {getRowAccountDisplay(item)}
                                 {item.category && (
                                   <>
                                     {' • '}
@@ -570,7 +582,7 @@ export default function TransactionsDrawer({
                                   {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
                                 </div>
                                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                  {getAccountDisplay(item.account)}
+                                  {getRowAccountDisplay(item)}
                                   {item.category && (
                                     <>
                                       {' • '}

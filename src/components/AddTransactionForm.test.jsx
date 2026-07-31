@@ -136,9 +136,9 @@ describe('AddTransactionForm Component', () => {
     it('handles transfer type correctly', () => {
         render(<AddTransactionForm type="transfer" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        expect(screen.getByText(/Обмен \/ Перевод/i)).toBeInTheDocument();
-        expect(screen.getByText('ОТКУДА')).toBeInTheDocument();
-        expect(screen.getByText('КУДА')).toBeInTheDocument();
+        expect(screen.getByText('Перевод', { selector: 'h3' })).toBeInTheDocument();
+        expect(screen.getByLabelText('Откуда')).toBeInTheDocument();
+        expect(screen.getByLabelText('Куда')).toBeInTheDocument();
 
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '200' } });
 
@@ -147,7 +147,7 @@ describe('AddTransactionForm Component', () => {
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({
             amount: 200,
             type: 'transfer',
-            category: 'Обмен'
+            category: 'Перевод'
         }));
     });
 

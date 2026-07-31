@@ -907,7 +907,7 @@ function App() {
               <span>-</span> Расход
             </button>
             <button onClick={() => openAddModal('transfer')} className="glass-panel" style={{ flex: 1, border: '1px solid rgba(129, 140, 248, 0.2)', color: '#818cf8', padding: '12px 8px', borderRadius: '16px', fontWeight: '600', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
-              ⇄ Обмен
+              ⇄ Перевод
             </button>
           </div>
         </section>

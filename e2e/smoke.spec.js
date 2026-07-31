@@ -276,7 +276,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // These three buttons used to be a full-width transfer button stacked
     // above an income/expense row. They were merged onto a single row of
     // three equal-width buttons to reclaim vertical space. jsdom can't see
-    // whether the shorter "⇄ Обмен" label actually fits at 1/3 width on a
+    // whether the shorter "⇄ Перевод" label actually fits at 1/3 width on a
     // real 390px phone, whether the row overflows the page, or whether all
     // three end up the same height - only real layout can, hence this test.
     await mockApi(page);
@@ -285,7 +285,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
 
     const income = page.getByRole('button', { name: /\+ Доход/i });
     const expense = page.getByRole('button', { name: /- Расход/i });
-    const transfer = page.getByRole('button', { name: /⇄ Обмен/i });
+    const transfer = page.getByRole('button', { name: /⇄ Перевод/i });
 
     const buttons = [income, expense, transfer];
     const boxes = [];
