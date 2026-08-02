@@ -164,6 +164,20 @@ describe('App Integration Tests', () => {
         });
     });
 
+    it('breaks the period expense down by category, and filters the list when one is tapped', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // The stats panel names the categories that produced the expense
+        // figure, so the breakdown is reachable without the Аналитика tab.
+        const categoryButton = screen.getByRole('button', { name: /^Housing: €/ });
+        expect(categoryButton).toHaveAttribute('aria-pressed', 'false');
+
+        fireEvent.click(categoryButton);
+
+        expect(screen.getByRole('button', { name: /^Housing: €/ })).toHaveAttribute('aria-pressed', 'true');
+    });
+
     it('displays transaction description and account/category correctly', async () => {
         render(<App />);
 
@@ -172,10 +186,12 @@ describe('App Integration Tests', () => {
         // Check for the transaction with description (Rent)
         expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
 
-        // Subtitle text: "💳 Карта • Housing"
+        // Subtitle text: "💳 Карта • Housing". The category name also shows
+        // up in the stats panel's category breakdown, so the row itself is
+        // matched through its accessible name rather than by bare text.
         const cardElements = screen.getAllByText(/Карта/);
         expect(cardElements.length).toBeGreaterThan(1);
-        expect(screen.getByText(/Housing/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Monthly flat rent.*Housing/ })).toBeInTheDocument();
 
         // Check for the transaction without description (Salary)
         expect(screen.getByText('Salary')).toBeInTheDocument();
@@ -513,7 +529,7 @@ describe('App Integration Tests', () => {
     // document from before that validation existed. fetchSettings' own guard
     // (typeof === 'number' && !isNaN) lets a legitimate-looking 0 through, so
     // the render-side guard is what actually has to catch it here.
-    it('renders 0% and a collapsed bar instead of NaN%/Infinity% when the stored monthly limit is not usable', async () => {
+    it('drops the limit ring instead of rendering NaN%/Infinity% when the stored monthly limit is not usable', async () => {
         vi.stubGlobal('fetch', vi.fn((url) => {
             if (typeof url === 'string' && url.includes('/api/settings')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ monthlyLimit: 0 }) });
@@ -532,7 +548,11 @@ describe('App Integration Tests', () => {
 
         expect(screen.queryByText(/NaN%/)).not.toBeInTheDocument();
         expect(screen.queryByText(/Infinity%/)).not.toBeInTheDocument();
-        expect(screen.getByText('0%')).toBeInTheDocument();
+        // An unusable limit has nothing to show a ring against, so the panel
+        // falls back to the plain expense figure - and says nothing about a
+        // percentage of a limit that isn't there.
+        expect(screen.queryByText(/% от €/)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Расход: €/ })).toBeInTheDocument();
 
         vi.unstubAllGlobals();
     });

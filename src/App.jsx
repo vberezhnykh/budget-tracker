@@ -648,6 +648,50 @@ function App() {
   const isOverLimit = isLimitUsable && Math.abs(monthlyData.expense) > monthlyLimit;
   const limitPercentDisplay = Number.isFinite(limitRatio) ? Math.round(limitRatio * 100) : 0;
   const limitBarWidthDisplay = Number.isFinite(limitRatio) ? Math.min(limitRatio * 100, 100) : 0;
+  const limitRemaining = isLimitUsable ? monthlyLimit - Math.abs(monthlyData.expense) : 0;
+
+  // One place decides what "income / expense / categories" mean for the
+  // selected range, so the stats panel below only renders numbers.
+  const periodStats = useMemo(() => {
+    if (timeRange === 'year') return { income: yearlyData.income, expense: yearlyData.expense, categoryTotals: yearlyData.categoryTotals };
+    if (timeRange === 'lifetime') return { income: lifetimeStats?.income || 0, expense: lifetimeStats?.expense || 0, categoryTotals: lifetimeStats?.categoryTotals || {} };
+    return { income: monthlyData.income, expense: monthlyData.expense, categoryTotals: monthlyData.categoryTotals };
+  }, [timeRange, monthlyData, yearlyData, lifetimeStats]);
+
+  const periodSaldo = periodStats.income + periodStats.expense;
+  const periodExpenseAbs = Math.abs(periodStats.expense);
+
+  // Top spending categories of the period. Bar widths are relative to the
+  // largest category rather than to the total, so the smaller ones stay
+  // visible when one category dominates the month.
+  const topCategories = useMemo(() => {
+    const entries = Object.entries(periodStats.categoryTotals || {})
+      .filter(([, value]) => value > 0)
+      .sort((a, b) => b[1] - a[1]);
+    const max = entries.length > 0 ? entries[0][1] : 0;
+    return entries.slice(0, 5).map(([name, value]) => ({
+      name,
+      value,
+      share: max > 0 ? value / max : 0
+    }));
+  }, [periodStats]);
+
+  // Expense of this month vs the same stretch of the previous one. For the
+  // current month getComparisonData cuts the previous month at today's day
+  // number (comparing like with like); for a past month it compares whole
+  // months, and the wording below follows that split.
+  const expenseComparison = useMemo(() => {
+    const previous = comparisonData.expense;
+    const diff = Math.abs(monthlyData.expense) - previous;
+    return {
+      previous,
+      diff,
+      percent: previous > 0 ? Math.round((diff / previous) * 100) : null,
+      label: isActualCurrentMonth
+        ? `на ${comparisonData.prevMonthDayLabel} было €${previous.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
+        : `весь ${comparisonData.prevMonthName} — €${previous.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
+    };
+  }, [comparisonData, monthlyData.expense, isActualCurrentMonth]);
 
   // isAuthenticated === false is the one state that always wins: a 401 mid-
   // session (expired/cleared cookie) must return the user to the login
@@ -969,93 +1013,195 @@ function App() {
                 </button>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div
-                  onClick={() => toggleTypeFilter('income')}
-                  style={{
-                    background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(34, 197, 94, 0.08)',
-                    padding: '18px',
-                    borderRadius: '18px',
-                    border: '1px solid',
-                    borderColor: selectedType === 'income' ? '#4ade80' : 'rgba(34, 197, 94, 0.15)',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    transform: selectedType === 'income' ? 'scale(1.02)' : 'scale(1)'
-                  }}
-                >
-                  <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Доход</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#4ade80' }}>
-                    +€{(timeRange === 'month' ? monthlyData.income : timeRange === 'year' ? yearlyData.income : (lifetimeStats?.income || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                  </div>
-                </div>
-                <div
+              {/* The period's expense is the headline: for a month it sits
+                  inside the spending-limit ring, so "how much" and "how much
+                  of the budget" are one glance. Income and saldo are a
+                  supporting row, and the categories that produced the number
+                  are right below instead of behind the Аналитика tab. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <button
+                  type="button"
                   onClick={() => toggleTypeFilter('expense')}
+                  aria-pressed={selectedType === 'expense'}
+                  aria-label={`Расход: €${periodExpenseAbs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}${timeRange === 'month' && isLimitUsable ? ` из лимита €${monthlyLimit.toLocaleString('de-DE')}` : ''}`}
                   style={{
-                    background: selectedType === 'expense' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.08)',
-                    padding: '18px',
-                    borderRadius: '18px',
-                    border: '1px solid',
-                    borderColor: selectedType === 'expense' ? '#f87171' : 'rgba(239, 68, 68, 0.15)',
+                    alignSelf: 'center',
+                    background: 'transparent',
+                    border: 'none',
+                    padding: '4px',
                     cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                    transform: selectedType === 'expense' ? 'scale(1.02)' : 'scale(1)'
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '10px'
                   }}
                 >
-                  <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Расход</div>
-                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#f87171' }}>
-                    €{(timeRange === 'month' ? monthlyData.expense : timeRange === 'year' ? yearlyData.expense : (lifetimeStats?.expense || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                  </div>
-                  {timeRange === 'month' && isActualCurrentMonth && (
-                    <div style={{ fontSize: '0.7rem', color: 'rgba(239, 68, 68, 0.6)', marginTop: '2px', fontWeight: '500' }}>
-                      Месяц назад: €{comparisonData.expense.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                  {timeRange === 'month' && isLimitUsable ? (
+                    <div style={{ position: 'relative', width: '188px', height: '188px' }}>
+                      <svg width="188" height="188" viewBox="0 0 188 188" aria-hidden="true" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="94" cy="94" r="82" fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="14" />
+                        <circle
+                          cx="94"
+                          cy="94"
+                          r="82"
+                          fill="none"
+                          stroke={isOverLimit ? '#ef4444' : '#2563eb'}
+                          strokeWidth="14"
+                          strokeLinecap="round"
+                          strokeDasharray={2 * Math.PI * 82}
+                          strokeDashoffset={2 * Math.PI * 82 * (1 - limitBarWidthDisplay / 100)}
+                          style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+                        />
+                      </svg>
+                      <div style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '2px'
+                      }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: '600' }}>Расход</div>
+                        <div style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-main)', lineHeight: 1.1 }}>
+                          €{periodExpenseAbs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: isOverLimit ? '#ef4444' : 'var(--color-text-muted)', fontWeight: '600' }}>
+                          {isOverLimit
+                            ? `сверх лимита €${Math.abs(limitRemaining).toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
+                            : `осталось €${limitRemaining.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                          {limitPercentDisplay}% от €{monthlyLimit.toLocaleString('de-DE')}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: '600', marginBottom: '4px' }}>
+                        {timeRange === 'year' ? 'Расход за год' : timeRange === 'lifetime' ? 'Расход за всё время' : 'Расход'}
+                      </div>
+                      <div style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
+                        €{periodExpenseAbs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                      </div>
                     </div>
                   )}
-                </div>
-                <div style={{ background: 'rgba(0,0,0,0.02)', padding: '18px', borderRadius: '18px', border: '1px solid rgba(0,0,0,0.03)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: timeRange === 'month' ? '12px' : '0' }}>
-                    <span style={{ color: 'var(--color-text-muted)' }}>Сальдо:</span>
-                    <span style={{ fontWeight: '700', color: ((timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : timeRange === 'year' ? (yearlyData.income + yearlyData.expense) : (lifetimeStats?.total || 0)) >= 0) ? 'var(--color-text-main)' : '#ef4444' }}>
-                      €{(timeRange === 'month' ? (monthlyData.income + monthlyData.expense) : timeRange === 'year' ? (yearlyData.income + yearlyData.expense) : (lifetimeStats?.total || 0)).toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                  {selectedType === 'expense' && (
+                    <span style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--color-primary)' }}>
+                      список отфильтрован по расходам
                     </span>
-                  </div>
-                  {timeRange === 'month' && isActualCurrentMonth && (
-                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textAlign: 'right', marginTop: '-10px', marginBottom: '12px', fontWeight: '500' }}>
-                      Месяц назад: <span style={{ color: comparisonData.saldo >= 0 ? '#10b981' : '#f87171' }}>{comparisonData.saldo > 0 ? '+' : ''}€{comparisonData.saldo.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
+                  )}
+                </button>
+
+                {timeRange === 'month' && (
+                  <div style={{ textAlign: 'center', marginTop: '-8px' }}>
+                    {expenseComparison.percent === null ? (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                        В прошлом месяце трат не было
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.85rem', fontWeight: '700', color: expenseComparison.diff > 0 ? '#ef4444' : '#10b981' }}>
+                        {expenseComparison.diff > 0 ? '↑' : '↓'} {Math.abs(expenseComparison.percent)}% к прошлому месяцу
+                      </div>
+                    )}
+                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                      {expenseComparison.label}
                     </div>
-                  )}
-
-                  {/* Current balance split by account type. Unlike the rows
-                      above (period income/expense/saldo), these are current
-                      balances - the divider marks that boundary so they
-                      don't read as more period data. */}
-                  <div style={{ height: '1px', background: 'rgba(0,0,0,0.06)', margin: '12px 0' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
-                    <span style={{ color: 'var(--color-text-muted)' }}>💳 Безналичные</span>
-                    <span style={{ fontWeight: '600', color: 'var(--color-text-main)' }}>€{balances.byType.card.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                    <span style={{ color: 'var(--color-text-muted)' }}>💵 Наличные</span>
-                    <span style={{ fontWeight: '600', color: 'var(--color-text-main)' }}>€{balances.byType.cash.toLocaleString('de-DE', { minimumFractionDigits: 2 })}</span>
-                  </div>
+                )}
 
-                  {timeRange === 'month' && (
-                    <>
-                      {/* Progress Bar */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem' }}>
-                        <span style={{ color: 'var(--color-text-muted)' }}>Лимит €{monthlyLimit.toLocaleString()}</span>
-                        <span style={{ fontWeight: '600', color: isOverLimit ? '#ef4444' : 'var(--color-text-main)' }}>{limitPercentDisplay}%</span>
-                      </div>
-                      <div style={{ height: '8px', background: 'rgba(0,0,0,0.05)', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%',
-                          width: `${limitBarWidthDisplay}%`,
-                          background: isOverLimit ? '#ef4444' : 'var(--color-primary-gradient)',
-                          transition: 'width 0.4s ease'
-                        }} />
-                      </div>
-                    </>
-                  )}
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    type="button"
+                    onClick={() => toggleTypeFilter('income')}
+                    aria-pressed={selectedType === 'income'}
+                    aria-label={`Доход: €${periodStats.income.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
+                    style={{
+                      flex: 1,
+                      textAlign: 'left',
+                      background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(0,0,0,0.02)',
+                      border: '1px solid',
+                      borderColor: selectedType === 'income' ? '#4ade80' : 'rgba(0,0,0,0.05)',
+                      borderRadius: '14px',
+                      padding: '12px 14px',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                  >
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Доход</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#10b981' }}>
+                      +€{periodStats.income.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    </div>
+                  </button>
+                  <div style={{
+                    flex: 1,
+                    background: 'rgba(0,0,0,0.02)',
+                    border: '1px solid rgba(0,0,0,0.05)',
+                    borderRadius: '14px',
+                    padding: '12px 14px'
+                  }}>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Сальдо</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: '700', color: periodSaldo >= 0 ? 'var(--color-text-main)' : '#ef4444' }}>
+                      {periodSaldo > 0 ? '+' : ''}€{periodSaldo.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
                 </div>
+
+                {topCategories.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--color-text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '10px' }}>
+                      Куда ушло
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {topCategories.map(cat => {
+                        const isActive = selectedCategory === cat.name;
+                        return (
+                          <button
+                            key={cat.name}
+                            type="button"
+                            onClick={() => toggleCategoryFilter(cat.name)}
+                            aria-pressed={isActive}
+                            // Without this the name and amount spans run
+                            // together into "Housing€98,40" for screen readers.
+                            aria-label={`${cat.name}: €${cat.value.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
+                            style={{
+                              display: 'block',
+                              width: '100%',
+                              textAlign: 'left',
+                              background: 'transparent',
+                              border: 'none',
+                              padding: '2px 0',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '0.8rem', marginBottom: '4px' }}>
+                              <span style={{
+                                color: isActive ? 'var(--color-primary)' : 'var(--color-text-main)',
+                                fontWeight: isActive ? '700' : '500',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                {cat.name}
+                              </span>
+                              <span style={{ color: 'var(--color-text-muted)', fontWeight: '600', flexShrink: 0 }}>
+                                €{cat.value.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div style={{ height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                              <div style={{
+                                height: '100%',
+                                width: `${Math.max(cat.share * 100, 2)}%`,
+                                background: isActive ? 'var(--color-primary)' : 'rgba(37, 99, 235, 0.45)',
+                                transition: 'width 0.4s ease'
+                              }} />
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (

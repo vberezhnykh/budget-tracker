@@ -213,7 +213,11 @@ export const getComparisonData = (transactions, selectedMonth) => {
         saldo: income + expense,
         expense: Math.abs(expense),
         day: comparisonDay,
-        prevMonthName: new Date(prevMonthYear, prevMonth - 1, 1).toLocaleDateString('ru-RU', { month: 'long' })
+        prevMonthName: new Date(prevMonthYear, prevMonth - 1, 1).toLocaleDateString('ru-RU', { month: 'long' }),
+        // "2 июля" - the genitive form Russian needs after "на", which
+        // month-only formatting ("июль") can't give.
+        prevMonthDayLabel: new Date(prevMonthYear, prevMonth - 1, comparisonDay)
+            .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
     };
 };
 
@@ -261,7 +265,17 @@ export const getLifetimeStats = (transactions, startDate = '2025-11-09', account
         (t.visualAmount < 0 && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0
     );
 
-    return { income, expense, total: income + expense };
+    // Same shape as the monthly/yearly totals, so the stats panel can show
+    // its category breakdown for this range too.
+    const categoryTotals = filtered
+        .filter(t => t.type === 'expense' && !t.excludeFromStats)
+        .reduce((acc, t) => {
+            const cat = t.category || 'Другое';
+            acc[cat] = (acc[cat] || 0) + Math.abs(t.visualAmount);
+            return acc;
+        }, {});
+
+    return { income, expense, total: income + expense, categoryTotals };
 };
 
 export const getSearchResults = (transactions, query, accountFilter = null, categoryFilter = null, typeFilter = null) => {
