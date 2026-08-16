@@ -1,13 +1,13 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import AddTransactionForm from './components/AddTransactionForm'
-import CategoryDonut from './components/CategoryDonut'
+import AnalyticsView from './components/AnalyticsView'
 import LoginScreen from './components/LoginScreen'
 import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer'
 import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
-import { formatPeriodLabel } from './utils/period'
-import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
+import { formatPeriodLabel, toDativeMonth } from './utils/period'
+import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
 
 // API URL - relative path for production data fetching
@@ -314,6 +314,19 @@ function App() {
 
   // Comparison data for indicators
   const comparisonData = useMemo(() => getComparisonData(transactions, selectedMonth), [transactions, selectedMonth]);
+
+  // Bar-chart series for the Аналитика tab: 6 trailing months in the
+  // month view, a full year's worth when looking at a year/lifetime total.
+  const monthlySeries = useMemo(
+    () => getMonthlySeries(transactions, selectedMonth, timeRange === 'month' ? 6 : 12, selectedAccount, selectedCategory),
+    [transactions, selectedMonth, timeRange, selectedAccount, selectedCategory]
+  );
+
+  // Per-category month-over-month deltas, shown next to the donut legend.
+  const categoryComparison = useMemo(
+    () => getCategoryComparison(transactions, selectedMonth, selectedAccount),
+    [transactions, selectedMonth, selectedAccount]
+  );
 
   const isActualCurrentMonth = useMemo(() => {
     const now = new Date();
@@ -693,6 +706,19 @@ function App() {
         : `весь ${comparisonData.prevMonthName} — €${previous.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
     };
   }, [comparisonData, monthlyData.expense, isActualCurrentMonth]);
+
+  // Spending pace for the Аналитика tab's "Темп трат" card - null outside
+  // the month actually in progress, since a finished month has no "rate" left.
+  const paceForecast = useMemo(
+    () => getPaceForecast(Math.abs(monthlyData.expense), selectedMonth, monthlyLimit),
+    [monthlyData.expense, selectedMonth, monthlyLimit]
+  );
+
+  // "к 15 января" / "к декабрю" - reuses the fields getComparisonData already
+  // derived rather than recomputing the same "current vs past month" split.
+  // prevMonthDayLabel is already in the genitive the day form needs, while
+  // the bare month name arrives nominative and has to be declined.
+  const comparisonLabel = `Изменения к ${isActualCurrentMonth ? comparisonData.prevMonthDayLabel : toDativeMonth(comparisonData.prevMonthName)}`;
 
   // isAuthenticated === false is the one state that always wins: a 401 mid-
   // session (expired/cleared cookie) must return the user to the login
@@ -1160,18 +1186,23 @@ function App() {
           ) : (
             /* Analytics tab: same period as the stats tab (periodStats), so
                switching tabs never silently changes what range you're
-               looking at. CategoryDonut renders nothing at all when the
-               period has no spending, hence the explicit empty state - a
-               tab that can go blank would look broken. */
-            <>
-              {topCategories.length > 0 ? (
-                <CategoryDonut data={periodStats.categoryTotals} />
-              ) : (
-                <div className="glass-panel" style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-                  За выбранный период трат нет
-                </div>
-              )}
-            </>
+               looking at. AnalyticsView owns its own empty state for a
+               period with no spending - a tab that can go blank would look
+               broken. */
+            <AnalyticsView
+              periodStats={periodStats}
+              periodLabel={formatPeriodLabel(timeRange, selectedMonth)}
+              timeRange={timeRange}
+              pace={paceForecast}
+              monthlyLimit={monthlyLimit}
+              series={monthlySeries}
+              selectedMonth={selectedMonth}
+              onSelectMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
+              categoryComparison={categoryComparison}
+              comparisonLabel={comparisonLabel}
+              selectedCategory={selectedCategory}
+              onSelectCategory={toggleCategoryFilter}
+            />
           )}
 
           {/* AI Analytics Removed */}

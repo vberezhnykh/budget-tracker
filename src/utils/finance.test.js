@@ -1,5 +1,15 @@
-import { describe, it, expect } from 'vitest';
-import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getSearchResults, getDescriptionSuggestions } from './finance';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+    transformTransactions,
+    calculateBalances,
+    getMonthlyData,
+    getYearlyData,
+    getSearchResults,
+    getDescriptionSuggestions,
+    getMonthlySeries,
+    getCategoryComparison,
+    getPaceForecast
+} from './finance';
 
 describe('Finance Utilities', () => {
     const mockData = [
@@ -227,5 +237,176 @@ describe('getDescriptionSuggestions', () => {
         expect(getDescriptionSuggestions(history, 'Продукты', 'expense', 1)).toEqual(['wolt']);
         expect(getDescriptionSuggestions(history, '', 'expense')).toEqual([]);
         expect(getDescriptionSuggestions([], 'Продукты', 'expense')).toEqual([]);
+    });
+});
+
+describe('getMonthlySeries', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    const seriesData = [
+        { _id: '1', amount: '100', type: 'expense', account: 'card', category: 'Food', date: '2025-11-10' },
+        { _id: '2', amount: '200', type: 'income', account: 'card', category: 'Salary', date: '2025-12-01' },
+        { _id: '3', amount: '50', type: 'expense', account: 'card', category: 'Food', date: '2026-01-05' },
+        { _id: '4', amount: '999', type: 'transfer', account: 'card', toAccount: 'cash', date: '2026-01-06' }
+    ];
+
+    it('returns months oldest to newest, ending at endMonth', () => {
+        const transformed = transformTransactions(seriesData);
+        const series = getMonthlySeries(transformed, '2026-01', 3);
+
+        expect(series.map(s => s.month)).toEqual(['2025-11', '2025-12', '2026-01']);
+        expect(series[series.length - 1].month).toBe('2026-01');
+    });
+
+    it('trims leading months older than the earliest transaction, but keeps internal empty months', () => {
+        const transformed = transformTransactions(seriesData);
+        // Requesting 6 months back from 2026-01 would start at 2025-08, well
+        // before the earliest transaction (2025-11) - those should be cut.
+        const series = getMonthlySeries(transformed, '2026-01', 6);
+
+        expect(series.map(s => s.month)).toEqual(['2025-11', '2025-12', '2026-01']);
+
+        // A month with no matching transactions in the middle of the range
+        // (2025-12 has an income, but no expense) still gets a zero entry
+        // rather than being dropped.
+        const decNov = series.find(s => s.month === '2025-12');
+        expect(decNov.expense).toBe(0);
+        expect(decNov.income).toBe(200);
+    });
+
+    it('computes income/expense per month, excluding transfers', () => {
+        const transformed = transformTransactions(seriesData);
+        const series = getMonthlySeries(transformed, '2026-01', 3);
+
+        const jan = series.find(s => s.month === '2026-01');
+        expect(jan.expense).toBe(50); // positive/absolute
+        expect(jan.income).toBe(0); // the transfer must not count as income
+    });
+
+    it('produces short Russian month labels without a trailing dot', () => {
+        const transformed = transformTransactions(seriesData);
+        const series = getMonthlySeries(transformed, '2026-01', 3);
+        series.forEach(s => {
+            expect(s.label.endsWith('.')).toBe(false);
+        });
+    });
+
+    it('filters by account and category', () => {
+        const withAccounts = [
+            { _id: '1', amount: '100', type: 'expense', account: 'card', category: 'Food', date: '2026-01-05' },
+            { _id: '2', amount: '40', type: 'expense', account: 'cash', category: 'Food', date: '2026-01-06' },
+            { _id: '3', amount: '30', type: 'expense', account: 'card', category: 'Fun', date: '2026-01-07' }
+        ];
+        const transformed = transformTransactions(withAccounts);
+
+        const cardOnly = getMonthlySeries(transformed, '2026-01', 1, 'card');
+        expect(cardOnly[0].expense).toBe(130);
+
+        const foodOnly = getMonthlySeries(transformed, '2026-01', 1, null, 'Food');
+        expect(foodOnly[0].expense).toBe(140);
+    });
+});
+
+describe('getCategoryComparison', () => {
+    const compData = [
+        // January (current month, "today" is mocked to the 15th)
+        { _id: '1', amount: '100', type: 'expense', account: 'card', category: 'Food', date: '2026-01-10' },
+        { _id: '2', amount: '50', type: 'expense', account: 'card', category: 'Fun', date: '2026-01-20' }, // after comparisonDay-equivalent, still counts for current month
+        // December (previous month)
+        { _id: '3', amount: '80', type: 'expense', account: 'card', category: 'Food', date: '2025-12-10' }, // day 10 <= comparisonDay(15): counted
+        { _id: '4', amount: '999', type: 'expense', account: 'card', category: 'Food', date: '2025-12-20' }, // day 20 > comparisonDay(15): excluded
+        { _id: '5', amount: '30', type: 'expense', account: 'card', category: 'Books', date: '2025-12-05' } // category absent this month
+    ];
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('cuts the previous month at today\'s day-of-month for the current month', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-15'));
+
+        const transformed = transformTransactions(compData);
+        const result = getCategoryComparison(transformed, '2026-01');
+
+        expect(result['Food'].value).toBe(100);
+        expect(result['Food'].previous).toBe(80); // the Dec 20 entry (day 20 > 15) must be excluded
+        expect(result['Food'].diff).toBe(20);
+    });
+
+    it('includes a category that only existed last month, at value 0', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-15'));
+
+        const transformed = transformTransactions(compData);
+        const result = getCategoryComparison(transformed, '2026-01');
+
+        expect(result['Books']).toEqual({ value: 0, previous: 30, diff: -30, percent: -100 });
+    });
+
+    it('returns percent: null when there was no spending in that category last month', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-15'));
+
+        const transformed = transformTransactions(compData);
+        const result = getCategoryComparison(transformed, '2026-01');
+
+        expect(result['Fun'].previous).toBe(0);
+        expect(result['Fun'].percent).toBeNull();
+    });
+});
+
+describe('getPaceForecast', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('returns null when selectedMonth is not the current calendar month', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-15'));
+
+        expect(getPaceForecast(300, '2025-12')).toBeNull();
+    });
+
+    it('computes perDay/forecast arithmetic for the month in progress', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-15')); // day 15 of a 31-day month
+
+        const pace = getPaceForecast(300, '2026-01');
+
+        expect(pace.daysInMonth).toBe(31);
+        expect(pace.daysElapsed).toBe(15);
+        expect(pace.daysLeft).toBe(16);
+        expect(pace.perDay).toBe(20); // 300 / 15
+        expect(pace.forecast).toBe(620); // 20 * 31
+    });
+
+    it('fills in the limit fields when a usable monthlyLimit is given', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-15'));
+
+        const pace = getPaceForecast(300, '2026-01', 500);
+
+        expect(pace.remaining).toBe(200); // 500 - 300
+        expect(pace.perDayLeft).toBe(12.5); // 200 / 16
+        expect(pace.willExceedLimit).toBe(true); // forecast 620 > 500
+    });
+
+    it('leaves the limit fields null for an unusable monthlyLimit', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-01-15'));
+
+        const zeroLimit = getPaceForecast(300, '2026-01', 0);
+        expect(zeroLimit.remaining).toBeNull();
+        expect(zeroLimit.perDayLeft).toBeNull();
+        expect(zeroLimit.willExceedLimit).toBeNull();
+
+        const noLimit = getPaceForecast(300, '2026-01');
+        expect(noLimit.remaining).toBeNull();
+
+        const nanLimit = getPaceForecast(300, '2026-01', NaN);
+        expect(nanLimit.remaining).toBeNull();
     });
 });

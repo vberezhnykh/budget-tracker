@@ -58,6 +58,14 @@ const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
 export const formatMonthName = (month) =>
   capitalize(new Date(`${month}-01T12:00:00`).toLocaleDateString('ru-RU', { month: 'long' }));
 
+// Dative case of a Russian month name, for labels reading "к декабрю".
+// Intl only ever gives the nominative ("декабрь"), and "к декабрь" is
+// simply wrong, so the ending is adjusted here: -ь/-й become -ю (декабрь →
+// декабрю, май → маю), everything else takes -у (август → августу).
+export const toDativeMonth = (monthName) => /[ьй]$/.test(monthName)
+  ? `${monthName.slice(0, -1)}ю`
+  : `${monthName}у`;
+
 // The label the "Период" chip shows, i.e. the currently selected period
 // spelled out in full: "Август 2026" / "2026 год" / "Всё время".
 export const formatPeriodLabel = (timeRange, selectedMonth) => {

@@ -169,7 +169,11 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
     return { transactions: grouped, income, expense, categoryTotals };
 };
 
-export const getComparisonData = (transactions, selectedMonth) => {
+// The rule shared by every "this month vs last month" comparison: a month
+// still in progress is compared against the previous month cut off at
+// today's day-of-month (comparing like with like), while a finished month
+// is compared against the previous month in full.
+export const getComparisonWindow = (selectedMonth) => {
     const [year, month] = selectedMonth.split('-').map(Number);
     const now = new Date();
     const isCurrentMonth = now.getFullYear() === year && (now.getMonth() + 1) === month;
@@ -195,6 +199,21 @@ export const getComparisonData = (transactions, selectedMonth) => {
     }
     const prevMonthStr = `${prevMonthYear}-${String(prevMonth).padStart(2, '0')}`;
 
+    return {
+        isCurrentMonth,
+        comparisonDay,
+        prevMonthStr,
+        prevMonthName: new Date(prevMonthYear, prevMonth - 1, 1).toLocaleDateString('ru-RU', { month: 'long' }),
+        // "2 июля" - the genitive form Russian needs after "на", which
+        // month-only formatting ("июль") can't give.
+        prevMonthDayLabel: new Date(prevMonthYear, prevMonth - 1, comparisonDay)
+            .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+    };
+};
+
+export const getComparisonData = (transactions, selectedMonth) => {
+    const { comparisonDay, prevMonthStr, prevMonthName, prevMonthDayLabel } = getComparisonWindow(selectedMonth);
+
     // Filter transactions for previous month up to comparisonDay
     const prevMonthTransactions = transactions.filter(t => {
         if (!t.date.startsWith(prevMonthStr)) return false;
@@ -213,12 +232,133 @@ export const getComparisonData = (transactions, selectedMonth) => {
         saldo: income + expense,
         expense: Math.abs(expense),
         day: comparisonDay,
-        prevMonthName: new Date(prevMonthYear, prevMonth - 1, 1).toLocaleDateString('ru-RU', { month: 'long' }),
-        // "2 июля" - the genitive form Russian needs after "на", which
-        // month-only formatting ("июль") can't give.
-        prevMonthDayLabel: new Date(prevMonthYear, prevMonth - 1, comparisonDay)
-            .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })
+        prevMonthName,
+        prevMonthDayLabel
     };
+};
+
+// Per-category version of getComparisonData: how much each expense category
+// cost this month vs. the same (day-cutoff-aware) stretch of the previous
+// one. Categories that only existed last month are included too, at value 0,
+// so a category that was dropped entirely still shows as "gone".
+export const getCategoryComparison = (transactions, selectedMonth, accountFilter = null) => {
+    const { comparisonDay, prevMonthStr } = getComparisonWindow(selectedMonth);
+
+    let currentTx = transactions.filter(t => t.date.startsWith(selectedMonth));
+    let prevTx = transactions.filter(t => {
+        if (!t.date.startsWith(prevMonthStr)) return false;
+        const day = parseInt(t.date.split('-')[2]);
+        return day <= comparisonDay;
+    });
+
+    if (accountFilter) {
+        currentTx = currentTx.filter(t => matchesAccount(t, accountFilter));
+        prevTx = prevTx.filter(t => matchesAccount(t, accountFilter));
+    }
+
+    const isExpense = t => t.type === 'expense' && !t.excludeFromStats;
+
+    const result = {};
+    currentTx.filter(isExpense).forEach(t => {
+        const cat = t.category || 'Другое';
+        if (!result[cat]) result[cat] = { value: 0, previous: 0 };
+        result[cat].value += Math.abs(t.visualAmount);
+    });
+    prevTx.filter(isExpense).forEach(t => {
+        const cat = t.category || 'Другое';
+        if (!result[cat]) result[cat] = { value: 0, previous: 0 };
+        result[cat].previous += Math.abs(t.visualAmount);
+    });
+
+    Object.keys(result).forEach(cat => {
+        const { value, previous } = result[cat];
+        const diff = value - previous;
+        result[cat] = {
+            value,
+            previous,
+            diff,
+            percent: previous > 0 ? Math.round((diff / previous) * 100) : null
+        };
+    });
+
+    return result;
+};
+
+// Short Russian month label ("авг") without the trailing dot that
+// toLocaleDateString appends to abbreviated month names.
+const shortMonthLabel = (year, month) =>
+    new Date(year, month - 1, 1).toLocaleDateString('ru-RU', { month: 'short' }).replace(/\.$/, '');
+
+const shiftMonth = (year, month, delta) => {
+    const total = (year * 12 + (month - 1)) + delta;
+    return { year: Math.floor(total / 12), month: (total % 12) + 1 };
+};
+
+// Trailing `months` months up to and including endMonth, e.g. for a bar
+// chart of recent activity. Leading months older than the earliest
+// transaction on record are trimmed - a brand-new account shouldn't show a
+// wall of empty bars - but zero-activity months *within* the data's range
+// are kept, so a quiet month doesn't just disappear from the middle of the
+// chart.
+export const getMonthlySeries = (transactions, endMonth, months = 6, accountFilter = null, categoryFilter = null) => {
+    const [endYear, endMon] = endMonth.split('-').map(Number);
+
+    const candidateMonths = [];
+    for (let i = months - 1; i >= 0; i--) {
+        const { year, month } = shiftMonth(endYear, endMon, -i);
+        candidateMonths.push({ year, month, str: `${year}-${String(month).padStart(2, '0')}` });
+    }
+
+    const earliestDate = transactions.reduce((min, t) => (!min || t.date < min) ? t.date : min, null);
+    const earliestMonth = earliestDate ? earliestDate.slice(0, 7) : null;
+    const monthsToUse = earliestMonth
+        ? candidateMonths.filter(m => m.str >= earliestMonth)
+        : candidateMonths;
+
+    return monthsToUse.map(({ year, month, str }) => {
+        let filtered = transactions.filter(t => t.date.startsWith(str));
+        if (accountFilter) filtered = filtered.filter(t => matchesAccount(t, accountFilter));
+        if (categoryFilter) filtered = filtered.filter(t => t.category === categoryFilter);
+
+        const income = filtered.reduce((acc, t) => (t.visualAmount > 0 && t.type !== 'initial' && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0);
+        const expense = filtered.reduce((acc, t) => (t.visualAmount < 0 && t.type !== 'transfer' && !t.excludeFromStats) ? acc + t.visualAmount : acc, 0);
+
+        return {
+            month: str,
+            label: shortMonthLabel(year, month),
+            year,
+            income,
+            expense: Math.abs(expense)
+        };
+    });
+};
+
+// How fast the current month's spending is running, so the analytics tab can
+// show "at this rate you'll spend €X by month end" instead of just a raw
+// total. Only meaningful for the month actually in progress.
+export const getPaceForecast = (expenseAbs, selectedMonth, monthlyLimit = null) => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const now = new Date();
+    if (now.getFullYear() !== year || (now.getMonth() + 1) !== month) return null;
+
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const daysElapsed = now.getDate();
+    const daysLeft = daysInMonth - daysElapsed;
+
+    const perDay = expenseAbs / daysElapsed;
+    const forecast = perDay * daysInMonth;
+
+    const limitUsable = Number.isFinite(monthlyLimit) && monthlyLimit > 0;
+    let remaining = null;
+    let perDayLeft = null;
+    let willExceedLimit = null;
+    if (limitUsable) {
+        remaining = monthlyLimit - expenseAbs;
+        perDayLeft = daysLeft > 0 ? remaining / daysLeft : null;
+        willExceedLimit = forecast > monthlyLimit;
+    }
+
+    return { daysInMonth, daysElapsed, daysLeft, perDay, forecast, remaining, perDayLeft, willExceedLimit };
 };
 
 export const getYearlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null) => {

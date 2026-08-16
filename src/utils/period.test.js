@@ -6,6 +6,7 @@ import {
   getLastMonthOfYear,
   listPeriodMonths,
   listPeriodYears,
+  toDativeMonth,
 } from './period';
 
 describe('period helpers', () => {
@@ -57,6 +58,24 @@ describe('period helpers', () => {
   describe('formatMonthName', () => {
     it('capitalises the Russian month name', () => {
       expect(formatMonthName('2026-08')).toBe('Август');
+    });
+  });
+
+  describe('toDativeMonth', () => {
+    it('declines every month name for a "к <месяцу>" label', () => {
+      const nominative = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+        'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+      const dative = ['январю', 'февралю', 'марту', 'апрелю', 'маю', 'июню',
+        'июлю', 'августу', 'сентябрю', 'октябрю', 'ноябрю', 'декабрю'];
+
+      expect(nominative.map(toDativeMonth)).toEqual(dative);
+    });
+
+    it('declines what Intl actually produces, not just the lowercase forms', () => {
+      // The label is built from getComparisonData's prevMonthName, which is
+      // whatever toLocaleDateString('ru-RU', { month: 'long' }) returns.
+      const fromIntl = new Date(2025, 11, 1).toLocaleDateString('ru-RU', { month: 'long' });
+      expect(toDativeMonth(fromIntl)).toBe('декабрю');
     });
   });
 
