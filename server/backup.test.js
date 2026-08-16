@@ -5,6 +5,7 @@ import {
     buildBackupDocument,
     countAllCollections,
     formatBackupFilename,
+    interpretAccessCheck,
     isEmptyBackup,
     readAllCollections,
     restoreCollections,
@@ -14,6 +15,7 @@ import {
 } from './backup-core';
 import { parseArgs as parseBackupArgs } from './backup';
 import { parseArgs as parseRestoreArgs } from './restore';
+import { probeWriteAccess } from './check-backup-access';
 
 const fullCollections = (overrides = {}) => ({
     transactions: [{ _id: 't1' }, { _id: 't2' }],
@@ -168,6 +170,84 @@ describe('selectBackupsToDelete', () => {
 
     it('handles an empty directory', () => {
         expect(selectBackupsToDelete([], 3)).toEqual([]);
+    });
+});
+
+describe('interpretAccessCheck', () => {
+    const healthy = { databaseName: 'budgettracker', counts: { transactions: 12, accounts: 2, categories: 5, settings: 1 }, writeRejected: true };
+
+    it('passes a correctly configured read-only credential', () => {
+        const { ok, problems } = interpretAccessCheck(healthy);
+        expect(ok).toBe(true);
+        expect(problems).toEqual([]);
+    });
+
+    it('fails a credential that can write, however well it reads', () => {
+        // This is the whole point of the arrangement: reads working is not
+        // evidence of anything if writes also work.
+        const { ok, problems } = interpretAccessCheck({ ...healthy, writeRejected: false });
+        expect(ok).toBe(false);
+        expect(problems.join(' ')).toMatch(/Запись ПРОШЛА/);
+    });
+
+    it('catches a connection string with no database name in it', () => {
+        const { ok, problems } = interpretAccessCheck({ ...healthy, databaseName: 'test' });
+        expect(ok).toBe(false);
+        expect(problems.join(' ')).toMatch(/не указано имя базы/);
+    });
+
+    it('catches an empty database, which usually means the wrong name or no rights', () => {
+        const { ok, problems } = interpretAccessCheck({ ...healthy, counts: { transactions: 0, accounts: 0, categories: 0, settings: 0 } });
+        expect(ok).toBe(false);
+        expect(problems.join(' ')).toMatch(/Во всех коллекциях пусто/);
+    });
+
+    it('reports every problem at once, so one run diagnoses the whole setup', () => {
+        const { problems } = interpretAccessCheck({ databaseName: 'test', counts: {}, writeRejected: false });
+        expect(problems).toHaveLength(3);
+    });
+});
+
+describe('probeWriteAccess', () => {
+    it('reports a refusal when the database rejects the insert', async () => {
+        const db = { collection: () => ({ insertOne: async () => { throw new Error('not authorized on budgettracker to execute command insert'); } }) };
+
+        const { writeRejected, reason } = await probeWriteAccess(db);
+
+        expect(writeRejected).toBe(true);
+        expect(reason).toMatch(/not authorized/);
+    });
+
+    it('cleans up after itself when the write unexpectedly succeeds', async () => {
+        // Leaving a probe document behind in a database we were only meant
+        // to be reading would be its own small bug.
+        const deleteOne = vi.fn(async () => {});
+        const drop = vi.fn(async () => {});
+        const db = {
+            collection: () => ({
+                insertOne: async () => ({ insertedId: 'probe-1' }),
+                deleteOne,
+                drop
+            })
+        };
+
+        const { writeRejected } = await probeWriteAccess(db);
+
+        expect(writeRejected).toBe(false);
+        expect(deleteOne).toHaveBeenCalledWith({ _id: 'probe-1' });
+        expect(drop).toHaveBeenCalled();
+    });
+
+    it('still reports the write as successful even if cleanup fails', async () => {
+        const db = {
+            collection: () => ({
+                insertOne: async () => ({ insertedId: 'probe-1' }),
+                deleteOne: async () => { throw new Error('нет прав на удаление'); },
+                drop: async () => {}
+            })
+        };
+
+        expect((await probeWriteAccess(db)).writeRejected).toBe(false);
     });
 });
 

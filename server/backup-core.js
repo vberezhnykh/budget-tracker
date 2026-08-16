@@ -132,6 +132,41 @@ function isEmptyBackup(counts) {
     return BACKUP_COLLECTIONS.every(name => (counts[name] ?? 0) === 0);
 }
 
+// Name of the database MongoDB falls back to when the connection string
+// carries no database in its path. Reaching it is always a mistake here: it
+// means the URI was pasted from Atlas without the database name added, and
+// the backup would silently dump an empty stranger of a database.
+const DEFAULT_MONGO_DATABASE = 'test';
+
+// Turns the raw observations of check-backup-access.js into a verdict.
+// Pure, so every combination is testable without a cluster.
+//
+// `writeRejected` is the important one: the whole design rests on the
+// database refusing writes, so a credential that *can* write is reported as
+// a failure even though every read worked perfectly.
+function interpretAccessCheck({ databaseName, counts, writeRejected }) {
+    const problems = [];
+    const notes = [];
+
+    if (databaseName === DEFAULT_MONGO_DATABASE) {
+        problems.push(`Подключение ушло в базу "${DEFAULT_MONGO_DATABASE}" - в строке подключения не указано имя базы (должно быть .../ИМЯ_БАЗЫ?...).`);
+    }
+
+    if (isEmptyBackup(counts)) {
+        problems.push(`Во всех коллекциях пусто (${summarizeCounts(counts)}) - похоже на неверное имя базы или отсутствие прав на неё.`);
+    } else {
+        notes.push(`Данные читаются: ${summarizeCounts(counts)}`);
+    }
+
+    if (writeRejected) {
+        notes.push('Запись отклонена базой - учётка действительно только для чтения.');
+    } else {
+        problems.push('Запись ПРОШЛА. Эта учётка умеет менять данные - это не read-only пользователь. Проверьте роль в Database Access.');
+    }
+
+    return { ok: problems.length === 0, problems, notes };
+}
+
 // Reads every backed-up collection. The only database calls the backup path
 // ever makes, and all of them are reads - which is what lets the whole
 // script run under a MongoDB user holding just the `read` role.
@@ -177,6 +212,8 @@ async function countAllCollections(db) {
 module.exports = {
     BACKUP_COLLECTIONS,
     BACKUP_FILENAME_PATTERN,
+    DEFAULT_MONGO_DATABASE,
+    interpretAccessCheck,
     selectBackupsToDelete,
     countAllCollections,
     readAllCollections,
