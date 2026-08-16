@@ -324,103 +324,55 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
-  test('month navigation lives in the header, not main, and its arrows keep a 40x40 tap target', async ({ page }) => {
-    // The month row was moved from its own block in <main> into the header
-    // card (as global chrome - the selected month filters both the stats
-    // panel and the drawer's transaction list, so it isn't scoped to
-    // either one) so it shares the header's existing padding instead of
-    // adding its own separate block to the page. Shrinking the arrow
-    // glyphs must still not shrink their tappable area, since they are the
-    // only way to change month. jsdom can't measure real rendered box
-    // sizes or DOM ancestry against real layout, hence a real-browser
-    // check here.
+  test('the Период chip replaces the header month row and its sheet is reachable and tappable', async ({ page }) => {
+    // The month arrow row and the Месяц/Год/Всё время toggle were replaced
+    // by a single "Период" chip that opens a bottom sheet (CoinKeeper's
+    // pattern). The header must no longer carry any month control, and the
+    // sheet's month cells must be finger-sized and fit the viewport - none
+    // of which jsdom can measure, since it lays nothing out.
     await mockApi(page);
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
 
-    const prevButton = page.getByRole('button', { name: '←', exact: true });
-    const nextButton = page.getByRole('button', { name: '→', exact: true });
-    await expect(prevButton).toBeVisible();
-    await expect(nextButton).toBeVisible();
+    // No month arrows anywhere any more.
+    await expect(page.getByRole('button', { name: '←', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '→', exact: true })).toHaveCount(0);
 
-    // The row must render inside <header>, not <main> - this is the change
-    // itself, not an incidental detail, so assert ancestry directly rather
-    // than just trusting visual position.
-    const ancestry = await prevButton.evaluate((el) => ({
+    const chip = page.getByRole('button', { name: /^Период:/ });
+    await expect(chip).toBeVisible();
+
+    // The chip lives in <main>, not the header card - the header is now
+    // purely balance/identity chrome.
+    const ancestry = await chip.evaluate((el) => ({
       insideHeader: !!el.closest('header'),
       insideMain: !!el.closest('main'),
     }));
-    expect(ancestry.insideHeader).toBe(true);
-    expect(ancestry.insideMain).toBe(false);
+    expect(ancestry.insideHeader).toBe(false);
+    expect(ancestry.insideMain).toBe(true);
 
-    const prevBox = await prevButton.boundingBox();
-    const nextBox = await nextButton.boundingBox();
-    expect(prevBox).not.toBeNull();
-    expect(nextBox).not.toBeNull();
+    const chipBox = await chip.boundingBox();
+    expect(chipBox.height).toBeGreaterThanOrEqual(40);
 
-    // Tap targets must stay finger-sized even though the glyph shrank.
-    for (const box of [prevBox, nextBox]) {
-      expect(box.width).toBeGreaterThanOrEqual(40);
+    await chip.click();
+    const sheet = page.getByRole('dialog', { name: 'Выбор периода' });
+    await expect(sheet).toBeVisible();
+
+    // Every month cell is finger-sized and inside the viewport.
+    const viewport = page.viewportSize();
+    const monthCells = sheet.getByTestId('period-month');
+    const count = await monthCells.count();
+    expect(count).toBeGreaterThan(0);
+    for (let i = 0; i < count; i++) {
+      const box = await monthCells.nth(i).boundingBox();
       expect(box.height).toBeGreaterThanOrEqual(40);
+      expect(box.x).toBeGreaterThanOrEqual(-0.5);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 0.5);
     }
 
-    // The two arrows sit at opposite ends of the row with the month name
-    // between them, so a correctly-laid-out row has no overlap risk - but
-    // a prior fix elsewhere in this app enlarged a tap target with a
-    // negative margin and caused adjacent targets to overlap by 18px, so
-    // this is verified by measurement rather than assumed.
-    expect(prevBox.x + prevBox.width).toBeLessThanOrEqual(nextBox.x);
-
-    const heading = page.locator('h2', { hasText: /\d{4}/ });
-    await expect(heading).toBeVisible();
-    const headingBox = await heading.boundingBox();
-    expect(headingBox).not.toBeNull();
-
-    // Neither arrow box overlaps the centred month heading.
-    expect(prevBox.x + prevBox.width).toBeLessThanOrEqual(headingBox.x + 0.5);
-    expect(headingBox.x + headingBox.width).toBeLessThanOrEqual(nextBox.x + 0.5);
-  });
-
-  test('range tabs stay on one row in the stats panel', async ({ page }) => {
-    // The tab group (Месяц/Год/Всё время) is a flex row with flexWrap:
-    // 'wrap' - at a 390px viewport its combined natural width once pushed
-    // a control onto a second line, costing an extra row of vertical
-    // space. jsdom performs no real text/flex layout, so it can never see
-    // the wrap; only real rendered geometry can.
-    await mockApi(page);
-    await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
-
-    const monthTab = page.getByRole('button', { name: 'Месяц', exact: true });
-    const yearTab = page.getByRole('button', { name: 'Год', exact: true });
-    const lifetimeTab = page.getByRole('button', { name: 'Всё время', exact: true });
-
-    const controls = [monthTab, yearTab, lifetimeTab];
-    const boxes = [];
-    for (const control of controls) {
-      await expect(control).toBeVisible();
-      const box = await control.boundingBox();
-      expect(box).not.toBeNull();
-      boxes.push(box);
-    }
-
-    // All three share the same row - their vertical centres line up within
-    // a couple of pixels.
-    const centres = boxes.map((box) => box.y + box.height / 2);
-    for (const centre of centres) {
-      expect(Math.abs(centre - centres[0])).toBeLessThanOrEqual(2);
-    }
-
-    // None of them overflows the stats panel horizontally.
-    const panelBox = await monthTab.evaluate((el) => {
-      const panel = el.closest('.glass-panel');
-      const rect = panel.getBoundingClientRect();
-      return { x: rect.x, right: rect.x + rect.width };
-    });
-    for (const box of boxes) {
-      expect(box.x).toBeGreaterThanOrEqual(panelBox.x - 0.5);
-      expect(box.x + box.width).toBeLessThanOrEqual(panelBox.right + 0.5);
-    }
+    // Picking a month closes the sheet and relabels the chip.
+    await sheet.getByRole('button', { name: 'Декабрь' }).click();
+    await expect(sheet).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeVisible();
   });
 
   test('bottom tab bar sits clear of the drawer peek and never covers page content', async ({ page }) => {
@@ -464,9 +416,9 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     const tabBarTop = (await tabBar.boundingBox()).y;
     expect(lastCardBottom).toBeLessThanOrEqual(tabBarTop + 0.5);
 
-    // Switching tabs swaps the panel while the range picker stays put.
+    // Switching tabs swaps the panel while the period chip stays put.
     await analyticsTab.click();
-    await expect(page.getByRole('button', { name: 'Месяц', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Период:/ })).toBeVisible();
 
     // The fixtures only carry transactions from an earlier month, so the
     // current month is genuinely empty - the tab must say so rather than
@@ -474,8 +426,9 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // period, which would leave a blank screen).
     await expect(page.getByText('За выбранный период трат нет')).toBeVisible();
 
-    // Widening the range from the picker fills the same tab with the donut.
-    await page.getByRole('button', { name: 'Всё время', exact: true }).click();
+    // Widening the range from the chip fills the same tab with the donut.
+    await page.getByRole('button', { name: /^Период:/ }).click();
+    await page.getByRole('dialog', { name: 'Выбор периода' }).getByRole('button', { name: 'Всё время' }).click();
     await expect(page.getByText('Аналитика трат')).toBeVisible();
 
     await homeTab.click();

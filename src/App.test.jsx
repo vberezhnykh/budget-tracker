@@ -112,18 +112,39 @@ describe('App Integration Tests', () => {
         expect(screen.getAllByText(/4\.000/)[0]).toBeInTheDocument();
     });
 
-    it('navigates between months', async () => {
+    it('changes the month from the Период chip', async () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        const prevButton = screen.getByText('←');
-        fireEvent.click(prevButton);
+        // The chip carries the current period, and is the only way to change
+        // it - the old header arrow row is gone.
+        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+
+        const dialog = screen.getByRole('dialog', { name: 'Выбор периода' });
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Декабрь' }));
 
         await waitFor(() => {
-            expect(screen.getByText(/декабр/i)).toBeInTheDocument();
-            expect(screen.getByText(/2025/)).toBeInTheDocument();
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         });
+        expect(screen.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeInTheDocument();
+    });
+
+    it('offers only months between the start of history and the current month', async () => {
+        render(<App />);
+
+        await waitFor(() => screen.getByText('BudgetTracker'));
+        fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+
+        // System time is mocked to 2026-01-15, so the selectable range is
+        // 2025-11 .. 2026-01: no October 2025, and no February 2026.
+        const dialog = screen.getByRole('dialog', { name: 'Выбор периода' });
+        expect(within(dialog).getByRole('button', { name: 'Ноябрь' })).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'Январь' })).toBeInTheDocument();
+        expect(within(dialog).queryByRole('button', { name: 'Октябрь' })).not.toBeInTheDocument();
+        expect(within(dialog).queryByRole('button', { name: 'Февраль' })).not.toBeInTheDocument();
     });
 
     it('switches between the stats and analytics tabs from the bottom tab bar', async () => {
@@ -140,9 +161,9 @@ describe('App Integration Tests', () => {
         await waitFor(() => {
             expect(screen.getByText(/Аналитика трат/)).toBeInTheDocument();
         });
-        // The period picker follows you across tabs rather than being owned
-        // by the stats screen.
-        expect(screen.getByRole('button', { name: 'Месяц' })).toBeInTheDocument();
+        // The period chip follows you across tabs rather than being owned by
+        // the stats screen.
+        expect(screen.getByRole('button', { name: /^Период:/ })).toBeInTheDocument();
         expect(analyticsTab).toHaveAttribute('aria-current', 'page');
 
         fireEvent.click(homeTab);
@@ -150,7 +171,7 @@ describe('App Integration Tests', () => {
         await waitFor(() => {
             expect(screen.queryByText(/Аналитика трат/)).not.toBeInTheDocument();
         });
-        expect(screen.getByRole('button', { name: 'Месяц' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Период:/ })).toBeInTheDocument();
     });
 
     it('opens and closes the add transaction modal', async () => {
@@ -287,9 +308,10 @@ describe('App Integration Tests', () => {
         // Default is monthly income (Salary = 5000)
         expect(screen.getByText(/\+€5\.000/)).toBeInTheDocument();
 
-        // Switch to lifetime
-        const lifetimeBtn = screen.getByText('Всё время');
-        fireEvent.click(lifetimeBtn);
+        // Switch to lifetime. "Всё время" has nothing further to pick, so it
+        // applies and closes the sheet on the spot.
+        fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Всё время' }));
 
         // Should show lifetime stats (same as monthly in this mock since all are in Jan 2026)
         expect(screen.getByText(/\+€5\.000/)).toBeInTheDocument();

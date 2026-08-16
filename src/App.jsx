@@ -5,6 +5,8 @@ import LoginScreen from './components/LoginScreen'
 import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer'
 import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
+import PeriodPicker from './components/PeriodPicker'
+import { formatPeriodLabel } from './utils/period'
 import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
 
@@ -424,14 +426,12 @@ function App() {
     setSelectedType(prev => prev === type ? null : type);
   };
 
-  const handleMonthChange = (direction) => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const date = new Date(year, month - 1 + direction, 1);
-    const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
-    const newMonth = localDate.toISOString().slice(0, 7);
-
-    if (newMonth < '2025-11' || newMonth > new Date().toISOString().slice(0, 7)) return;
-    setSelectedMonth(newMonth);
+  // Both halves of "which period am I looking at" move together, from the
+  // one PeriodPicker chip - picking a year has to land on a concrete month
+  // too, because getYearlyData derives its year from selectedMonth.
+  const handlePeriodChange = ({ timeRange: nextRange, selectedMonth: nextMonth }) => {
+    setTimeRange(nextRange);
+    setSelectedMonth(nextMonth);
   };
 
   const exportToCSV = () => {
@@ -640,9 +640,6 @@ function App() {
     ? `Список операций «${getAccountFilterLabel(selectedAccount)}»`
     : 'Список операций';
 
-  const isPrevDisabled = selectedMonth === '2025-11';
-  const isNextDisabled = selectedMonth === new Date().toISOString().slice(0, 7);
-
   // Defensive against a bad stored monthlyLimit (0, negative, or non-finite -
   // the server now rejects saving those, but an old/unmigrated value could
   // still be sitting in the settings document). Dividing by such a limit
@@ -696,38 +693,6 @@ function App() {
         : `весь ${comparisonData.prevMonthName} — €${previous.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
     };
   }, [comparisonData, monthlyData.expense, isActualCurrentMonth]);
-
-  // The Месяц / Год / Всё время range picker is shared by both bottom tabs:
-  // it decides the period for the stats screen and for the analytics donut
-  // alike, so neither of the two owns it. Only one tab is mounted at a time,
-  // so the same element can be rendered from both branches.
-  const periodToggle = (
-    <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '10px', flexShrink: 0 }}>
-      {[
-        { id: 'month', label: 'Месяц' },
-        { id: 'year', label: 'Год' },
-        { id: 'lifetime', label: 'Всё время' },
-      ].map(range => (
-        <button
-          key={range.id}
-          onClick={() => setTimeRange(range.id)}
-          aria-pressed={timeRange === range.id}
-          style={{
-            background: timeRange === range.id ? '#fff' : 'transparent',
-            border: 'none',
-            borderRadius: '6px',
-            padding: '4px 8px',
-            color: timeRange === range.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
-            fontSize: '0.75rem',
-            fontWeight: '600',
-            boxShadow: timeRange === range.id ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
-          }}
-        >
-          {range.label}
-        </button>
-      ))}
-    </div>
-  );
 
   // isAuthenticated === false is the one state that always wins: a 401 mid-
   // session (expired/cleared cookie) must return the user to the login
@@ -962,18 +927,6 @@ function App() {
           })}
         </div>
 
-        {/* Month Navigation: lives here as global chrome, not inside <main>,
-            because the selected month filters both the stats panel and the
-            transaction list in the drawer below - it isn't scoped to either
-            one, so it belongs in the header alongside the other page-wide
-            controls rather than being duplicated or bolted onto one section. */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', padding: '4px 8px' }}>
-          <button onClick={() => handleMonthChange(-1)} disabled={isPrevDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.1rem', opacity: isPrevDisabled ? 0.3 : 1, padding: '10px', minWidth: '40px', minHeight: '40px' }}>←</button>
-          <h2 style={{ fontSize: '0.95rem', fontWeight: '600', textTransform: 'capitalize' }}>
-            {new Date(selectedMonth + '-01T12:00:00').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }).replace(' г.', '')}
-          </h2>
-          <button onClick={() => handleMonthChange(1)} disabled={isNextDisabled} style={{ background: 'transparent', color: 'var(--color-text-muted)', fontSize: '1.1rem', opacity: isNextDisabled ? 0.3 : 1, padding: '10px', minWidth: '40px', minHeight: '40px' }}>→</button>
-        </div>
       </header>
 
       <main style={{ paddingBottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px` }}>
@@ -992,13 +945,19 @@ function App() {
           </div>
         </section>
 
+        {/* One period control for the whole screen: the chip carries both
+            the granularity (месяц/год/всё время) and the concrete month or
+            year, replacing the old header arrow row plus the range toggle
+            that used to live inside the stats card. It sits above the
+            summary card so both bottom tabs share it. */}
+        <section style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <PeriodPicker timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />
+        </section>
+
         {/* Summary Card with Budget Limit */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '24px' }}>
           {summaryView === 'stats' ? (
             <div className="glass-panel" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '8px' }}>
-                {periodToggle}
-              </div>
 
               {/* The period's expense is the headline: for a month it sits
                   inside the spending-limit ring, so "how much" and "how much
@@ -1079,6 +1038,13 @@ function App() {
                     </span>
                   )}
                 </button>
+
+                {/* The period is spelled out under the headline number, so
+                    what the figure covers is readable without going back up
+                    to the chip. */}
+                <div style={{ fontSize: '0.7rem', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: '-12px' }}>
+                  {formatPeriodLabel(timeRange, selectedMonth)}
+                </div>
 
                 {timeRange === 'month' && (
                   <div style={{ textAlign: 'center', marginTop: '-8px' }}>
@@ -1198,9 +1164,6 @@ function App() {
                period has no spending, hence the explicit empty state - a
                tab that can go blank would look broken. */
             <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '-12px' }}>
-                {periodToggle}
-              </div>
               {topCategories.length > 0 ? (
                 <CategoryDonut data={periodStats.categoryTotals} />
               ) : (
