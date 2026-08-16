@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getSearchResults } from './finance';
+import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getSearchResults, getDescriptionSuggestions } from './finance';
 
 describe('Finance Utilities', () => {
     const mockData = [
@@ -188,5 +188,44 @@ describe('Finance Utilities', () => {
                 expect(Object.keys(result.transactions)).toHaveLength(2);
             });
         });
+    });
+});
+
+describe('getDescriptionSuggestions', () => {
+    const history = [
+        { category: 'Продукты', type: 'expense', description: 'Wolt', date: '2026-01-01' },
+        { category: 'Продукты', type: 'expense', description: 'wolt ', date: '2026-01-20' },
+        { category: 'Продукты', type: 'expense', description: 'Lidl', date: '2026-01-05' },
+        { category: 'Продукты', type: 'expense', description: '', date: '2026-01-06' },
+        { category: 'Развлечения', type: 'expense', description: 'Кино', date: '2026-01-07' },
+        { category: 'Другое', type: 'income', description: 'Возврат', date: '2026-01-08' },
+        { category: 'Другое', type: 'expense', description: 'Штраф', date: '2026-01-09' }
+    ];
+
+    it('returns the comments used for that category, most frequent first', () => {
+        expect(getDescriptionSuggestions(history, 'Продукты', 'expense')).toEqual(['wolt', 'Lidl']);
+    });
+
+    it('does not leak comments across categories', () => {
+        expect(getDescriptionSuggestions(history, 'Развлечения', 'expense')).toEqual(['Кино']);
+    });
+
+    it('separates same-named categories of different types', () => {
+        expect(getDescriptionSuggestions(history, 'Другое', 'income')).toEqual(['Возврат']);
+        expect(getDescriptionSuggestions(history, 'Другое', 'expense')).toEqual(['Штраф']);
+    });
+
+    it('breaks frequency ties by most recent use', () => {
+        const ties = [
+            { category: 'Транспорт', type: 'expense', description: 'Такси', date: '2026-01-01' },
+            { category: 'Транспорт', type: 'expense', description: 'Бензин', date: '2026-01-10' }
+        ];
+        expect(getDescriptionSuggestions(ties, 'Транспорт', 'expense')).toEqual(['Бензин', 'Такси']);
+    });
+
+    it('respects the limit and handles empty input', () => {
+        expect(getDescriptionSuggestions(history, 'Продукты', 'expense', 1)).toEqual(['wolt']);
+        expect(getDescriptionSuggestions(history, '', 'expense')).toEqual([]);
+        expect(getDescriptionSuggestions([], 'Продукты', 'expense')).toEqual([]);
     });
 });

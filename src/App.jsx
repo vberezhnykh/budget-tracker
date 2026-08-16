@@ -1189,13 +1189,14 @@ function App() {
           onClose={() => setShowAddTransaction(false)}
           onSubmit={handleAddTransaction}
           accounts={accounts}
+          transactions={transactions}
           // Only a real account id preselects - the total-capital slide
           // (null) and any residual type:* filter value must fall through
           // to no preset, forcing an explicit choice.
           presetAccountId={accounts.some(a => a._id === selectedAccount) ? selectedAccount : undefined}
         />
       )}
-      {editingTransaction && <AddTransactionForm initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} />}
+      {editingTransaction && <AddTransactionForm initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} transactions={transactions} />}
 
       {/* Bottom drawer: transaction history, always mounted (collapsed =
           transformed off-screen, not unmounted) so filters applied elsewhere

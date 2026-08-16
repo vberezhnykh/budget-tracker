@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { getDescriptionSuggestions } from '../utils/finance';
 
-export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null }) {
+export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [] }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
     const defaultToAccount = accounts.find(a => a.type === 'card' && a._id !== defaultAccount)?._id || accounts.find(a => a._id !== defaultAccount)?._id || 'card';
 
@@ -113,6 +114,27 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const getAccountLabel = (acc) => `${acc.icon || (acc.type === 'cash' ? '💵' : '💳')} ${acc.name}`;
 
     const categories = (allCategories || []).filter(c => c.type === formData.type);
+
+    // Подсказки для поля комментария: то, что уже писалось для выбранной
+    // категории. В режиме разделения одно описание относится сразу к
+    // нескольким категориям, поэтому подсказывать там нечего.
+    const suggestionCategory = isSplit ? null : (isTransfer ? 'Перевод' : formData.category);
+    const descriptionSuggestions = useMemo(
+        () => getDescriptionSuggestions(transactions, suggestionCategory, formData.type),
+        [transactions, suggestionCategory, formData.type]
+    );
+
+    // Пока поле пустое - показываем весь топ; как только пользователь начал
+    // печатать, подсказки сужаются до подходящих, а точное совпадение
+    // (уже выбранная подсказка) убирается - нажимать на него нечего.
+    const visibleSuggestions = useMemo(() => {
+        const typed = (formData.description || '').trim().toLowerCase();
+        if (!typed) return descriptionSuggestions;
+        return descriptionSuggestions.filter(s => {
+            const lower = s.toLowerCase();
+            return lower !== typed && lower.includes(typed);
+        });
+    }, [descriptionSuggestions, formData.description]);
 
     // New category inline creation
     const [isAddingCategory, setIsAddingCategory] = useState(false);
@@ -832,6 +854,46 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 boxSizing: 'border-box'
                             }}
                         />
+                        {visibleSuggestions.length > 0 && (
+                            <div
+                                className="no-scrollbar"
+                                style={{
+                                    display: 'flex',
+                                    gap: '8px',
+                                    marginTop: '10px',
+                                    // Одна строка с горизонтальной прокруткой:
+                                    // перенос подсказок в несколько рядов
+                                    // сдвигал бы кнопку сохранения вниз при
+                                    // каждой смене категории.
+                                    overflowX: 'auto',
+                                    paddingBottom: '2px'
+                                }}
+                            >
+                                {visibleSuggestions.map(suggestion => (
+                                    <button
+                                        key={suggestion}
+                                        type="button"
+                                        onClick={() => setFormData({ ...formData, description: suggestion })}
+                                        style={{
+                                            flex: '0 0 auto',
+                                            maxWidth: '100%',
+                                            padding: '6px 12px',
+                                            borderRadius: '16px',
+                                            border: '1px solid rgba(0,0,0,0.08)',
+                                            background: '#fff',
+                                            color: 'var(--color-text-muted)',
+                                            fontSize: '0.8rem',
+                                            whiteSpace: 'nowrap',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        {suggestion}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
 
                     <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>

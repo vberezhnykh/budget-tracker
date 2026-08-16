@@ -258,4 +258,49 @@ describe('AddTransactionForm Component', () => {
             expect.objectContaining({ amount: 60, category: 'Транспорт' })
         ]));
     });
+
+    const mockTransactions = [
+        { category: 'Продукты', type: 'expense', description: 'Wolt', date: '2026-01-01' },
+        { category: 'Продукты', type: 'expense', description: 'Wolt', date: '2026-01-02' },
+        { category: 'Продукты', type: 'expense', description: 'Lidl', date: '2026-01-03' },
+        { category: 'Развлечения', type: 'expense', description: 'Кино', date: '2026-01-04' }
+    ];
+
+    it('suggests previous comments only for the selected category', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} transactions={mockTransactions} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        // Ничего не выбрано - подсказывать нечего.
+        expect(screen.queryByText('Wolt')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByText('Продукты'));
+        expect(screen.getByText('Wolt')).toBeInTheDocument();
+        expect(screen.getByText('Lidl')).toBeInTheDocument();
+        expect(screen.queryByText('Кино')).not.toBeInTheDocument();
+
+        // Комментарии из другой категории здесь не появляются.
+        fireEvent.click(screen.getByText('Развлечения'));
+        expect(screen.getByText('Кино')).toBeInTheDocument();
+        expect(screen.queryByText('Wolt')).not.toBeInTheDocument();
+    });
+
+    it('fills the comment field from a suggestion', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} transactions={mockTransactions} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        fireEvent.click(screen.getByText('Продукты'));
+        fireEvent.click(screen.getByText('Wolt'));
+
+        expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('Wolt');
+        // Выбранная подсказка больше не предлагается, остальные остаются.
+        expect(screen.queryByText('Lidl')).not.toBeInTheDocument();
+    });
+
+    it('narrows suggestions to what has been typed', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} transactions={mockTransactions} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        fireEvent.click(screen.getByText('Продукты'));
+        fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value: 'li' } });
+
+        expect(screen.getByText('Lidl')).toBeInTheDocument();
+        expect(screen.queryByText('Wolt')).not.toBeInTheDocument();
+    });
 });

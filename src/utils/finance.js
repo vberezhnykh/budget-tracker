@@ -322,3 +322,47 @@ export const getSearchResults = (transactions, query, accountFilter = null, cate
 
     return { transactions: grouped, count: filtered.length };
 };
+
+/**
+ * Комментарии, которые пользователь чаще всего пишет для конкретной категории.
+ *
+ * Считаем по паре категория+тип: одноимённая категория может существовать и в
+ * расходах, и в доходах ("Другое"), а привычные комментарии у них разные.
+ * Варианты написания ("Wolt" / "wolt ") склеиваются в одну подсказку, а
+ * показывается последнее использованное написание - оно отражает то, как
+ * пользователь пишет этот комментарий сейчас.
+ *
+ * Сортировка: сначала частота, при равной частоте - что использовалось позже.
+ */
+export const getDescriptionSuggestions = (transactions, category, type = null, limit = 5) => {
+    if (!category) return [];
+
+    const byNormalized = new Map();
+
+    (transactions || []).forEach(t => {
+        if (t.category !== category) return;
+        if (type && t.type !== type) return;
+
+        const description = (t.description || '').trim();
+        if (!description) return;
+
+        const key = description.toLowerCase();
+        const existing = byNormalized.get(key);
+        // Транзакции приходят не отсортированными, поэтому последнее написание
+        // выбираем по дате, а не по порядку в массиве.
+        if (!existing) {
+            byNormalized.set(key, { label: description, count: 1, lastDate: t.date || '' });
+        } else {
+            existing.count += 1;
+            if ((t.date || '') >= existing.lastDate) {
+                existing.label = description;
+                existing.lastDate = t.date || '';
+            }
+        }
+    });
+
+    return [...byNormalized.values()]
+        .sort((a, b) => b.count - a.count || (a.lastDate < b.lastDate ? 1 : a.lastDate > b.lastDate ? -1 : 0))
+        .slice(0, limit)
+        .map(s => s.label);
+};
