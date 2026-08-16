@@ -22,6 +22,30 @@ function formatBackupFilename(date = new Date()) {
     return `budget-backup-${stamp}.json`;
 }
 
+// Matches exactly what formatBackupFilename produces, and nothing else.
+// Rotation deletes files, and the output directory is a path the user chose
+// - quite possibly one holding other things (a synced cloud folder, say) -
+// so "is this one of ours" has to be decided by the full filename, never by
+// a loose extension or prefix check.
+const BACKUP_FILENAME_PATTERN = /^budget-backup-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z\.json$/;
+
+// Given the filenames currently in the output directory, returns the ones
+// rotation should delete: everything past the newest `keep`.
+//
+// Anything not matching our own naming pattern is ignored outright - it was
+// not written by this script, so it is not this script's to delete.
+//
+// keep < 1 disables rotation (returns nothing) rather than being read as
+// "keep none and delete everything", which is the one interpretation that
+// could destroy every backup at once through a typo'd argument.
+function selectBackupsToDelete(filenames, keep) {
+    if (!Number.isInteger(keep) || keep < 1) return [];
+    // The timestamp is fixed-width and zero-padded, so lexicographic order
+    // is chronological order - no date parsing needed to sort these.
+    const ours = filenames.filter(name => BACKUP_FILENAME_PATTERN.test(name)).sort();
+    return ours.slice(0, Math.max(0, ours.length - keep));
+}
+
 // Assembles the backup document. `collections` maps a collection name to
 // its array of documents.
 //
@@ -152,6 +176,8 @@ async function countAllCollections(db) {
 
 module.exports = {
     BACKUP_COLLECTIONS,
+    BACKUP_FILENAME_PATTERN,
+    selectBackupsToDelete,
     countAllCollections,
     readAllCollections,
     restoreCollections,

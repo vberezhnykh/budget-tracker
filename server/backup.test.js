@@ -8,6 +8,7 @@ import {
     isEmptyBackup,
     readAllCollections,
     restoreCollections,
+    selectBackupsToDelete,
     summarizeCounts,
     validateBackupDocument
 } from './backup-core';
@@ -124,6 +125,52 @@ describe('formatBackupFilename', () => {
     });
 });
 
+describe('selectBackupsToDelete', () => {
+    const name = (stamp) => `budget-backup-${stamp}.json`;
+    const day = (n) => name(`2026-08-${String(n).padStart(2, '0')}T03-00-00Z`);
+
+    it('keeps the newest N and returns the rest', () => {
+        const files = [day(1), day(2), day(3), day(4), day(5)];
+        expect(selectBackupsToDelete(files, 2)).toEqual([day(1), day(2), day(3)]);
+    });
+
+    it('sorts by the timestamp in the name, not by the order the directory listed', () => {
+        // readdir order is not guaranteed, so a rotation that trusted it
+        // would delete arbitrary backups rather than the oldest.
+        const files = [day(4), day(1), day(5), day(3), day(2)];
+        expect(selectBackupsToDelete(files, 2)).toEqual([day(1), day(2), day(3)]);
+    });
+
+    it('deletes nothing when there are fewer backups than the limit', () => {
+        expect(selectBackupsToDelete([day(1), day(2)], 5)).toEqual([]);
+    });
+
+    it('never touches files it did not write', () => {
+        // The output directory is a path the user chose - very possibly a
+        // synced cloud folder holding other things.
+        const files = [
+            day(1), day(2), day(3),
+            'документы.json',
+            'budget-backup.json',
+            'budget-backup-2026-08-01.json',
+            'budget-backup-2026-08-01T03-00-00Z.json.bak',
+            'photo.jpg'
+        ];
+        expect(selectBackupsToDelete(files, 1)).toEqual([day(1), day(2)]);
+    });
+
+    it('disables rotation for a non-positive or non-integer limit instead of deleting everything', () => {
+        const files = [day(1), day(2), day(3)];
+        for (const bad of [0, -1, 1.5, NaN, null, undefined, '2']) {
+            expect(selectBackupsToDelete(files, bad)).toEqual([]);
+        }
+    });
+
+    it('handles an empty directory', () => {
+        expect(selectBackupsToDelete([], 3)).toEqual([]);
+    });
+});
+
 describe('summarizeCounts', () => {
     it('lists every collection, including ones missing from the input', () => {
         expect(summarizeCounts({ transactions: 3 })).toBe('transactions: 3, accounts: 0, categories: 0, settings: 0');
@@ -236,6 +283,19 @@ describe('backup CLI arguments', () => {
 
     it('rejects --out with no value instead of silently ignoring it', () => {
         expect(() => parseBackupArgs(['--out'])).toThrow();
+    });
+
+    it('leaves rotation off unless --keep is given', () => {
+        expect(parseBackupArgs([]).keep).toBeNull();
+        expect(parseBackupArgs(['--keep', '14']).keep).toBe(14);
+    });
+
+    it('rejects a --keep that would delete backups by accident', () => {
+        // A mistyped limit must fail loudly, not fall back to some default.
+        for (const bad of [[], ['--keep'], ['--keep', '0'], ['--keep', '-3'], ['--keep', 'семь'], ['--keep', '2.5']]) {
+            if (bad.length < 2) continue;
+            expect(() => parseBackupArgs(bad)).toThrow(/--keep/);
+        }
     });
 });
 

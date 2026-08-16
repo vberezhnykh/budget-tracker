@@ -1,6 +1,6 @@
 // Read-only backup of the whole database to a single EJSON file.
 //
-//   node server/backup.js [--out <dir>]
+//   node server/backup.js [--out <dir>] [--keep <n>]
 //
 // Connects with MONGODB_BACKUP_URI when set, falling back to MONGODB_URI.
 // The separate variable is the point of this script: give the assistant (or
@@ -23,22 +23,44 @@ const {
     formatBackupFilename,
     isEmptyBackup,
     readAllCollections,
+    selectBackupsToDelete,
     summarizeCounts
 } = require('./backup-core');
 
 require('dotenv').config();
 
 function parseArgs(argv) {
-    const args = { out: path.join(__dirname, '..', 'backups') };
+    const args = { out: path.join(__dirname, '..', 'backups'), keep: null };
     for (let i = 0; i < argv.length; i++) {
         if (argv[i] === '--out') {
             const value = argv[i + 1];
             if (!value) throw new Error('--out требует путь к каталогу');
             args.out = value;
             i++;
+        } else if (argv[i] === '--keep') {
+            const value = argv[i + 1];
+            const parsed = Number(value);
+            // Rejected rather than defaulted: a mistyped --keep silently
+            // falling back to some number would either delete backups the
+            // user meant to keep, or quietly keep growing the directory.
+            if (!Number.isInteger(parsed) || parsed < 1) {
+                throw new Error('--keep требует целое число не меньше 1');
+            }
+            args.keep = parsed;
+            i++;
         }
     }
     return args;
+}
+
+// Rotation runs only after the new backup has been written successfully, so
+// a failed run can never delete an older backup on its way out.
+function rotateBackups(directory, keep) {
+    const stale = selectBackupsToDelete(fs.readdirSync(directory), keep);
+    for (const name of stale) {
+        fs.unlinkSync(path.join(directory, name));
+    }
+    return stale;
 }
 
 async function main() {
@@ -77,6 +99,13 @@ async function main() {
 
         console.log(`Бэкап записан: ${filePath}`);
         console.log(summarizeCounts(doc.counts));
+
+        if (args.keep !== null) {
+            const removed = rotateBackups(args.out, args.keep);
+            if (removed.length > 0) {
+                console.log(`Удалено старых бэкапов: ${removed.length} (оставлено последних ${args.keep})`);
+            }
+        }
     } finally {
         await client.close();
     }
