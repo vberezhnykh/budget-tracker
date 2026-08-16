@@ -5,16 +5,20 @@
     "main": "index.js",
     "scripts": {
         "start": "node index.js",
-        "dev": "nodemon index.js"
+        "dev": "nodemon index.js",
+        "backup": "node backup.js",
+        "restore": "node restore.js"
     },
     "keywords": [],
     "author": "",
     "license": "ISC",
     "dependencies": {
+        "bson": "^6.10.4",
         "cookie-parser": "^1.4.7",
         "cors": "^2.8.5",
         "dotenv": "^16.4.5",
         "express": "^4.19.2",
+        "mongodb": "^6.20.0",
         "mongoose": "^8.3.0"
     },
     "devDependencies": {

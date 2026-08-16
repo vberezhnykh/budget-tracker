@@ -13,6 +13,11 @@ playwright-report
 dist
 build
 
+# Database dumps written by server/backup.js - the family's full financial
+# history in plain text. Never commit these.
+backups
+*.backup.json
+
 # Misc
 .DS_Store
 .env
