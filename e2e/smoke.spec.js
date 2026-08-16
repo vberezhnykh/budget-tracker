@@ -381,15 +381,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(headingBox.x + headingBox.width).toBeLessThanOrEqual(nextBox.x + 0.5);
   });
 
-  test('range tabs and the Аналитика button share one row in the stats panel', async ({ page }) => {
-    // The tab group (Месяц/Год/Всё время) and the "Аналитика ->" button
-    // were already a single flex row with justifyContent: 'space-between',
-    // but flexWrap: 'wrap' plus their combined natural width meant they
-    // wrapped onto two lines at a 390px viewport, costing an extra row of
-    // vertical space. Their paddings/gap were tightened so all four
-    // controls fit on one line without touching the row's structure or the
-    // wrap safety net. jsdom performs no real text/flex layout, so it can
-    // never see the wrap - only real rendered geometry can.
+  test('range tabs stay on one row in the stats panel', async ({ page }) => {
+    // The tab group (Месяц/Год/Всё время) is a flex row with flexWrap:
+    // 'wrap' - at a 390px viewport its combined natural width once pushed
+    // a control onto a second line, costing an extra row of vertical
+    // space. jsdom performs no real text/flex layout, so it can never see
+    // the wrap; only real rendered geometry can.
     await mockApi(page);
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
@@ -397,9 +394,8 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     const monthTab = page.getByRole('button', { name: 'Месяц', exact: true });
     const yearTab = page.getByRole('button', { name: 'Год', exact: true });
     const lifetimeTab = page.getByRole('button', { name: 'Всё время', exact: true });
-    const analyticsBtn = page.getByRole('button', { name: /Аналитика/ });
 
-    const controls = [monthTab, yearTab, lifetimeTab, analyticsBtn];
+    const controls = [monthTab, yearTab, lifetimeTab];
     const boxes = [];
     for (const control of controls) {
       await expect(control).toBeVisible();
@@ -408,16 +404,14 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       boxes.push(box);
     }
 
-    // All four share the same row - their vertical centres line up, within
-    // a couple of pixels. This is the assertion that would have caught the
-    // pre-fix wrap: with the original wider paddings the tab group and the
-    // button land on two visibly different rows here.
+    // All three share the same row - their vertical centres line up within
+    // a couple of pixels.
     const centres = boxes.map((box) => box.y + box.height / 2);
     for (const centre of centres) {
       expect(Math.abs(centre - centres[0])).toBeLessThanOrEqual(2);
     }
 
-    // None of the four controls overflows the stats panel horizontally.
+    // None of them overflows the stats panel horizontally.
     const panelBox = await monthTab.evaluate((el) => {
       const panel = el.closest('.glass-panel');
       const rect = panel.getBoundingClientRect();
@@ -427,5 +421,64 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       expect(box.x).toBeGreaterThanOrEqual(panelBox.x - 0.5);
       expect(box.x + box.width).toBeLessThanOrEqual(panelBox.right + 0.5);
     }
+  });
+
+  test('bottom tab bar sits clear of the drawer peek and never covers page content', async ({ page }) => {
+    // Аналитика moved out of the stats panel into a fixed bottom tab bar.
+    // Being fixed, the bar is out of normal flow: it can overlap the
+    // drawer's peek strip below it, or hide the tail of <main> behind it,
+    // and neither is visible to jsdom (no layout, no vh, no fixed
+    // positioning). Both are checked here from real rendered geometry.
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    const tabBar = page.getByRole('navigation', { name: 'Основная навигация' });
+    await expect(tabBar).toBeVisible();
+
+    const analyticsTab = tabBar.getByRole('button', { name: /Аналитика/ });
+    const homeTab = tabBar.getByRole('button', { name: /Главная/ });
+
+    // Both tabs are finger-sized.
+    for (const tab of [homeTab, analyticsTab]) {
+      const box = await tab.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box.height).toBeGreaterThanOrEqual(40);
+    }
+
+    // The bar clears the collapsed drawer's peek strip, measured from the
+    // drawer's own rendered position rather than from the app's constants.
+    const tabBarBox = await tabBar.boundingBox();
+    const drawerBox = await page.getByTestId('transactions-drawer').boundingBox();
+    expect(tabBarBox.y + tabBarBox.height).toBeLessThanOrEqual(drawerBox.y + 0.5);
+
+    // Scrolled to the very bottom, the last card in <main> must still end
+    // above the bar - i.e. <main> reserves enough bottom padding for it.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await page.waitForTimeout(150);
+    const lastCardBottom = await page.evaluate(() => {
+      const cards = document.querySelectorAll('main .glass-panel');
+      const last = cards[cards.length - 1];
+      return last.getBoundingClientRect().bottom;
+    });
+    const tabBarTop = (await tabBar.boundingBox()).y;
+    expect(lastCardBottom).toBeLessThanOrEqual(tabBarTop + 0.5);
+
+    // Switching tabs swaps the panel while the range picker stays put.
+    await analyticsTab.click();
+    await expect(page.getByRole('button', { name: 'Месяц', exact: true })).toBeVisible();
+
+    // The fixtures only carry transactions from an earlier month, so the
+    // current month is genuinely empty - the tab must say so rather than
+    // render nothing at all (CategoryDonut returns null on an empty
+    // period, which would leave a blank screen).
+    await expect(page.getByText('За выбранный период трат нет')).toBeVisible();
+
+    // Widening the range from the picker fills the same tab with the donut.
+    await page.getByRole('button', { name: 'Всё время', exact: true }).click();
+    await expect(page.getByText('Аналитика трат')).toBeVisible();
+
+    await homeTab.click();
+    await expect(page.getByText('Аналитика трат')).toHaveCount(0);
   });
 });

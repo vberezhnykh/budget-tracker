@@ -151,6 +151,44 @@ describe('AddTransactionForm Component', () => {
         }));
     });
 
+    it('starts a transfer from the active account when presetAccountId is passed', () => {
+        render(<AddTransactionForm type="transfer" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        // "Откуда" is the account that was active on the balance carousel, so
+        // the only thing left to choose is where the money goes - and "Куда"
+        // must not land on the same account.
+        expect(screen.getByLabelText('Откуда')).toHaveValue('card');
+        expect(screen.getByLabelText('Куда')).toHaveValue('cash');
+
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50' } });
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'transfer',
+            account: 'card',
+            toAccount: 'cash'
+        }));
+    });
+
+    it('falls back to the default account pairing for a transfer with no preset (Общий капитал)', () => {
+        render(<AddTransactionForm type="transfer" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        expect(screen.getByLabelText('Откуда')).toHaveValue('cash');
+        expect(screen.getByLabelText('Куда')).toHaveValue('card');
+    });
+
+    it('fills both transfer sides when switching to transfer from an account-less expense', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        fireEvent.click(screen.getByText('Перевод'));
+
+        const from = screen.getByLabelText('Откуда');
+        const to = screen.getByLabelText('Куда');
+        expect(from.value).toBeTruthy();
+        expect(to.value).toBeTruthy();
+        expect(from.value).not.toBe(to.value);
+    });
+
     it('calls onClose when background is clicked', () => {
         const { container } = render(<AddTransactionForm categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} />);
         // The overlay is the first div

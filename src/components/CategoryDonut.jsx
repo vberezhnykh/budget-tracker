@@ -13,6 +13,8 @@ const COLORS = [
     '#64748b'  // Slate
 ];
 
+// onToggle is optional: when the donut is reached through the bottom tab bar
+// there is nothing to go "back" to, so the button is simply not rendered.
 export default function CategoryDonut({ data, onToggle }) {
     if (!data) return null;
     
@@ -67,25 +69,27 @@ export default function CategoryDonut({ data, onToggle }) {
 
     return (
         <div className="glass-panel" style={{ padding: '20px', marginTop: '0' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                <button
-                    onClick={onToggle}
-                    style={{
-                        background: 'rgba(0,0,0,0.03)',
-                        border: '1px solid rgba(0,0,0,0.08)',
-                        borderRadius: '8px',
-                        padding: '4px 12px',
-                        color: 'var(--color-primary)',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '4px',
-                        fontSize: '0.8rem',
-                        fontWeight: '600'
-                    }}
-                >
-                    <span>←</span> Назад
-                </button>
+            <div style={{ display: 'flex', justifyContent: onToggle ? 'space-between' : 'center', alignItems: 'center', marginBottom: '16px' }}>
+                {onToggle && (
+                    <button
+                        onClick={onToggle}
+                        style={{
+                            background: 'rgba(0,0,0,0.03)',
+                            border: '1px solid rgba(0,0,0,0.08)',
+                            borderRadius: '8px',
+                            padding: '4px 12px',
+                            color: 'var(--color-primary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '0.8rem',
+                            fontWeight: '600'
+                        }}
+                    >
+                        <span>←</span> Назад
+                    </button>
+                )}
                 <h3 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
                     Аналитика трат
                 </h3>

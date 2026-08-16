@@ -6,13 +6,22 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     // For a brand-new income/expense transaction, the account must be an
     // explicit user choice - unless a specific account was already active
-    // (presetAccountId) when the form was opened. The transfer flow keeps
-    // its own defaultAccount/defaultToAccount pairing untouched: it has its
-    // own two explicit from/to selects, and an empty account there would
-    // break that pairing for no gain.
+    // (presetAccountId) when the form was opened. A transfer opened with an
+    // account active starts *from* that account, so the only thing left to
+    // pick is the destination; with no account active (the "Общий капитал"
+    // slide) it falls back to the defaultAccount/defaultToAccount pairing,
+    // since an empty account on that flow would break its two from/to
+    // selects for no gain.
     const initialAccount = initialData
         ? (initialData.account || defaultAccount)
-        : (type === 'transfer' ? defaultAccount : (presetAccountId || ''));
+        : (type === 'transfer' ? (presetAccountId || defaultAccount) : (presetAccountId || ''));
+
+    // The two transfer sides can never point at the same account (see
+    // setTransferAccount below), so a preset "from" that happens to be the
+    // usual destination pushes "to" onto the first other account.
+    const initialToAccount = defaultToAccount !== initialAccount
+        ? defaultToAccount
+        : (accounts.find(a => a._id !== initialAccount)?._id || defaultToAccount);
 
     const [formData, setFormData] = useState(initialData ? {
         ...initialData,
@@ -26,7 +35,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         date: new Date().toISOString().split('T')[0],
         type: type, // 'income', 'expense', or 'transfer'
         account: initialAccount,
-        toAccount: defaultToAccount,
+        toAccount: initialToAccount,
         excludeFromStats: false
     });
 
@@ -231,7 +240,26 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         ].map(t => (
                             <button
                                 key={t.id}
-                                onClick={() => setFormData({ ...formData, type: t.id })}
+                                // Switching into a transfer while no account has
+                                // been chosen yet (a new expense/income opened
+                                // from the "Общий капитал" slide starts with an
+                                // empty account) would leave "Откуда" pointing at
+                                // nothing while the select displays its first
+                                // option - and the save gate doesn't require an
+                                // account on transfers. Fall back to the default
+                                // pairing so both sides are always real.
+                                onClick={() => setFormData(prev => {
+                                    if (t.id !== 'transfer' || prev.account) return { ...prev, type: t.id };
+                                    const account = defaultAccount;
+                                    return {
+                                        ...prev,
+                                        type: t.id,
+                                        account,
+                                        toAccount: prev.toAccount !== account
+                                            ? prev.toAccount
+                                            : (accounts.find(a => a._id !== account)?._id || prev.toAccount)
+                                    };
+                                })}
                                 style={{
                                     flex: 1,
                                     padding: '8px',

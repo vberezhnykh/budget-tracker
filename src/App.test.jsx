@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
 import { computeAccountReorder, handleAccountDragEnd } from './utils/accountReorder';
@@ -126,24 +126,31 @@ describe('App Integration Tests', () => {
         });
     });
 
-    it('toggles between monthly stats and analytics view', async () => {
+    it('switches between the stats and analytics tabs from the bottom tab bar', async () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        const analyticsBtn = screen.getByText(/Аналитика/);
-        fireEvent.click(analyticsBtn);
+        const tabBar = screen.getByRole('navigation', { name: 'Основная навигация' });
+        const analyticsTab = within(tabBar).getByRole('button', { name: /Аналитика/ });
+        const homeTab = within(tabBar).getByRole('button', { name: /Главная/ });
+
+        fireEvent.click(analyticsTab);
 
         await waitFor(() => {
             expect(screen.getByText(/Аналитика трат/)).toBeInTheDocument();
         });
+        // The period picker follows you across tabs rather than being owned
+        // by the stats screen.
+        expect(screen.getByRole('button', { name: 'Месяц' })).toBeInTheDocument();
+        expect(analyticsTab).toHaveAttribute('aria-current', 'page');
 
-        const backBtn = screen.getByText(/Назад/);
-        fireEvent.click(backBtn);
+        fireEvent.click(homeTab);
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Месяц' })).toBeInTheDocument();
+            expect(screen.queryByText(/Аналитика трат/)).not.toBeInTheDocument();
         });
+        expect(screen.getByRole('button', { name: 'Месяц' })).toBeInTheDocument();
     });
 
     it('opens and closes the add transaction modal', async () => {

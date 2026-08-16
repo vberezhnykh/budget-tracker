@@ -4,6 +4,7 @@ import CategoryDonut from './components/CategoryDonut'
 import LoginScreen from './components/LoginScreen'
 import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer'
 import AccountsSettingsModal from './components/AccountsSettingsModal'
+import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
 
@@ -31,6 +32,9 @@ function App() {
 
   // State for selected. Defaults to current month YYYY-MM
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  // Which of the two bottom tabs is showing. 'stats' is the default screen
+  // (spending ring, income/saldo, top categories); 'analytics' is the
+  // category breakdown donut.
   const [summaryView, setSummaryView] = useState('stats'); // 'stats' or 'analytics'
   const [timeRange, setTimeRange] = useState('month'); // 'month' or 'lifetime'
 
@@ -693,6 +697,38 @@ function App() {
     };
   }, [comparisonData, monthlyData.expense, isActualCurrentMonth]);
 
+  // The Месяц / Год / Всё время range picker is shared by both bottom tabs:
+  // it decides the period for the stats screen and for the analytics donut
+  // alike, so neither of the two owns it. Only one tab is mounted at a time,
+  // so the same element can be rendered from both branches.
+  const periodToggle = (
+    <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '10px', flexShrink: 0 }}>
+      {[
+        { id: 'month', label: 'Месяц' },
+        { id: 'year', label: 'Год' },
+        { id: 'lifetime', label: 'Всё время' },
+      ].map(range => (
+        <button
+          key={range.id}
+          onClick={() => setTimeRange(range.id)}
+          aria-pressed={timeRange === range.id}
+          style={{
+            background: timeRange === range.id ? '#fff' : 'transparent',
+            border: 'none',
+            borderRadius: '6px',
+            padding: '4px 8px',
+            color: timeRange === range.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
+            fontSize: '0.75rem',
+            fontWeight: '600',
+            boxShadow: timeRange === range.id ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
+          }}
+        >
+          {range.label}
+        </button>
+      ))}
+    </div>
+  );
+
   // isAuthenticated === false is the one state that always wins: a 401 mid-
   // session (expired/cleared cookie) must return the user to the login
   // screen even if data from before is still sitting in state.
@@ -940,7 +976,7 @@ function App() {
         </div>
       </header>
 
-      <main style={{ paddingBottom: `${PEEK_HEIGHT + 16}px` }}>
+      <main style={{ paddingBottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px` }}>
         {/* Quick Actions */}
         <section style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -960,57 +996,8 @@ function App() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '24px' }}>
           {summaryView === 'stats' ? (
             <div className="glass-panel" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '8px' }}>
-                <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '10px', flexShrink: 0 }}>
-                  <button
-                    onClick={() => setTimeRange('month')}
-                    style={{
-                      background: timeRange === 'month' ? '#fff' : 'transparent',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '4px 8px',
-                      color: timeRange === 'month' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      boxShadow: timeRange === 'month' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
-                    }}
-                  >
-                    Месяц
-                  </button>
-                  <button
-                    onClick={() => setTimeRange('year')}
-                    style={{
-                      background: timeRange === 'year' ? '#fff' : 'transparent',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '4px 8px',
-                      color: timeRange === 'year' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      boxShadow: timeRange === 'year' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
-                    }}
-                  >
-                    Год
-                  </button>
-                  <button
-                    onClick={() => setTimeRange('lifetime')}
-                    style={{
-                      background: timeRange === 'lifetime' ? '#fff' : 'transparent',
-                      border: 'none',
-                      borderRadius: '6px',
-                      padding: '4px 8px',
-                      color: timeRange === 'lifetime' ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                      fontSize: '0.75rem',
-                      fontWeight: '600',
-                      boxShadow: timeRange === 'lifetime' ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
-                    }}
-                  >
-                    Всё время
-                  </button>
-                </div>
-                <button onClick={() => setSummaryView('analytics')} style={{ background: 'rgba(0,0,0,0.03)', border: '1px solid rgba(0,0,0,0.08)', borderRadius: '8px', padding: '6px 8px', color: 'var(--color-text-main)', fontSize: '0.75rem', fontWeight: '500' }}>
-                  Аналитика →
-                </button>
+              <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '8px' }}>
+                {periodToggle}
               </div>
 
               {/* The period's expense is the headline: for a month it sits
@@ -1205,13 +1192,31 @@ function App() {
               </div>
             </div>
           ) : (
-            <CategoryDonut data={monthlyData.categoryTotals} onToggle={() => setSummaryView('stats')} />
+            /* Analytics tab: same period as the stats tab (periodStats), so
+               switching tabs never silently changes what range you're
+               looking at. CategoryDonut renders nothing at all when the
+               period has no spending, hence the explicit empty state - a
+               tab that can go blank would look broken. */
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '-12px' }}>
+                {periodToggle}
+              </div>
+              {topCategories.length > 0 ? (
+                <CategoryDonut data={periodStats.categoryTotals} />
+              ) : (
+                <div className="glass-panel" style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+                  За выбранный период трат нет
+                </div>
+              )}
+            </>
           )}
 
           {/* AI Analytics Removed */}
 
         </div>
       </main>
+
+      <BottomTabs active={summaryView} onChange={setSummaryView} />
 
       {showAddTransaction && (
         <AddTransactionForm
