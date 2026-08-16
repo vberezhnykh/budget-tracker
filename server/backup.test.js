@@ -5,6 +5,7 @@ import {
     buildBackupDocument,
     countAllCollections,
     formatBackupFilename,
+    inspectBackupContents,
     interpretAccessCheck,
     isEmptyBackup,
     readAllCollections,
@@ -170,6 +171,72 @@ describe('selectBackupsToDelete', () => {
 
     it('handles an empty directory', () => {
         expect(selectBackupsToDelete([], 3)).toEqual([]);
+    });
+});
+
+describe('inspectBackupContents', () => {
+    const tx = (over = {}) => ({ _id: 't1', title: 'Кофе', amount: 5, type: 'expense', account: 'acc-1', date: new Date('2026-03-05'), ...over });
+    const healthy = () => ({
+        transactions: [tx(), tx({ _id: 't2', type: 'income', amount: 3000, date: new Date('2026-01-10') })],
+        accounts: [{ _id: 'acc-1', name: 'Тинькофф' }],
+        categories: [{ _id: 'c1' }],
+        settings: []
+    });
+
+    it('accepts an intact backup and describes what is in it', () => {
+        const { ok, summary } = inspectBackupContents(healthy());
+
+        expect(ok).toBe(true);
+        expect(summary.join('\n')).toMatch(/Транзакции: 2, с 2026-01-10 по 2026-03-05/);
+        expect(summary.join('\n')).toMatch(/Доходов на 3000\.00, расходов на 5\.00/);
+        expect(summary.join('\n')).toMatch(/Счета \(1\): Тинькофф/);
+    });
+
+    it('catches dates that stopped being dates', () => {
+        // The file having been re-saved as plain JSON somewhere along the
+        // way is exactly the failure that stays invisible until a restore.
+        const data = healthy();
+        data.transactions[0].date = '2026-03-05T00:00:00.000Z';
+
+        const { ok, problems } = inspectBackupContents(data);
+        expect(ok).toBe(false);
+        expect(problems.join(' ')).toMatch(/дата не осталась датой/);
+    });
+
+    it('catches documents with no _id', () => {
+        const data = healthy();
+        delete data.transactions[1]._id;
+
+        expect(inspectBackupContents(data).problems.join(' ')).toMatch(/1 транзакций без _id/);
+    });
+
+    it('catches a non-numeric or infinite amount', () => {
+        const data = healthy();
+        data.transactions[0].amount = 'много';
+        data.transactions[1].amount = Infinity;
+
+        expect(inspectBackupContents(data).problems.join(' ')).toMatch(/2 транзакций с некорректной суммой/);
+    });
+
+    it('catches transactions pointing at an account the backup does not contain', () => {
+        const data = healthy();
+        data.transactions[1].account = 'acc-удалённый';
+
+        const { ok, problems } = inspectBackupContents(data);
+        expect(ok).toBe(false);
+        expect(problems.join(' ')).toMatch(/acc-удалённый/);
+    });
+
+    it('does not treat a transaction with no account at all as an orphan', () => {
+        const data = healthy();
+        delete data.transactions[1].account;
+
+        expect(inspectBackupContents(data).ok).toBe(true);
+    });
+
+    it('survives an entirely empty backup without throwing', () => {
+        const { summary } = inspectBackupContents({ transactions: [], accounts: [], categories: [], settings: [] });
+        expect(summary.join(' ')).toMatch(/Категории: 0/);
     });
 });
 

@@ -167,6 +167,72 @@ function interpretAccessCheck({ databaseName, counts, writeRejected }) {
     return { ok: problems.length === 0, problems, notes };
 }
 
+// Looks inside a parsed backup and reports both what it contains (so a
+// human can recognise their own data) and anything that looks wrong.
+//
+// This is the offline half of "is my backup good": it needs no database, so
+// it can be run on any file at any time. It cannot prove that a restore
+// into Mongo succeeds - only an actual restore does that - but it does
+// catch the failure this format is most exposed to, which is EJSON that
+// parsed but lost its types (dates arriving as plain strings, documents
+// with no _id), leaving a file that looks fine until the day it is needed.
+function inspectBackupContents(data) {
+    const summary = [];
+    const problems = [];
+
+    const transactions = data.transactions || [];
+    const withoutId = transactions.filter(t => t._id === undefined).length;
+    if (withoutId > 0) problems.push(`${withoutId} транзакций без _id`);
+
+    const badDates = transactions.filter(t => !(t.date instanceof Date)).length;
+    if (badDates > 0) {
+        // A Date that came back as a string means the file was written or
+        // re-saved as plain JSON somewhere along the way, and restoring it
+        // would put strings into a Date field.
+        problems.push(`${badDates} транзакций, где дата не осталась датой (файл пересохраняли обычным JSON?)`);
+    }
+
+    const badAmounts = transactions.filter(t => typeof t.amount !== 'number' || !Number.isFinite(t.amount)).length;
+    if (badAmounts > 0) problems.push(`${badAmounts} транзакций с некорректной суммой`);
+
+    if (transactions.length > 0) {
+        const dates = transactions.map(t => t.date).filter(d => d instanceof Date).sort((a, b) => a - b);
+        if (dates.length > 0) {
+            summary.push(`Транзакции: ${transactions.length}, с ${dates[0].toISOString().slice(0, 10)} по ${dates[dates.length - 1].toISOString().slice(0, 10)}`);
+        }
+        // Only finite numbers are summed. A corrupted amount is already
+        // reported above as its own problem, and letting a string into this
+        // reduce would turn the total into a string and throw on toFixed -
+        // crashing the very check that exists to diagnose such a file.
+        const total = (type) => transactions
+            .filter(t => t.type === type)
+            .reduce((sum, t) => (typeof t.amount === 'number' && Number.isFinite(t.amount) ? sum + t.amount : sum), 0);
+        summary.push(`Доходов на ${total('income').toFixed(2)}, расходов на ${total('expense').toFixed(2)}`);
+    }
+
+    const accounts = data.accounts || [];
+    if (accounts.length > 0) {
+        summary.push(`Счета (${accounts.length}): ${accounts.map(a => a.name || '<без имени>').join(', ')}`);
+    }
+
+    summary.push(`Категории: ${(data.categories || []).length}`);
+
+    // An account id referenced by a transaction but absent from the
+    // accounts collection would restore into a database where that
+    // transaction can never be attributed to anything.
+    const accountIds = new Set(accounts.map(a => String(a._id)));
+    const orphaned = new Set(
+        transactions
+            .map(t => t.account)
+            .filter(id => id !== undefined && id !== null && !accountIds.has(String(id)))
+    );
+    if (orphaned.size > 0) {
+        problems.push(`Транзакции ссылаются на ${orphaned.size} счёт(ов), которых нет в бэкапе: ${[...orphaned].join(', ')}`);
+    }
+
+    return { ok: problems.length === 0, summary, problems };
+}
+
 // Reads every backed-up collection. The only database calls the backup path
 // ever makes, and all of them are reads - which is what lets the whole
 // script run under a MongoDB user holding just the `read` role.
@@ -213,6 +279,7 @@ module.exports = {
     BACKUP_COLLECTIONS,
     BACKUP_FILENAME_PATTERN,
     DEFAULT_MONGO_DATABASE,
+    inspectBackupContents,
     interpretAccessCheck,
     selectBackupsToDelete,
     countAllCollections,

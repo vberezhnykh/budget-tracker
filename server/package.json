@@ -8,7 +8,8 @@
         "dev": "nodemon index.js",
         "backup": "node backup.js",
         "restore": "node restore.js",
-        "backup:check": "node check-backup-access.js"
+        "backup:check": "node check-backup-access.js",
+        "backup:verify": "node verify-backup.js"
     },
     "keywords": [],
     "author": "",
