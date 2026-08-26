@@ -320,6 +320,37 @@ describe('App Integration Tests', () => {
         expect(screen.queryByText(/Лимит €/)).not.toBeInTheDocument();
     });
 
+    it('lists the whole year and the whole history in the drawer, not only the selected month', async () => {
+        currentTransactions = [...mockTransactions, {
+            _id: '3',
+            title: 'Подарки',
+            amount: 120,
+            type: 'expense',
+            account: 'card',
+            date: '2025-12-20T00:00:00Z',
+            category: 'Housing'
+        }];
+
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Month view (January 2026): December's operation is out of range.
+        expect(screen.queryByText('Подарки')).not.toBeInTheDocument();
+
+        // "Всё время": every operation, whatever month it falls in.
+        fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Всё время' }));
+        expect(screen.getByText('Подарки')).toBeInTheDocument();
+        expect(screen.getByText('Salary')).toBeInTheDocument();
+
+        // "Год" 2025: that year in full, and nothing from 2026.
+        fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Год' }));
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '2025 год' }));
+        expect(screen.getByText('Подарки')).toBeInTheDocument();
+        expect(screen.queryByText('Salary')).not.toBeInTheDocument();
+    });
+
     it('filters transactions by search query', async () => {
         render(<App />);
 

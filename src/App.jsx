@@ -7,7 +7,7 @@ import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
 import { formatPeriodLabel, toDativeMonth } from './utils/period'
-import { transformTransactions, calculateBalances, getMonthlyData, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
+import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
 
 // API URL - relative path for production data fetching
@@ -302,6 +302,14 @@ function App() {
 
   // Filter transactions for the selected month and account/category/type
   const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth, selectedAccount, selectedCategory, selectedType), [transactions, selectedMonth, selectedAccount, selectedCategory, selectedType]);
+
+  // The history list follows the period picker, not just the month: on
+  // "Год" it covers the whole year and on "Всё время" the whole history,
+  // while monthlyData above stays monthly for the limit and pace math.
+  const periodData = useMemo(
+    () => getPeriodData(transactions, getPeriodPrefix(timeRange, selectedMonth), selectedAccount, selectedCategory, selectedType),
+    [transactions, timeRange, selectedMonth, selectedAccount, selectedCategory, selectedType]
+  );
 
   // Yearly data with filters
   const yearlyData = useMemo(() => getYearlyData(transactions, selectedMonth, selectedAccount, selectedCategory), [transactions, selectedMonth, selectedAccount, selectedCategory]);
@@ -1239,7 +1247,7 @@ function App() {
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         searchResults={searchResults}
-        monthlyData={monthlyData}
+        periodData={periodData}
         categories={categories}
         selectedCategory={selectedCategory}
         selectedType={selectedType}

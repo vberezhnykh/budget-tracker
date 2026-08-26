@@ -8,7 +8,7 @@ const baseProps = {
     searchQuery: '',
     setSearchQuery: () => { },
     searchResults: { count: 0, transactions: {} },
-    monthlyData: {
+    periodData: {
         transactions: {
             '2026-01-05': {
                 dailySum: -5,
@@ -262,7 +262,7 @@ describe('TransactionsDrawer Component', () => {
     // row-level button, tabIndex, or click/keyboard handler.
     it('omits the row button entirely for a seeded "initial" transaction, since openEditModal no-ops for it', () => {
         const openEditModal = vi.fn();
-        const initialMonthlyData = {
+        const initialPeriodData = {
             transactions: {
                 '2026-01-01': {
                     dailySum: 0,
@@ -281,7 +281,7 @@ describe('TransactionsDrawer Component', () => {
                 }
             }
         };
-        render(<Wrapper monthlyData={initialMonthlyData} openEditModal={openEditModal} />);
+        render(<Wrapper periodData={initialPeriodData} openEditModal={openEditModal} />);
 
         expect(screen.getByText('Starting balance')).toBeInTheDocument();
         // No accessible button exists for this row at all - not merely a
@@ -294,7 +294,7 @@ describe('TransactionsDrawer Component', () => {
     });
 
     it('names both ends of a transfer row, not just the source account', () => {
-        const transferMonthlyData = {
+        const transferPeriodData = {
             transactions: {
                 '2026-01-03': {
                     dailySum: 0,
@@ -314,7 +314,7 @@ describe('TransactionsDrawer Component', () => {
                 }
             }
         };
-        render(<Wrapper monthlyData={transferMonthlyData} />);
+        render(<Wrapper periodData={transferPeriodData} />);
 
         expect(screen.getByText(
             (_, el) => el?.textContent === '💵 Наличные → 💳 Карта • Перевод',

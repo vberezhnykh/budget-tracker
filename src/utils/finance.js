@@ -97,10 +97,22 @@ const matchesAccount = (t, accountFilter) => {
     return t.account === accountFilter;
 };
 
-export const getMonthlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null, typeFilter = null) => {
-    const monthFiltered = transactions.filter(t => t.date.startsWith(selectedMonth));
+// Which slice of history a period covers, expressed as the prefix its
+// dates share: 'YYYY-MM' for a month, 'YYYY' for a year, and '' for
+// "всё время" - an empty prefix means "no date filter at all".
+export const getPeriodPrefix = (timeRange, selectedMonth) => {
+    if (timeRange === 'lifetime') return '';
+    if (timeRange === 'year') return selectedMonth.split('-')[0];
+    return selectedMonth;
+};
 
-    let filtered = [...monthFiltered];
+// The grouped transaction list plus its totals for an arbitrary period,
+// not just one month: the drawer's history shows whatever range the period
+// picker is on.
+export const getPeriodData = (transactions, periodPrefix, accountFilter = null, categoryFilter = null, typeFilter = null) => {
+    let filtered = periodPrefix
+        ? transactions.filter(t => t.date.startsWith(periodPrefix))
+        : [...transactions];
 
     if (accountFilter) {
         filtered = filtered.filter(t => matchesAccount(t, accountFilter));
@@ -168,6 +180,11 @@ export const getMonthlyData = (transactions, selectedMonth, accountFilter = null
 
     return { transactions: grouped, income, expense, categoryTotals };
 };
+
+// The month-shaped view of the same aggregation - what the monthly limit
+// and pace forecast are computed from, whatever period is on screen.
+export const getMonthlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null, typeFilter = null) =>
+    getPeriodData(transactions, selectedMonth, accountFilter, categoryFilter, typeFilter);
 
 // The rule shared by every "this month vs last month" comparison: a month
 // still in progress is compared against the previous month cut off at

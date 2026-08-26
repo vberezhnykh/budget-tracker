@@ -3,6 +3,8 @@ import {
     transformTransactions,
     calculateBalances,
     getMonthlyData,
+    getPeriodData,
+    getPeriodPrefix,
     getYearlyData,
     getSearchResults,
     getDescriptionSuggestions,
@@ -74,6 +76,56 @@ describe('Finance Utilities', () => {
         expect(result.income).toBe(500);
         expect(result.expense).toBe(-200);
         expect(result.categoryTotals['Food']).toBe(200);
+    });
+
+    it('resolves the period prefix for every granularity', () => {
+        expect(getPeriodPrefix('month', '2026-01')).toBe('2026-01');
+        expect(getPeriodPrefix('year', '2026-01')).toBe('2026');
+        // "Всё время" has no date bound at all.
+        expect(getPeriodPrefix('lifetime', '2026-01')).toBe('');
+    });
+
+    it('lists the whole year and the whole history, not just one month', () => {
+        const transformed = transformTransactions([
+            ...mockData,
+            { _id: '5', amount: '80', type: 'expense', account: 'card', category: 'Food', date: '2026-03-04T00:00:00Z' },
+            { _id: '6', amount: '60', type: 'expense', account: 'card', category: 'Food', date: '2025-12-20T00:00:00Z' }
+        ]);
+
+        const month = getPeriodData(transformed, getPeriodPrefix('month', '2026-01'));
+        expect(Object.keys(month.transactions).sort()).toEqual([
+            '2026-01-01', '2026-01-05', '2026-01-10', '2026-01-15'
+        ]);
+        expect(month.expense).toBe(-200);
+
+        const year = getPeriodData(transformed, getPeriodPrefix('year', '2026-01'));
+        expect(Object.keys(year.transactions)).toContain('2026-03-04');
+        expect(Object.keys(year.transactions)).not.toContain('2025-12-20');
+        expect(year.expense).toBe(-280);
+
+        const lifetime = getPeriodData(transformed, getPeriodPrefix('lifetime', '2026-01'));
+        expect(Object.keys(lifetime.transactions)).toContain('2025-12-20');
+        expect(Object.keys(lifetime.transactions)).toContain('2026-03-04');
+        expect(lifetime.expense).toBe(-340);
+    });
+
+    it('keeps account/category/type filters working outside the month view', () => {
+        const transformed = transformTransactions([
+            ...mockData,
+            { _id: '5', amount: '80', type: 'expense', account: 'cash', category: 'Food', date: '2026-03-04T00:00:00Z' }
+        ]);
+
+        const cardYear = getPeriodData(transformed, '2026', 'card');
+        expect(Object.keys(cardYear.transactions)).not.toContain('2026-03-04');
+
+        const foodLifetime = getPeriodData(transformed, '', null, 'Food');
+        expect(foodLifetime.expense).toBe(-280);
+
+        const expensesOnly = getPeriodData(transformed, '', null, null, 'expense');
+        const listed = Object.values(expensesOnly.transactions).flatMap(day => day.items);
+        expect(listed.every(item => item.type === 'expense')).toBe(true);
+        // Totals stay independent of the type filter, as in the month view.
+        expect(expensesOnly.income).toBe(500);
     });
 
     it('filters monthly data by account correctly', () => {

@@ -32,7 +32,7 @@ export default function TransactionsDrawer({
   searchQuery,
   setSearchQuery,
   searchResults,
-  monthlyData,
+  periodData,
   categories,
   selectedCategory,
   selectedType,
@@ -483,21 +483,21 @@ export default function TransactionsDrawer({
                   ))
                 )
               ) : (
-                // Monthly Data View
-                Object.keys(monthlyData.transactions).length === 0 ? (
+                // Period history view (month / year / all time, per the period picker)
+                Object.keys(periodData.transactions).length === 0 ? (
                   <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Нет операций</div>
                 ) : (
-                  Object.keys(monthlyData.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
+                  Object.keys(periodData.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
                     <div key={date}>
                       <div style={{ padding: '10px 24px', background: 'rgba(0,0,0,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{formatDate(date)}</span>
-                        {monthlyData.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: monthlyData.transactions[date].dailySum > 0 ? '#10b981' : 'var(--color-text-muted)' }}>
-                            {monthlyData.transactions[date].dailySum > 0 ? '+' : ''}{monthlyData.transactions[date].dailySum.toFixed(2)}€
+                        {periodData.transactions[date].dailySum !== 0 && (
+                          <span style={{ fontWeight: '600', color: periodData.transactions[date].dailySum > 0 ? '#10b981' : 'var(--color-text-muted)' }}>
+                            {periodData.transactions[date].dailySum > 0 ? '+' : ''}{periodData.transactions[date].dailySum.toFixed(2)}€
                           </span>
                         )}
                       </div>
-                      {monthlyData.transactions[date].items.map(item => {
+                      {periodData.transactions[date].items.map(item => {
                         if (item.type === 'split_group') {
                           return (
                             <div key={item.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', background: '#fff' }}>
