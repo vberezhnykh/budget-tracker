@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { getDescriptionSuggestions } from '../utils/finance';
+import { getDescriptionSuggestions, splitCategoriesByUsage } from '../utils/finance';
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [] }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
@@ -115,6 +115,21 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const categories = (allCategories || []).filter(c => c.type === formData.type);
 
+    // Категорий стало два десятка, и списком в один экран они уже не читаются.
+    // Наверх поднимаем то, чем реально пользуются, хвост прячем под "Ещё N" -
+    // в свёрнутом виде блок помещается в пару рядов.
+    const [showAllCategories, setShowAllCategories] = useState(false);
+    // pinned нужен только свёрнутому блоку - удержать выбранную категорию на
+    // виду. В раскрытом списке она и так видна, а прикрепление переставило бы
+    // чип вверх ровно в момент нажатия, прямо под пальцем.
+    const { frequent: frequentCategories, rest: restCategories } = useMemo(
+        () => splitCategoriesByUsage(categories, transactions, formData.type, {
+            pinned: showAllCategories ? null : formData.category,
+        }),
+        [categories, transactions, formData.type, formData.category, showAllCategories]
+    );
+    const visibleCategories = showAllCategories ? [...frequentCategories, ...restCategories] : frequentCategories;
+
     // Подсказки для поля комментария: то, что уже писалось для выбранной
     // категории. В режиме разделения одно описание относится сразу к
     // нескольким категориям, поэтому подсказывать там нечего.
@@ -168,6 +183,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             setFormData({ ...formData, category: trimmed });
             setNewCategoryName('');
             setIsAddingCategory(false);
+            // Свежесозданная категория лежит в хвосте (частота нулевая), а
+            // прятать её сразу после создания нельзя - раскрываем список.
+            setShowAllCategories(true);
         }
     };
 
@@ -427,7 +445,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     <div>
                                         <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Категория</label>
                                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                            {categories.map(cat => (
+                                            {visibleCategories.map(cat => (
                                                 <button
                                                     key={cat._id}
                                                     type="button"
@@ -447,6 +465,27 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     {cat.name}
                                                 </button>
                                             ))}
+
+                                            {restCategories.length > 0 && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowAllCategories(!showAllCategories)}
+                                                    aria-expanded={showAllCategories}
+                                                    style={{
+                                                        padding: '8px 16px',
+                                                        borderRadius: '20px',
+                                                        border: '1px dashed rgba(0,0,0,0.15)',
+                                                        background: 'transparent',
+                                                        color: 'var(--color-primary)',
+                                                        fontSize: '0.875rem',
+                                                        fontWeight: '600',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                >
+                                                    {showAllCategories ? 'Свернуть' : `Ещё ${restCategories.length}`}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 

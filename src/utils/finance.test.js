@@ -10,7 +10,8 @@ import {
     getDescriptionSuggestions,
     getMonthlySeries,
     getCategoryComparison,
-    getPaceForecast
+    getPaceForecast,
+    splitCategoriesByUsage
 } from './finance';
 
 describe('Finance Utilities', () => {
@@ -460,5 +461,104 @@ describe('getPaceForecast', () => {
 
         const nanLimit = getPaceForecast(300, '2026-01', NaN);
         expect(nanLimit.remaining).toBeNull();
+    });
+});
+
+describe('splitCategoriesByUsage', () => {
+    const categories = [
+        { _id: 'c1', name: 'Продукты', type: 'expense', order: 1 },
+        { _id: 'c2', name: 'Еда вне дома', type: 'expense', order: 2 },
+        { _id: 'c3', name: 'Транспорт', type: 'expense', order: 3 },
+        { _id: 'c4', name: 'Отпуск', type: 'expense', order: 4 },
+        { _id: 'c5', name: 'Подписки', type: 'expense', order: 5 },
+        { _id: 'c6', name: 'Зарплата', type: 'income', order: 1 },
+    ];
+
+    const tx = (category, date, type = 'expense') => ({ category, date, type });
+    const now = new Date('2026-08-26');
+    const options = { limit: 3, now };
+
+    it('поднимает наверх то, чем пользуются чаще, и оставляет остальное в хвосте', () => {
+        const transactions = [
+            tx('Подписки', '2026-08-01'),
+            tx('Подписки', '2026-08-10'),
+            tx('Подписки', '2026-08-20'),
+            tx('Транспорт', '2026-08-05'),
+            tx('Транспорт', '2026-08-15'),
+            tx('Продукты', '2026-08-12'),
+        ];
+
+        const { frequent, rest } = splitCategoriesByUsage(categories, transactions, 'expense', options);
+
+        expect(frequent.map(c => c.name)).toEqual(['Подписки', 'Транспорт', 'Продукты']);
+        expect(rest.map(c => c.name)).toEqual(['Еда вне дома', 'Отпуск']);
+    });
+
+    it('фильтрует по типу - доходная категория не попадает в расходный список', () => {
+        const { frequent, rest } = splitCategoriesByUsage(categories, [], 'expense', options);
+
+        expect([...frequent, ...rest].map(c => c.name)).not.toContain('Зарплата');
+        expect(splitCategoriesByUsage(categories, [], 'income', options).frequent.map(c => c.name))
+            .toEqual(['Зарплата']);
+    });
+
+    it('не даёт одноимённой категории другого типа накрутить частоту', () => {
+        const withDuplicate = [...categories, { _id: 'c7', name: 'Другое', type: 'expense', order: 6 }];
+        const transactions = [
+            tx('Другое', '2026-08-01', 'income'),
+            tx('Другое', '2026-08-02', 'income'),
+            tx('Другое', '2026-08-03', 'income'),
+        ];
+
+        const { frequent } = splitCategoriesByUsage(withDuplicate, transactions, 'expense', options);
+
+        expect(frequent.map(c => c.name)).toEqual(['Продукты', 'Еда вне дома', 'Транспорт']);
+    });
+
+    it('игнорирует операции старше окна', () => {
+        const transactions = [
+            tx('Отпуск', '2026-01-10'), // больше 90 дней назад
+            tx('Отпуск', '2026-01-11'),
+            tx('Продукты', '2026-08-20'),
+        ];
+
+        const { frequent } = splitCategoriesByUsage(categories, transactions, 'expense', options);
+
+        expect(frequent[0].name).toBe('Продукты');
+        expect(frequent.map(c => c.name)).not.toContain('Отпуск');
+    });
+
+    it('падает обратно на всю историю, когда в окне нет ни одной операции', () => {
+        const transactions = [tx('Отпуск', '2026-01-10'), tx('Отпуск', '2026-01-11')];
+
+        const { frequent } = splitCategoriesByUsage(categories, transactions, 'expense', options);
+
+        expect(frequent[0].name).toBe('Отпуск');
+    });
+
+    it('добирает неиспользованные категории в серверном порядке, чтобы блок не был пустым', () => {
+        const { frequent, rest } = splitCategoriesByUsage(categories, [], 'expense', options);
+
+        expect(frequent.map(c => c.name)).toEqual(['Продукты', 'Еда вне дома', 'Транспорт']);
+        expect(rest.map(c => c.name)).toEqual(['Отпуск', 'Подписки']);
+    });
+
+    it('показывает выбранную категорию рядом с частыми, даже если она из хвоста', () => {
+        const { frequent, rest } = splitCategoriesByUsage(categories, [], 'expense', { ...options, pinned: 'Отпуск' });
+
+        expect(frequent.map(c => c.name)).toEqual(['Продукты', 'Еда вне дома', 'Транспорт', 'Отпуск']);
+        expect(rest.map(c => c.name)).toEqual(['Подписки']);
+    });
+
+    it('не дублирует выбранную категорию, если она и так в топе', () => {
+        const { frequent, rest } = splitCategoriesByUsage(categories, [], 'expense', { ...options, pinned: 'Продукты' });
+
+        expect(frequent.map(c => c.name)).toEqual(['Продукты', 'Еда вне дома', 'Транспорт']);
+        expect(rest.map(c => c.name)).toEqual(['Отпуск', 'Подписки']);
+    });
+
+    it('переживает пустые входные данные', () => {
+        expect(splitCategoriesByUsage([], [], 'expense')).toEqual({ frequent: [], rest: [] });
+        expect(splitCategoriesByUsage(null, null, 'expense')).toEqual({ frequent: [], rest: [] });
     });
 });

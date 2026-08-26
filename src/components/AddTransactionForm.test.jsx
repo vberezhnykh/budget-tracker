@@ -303,4 +303,66 @@ describe('AddTransactionForm Component', () => {
         expect(screen.getByText('Lidl')).toBeInTheDocument();
         expect(screen.queryByText('Wolt')).not.toBeInTheDocument();
     });
+    describe('свёрнутый список категорий', () => {
+        // 11 расходных категорий в моке: 8 частых в свёрнутом виде + хвост из 3.
+        const recent = (days) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+        const usage = (category, count, type = 'expense') =>
+            Array.from({ length: count }, (_, i) => ({ category, type, date: recent(i + 1) }));
+
+        it('прячет хвост под "Ещё N" и раскрывает его по нажатию', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            // Без истории верх - это первые восемь категорий в серверном порядке.
+            expect(screen.getByText('Продукты')).toBeInTheDocument();
+            expect(screen.queryByText('Отпуск')).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByText('Ещё 3'));
+
+            expect(screen.getByText('Отпуск')).toBeInTheDocument();
+            expect(screen.getByText('Свернуть')).toBeInTheDocument();
+
+            fireEvent.click(screen.getByText('Свернуть'));
+            expect(screen.queryByText('Отпуск')).not.toBeInTheDocument();
+        });
+
+        it('поднимает часто используемую категорию из хвоста наверх', () => {
+            // "Отпуск" - предпоследняя по серверному порядку, но самая частая.
+            const transactions = [...usage('Отпуск', 3), ...usage('Продукты', 1)];
+
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} transactions={transactions} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.getByText('Отпуск')).toBeInTheDocument();
+        });
+
+        it('не учитывает частоту из другого типа операций', () => {
+            // Доходное "Другое" не должно тащить наверх одноимённый расход.
+            const transactions = usage('Другое', 5, 'income');
+
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} transactions={transactions} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.queryByText('Другое')).not.toBeInTheDocument();
+        });
+
+        it('показывает категорию редактируемой операции, даже если она редкая', () => {
+            const editData = { id: 'test-id', amount: 100, category: 'Отпуск', type: 'expense', account: 'cash' };
+
+            render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.getByText('Отпуск')).toBeInTheDocument();
+            // Остальной хвост при этом остаётся свёрнутым.
+            expect(screen.getByText('Ещё 2')).toBeInTheDocument();
+        });
+
+        it('раскрывает список после создания новой категории', async () => {
+            const onAddCategory = vi.fn().mockResolvedValue({ name: 'Кофе', type: 'expense' });
+
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onAddCategory={onAddCategory} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            fireEvent.click(screen.getByText('+ Новая'));
+            fireEvent.change(screen.getByPlaceholderText('Название...'), { target: { value: 'Кофе' } });
+            fireEvent.click(screen.getByText('✓'));
+
+            await screen.findByText('Отпуск');
+        });
+    });
 });

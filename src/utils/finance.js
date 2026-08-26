@@ -523,3 +523,80 @@ export const getDescriptionSuggestions = (transactions, category, type = null, l
         .slice(0, limit)
         .map(s => s.label);
 };
+
+// Сколько категорий показывать в блоке "часто используемые" и за какое окно
+// считать частоту. 8 - это два ряда чипов на телефоне: достаточно, чтобы
+// закрыть повседневные траты, и достаточно мало, чтобы блок читался целиком.
+export const FREQUENT_CATEGORY_LIMIT = 8;
+export const FREQUENT_CATEGORY_WINDOW_DAYS = 90;
+
+const daysAgo = (days, now) => new Date(now.getTime() - days * 86400000).toISOString().slice(0, 10);
+
+/**
+ * Делит категории на "часто используемые" и остальные.
+ *
+ * Порядок с сервера (поле order) - это порядок заведения, а не пользы: редкий
+ * "Отпуск" стоит там выше ежедневных "Продуктов", а всё, что добавлено
+ * недавно, падает в конец списка. Поэтому наверх поднимаем то, чем реально
+ * пользуются, а хвост форма прячет под "Ещё N".
+ *
+ * Частота считается по паре категория+тип (одноимённая категория может быть и
+ * в расходах, и в доходах) за последние windowDays дней - привычки меняются, и
+ * прошлогодние траты не должны держать категорию в топе. Если за это окно
+ * операций не нашлось вообще (долгий перерыв, свежий импорт старых данных),
+ * считаем по всей истории, иначе блок выродился бы в произвольные первые
+ * восемь категорий.
+ *
+ * Если использованных категорий меньше лимита, добираем неиспользованными в
+ * серверном порядке: блок из двух чипов на новом аккаунте выглядел бы поломкой.
+ *
+ * pinned - категория, которая должна остаться на виду в любом случае (сейчас
+ * выбранная). При редактировании старой операции с редкой категорией она иначе
+ * оказалась бы спрятанной в свёрнутом хвосте.
+ */
+export const splitCategoriesByUsage = (categories, transactions, type, options = {}) => {
+    const {
+        limit = FREQUENT_CATEGORY_LIMIT,
+        windowDays = FREQUENT_CATEGORY_WINDOW_DAYS,
+        pinned = null,
+        now = new Date(),
+    } = options;
+
+    const pool = (categories || []).filter(c => !type || c.type === type);
+    if (pool.length === 0) return { frequent: [], rest: [] };
+
+    const countUsage = (since) => {
+        const counts = new Map();
+        (transactions || []).forEach(t => {
+            if (type && t.type !== type) return;
+            if (!t.category) return;
+            if (since && (t.date || '') < since) return;
+            counts.set(t.category, (counts.get(t.category) || 0) + 1);
+        });
+        return counts;
+    };
+
+    let counts = countUsage(daysAgo(windowDays, now));
+    if (counts.size === 0) counts = countUsage(null);
+
+    // Стабильная сортировка: при равной частоте (в том числе у неиспользованных
+    // категорий с нулём) сохраняется серверный порядок.
+    const byUsage = pool
+        .map((cat, index) => ({ cat, index, count: counts.get(cat.name) || 0 }))
+        .sort((a, b) => b.count - a.count || a.index - b.index)
+        .map(entry => entry.cat);
+
+    const frequent = byUsage.slice(0, limit);
+    const rest = byUsage.slice(limit);
+
+    const pinnedIndex = pinned ? rest.findIndex(c => c.name === pinned) : -1;
+    if (pinnedIndex === -1) return { frequent, rest };
+
+    // Выбранная категория попала в хвост - показываем её вместе с топом, а не
+    // вместо одной из частых: терять привычный чип из-за разовой правки хуже,
+    // чем показать на один чип больше.
+    return {
+        frequent: [...frequent, rest[pinnedIndex]],
+        rest: rest.filter((_, i) => i !== pinnedIndex),
+    };
+};
