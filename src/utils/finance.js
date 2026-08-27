@@ -71,10 +71,16 @@ export const calculateBalances = (transactions, accounts = []) => {
     const heldAccountIds = new Set(
         (accounts || []).filter(acc => acc.excludeFromTotal).map(acc => acc._id)
     );
-    const held = Object.entries(byAccount)
-        .reduce((sum, [accId, bal]) => heldAccountIds.has(accId) ? sum + bal : sum, 0);
+    const heldBalances = Object.entries(byAccount)
+        .filter(([accId]) => heldAccountIds.has(accId))
+        .map(([, bal]) => bal);
     const grandTotal = Object.values(byAccount).reduce((sum, bal) => sum + bal, 0);
-    const total = grandTotal - held;
+    const total = grandTotal - heldBalances.reduce((sum, bal) => sum + bal, 0);
+    // В подпись под капиталом идут только положительные остатки. Счёт вроде
+    // «Обмена» (деньги, влитые из непрослеживаемого кармана - рублей) живёт в
+    // минусе: это счётчик влитого, а не замороженные деньги. Сложить его с
+    // залогом в одну цифру значило бы выдать бессмыслицу.
+    const held = heldBalances.reduce((sum, bal) => bal > 0 ? sum + bal : sum, 0);
 
     const byType = { card: 0, cash: 0 };
     if (accounts && accounts.length > 0) {

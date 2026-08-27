@@ -596,6 +596,25 @@ describe('calculateBalances с замороженными счетами', () =>
         expect(balances.byType.cash).toBe(200);
     });
 
+    it('не мешает счёт-минус («Обмен») с залогом в подписи «заморожено»', () => {
+        const withExchange = [...accounts, { _id: 'exch', name: 'Обмен', type: 'cash', excludeFromTotal: true }];
+        const mixed = transformTransactions([
+            { _id: '1', amount: '1000', type: 'initial', account: 'card', date: '2026-01-01T00:00:00Z' },
+            // Залог: деньги реально лежат на замороженном счёте.
+            { _id: '2', amount: '500', type: 'transfer', account: 'card', toAccount: 'dep', date: '2026-01-05T00:00:00Z' },
+            // Обмен: рубли пришли извне, счёт уходит в минус на влитую сумму.
+            { _id: '3', amount: '300', type: 'transfer', account: 'exch', toAccount: 'card', date: '2026-01-06T00:00:00Z' },
+        ], withExchange);
+
+        const balances = calculateBalances(mixed, withExchange);
+
+        expect(balances.byAccount.exch).toBe(-300);
+        // Подпись называет только реально лежащие деньги, минус в неё не лезет.
+        expect(balances.held).toBe(500);
+        // Из капитала при этом исключены оба счёта: 1000 - 500 + 300.
+        expect(balances.total).toBe(800);
+    });
+
     it('оставляет капитал прежним, когда замороженных счетов нет', () => {
         const plain = accounts.slice(0, 2);
         const balances = calculateBalances(transactions, plain);
