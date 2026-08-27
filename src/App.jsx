@@ -642,7 +642,7 @@ function App() {
     }
   };
 
-  // Logout lives in the "Управление счетами" settings modal rather than as
+  // Logout lives in the "Настройки" settings modal rather than as
   // new chrome on the main screen. The POST clears the httpOnly cookie
   // server-side. Only drop to the login screen once that's actually
   // confirmed (an ok response) - if the request fails or errors, the cookie
@@ -851,7 +851,7 @@ function App() {
               transition: 'all 0.2s ease',
               outline: 'none'
             }}
-            title="Управление счетами"
+            title="Настройки"
           >
             ⚙️
           </button>

@@ -191,7 +191,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
 
-    await page.getByTitle('Управление счетами').click();
+    await page.getByTitle('Настройки').click();
 
     // The name/type divs both set white-space: nowrap, so removing
     // minWidth: 0 can never make this text break onto a visible second

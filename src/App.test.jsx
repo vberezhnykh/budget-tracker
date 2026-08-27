@@ -545,7 +545,7 @@ describe('App Integration Tests', () => {
         });
 
         // Delete it via the accounts settings panel.
-        fireEvent.click(screen.getByTitle('Управление счетами'));
+        fireEvent.click(screen.getByTitle('Настройки'));
         const deleteButtons = await screen.findAllByRole('button', { name: 'Удалить' });
         fireEvent.click(deleteButtons[deleteButtons.length - 1]);
 
@@ -590,7 +590,7 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
 
         render(<App />);
-        await screen.findByTitle('Управление счетами');
+        await screen.findByTitle('Настройки');
 
         // Ставим фильтр на категорию, которую сейчас удалим - через разбивку
         // расхода в панели статистики.
@@ -599,7 +599,7 @@ describe('App Integration Tests', () => {
             expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
         });
 
-        fireEvent.click(screen.getByTitle('Управление счетами'));
+        fireEvent.click(screen.getByTitle('Настройки'));
         fireEvent.click(await screen.findByLabelText('Удалить категорию: Подписки'));
 
         expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('операций: 1'));
@@ -682,7 +682,7 @@ describe('App Integration Tests', () => {
     // the server has actually confirmed the session cookie is cleared. This
     // is nested here (rather than a sibling describe) so it inherits the
     // shared beforeEach that renders the ordinary authenticated app and
-    // stubs `fetch` with fetchMock - the "Управление счетами" panel and its
+    // stubs `fetch` with fetchMock - the "Настройки" panel and its
     // "Выйти" button need that same authenticated state to be reachable.
     describe('Logout', () => {
         it('keeps the authenticated state and reports the failure via the notice banner when /api/logout fails', async () => {
@@ -697,7 +697,7 @@ describe('App Integration Tests', () => {
                 return baseMock(url, options);
             }));
 
-            fireEvent.click(screen.getByTitle('Управление счетами'));
+            fireEvent.click(screen.getByTitle('Настройки'));
             fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
 
             await waitFor(() => {
@@ -714,7 +714,7 @@ describe('App Integration Tests', () => {
             render(<App />);
             await waitFor(() => screen.getByText('BudgetTracker'));
 
-            fireEvent.click(screen.getByTitle('Управление счетами'));
+            fireEvent.click(screen.getByTitle('Настройки'));
             fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
 
             await waitFor(() => {
@@ -735,7 +735,7 @@ describe('App Integration Tests', () => {
             }));
             const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-            fireEvent.click(screen.getByTitle('Управление счетами'));
+            fireEvent.click(screen.getByTitle('Настройки'));
             fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
 
             await waitFor(() => {
@@ -1021,7 +1021,7 @@ describe('Authentication flow', () => {
         // Any authenticated-looking screen still needs a live session for
         // further calls - saving a new account here is what hits /api/accounts
         // again and discovers the session is gone.
-        fireEvent.click(screen.getByTitle('Управление счетами'));
+        fireEvent.click(screen.getByTitle('Настройки'));
         fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Новый счёт' } });
         fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
 

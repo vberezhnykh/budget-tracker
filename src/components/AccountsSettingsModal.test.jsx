@@ -28,7 +28,7 @@ describe('AccountsSettingsModal', () => {
     it('renders the heading, the account list and the "add" form', () => {
         renderModal();
 
-        expect(screen.getByText('Управление счетами')).toBeInTheDocument();
+        expect(screen.getByText('Настройки')).toBeInTheDocument();
         expect(screen.getByLabelText('Изменить порядок: Карта')).toBeInTheDocument();
         expect(screen.getByLabelText('Изменить порядок: Наличные')).toBeInTheDocument();
         expect(screen.getByText('Добавить новый счёт')).toBeInTheDocument();

@@ -87,13 +87,13 @@ function AccountListItem({ account, onDelete, onEdit }) {
   );
 }
 
-// The "Управление счетами" settings modal - extracted out of App.jsx, which
-// owns `accounts` state and every API mutation (it owns the apiFetch
-// wrapper). Everything here is either local UI state (the add/edit form,
-// drag sensors) or a callback passed down from App: onSaveAccount/
-// onDeleteAccount/onDragEnd/onSaveSettings do the actual fetching, onLogout
-// clears the session, and showNotice reports errors through App's notice
-// banner.
+// The "Настройки" modal - extracted out of App.jsx, which owns the
+// `accounts` and `categories` state and every API mutation (it owns the
+// apiFetch wrapper). Everything here is either local UI state (the add/edit
+// form, drag sensors) or a callback passed down from App: onSaveAccount/
+// onDeleteAccount/onDeleteCategory/onDragEnd/onSaveSettings do the actual
+// fetching, onLogout clears the session, and showNotice reports errors
+// through App's notice banner.
 export default function AccountsSettingsModal({
   accounts,
   categories = [],
@@ -205,7 +205,7 @@ export default function AccountsSettingsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--color-text-main)', margin: 0 }}>Управление счетами</h2>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--color-text-main)', margin: 0 }}>Настройки</h2>
           <button
             onClick={handleClose}
             style={{
