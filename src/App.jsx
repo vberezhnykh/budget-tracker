@@ -7,7 +7,7 @@ import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
 import { formatPeriodLabel, toDativeMonth } from './utils/period'
-import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
+import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
 
 // API URL - relative path for production data fetching
@@ -331,6 +331,10 @@ function App() {
   // Calculate lifetime stats with filters
   const lifetimeStats = useMemo(() => getLifetimeStats(transactions, '2025-11-09', selectedAccount, selectedCategory), [transactions, selectedAccount, selectedCategory]);
 
+  // Сколько операций ссылается на каждую категорию - показывается в
+  // настройках рядом с кнопкой удаления.
+  const categoryUsage = useMemo(() => getCategoryUsage(transactions), [transactions]);
+
   // Search results with filters
   const searchResults = useMemo(() => getSearchResults(transactions, searchQuery, selectedAccount, selectedCategory, selectedType), [transactions, searchQuery, selectedAccount, selectedCategory, selectedType]);
 
@@ -583,6 +587,33 @@ function App() {
       }
     } catch (err) {
       console.error('Delete account error:', err);
+    }
+  };
+
+  // Удаление категории. История от этого не страдает: операция хранит
+  // категорию строкой, поэтому строки в списке и разбивка по категориям
+  // остаются как были - исчезает только чип в форме. Но раз операции всё же
+  // осиротеют, счётчик показывается прямо в подтверждении.
+  const handleDeleteCategory = async (category, usedCount) => {
+    const warning = usedCount > 0
+      ? `\n\nЭту категорию используют операций: ${usedCount}. Они останутся в истории с прежним названием, но выбрать категорию заново будет нельзя.`
+      : '';
+    if (!confirm(`Удалить категорию "${category.name}"?${warning}`)) return;
+
+    try {
+      const res = await apiFetch(`${CATEGORIES_URL}/${category._id}`, { method: 'DELETE' });
+      if (res.ok) {
+        // Фильтр мог стоять на только что удалённой категории - иначе экран
+        // остался бы отфильтрованным по тому, чего больше нет в списке.
+        setSelectedCategory(prev => prev === category.name ? null : prev);
+        await fetchCategories();
+      } else {
+        const err = await res.json().catch(() => null);
+        showNotice((err && err.message) || 'Не удалось удалить категорию');
+      }
+    } catch (err) {
+      console.error('Delete category error:', err);
+      showNotice('Не удалось удалить категорию');
     }
   };
 
@@ -1289,6 +1320,9 @@ function App() {
           onClose={() => setShowAccountsSettings(false)}
           onSaveAccount={handleSaveAccount}
           onDeleteAccount={handleDeleteAccount}
+          categories={categories}
+          categoryUsage={categoryUsage}
+          onDeleteCategory={handleDeleteCategory}
           onDragEnd={onAccountDragEnd}
           onSaveSettings={handleSaveSettings}
           onLogout={handleLogout}

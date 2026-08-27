@@ -31,6 +31,7 @@ let currentAccounts = [
     { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true },
     { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
 ];
+let currentCategories = [];
 
 // Setup fetch mock. Stubbed fresh in the describe block's beforeEach (rather
 // than assigned once at module scope) so it can be paired with
@@ -50,9 +51,14 @@ function createFetchMock() {
             });
         }
         if (typeof url === 'string' && url.includes('/api/categories')) {
+            if (options?.method === 'DELETE') {
+                const id = url.split('/').pop();
+                currentCategories = currentCategories.filter(c => c._id !== id);
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ message: 'Category deleted' }) });
+            }
             return Promise.resolve({
                 ok: true,
-                json: () => Promise.resolve([]),
+                json: () => Promise.resolve(currentCategories),
             });
         }
         return Promise.resolve({
@@ -90,6 +96,7 @@ describe('App Integration Tests', () => {
             { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true },
             { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
         ];
+        currentCategories = [];
         fetchMock = createFetchMock();
         vi.stubGlobal('fetch', fetchMock);
         vi.useFakeTimers({ toFake: ['Date'] });
@@ -551,12 +558,6 @@ describe('App Integration Tests', () => {
         expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'true');
     });
 
-    // Finding 3: a non-ok response (or one whose body isn't actually an
-    // array - e.g. the 503 an unconfigured server returns, `{ message }`
-    // instead of a list) used to get assigned straight into state, and the
-    // later `.map(...)` over it threw, tripping the error boundary. It must
-    // instead surface the server's own message via the notice banner and
-    // leave state alone, rather than crashing or staying silently blank.
     it('держит замороженный счёт вне общего капитала и подписывает сумму отдельно', async () => {
         currentAccounts = [
             { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true },
@@ -577,6 +578,46 @@ describe('App Integration Tests', () => {
         expect(screen.getByLabelText(/Залог: €1\.500,00, вне общего капитала/)).toBeInTheDocument();
     });
 
+    it('удаляет категорию из настроек и снимает фильтр, стоявший на ней', async () => {
+        currentCategories = [
+            { _id: 'c1', name: 'Продукты', type: 'expense', isDefault: true, order: 1 },
+            { _id: 'c2', name: 'Подписки', type: 'expense', isDefault: false, order: 2 },
+        ];
+        currentTransactions = [
+            { _id: '1', title: 'Netflix', amount: 20, type: 'expense', account: 'card', date: '2026-01-05T00:00:00Z', category: 'Подписки' },
+        ];
+
+        window.confirm = vi.fn(() => true);
+
+        render(<App />);
+        await screen.findByTitle('Управление счетами');
+
+        // Ставим фильтр на категорию, которую сейчас удалим - через разбивку
+        // расхода в панели статистики.
+        fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
+        });
+
+        fireEvent.click(screen.getByTitle('Управление счетами'));
+        fireEvent.click(await screen.findByLabelText('Удалить категорию: Подписки'));
+
+        expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('операций: 1'));
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenCalledWith('/api/categories/c2', expect.objectContaining({ method: 'DELETE' }));
+        });
+        // Фильтр указывал на исчезнувшую категорию - его нужно снять.
+        await waitFor(() => {
+            expect(screen.queryByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'false');
+        });
+    });
+
+    // Finding 3: a non-ok response (or one whose body isn't actually an
+    // array - e.g. the 503 an unconfigured server returns, `{ message }`
+    // instead of a list) used to get assigned straight into state, and the
+    // later `.map(...)` over it threw, tripping the error boundary. It must
+    // instead surface the server's own message via the notice banner and
+    // leave state alone, rather than crashing or staying silently blank.
     it('shows the server message via the notice banner instead of crashing when /api/accounts responds with a non-array body', async () => {
         vi.stubGlobal('fetch', vi.fn((url) => {
             if (typeof url === 'string' && url.includes('/api/accounts')) {

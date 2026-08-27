@@ -200,4 +200,40 @@ describe('AccountsSettingsModal', () => {
 
         expect(screen.getByLabelText('Не учитывать в общем капитале')).toBeChecked();
     });
+    it('показывает категории со счётчиком операций и удаляет по кнопке', () => {
+        const onDeleteCategory = vi.fn();
+        const categories = [
+            { _id: 'c1', name: 'Продукты', type: 'expense', isDefault: true },
+            { _id: 'c2', name: 'Подписки', type: 'expense', isDefault: false },
+        ];
+        renderModal({
+            categories,
+            categoryUsage: { 'expense::Подписки': 4 },
+            onDeleteCategory,
+        });
+
+        expect(screen.getByText('операций: 4', { exact: false })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByLabelText('Удалить категорию: Подписки'));
+
+        expect(onDeleteCategory).toHaveBeenCalledWith(categories[1], 4);
+    });
+
+    it('не предлагает удалять стандартные категории', () => {
+        renderModal({
+            categories: [{ _id: 'c1', name: 'Продукты', type: 'expense', isDefault: true }],
+        });
+
+        expect(screen.queryByLabelText('Удалить категорию: Продукты')).not.toBeInTheDocument();
+        expect(screen.getByText('стандартная')).toBeInTheDocument();
+    });
+
+    it('называет неиспользуемую категорию неиспользуемой', () => {
+        renderModal({
+            categories: [{ _id: 'c2', name: 'Подписки', type: 'expense', isDefault: false }],
+            categoryUsage: {},
+        });
+
+        expect(screen.getByText('не используется', { exact: false })).toBeInTheDocument();
+    });
 });

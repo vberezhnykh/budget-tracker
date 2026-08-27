@@ -611,3 +611,23 @@ export const splitCategoriesByUsage = (categories, transactions, type, options =
         rest: rest.filter((_, i) => i !== pinnedIndex),
     };
 };
+
+/**
+ * Сколько операций ссылается на каждую категорию - ключ "тип::имя".
+ *
+ * Категория хранится в операции строкой (см. server/models/Transaction.js),
+ * поэтому удаление категории историю не ломает: строки остаются, статистика
+ * продолжает группировать по имени. Но удалять вслепую всё равно не стоит,
+ * поэтому настройки показывают счётчик рядом с каждой категорией.
+ */
+export const getCategoryUsage = (transactions) => {
+    const usage = {};
+    (transactions || []).forEach(t => {
+        if (!t.category) return;
+        const key = `${t.type}::${t.category}`;
+        usage[key] = (usage[key] || 0) + 1;
+    });
+    return usage;
+};
+
+export const categoryUsageKey = (category) => `${category.type}::${category.name}`;

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { categoryUsageKey } from '../utils/finance'
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 
@@ -95,10 +96,13 @@ function AccountListItem({ account, onDelete, onEdit }) {
 // banner.
 export default function AccountsSettingsModal({
   accounts,
+  categories = [],
+  categoryUsage = {},
   monthlyLimit,
   onClose,
   onSaveAccount,
   onDeleteAccount,
+  onDeleteCategory,
   onDragEnd,
   onSaveSettings,
   onLogout,
@@ -372,6 +376,72 @@ export default function AccountsSettingsModal({
         {/* Monthly spending limit - shared across devices via the server
             (see GET/PUT /api/settings in server/index.js), so it's edited
             here rather than as new chrome on the main screen. */}
+        {/* Categories */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Категории</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
+            {categories.length === 0 ? (
+              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Категорий пока нет</div>
+            ) : (
+              categories.map(cat => {
+                const used = categoryUsage[categoryUsageKey(cat)] || 0;
+                return (
+                  <div
+                    key={cat._id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '8px 12px',
+                      borderRadius: '12px',
+                      border: '1px solid rgba(0,0,0,0.06)',
+                      background: '#fff',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {cat.name}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                        {cat.type === 'income' ? 'Доход' : 'Расход'}
+                        {' · '}
+                        {used === 0 ? 'не используется' : `операций: ${used}`}
+                      </div>
+                    </div>
+                    {cat.isDefault ? (
+                      // Стандартные категории сервер удалять не даёт
+                      // (DELETE /api/categories/:id), поэтому кнопку, которая
+                      // заведомо вернёт ошибку, здесь не рисуем.
+                      <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>стандартная</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteCategory(cat, used)}
+                        aria-label={`Удалить категорию: ${cat.name}`}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '8px',
+                          minWidth: '36px',
+                          minHeight: '36px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Monthly limit */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Лимит трат в месяц</h3>
           <form onSubmit={handleSaveLimit} style={{ display: 'flex', gap: '10px' }}>

@@ -11,7 +11,9 @@ import {
     getMonthlySeries,
     getCategoryComparison,
     getPaceForecast,
-    splitCategoriesByUsage
+    splitCategoriesByUsage,
+    getCategoryUsage,
+    categoryUsageKey
 } from './finance';
 
 describe('Finance Utilities', () => {
@@ -615,5 +617,30 @@ describe('calculateBalances с замороженными счетами', () =>
         expect(balances.total).toBe(1000);
         // Переводы не попадают в доход ни на одном из концов.
         expect(getPeriodData(withReturn, '').income).toBe(0);
+    });
+});
+
+describe('getCategoryUsage', () => {
+    it('считает операции по паре тип+категория', () => {
+        const usage = getCategoryUsage([
+            { type: 'expense', category: 'Продукты' },
+            { type: 'expense', category: 'Продукты' },
+            { type: 'income', category: 'Другое' },
+            { type: 'expense', category: 'Другое' },
+            { type: 'transfer', category: 'Перевод' },
+            { type: 'expense' },
+        ]);
+
+        expect(usage[categoryUsageKey({ type: 'expense', name: 'Продукты' })]).toBe(2);
+        // Одноимённые категории разных типов не смешиваются.
+        expect(usage[categoryUsageKey({ type: 'expense', name: 'Другое' })]).toBe(1);
+        expect(usage[categoryUsageKey({ type: 'income', name: 'Другое' })]).toBe(1);
+        // Неиспользованная категория просто отсутствует в объекте.
+        expect(usage[categoryUsageKey({ type: 'expense', name: 'Отпуск' })]).toBeUndefined();
+    });
+
+    it('переживает пустой вход', () => {
+        expect(getCategoryUsage(null)).toEqual({});
+        expect(getCategoryUsage([])).toEqual({});
     });
 });
