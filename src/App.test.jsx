@@ -557,6 +557,26 @@ describe('App Integration Tests', () => {
     // later `.map(...)` over it threw, tripping the error boundary. It must
     // instead surface the server's own message via the notice banner and
     // leave state alone, rather than crashing or staying silently blank.
+    it('держит замороженный счёт вне общего капитала и подписывает сумму отдельно', async () => {
+        currentAccounts = [
+            { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true },
+            { _id: 'dep', name: 'Залог', type: 'card', icon: '🏠', excludeFromTotal: true },
+        ];
+        currentTransactions = [
+            { _id: '1', title: 'Salary', amount: 5000, type: 'income', account: 'card', date: '2026-01-01T00:00:00Z', category: 'Job' },
+            { _id: '2', title: 'Депозит', amount: 1500, type: 'transfer', account: 'card', toAccount: 'dep', date: '2026-01-03T00:00:00Z' },
+        ];
+
+        render(<App />);
+        await screen.findByLabelText(/Общий капитал: /);
+
+        // 5000 - 1500: залог в капитал не входит, но и не исчезает - он
+        // назван отдельной строкой на том же слайде.
+        expect(screen.getByLabelText(/Общий капитал: €3\.500,00/)).toBeInTheDocument();
+        expect(screen.getByText('1.500,00 € заморожено')).toBeInTheDocument();
+        expect(screen.getByLabelText(/Залог: €1\.500,00, вне общего капитала/)).toBeInTheDocument();
+    });
+
     it('shows the server message via the notice banner instead of crashing when /api/accounts responds with a non-array body', async () => {
         vi.stubGlobal('fetch', vi.fn((url) => {
             if (typeof url === 'string' && url.includes('/api/accounts')) {

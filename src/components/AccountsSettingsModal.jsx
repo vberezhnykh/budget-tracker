@@ -107,6 +107,7 @@ export default function AccountsSettingsModal({
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState('card');
   const [formIcon, setFormIcon] = useState('💳');
+  const [formExcludeFromTotal, setFormExcludeFromTotal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [limitInput, setLimitInput] = useState(String(monthlyLimit));
 
@@ -123,6 +124,7 @@ export default function AccountsSettingsModal({
     setFormName('');
     setFormType('card');
     setFormIcon('💳');
+    setFormExcludeFromTotal(false);
     setEditingAccountId(null);
   };
 
@@ -134,7 +136,13 @@ export default function AccountsSettingsModal({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formName.trim()) return;
-    const ok = await onSaveAccount(formName, formType, formIcon, editingAccountId);
+    const ok = await onSaveAccount({
+      name: formName,
+      type: formType,
+      icon: formIcon,
+      excludeFromTotal: formExcludeFromTotal,
+      editingAccountId,
+    });
     if (ok) resetForm();
   };
 
@@ -287,6 +295,18 @@ export default function AccountsSettingsModal({
             </div>
           )}
 
+          {/* Показывается и при редактировании, в отличие от типа счёта: тип
+              задаётся раз и навсегда, а "заморожен ли счёт" со временем
+              меняется - залог возвращают, вклад закрывают. */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={formExcludeFromTotal}
+              onChange={e => setFormExcludeFromTotal(e.target.checked)}
+            />
+            Не учитывать в общем капитале
+          </label>
+
           <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
             <button
               type="submit"
@@ -338,6 +358,7 @@ export default function AccountsSettingsModal({
                       setFormName(acc.name);
                       setFormType(acc.type);
                       setFormIcon(acc.icon || (acc.type === 'cash' ? '💵' : '💳'));
+                      setFormExcludeFromTotal(Boolean(acc.excludeFromTotal));
                       setEditingAccountId(acc._id);
                     }}
                     onDelete={() => onDeleteAccount(acc._id, acc.name)}

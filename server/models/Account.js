@@ -20,6 +20,13 @@ const AccountSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    // Счёт, деньги на котором есть, но потратить их нельзя: залог у
+    // арендодателя, срочный вклад. В общий капитал такие не входят - иначе
+    // цифра "сколько у меня есть" обещает больше, чем доступно на руках.
+    excludeFromTotal: {
+        type: Boolean,
+        default: false
+    },
     order: {
         type: Number,
         default: 0

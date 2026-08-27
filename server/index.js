@@ -245,7 +245,7 @@ app.get('/api/accounts', async (req, res) => {
 // Add a new account
 app.post('/api/accounts', async (req, res) => {
     try {
-        const { name, type, icon } = req.body;
+        const { name, type, icon, excludeFromTotal } = req.body;
         if (!name || !type) {
             return res.status(400).json({ message: 'Name and type are required' });
         }
@@ -257,6 +257,7 @@ app.post('/api/accounts', async (req, res) => {
             type,
             icon: icon || (type === 'cash' ? '💵' : '💳'),
             isDefault: false,
+            excludeFromTotal: Boolean(excludeFromTotal),
             order: (maxOrder?.order || 0) + 1
         });
         
@@ -276,7 +277,7 @@ app.put('/api/accounts/:id', async (req, res) => {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ message: 'Invalid account ID' });
         }
-        const { name, icon, order } = req.body;
+        const { name, icon, order, excludeFromTotal } = req.body;
         const account = await Account.findById(req.params.id);
         if (!account) {
             return res.status(404).json({ message: 'Account not found' });
@@ -285,6 +286,7 @@ app.put('/api/accounts/:id', async (req, res) => {
         if (name) account.name = name.trim();
         if (icon) account.icon = icon;
         if (order !== undefined) account.order = order;
+        if (excludeFromTotal !== undefined) account.excludeFromTotal = Boolean(excludeFromTotal);
         
         const saved = await account.save();
         res.json(saved);

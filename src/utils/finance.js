@@ -64,12 +64,23 @@ export const calculateBalances = (transactions, accounts = []) => {
         return acc;
     }, {});
 
-    const total = Object.values(byAccount).reduce((sum, bal) => sum + bal, 0);
+    // Счета с excludeFromTotal (залог у арендодателя, срочный вклад) держат
+    // деньги, которых на руках нет. Общий капитал считаем без них - иначе он
+    // обещает больше, чем можно потратить, - а сумму по ним отдаём отдельно
+    // (held), чтобы она не исчезла из виду совсем.
+    const heldAccountIds = new Set(
+        (accounts || []).filter(acc => acc.excludeFromTotal).map(acc => acc._id)
+    );
+    const held = Object.entries(byAccount)
+        .reduce((sum, [accId, bal]) => heldAccountIds.has(accId) ? sum + bal : sum, 0);
+    const grandTotal = Object.values(byAccount).reduce((sum, bal) => sum + bal, 0);
+    const total = grandTotal - held;
 
     const byType = { card: 0, cash: 0 };
     if (accounts && accounts.length > 0) {
         accounts.forEach(acc => {
             const bal = byAccount[acc._id] || 0;
+            if (acc.excludeFromTotal) return;
             if (acc.type === 'cash') {
                 byType.cash += bal;
             } else {
@@ -82,7 +93,7 @@ export const calculateBalances = (transactions, accounts = []) => {
         byType.card = byAccount['card'] || 0;
     }
 
-    return { byAccount, byType, total };
+    return { byAccount, byType, total, held, grandTotal };
 };
 
 const matchesAccount = (t, accountFilter) => {

@@ -562,3 +562,58 @@ describe('splitCategoriesByUsage', () => {
         expect(splitCategoriesByUsage(null, null, 'expense')).toEqual({ frequent: [], rest: [] });
     });
 });
+
+describe('calculateBalances с замороженными счетами', () => {
+    const accounts = [
+        { _id: 'card', name: 'Карта', type: 'card' },
+        { _id: 'cash', name: 'Наличные', type: 'cash' },
+        { _id: 'dep', name: 'Залог', type: 'card', excludeFromTotal: true },
+    ];
+
+    const transactions = transformTransactions([
+        { _id: '1', amount: '1000', type: 'initial', account: 'card', date: '2026-01-01T00:00:00Z' },
+        { _id: '2', amount: '200', type: 'initial', account: 'cash', date: '2026-01-01T00:00:00Z' },
+        // Внесённый залог: перевод с карты на замороженный счёт.
+        { _id: '3', amount: '500', type: 'transfer', account: 'card', toAccount: 'dep', date: '2026-01-05T00:00:00Z' },
+    ], accounts);
+
+    it('держит замороженный счёт вне общего капитала, но отдаёт его суммой held', () => {
+        const balances = calculateBalances(transactions, accounts);
+
+        expect(balances.byAccount.dep).toBe(500);
+        expect(balances.held).toBe(500);
+        // 1000 - 500 на карте плюс 200 наличными; залог сюда не входит.
+        expect(balances.total).toBe(700);
+        expect(balances.grandTotal).toBe(1200);
+    });
+
+    it('не даёт замороженному счёту раздуть корзину "все карты"', () => {
+        const balances = calculateBalances(transactions, accounts);
+
+        expect(balances.byType.card).toBe(500); // только настоящая карта
+        expect(balances.byType.cash).toBe(200);
+    });
+
+    it('оставляет капитал прежним, когда замороженных счетов нет', () => {
+        const plain = accounts.slice(0, 2);
+        const balances = calculateBalances(transactions, plain);
+
+        expect(balances.held).toBe(0);
+        expect(balances.total).toBe(balances.grandTotal);
+    });
+
+    it('возврат залога поднимает капитал обратно, не создавая дохода', () => {
+        const withReturn = transformTransactions([
+            { _id: '1', amount: '1000', type: 'initial', account: 'card', date: '2026-01-01T00:00:00Z' },
+            { _id: '3', amount: '500', type: 'transfer', account: 'card', toAccount: 'dep', date: '2026-01-05T00:00:00Z' },
+            { _id: '4', amount: '500', type: 'transfer', account: 'dep', toAccount: 'card', date: '2026-06-01T00:00:00Z' },
+        ], accounts);
+
+        const balances = calculateBalances(withReturn, accounts);
+
+        expect(balances.held).toBe(0);
+        expect(balances.total).toBe(1000);
+        // Переводы не попадают в доход ни на одном из концов.
+        expect(getPeriodData(withReturn, '').income).toBe(0);
+    });
+});

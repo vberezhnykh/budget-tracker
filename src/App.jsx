@@ -288,16 +288,30 @@ function App() {
   // from here.
   const slides = useMemo(() => {
     const base = [
-      { key: 'total', icon: '💰', name: 'Общий капитал', amount: balances.total, filter: null },
+      {
+        key: 'total',
+        icon: '💰',
+        name: 'Общий капитал',
+        amount: balances.total,
+        filter: null,
+        // Деньги на "замороженных" счетах в капитал не входят, но и молча
+        // пропадать не должны - показываем их отдельной строкой помельче.
+        note: balances.held ? `${balances.held.toLocaleString('de-DE', { minimumFractionDigits: 2 })} € заморожено` : null,
+      },
     ];
-    const accountSlides = accounts.map(acc => ({
+    const toSlide = (acc) => ({
       key: acc._id,
       icon: acc.icon || (acc.type === 'cash' ? '💵' : '💳'),
       name: acc.name,
       amount: balances.byAccount[acc._id] || 0,
       filter: acc._id,
-    }));
-    return [...base, ...accountSlides];
+      note: acc.excludeFromTotal ? 'вне общего капитала' : null,
+    });
+    // Замороженные счета уезжают в конец карусели: до них доходят редко, а
+    // между повседневными картами они были бы лишней остановкой при свайпе.
+    const spendable = accounts.filter(acc => !acc.excludeFromTotal).map(toSlide);
+    const held = accounts.filter(acc => acc.excludeFromTotal).map(toSlide);
+    return [...base, ...spendable, ...held];
   }, [accounts, balances]);
 
   // Filter transactions for the selected month and account/category/type
@@ -523,20 +537,20 @@ function App() {
   // this function reading them off App state, since App only owns the
   // accounts data and the API mutation itself. Returns whether the save
   // succeeded so the modal knows whether to reset its form.
-  const handleSaveAccount = async (formName, formType, formIcon, editingAccountId) => {
+  const handleSaveAccount = async ({ name, type, icon, excludeFromTotal, editingAccountId }) => {
     try {
       let res;
       if (editingAccountId) {
         res = await apiFetch(`${ACCOUNTS_URL}/${editingAccountId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: formName, icon: formIcon })
+          body: JSON.stringify({ name, icon, excludeFromTotal })
         });
       } else {
         res = await apiFetch(ACCOUNTS_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: formName, type: formType, icon: formIcon })
+          body: JSON.stringify({ name, type, icon, excludeFromTotal })
         });
       }
 
@@ -853,7 +867,7 @@ function App() {
                 data-carousel-slide
                 role="button"
                 tabIndex={0}
-                aria-label={`${slide.name}: ${balanceText}`}
+                aria-label={slide.note ? `${slide.name}: ${balanceText}, ${slide.note}` : `${slide.name}: ${balanceText}`}
                 aria-current={isActive}
                 onClick={() => handleSlideClick(slide, index)}
                 onKeyDown={(e) => {
@@ -893,6 +907,11 @@ function App() {
                 <div className="balance-amount" style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
                   {balanceText}
                 </div>
+                {slide.note && (
+                  <div style={{ marginTop: '4px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                    {slide.note}
+                  </div>
+                )}
               </div>
             );
           })}

@@ -42,7 +42,13 @@ describe('AccountsSettingsModal', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
 
         await waitFor(() => {
-            expect(props.onSaveAccount).toHaveBeenCalledWith('Новый счёт', 'card', '💳', null);
+            expect(props.onSaveAccount).toHaveBeenCalledWith({
+                name: 'Новый счёт',
+                type: 'card',
+                icon: '💳',
+                excludeFromTotal: false,
+                editingAccountId: null,
+            });
         });
         await waitFor(() => {
             expect(screen.getByPlaceholderText(/Имя счёта/)).toHaveValue('');
@@ -172,5 +178,26 @@ describe('AccountsSettingsModal', () => {
 
         expect(props.onSaveSettings).not.toHaveBeenCalled();
         expect(props.showNotice).toHaveBeenCalled();
+    });
+    it('сохраняет счёт, помеченный как не входящий в общий капитал', async () => {
+        const { props } = renderModal();
+
+        fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Залог за квартиру' } });
+        fireEvent.click(screen.getByLabelText('Не учитывать в общем капитале'));
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
+
+        await waitFor(() => expect(props.onSaveAccount).toHaveBeenCalledWith(
+            expect.objectContaining({ name: 'Залог за квартиру', excludeFromTotal: true })
+        ));
+    });
+
+    it('подставляет текущее значение флага при редактировании счёта', () => {
+        renderModal({
+            accounts: [{ _id: 'dep', name: 'Залог', type: 'card', icon: '🏠', excludeFromTotal: true }],
+        });
+
+        fireEvent.click(screen.getByLabelText('Изменить'));
+
+        expect(screen.getByLabelText('Не учитывать в общем капитале')).toBeChecked();
     });
 });
