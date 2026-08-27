@@ -206,23 +206,23 @@ mongoose.connect(process.env.MONGODB_URI, dbOptions)
         if (categoryCount === 0) {
             const defaultCategories = [
                 // Expense categories
-                { name: 'Продукты', type: 'expense', isDefault: true, order: 1 },
-                { name: 'Еда вне дома', type: 'expense', isDefault: true, order: 2 },
-                { name: 'Транспорт', type: 'expense', isDefault: true, order: 3 },
-                { name: 'Развлечения', type: 'expense', isDefault: true, order: 4 },
-                { name: 'Шопинг', type: 'expense', isDefault: true, order: 5 },
-                { name: 'Красота', type: 'expense', isDefault: true, order: 6 },
-                { name: 'Жилье', type: 'expense', isDefault: true, order: 7 },
-                { name: 'Питомцы', type: 'expense', isDefault: true, order: 8 },
-                { name: 'Услуги', type: 'expense', isDefault: true, order: 9 },
-                { name: 'Отпуск', type: 'expense', isDefault: true, order: 10 },
-                { name: 'Другое', type: 'expense', isDefault: true, order: 11 },
+                { name: 'Продукты', type: 'expense', order: 1 },
+                { name: 'Еда вне дома', type: 'expense', order: 2 },
+                { name: 'Транспорт', type: 'expense', order: 3 },
+                { name: 'Развлечения', type: 'expense', order: 4 },
+                { name: 'Шопинг', type: 'expense', order: 5 },
+                { name: 'Красота', type: 'expense', order: 6 },
+                { name: 'Жилье', type: 'expense', order: 7 },
+                { name: 'Питомцы', type: 'expense', order: 8 },
+                { name: 'Услуги', type: 'expense', order: 9 },
+                { name: 'Отпуск', type: 'expense', order: 10 },
+                { name: 'Другое', type: 'expense', order: 11 },
                 // Income categories
-                { name: 'Зарплата', type: 'income', isDefault: true, order: 1 },
-                { name: 'Фриланс', type: 'income', isDefault: true, order: 2 },
-                { name: 'Подарок', type: 'income', isDefault: true, order: 3 },
-                { name: 'Кэшбэк', type: 'income', isDefault: true, order: 4 },
-                { name: 'Другое', type: 'income', isDefault: true, order: 5 },
+                { name: 'Зарплата', type: 'income', order: 1 },
+                { name: 'Фриланс', type: 'income', order: 2 },
+                { name: 'Подарок', type: 'income', order: 3 },
+                { name: 'Кэшбэк', type: 'income', order: 4 },
+                { name: 'Другое', type: 'income', order: 5 },
             ];
             await Category.insertMany(defaultCategories);
             console.log('Default categories seeded');
@@ -352,7 +352,6 @@ app.post('/api/categories', async (req, res) => {
         const newCategory = new Category({
             name: name.trim(),
             type,
-            isDefault: false,
             order: (maxOrder?.order || 0) + 1
         });
         const saved = await newCategory.save();
@@ -365,7 +364,10 @@ app.post('/api/categories', async (req, res) => {
     }
 });
 
-// Delete a custom category
+// Delete a category. Засеянные при первом запуске ничем не отличаются
+// от заведённых руками: список категорий - личный, и вычищать из него
+// лишнее должно быть можно. Пустой список сидер зальёт заново при
+// следующем старте (см. countDocuments выше).
 app.delete('/api/categories/:id', async (req, res) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -374,9 +376,6 @@ app.delete('/api/categories/:id', async (req, res) => {
         const cat = await Category.findById(req.params.id);
         if (!cat) {
             return res.status(404).json({ message: 'Category not found' });
-        }
-        if (cat.isDefault) {
-            return res.status(400).json({ message: 'Нельзя удалить стандартную категорию' });
         }
         await Category.findByIdAndDelete(req.params.id);
         res.json({ message: 'Category deleted' });

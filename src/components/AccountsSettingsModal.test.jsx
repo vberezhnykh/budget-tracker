@@ -203,8 +203,8 @@ describe('AccountsSettingsModal', () => {
     it('показывает категории со счётчиком операций и удаляет по кнопке', () => {
         const onDeleteCategory = vi.fn();
         const categories = [
-            { _id: 'c1', name: 'Продукты', type: 'expense', isDefault: true },
-            { _id: 'c2', name: 'Подписки', type: 'expense', isDefault: false },
+            { _id: 'c1', name: 'Продукты', type: 'expense' },
+            { _id: 'c2', name: 'Подписки', type: 'expense' },
         ];
         renderModal({
             categories,
@@ -219,18 +219,19 @@ describe('AccountsSettingsModal', () => {
         expect(onDeleteCategory).toHaveBeenCalledWith(categories[1], 4);
     });
 
-    it('не предлагает удалять стандартные категории', () => {
-        renderModal({
-            categories: [{ _id: 'c1', name: 'Продукты', type: 'expense', isDefault: true }],
-        });
+    it('позволяет удалить и засеянную категорию - список личный', () => {
+        const onDeleteCategory = vi.fn();
+        const categories = [{ _id: 'c1', name: 'Продукты', type: 'expense' }];
+        renderModal({ categories, onDeleteCategory });
 
-        expect(screen.queryByLabelText('Удалить категорию: Продукты')).not.toBeInTheDocument();
-        expect(screen.getByText('стандартная')).toBeInTheDocument();
+        fireEvent.click(screen.getByLabelText('Удалить категорию: Продукты'));
+
+        expect(onDeleteCategory).toHaveBeenCalledWith(categories[0], 0);
     });
 
     it('называет неиспользуемую категорию неиспользуемой', () => {
         renderModal({
-            categories: [{ _id: 'c2', name: 'Подписки', type: 'expense', isDefault: false }],
+            categories: [{ _id: 'c2', name: 'Подписки', type: 'expense' }],
             categoryUsage: {},
         });
 

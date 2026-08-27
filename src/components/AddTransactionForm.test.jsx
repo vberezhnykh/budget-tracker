@@ -3,22 +3,22 @@ import { describe, it, expect, vi } from 'vitest';
 import AddTransactionForm from './AddTransactionForm';
 
 const mockCategories = [
-    { _id: '1', name: 'Продукты', type: 'expense', isDefault: true, order: 1 },
-    { _id: '2', name: 'Еда вне дома', type: 'expense', isDefault: true, order: 2 },
-    { _id: '3', name: 'Транспорт', type: 'expense', isDefault: true, order: 3 },
-    { _id: '4', name: 'Развлечения', type: 'expense', isDefault: true, order: 4 },
-    { _id: '5', name: 'Шопинг', type: 'expense', isDefault: true, order: 5 },
-    { _id: '6', name: 'Красота', type: 'expense', isDefault: true, order: 6 },
-    { _id: '7', name: 'Жилье', type: 'expense', isDefault: true, order: 7 },
-    { _id: '8', name: 'Питомцы', type: 'expense', isDefault: true, order: 8 },
-    { _id: '9', name: 'Услуги', type: 'expense', isDefault: true, order: 9 },
-    { _id: '10', name: 'Отпуск', type: 'expense', isDefault: true, order: 10 },
-    { _id: '11', name: 'Другое', type: 'expense', isDefault: true, order: 11 },
-    { _id: '12', name: 'Зарплата', type: 'income', isDefault: true, order: 1 },
-    { _id: '13', name: 'Фриланс', type: 'income', isDefault: true, order: 2 },
-    { _id: '14', name: 'Подарок', type: 'income', isDefault: true, order: 3 },
-    { _id: '15', name: 'Кэшбэк', type: 'income', isDefault: true, order: 4 },
-    { _id: '16', name: 'Другое', type: 'income', isDefault: true, order: 5 },
+    { _id: '1', name: 'Продукты', type: 'expense', order: 1 },
+    { _id: '2', name: 'Еда вне дома', type: 'expense', order: 2 },
+    { _id: '3', name: 'Транспорт', type: 'expense', order: 3 },
+    { _id: '4', name: 'Развлечения', type: 'expense', order: 4 },
+    { _id: '5', name: 'Шопинг', type: 'expense', order: 5 },
+    { _id: '6', name: 'Красота', type: 'expense', order: 6 },
+    { _id: '7', name: 'Жилье', type: 'expense', order: 7 },
+    { _id: '8', name: 'Питомцы', type: 'expense', order: 8 },
+    { _id: '9', name: 'Услуги', type: 'expense', order: 9 },
+    { _id: '10', name: 'Отпуск', type: 'expense', order: 10 },
+    { _id: '11', name: 'Другое', type: 'expense', order: 11 },
+    { _id: '12', name: 'Зарплата', type: 'income', order: 1 },
+    { _id: '13', name: 'Фриланс', type: 'income', order: 2 },
+    { _id: '14', name: 'Подарок', type: 'income', order: 3 },
+    { _id: '15', name: 'Кэшбэк', type: 'income', order: 4 },
+    { _id: '16', name: 'Другое', type: 'income', order: 5 },
 ];
 
 const mockAccounts = [

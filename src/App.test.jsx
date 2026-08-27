@@ -580,8 +580,8 @@ describe('App Integration Tests', () => {
 
     it('удаляет категорию из настроек и снимает фильтр, стоявший на ней', async () => {
         currentCategories = [
-            { _id: 'c1', name: 'Продукты', type: 'expense', isDefault: true, order: 1 },
-            { _id: 'c2', name: 'Подписки', type: 'expense', isDefault: false, order: 2 },
+            { _id: 'c1', name: 'Продукты', type: 'expense', order: 1 },
+            { _id: 'c2', name: 'Подписки', type: 'expense', order: 2 },
         ];
         currentTransactions = [
             { _id: '1', title: 'Netflix', amount: 20, type: 'expense', account: 'card', date: '2026-01-05T00:00:00Z', category: 'Подписки' },

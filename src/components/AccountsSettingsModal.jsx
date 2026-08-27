@@ -408,32 +408,25 @@ export default function AccountsSettingsModal({
                         {used === 0 ? 'не используется' : `операций: ${used}`}
                       </div>
                     </div>
-                    {cat.isDefault ? (
-                      // Стандартные категории сервер удалять не даёт
-                      // (DELETE /api/categories/:id), поэтому кнопку, которая
-                      // заведомо вернёт ошибку, здесь не рисуем.
-                      <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>стандартная</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteCategory(cat, used)}
-                        aria-label={`Удалить категорию: ${cat.name}`}
-                        style={{
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '8px',
-                          minWidth: '36px',
-                          minHeight: '36px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        🗑️
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => onDeleteCategory(cat, used)}
+                      aria-label={`Удалить категорию: ${cat.name}`}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '8px',
+                        minWidth: '36px',
+                        minHeight: '36px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                      }}
+                    >
+                      🗑️
+                    </button>
                   </div>
                 );
               })

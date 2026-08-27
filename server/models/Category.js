@@ -11,10 +11,6 @@ const CategorySchema = new mongoose.Schema({
         enum: ['expense', 'income'],
         required: true
     },
-    isDefault: {
-        type: Boolean,
-        default: false
-    },
     order: {
         type: Number,
         default: 0
