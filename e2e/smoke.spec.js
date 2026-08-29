@@ -493,6 +493,65 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
+  test('свайп по карточке сводки листает месяцы, не трогая фильтр и прокрутку', async ({ page }) => {
+    // Смена месяца пальцем - жест, а жесты жизнь проверяет только в реальном
+    // движке: в jsdom нет ни раскладки, ни pointer-событий с координатами.
+    // Здесь важны три вещи разом - месяц меняется, фильтр по расходам от
+    // этого не включается (свайп кончается на кнопке кольца, и браузер шлёт
+    // по ней click), и вертикальная прокрутка страницы по карточке остаётся
+    // рабочей.
+    await mockApi(page, { accounts: manyAccounts });
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    // Карточка нижним краем уходит под плавающий таб-бар - прокручиваем так,
+    // чтобы жест точно попал в неё, а не в бар поверх неё.
+    await page.evaluate(() => window.scrollTo(0, 350));
+    await page.waitForTimeout(200);
+
+    const chip = page.getByRole('button', { name: /^Период:/ });
+    const card = page.locator('.glass-panel').filter({ hasText: 'осталось' }).first();
+    const box = await card.boundingBox();
+    const y = Math.round(box.y + 80);
+    const x = Math.round(box.x + box.width / 2);
+
+    const swipe = async (dx) => {
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      for (let i = 1; i <= 6; i++) {
+        await page.mouse.move(x + (dx * i) / 6, y);
+        await page.waitForTimeout(10);
+      }
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+    };
+
+    const before = await chip.textContent();
+
+    await swipe(140);   // вправо - назад по времени
+    const previous = await chip.textContent();
+    expect(previous).not.toBe(before);
+
+    await swipe(-140);  // влево - вперёд
+    await expect(chip).toHaveText(before);
+
+    // Листание не включило фильтр по расходам, хотя жест и закончился на
+    // кнопке кольца.
+    const expenseButton = page.getByRole('button', { name: /^Расход: / });
+    await expect(expenseButton).toHaveAttribute('aria-pressed', 'false');
+
+    // А короткое движение - это по-прежнему нажатие: месяц не меняется, зато
+    // кнопка под пальцем срабатывает как обычно.
+    await swipe(20);
+    await expect(chip).toHaveText(before);
+    await expect(expenseButton).toHaveAttribute('aria-pressed', 'true');
+
+    // Вертикальный жест остаётся системе - иначе страница перестала бы
+    // прокручиваться пальцем по карточке.
+    const touchAction = await card.evaluate((el) => getComputedStyle(el).touchAction);
+    expect(touchAction).toBe('pan-y');
+  });
+
   test('bottom tab bar sits clear of the drawer peek and never covers page content', async ({ page }) => {
     // Аналитика moved out of the stats panel into a fixed bottom tab bar.
     // Being fixed, the bar is out of normal flow: it can overlap the

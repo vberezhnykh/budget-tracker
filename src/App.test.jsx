@@ -250,6 +250,9 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
+        // Операции живут в шторке, и её содержимое существует только когда
+        // она раскрыта - открываем, как это делает пользователь.
+        openDrawer();
 
         // Check for the transaction with description (Rent)
         expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
@@ -270,6 +273,7 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
+        openDrawer();
 
         // Each editable row exposes a full-row button (see the accessible
         // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
@@ -316,6 +320,8 @@ describe('App Integration Tests', () => {
 
         window.confirm = vi.fn(() => true);
         render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+        openDrawer();
 
         // Open split sub-item via its full-row button (see the accessible
         // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
@@ -337,6 +343,76 @@ describe('App Integration Tests', () => {
         // settles inside act() before the test finishes.
         await waitFor(() => {
             expect(fetchMock.mock.calls.length).toBeGreaterThan(callsBeforeDelete + 1);
+        });
+    });
+
+    // Свайп по карточке сводки - второй путь к смене месяца рядом с чипом
+    // периода. Жест собирается из pointer-событий: жёстко проверяются и порог
+    // (короткое движение - это нажатие, а не листание), и то, что листание не
+    // включает заодно фильтр по расходам, на кнопке которого оно кончается.
+    const swipeSummary = (dx, dy = 0) => {
+        const card = screen.getByRole('button', { name: /^Расход: / }).closest('.glass-panel');
+        fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
+        fireEvent.pointerUp(card, { pointerId: 1, clientX: 200 + dx, clientY: 300 + dy });
+        return card;
+    };
+
+    it('листает месяцы свайпом по карточке сводки', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
+
+        // Вправо - назад по времени.
+        swipeSummary(120);
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeInTheDocument();
+        });
+
+        // Влево - вперёд.
+        swipeSummary(-120);
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
+        });
+    });
+
+    it('не считает листанием короткое движение и не включает им фильтр расходов', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Дрожание пальца при нажатии - месяц не меняется.
+        swipeSummary(20);
+        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
+
+        // Почти вертикальное движение - это прокрутка страницы, не листание.
+        swipeSummary(60, 90);
+        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
+
+        // Настоящий свайп кончается на кнопке кольца, и браузер шлёт по ней
+        // click - листание месяца не должно заодно включать фильтр расходов.
+        const expenseButton = screen.getByRole('button', { name: /^Расход: / });
+        expect(expenseButton).toHaveAttribute('aria-pressed', 'false');
+        swipeSummary(120);
+        fireEvent.click(expenseButton);
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeInTheDocument();
+        });
+        expect(screen.getByRole('button', { name: /^Расход: / })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('не листает в будущее и раньше начала истории', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Январь 2026 - «текущий» месяц (время в тестах подменено), вперёд
+        // идти некуда.
+        swipeSummary(-120);
+        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
+
+        // Назад - до ноября 2025 (MIN_MONTH, начало истории) и ни месяцем
+        // раньше.
+        for (let i = 0; i < 4; i++) swipeSummary(120);
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'Период: Ноябрь 2025' })).toBeInTheDocument();
         });
     });
 
@@ -373,6 +449,7 @@ describe('App Integration Tests', () => {
 
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
+        openDrawer();
 
         // Month view (January 2026): December's operation is out of range.
         expect(screen.queryByText('Подарки')).not.toBeInTheDocument();
@@ -395,19 +472,16 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
+        openDrawer();
 
         // Initially shows both (Salary and Rent) in January view (since we mocked time)
         expect(screen.getByText('Salary')).toBeInTheDocument();
         expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
 
         // Type "Rent" in search
-        openDrawer();
         const searchInput = screen.getByPlaceholderText(/Поиск/);
         fireEvent.change(searchInput, { target: { value: 'Rent' } });
 
-        // Ищем внутри шторки: блок «Последние операции» на главной поиску не
-        // подчиняется (он показывает период целиком) и лежит под раскрытой
-        // шторкой, поэтому глобальный queryByText нашёл бы обе копии.
         const drawer = within(screen.getByTestId('transactions-drawer'));
         await waitFor(() => {
             expect(drawer.queryByText('Salary')).not.toBeInTheDocument();
@@ -419,7 +493,7 @@ describe('App Integration Tests', () => {
         const clearBtn = screen.getByText('×');
         fireEvent.click(clearBtn);
 
-        // Should show both again - снова внутри шторки, по той же причине.
+        // Should show both again.
         await waitFor(() => {
             expect(drawer.getByText('Salary')).toBeInTheDocument();
             expect(drawer.getByText('Monthly flat rent')).toBeInTheDocument();
@@ -441,6 +515,8 @@ describe('App Integration Tests', () => {
 
         render(<App />);
 
+        await waitFor(() => screen.getByText('BudgetTracker'));
+        openDrawer();
         await waitFor(() => screen.getByText('Coffee'));
         expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
 
@@ -481,6 +557,8 @@ describe('App Integration Tests', () => {
         currentTransactions = [...mockTransactions, cashTx];
 
         render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+        openDrawer();
         await waitFor(() => screen.getByText('Coffee'));
 
         // Slide order: total(0), "Карта" account(1), "Наличные" account(2).

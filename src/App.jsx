@@ -6,7 +6,7 @@ import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer
 import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
-import TransactionList from './components/TransactionList'
+import MonthSwipeArea from './components/MonthSwipeArea'
 import IconButton from './components/ui/IconButton'
 import { formatPeriodLabel, toDativeMonth } from './utils/period'
 import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
@@ -15,10 +15,6 @@ import { handleAccountDragEnd } from './utils/accountReorder'
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
 const CATEGORIES_URL = '/api/categories';
-
-// Сколько операций показывать на главной: экран отвечает на вопрос «что
-// происходило только что», а не заменяет историю - за ней есть шторка.
-const RECENT_LIMIT = 5;
 const ACCOUNTS_URL = '/api/accounts';
 const SETTINGS_URL = '/api/settings';
 // Used until the server's settings document has loaded (or if it 404s on an
@@ -781,27 +777,6 @@ function App() {
   // current month getComparisonData cuts the previous month at today's day
   // number (comparing like with like); for a past month it compares whole
   // months, and the wording below follows that split.
-  // Последние операции периода - для блока на главной. Берём готовую
-  // группировку по дням из periodData и отрезаем первые RECENT_LIMIT
-  // операций, идя от свежей даты к старой: главная показывает «что
-  // происходило только что», а вся история - в шторке.
-  const recentGroups = useMemo(() => {
-    const groups = {};
-    let left = RECENT_LIMIT;
-    const dates = Object.keys(periodData.transactions || {}).sort((a, b) => new Date(b) - new Date(a));
-    for (const date of dates) {
-      if (left <= 0) break;
-      const items = periodData.transactions[date].items.slice(0, left);
-      // dailySum относится ко всему дню, а не к обрезку - если день влез
-      // не целиком, сумму дня не показываем, чтобы она не спорила с тем,
-      // что видно в строках.
-      const whole = items.length === periodData.transactions[date].items.length;
-      groups[date] = { items, dailySum: whole ? periodData.transactions[date].dailySum : 0 };
-      left -= items.length;
-    }
-    return groups;
-  }, [periodData]);
-
   const expenseComparison = useMemo(() => {
     const previous = comparisonData.expense;
     const diff = Math.abs(monthlyData.expense) - previous;
@@ -1089,7 +1064,16 @@ function App() {
         {/* Summary Card with Budget Limit */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '24px' }}>
           {summaryView === 'stats' ? (
-            <div className="glass-panel" style={{ padding: '24px' }}>
+            /* Карточку можно листать вбок - это второй, «пальцевый» путь к
+               смене месяца рядом с чипом периода. На «Год» и «Всё время»
+               свайп выключен: листать там нечего. */
+            <MonthSwipeArea
+              enabled={timeRange === 'month'}
+              selectedMonth={selectedMonth}
+              onSelectMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
+              className="glass-panel"
+              style={{ padding: '24px' }}
+            >
 
               {/* The period's expense is the headline: for a month it sits
                   inside the spending-limit ring, so "how much" and "how much
@@ -1171,13 +1155,6 @@ function App() {
                   )}
                 </button>
 
-                {/* The period is spelled out under the headline number, so
-                    what the figure covers is readable without going back up
-                    to the chip. */}
-                <div style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: '-12px' }}>
-                  {formatPeriodLabel(timeRange, selectedMonth)}
-                </div>
-
                 <div style={{ display: 'flex', gap: '12px' }}>
                   <button
                     type="button"
@@ -1217,31 +1194,7 @@ function App() {
 
               </div>
 
-              {/* Список операций прямо на экране. Раньше здесь была разбивка
-                  «Куда ушло», повторявшая донат в «Аналитике», а сами
-                  операции лежали за шторкой, которую надо тянуть. Теперь
-                  наоборот: разбор - на вкладке разбора, а на главной то,
-                  ради чего в трекер заходят чаще всего. */}
-              <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
-                {/* Ссылки «все операции» здесь нет намеренно: ручка шторки
-                    висит прямо под этой карточкой и делает ровно то же
-                    самое - две кнопки рядом с одинаковым действием только
-                    сбивают с толку. */}
-                <h3 style={{ margin: 0, padding: '16px 20px 12px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
-                  Последние операции
-                </h3>
-                <TransactionList
-                  groups={recentGroups}
-                  emptyText="За выбранный период операций нет"
-                  selectedCategory={selectedCategory}
-                  toggleCategoryFilter={toggleCategoryFilter}
-                  openEditModal={openEditModal}
-                  getAccountDisplay={getAccountDisplay}
-                  formatDate={formatDate}
-                  rowPadding="14px 20px"
-                />
-              </div>
-            </div>
+            </MonthSwipeArea>
           ) : (
             /* Analytics tab: same period as the stats tab (periodStats), so
                switching tabs never silently changes what range you're
