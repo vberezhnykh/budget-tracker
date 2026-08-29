@@ -6,11 +6,12 @@ import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer
 import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
-import MonthSwipeArea from './components/MonthSwipeArea'
+import SummaryCard from './components/SummaryCard'
 import IconButton from './components/ui/IconButton'
-import { formatPeriodLabel, toDativeMonth } from './utils/period'
-import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
+import { formatPeriodLabel, toDativeMonth, listPeriodMonths, formatMonthName } from './utils/period'
+import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast, getMonthlyTotals } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
+import useSnapCarousel from './utils/useSnapCarousel'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -80,21 +81,6 @@ function App() {
     handleAccountDragEnd(event, { accounts: accountsRef.current, setAccounts, apiUrl: ACCOUNTS_URL, apiFetch, onError: showNotice });
   };
 
-  // Balance carousel refs:
-  // - carouselRef: the scroll container
-  // - carouselRafRef: rAF throttle handle for the scroll listener
-  // - carouselSettleTimeoutRef: debounce handle - the active filter is only
-  //   committed once scroll events stop arriving for a short while, so
-  //   swiping/animating past several slides doesn't filter by each one
-  // - carouselProgrammaticRef: true while a tap or an external filter change
-  //   is driving the scroll, so the settle handler doesn't fight it
-  // - carouselSyncedIndexRef: index of the slide our own code last drove the
-  //   carousel/filter to, used to avoid redundant programmatic scrolls
-  const carouselRef = useRef(null);
-  const carouselRafRef = useRef(null);
-  const carouselSettleTimeoutRef = useRef(null);
-  const carouselProgrammaticRef = useRef(false);
-  const carouselSyncedIndexRef = useRef(0);
 
   // Transactions state
   const [transactions, setTransactions] = useState([]);
@@ -155,14 +141,6 @@ function App() {
       document.body.style.overflow = 'unset';
     };
   }, [historyDrawerExpanded]);
-
-  // Cancel any pending rAF-throttled carousel scroll handler / settle-debounce timer on unmount
-  useEffect(() => {
-    return () => {
-      if (carouselRafRef.current) cancelAnimationFrame(carouselRafRef.current);
-      if (carouselSettleTimeoutRef.current) clearTimeout(carouselSettleTimeoutRef.current);
-    };
-  }, []);
 
   // Thin fetch wrapper used for every /api/* call. A 401 means the session
   // cookie is missing/expired - flip to the login screen right away rather
@@ -366,81 +344,21 @@ function App() {
     return selectedMonth === currentMonthStr;
   }, [selectedMonth]);
 
-  // Slide elements are located via the data-carousel-slide attribute rather
-  // than container.children, so a stray non-slide child (e.g. a <style> tag)
-  // can never shift every index off by one.
-  const getCarouselSlideElements = () => {
-    const container = carouselRef.current;
-    if (!container) return [];
-    return Array.from(container.querySelectorAll('[data-carousel-slide]'));
-  };
+  // Карусель счетов: вся механика прокрутки со снапом - в useSnapCarousel,
+  // она же обслуживает карусель месяцев ниже. Здесь остаётся только то, что
+  // значит выбор слайда именно для счетов - фильтр по счёту.
+  const accountCarousel = useSnapCarousel({
+    onSettle: (index) => {
+      const filter = slides[index]?.filter ?? null;
+      setSelectedAccount(prev => (prev === filter ? prev : filter));
+    },
+  });
 
-  // (Re)start the settle-debounce: the active filter is only committed once
-  // scroll events (real or programmatic) stop arriving for a short while, so
-  // a swipe or an animated scroll that passes over several slides doesn't
-  // filter by each intermediate one.
-  const scheduleCarouselSettle = () => {
-    if (carouselSettleTimeoutRef.current) clearTimeout(carouselSettleTimeoutRef.current);
-    carouselSettleTimeoutRef.current = setTimeout(commitSettledCarouselSlide, 120);
-  };
-
-  const commitSettledCarouselSlide = () => {
-    carouselSettleTimeoutRef.current = null;
-    const wasProgrammatic = carouselProgrammaticRef.current;
-    carouselProgrammaticRef.current = false;
-    // A tap (or an external filter sync) already set the exact destination
-    // filter/index up front - don't let the settled scroll position override it.
-    if (wasProgrammatic) return;
-
-    const container = carouselRef.current;
-    const slideEls = getCarouselSlideElements();
-    if (!container || !slideEls.length) return;
-
-    // Pick the slide whose centre is nearest the container's visible centre,
-    // from real element positions - not a single assumed slide width.
-    const containerCenter = container.scrollLeft + container.clientWidth / 2;
-    let nearestIndex = -1;
-    let nearestDistance = Infinity;
-    let hasLayout = false;
-    slideEls.forEach((el, i) => {
-      if (el.offsetWidth > 0 || el.offsetLeft > 0) hasLayout = true;
-      const center = el.offsetLeft + el.offsetWidth / 2;
-      const distance = Math.abs(center - containerCenter);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = i;
-      }
-    });
-    // jsdom (unit tests without stubbed geometry) reports everything as 0x0 -
-    // bail rather than confidently picking the wrong slide.
-    if (!hasLayout || nearestIndex === -1) return;
-
-    carouselSyncedIndexRef.current = nearestIndex;
-    const filter = slides[nearestIndex]?.filter ?? null;
-    setSelectedAccount(prev => (prev === filter ? prev : filter));
-  };
-
-  // Selecting a carousel slide (by tap, or by scroll settling on it) always
-  // sets the filter directly - no toggle-off behavior, since exactly one
-  // slide is "active" at all times.
+  // Нажатие на слайд всегда выбирает его - без «нажать ещё раз, чтобы
+  // снять»: ровно один слайд активен в любой момент.
   const handleSlideClick = (slide, index) => {
     setSelectedAccount(prev => (prev === slide.filter ? prev : slide.filter));
-    carouselSyncedIndexRef.current = index;
-    carouselProgrammaticRef.current = true;
-    // Guarantee the programmatic flag clears even if the tap causes no
-    // scroll events at all (e.g. the slide is already centred).
-    scheduleCarouselSettle();
-    const slideEl = getCarouselSlideElements()[index];
-    // jsdom (unit tests) doesn't implement scrollIntoView - guard the call.
-    slideEl?.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-  };
-
-  const handleCarouselScroll = () => {
-    if (carouselRafRef.current) return;
-    carouselRafRef.current = requestAnimationFrame(() => {
-      carouselRafRef.current = null;
-      scheduleCarouselSettle();
-    });
+    accountCarousel.scrollToIndex(index);
   };
 
   // Keep the carousel in sync with filter changes that didn't originate from
@@ -453,13 +371,8 @@ function App() {
       return;
     }
     const index = slides.findIndex(s => s.filter === selectedAccount);
-    if (index === -1 || index === carouselSyncedIndexRef.current) return;
-    const slideEl = getCarouselSlideElements()[index];
-    if (!slideEl) return;
-    carouselSyncedIndexRef.current = index;
-    carouselProgrammaticRef.current = true;
-    scheduleCarouselSettle();
-    slideEl.scrollIntoView?.({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    if (index === -1) return;
+    accountCarousel.scrollToIndex(index, { skipIfSynced: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccount, slides]);
 
@@ -754,12 +667,6 @@ function App() {
   // the server now rejects saving those, but an old/unmigrated value could
   // still be sitting in the settings document). Dividing by such a limit
   // would otherwise render NaN% or Infinity% in the progress bar below.
-  const isLimitUsable = Number.isFinite(monthlyLimit) && monthlyLimit > 0;
-  const limitRatio = isLimitUsable ? Math.abs(monthlyData.expense) / monthlyLimit : 0;
-  const isOverLimit = isLimitUsable && Math.abs(monthlyData.expense) > monthlyLimit;
-  const limitPercentDisplay = Number.isFinite(limitRatio) ? Math.round(limitRatio * 100) : 0;
-  const limitBarWidthDisplay = Number.isFinite(limitRatio) ? Math.min(limitRatio * 100, 100) : 0;
-  const limitRemaining = isLimitUsable ? monthlyLimit - Math.abs(monthlyData.expense) : 0;
 
   // One place decides what "income / expense / categories" mean for the
   // selected range, so the stats panel below only renders numbers.
@@ -769,8 +676,34 @@ function App() {
     return { income: monthlyData.income, expense: monthlyData.expense, categoryTotals: monthlyData.categoryTotals };
   }, [timeRange, monthlyData, yearlyData, lifetimeStats]);
 
-  const periodSaldo = periodStats.income + periodStats.expense;
-  const periodExpenseAbs = Math.abs(periodStats.expense);
+  // Месяцы, по которым листается карточка сводки, и итоги по каждому. Список
+  // тот же, что предлагает чип периода, - иначе свайп уводил бы туда, куда
+  // через чип не попасть.
+  const carouselMonths = useMemo(() => listPeriodMonths(), []);
+  const monthlyTotals = useMemo(
+    () => getMonthlyTotals(transactions, selectedAccount, selectedCategory),
+    [transactions, selectedAccount, selectedCategory]
+  );
+  const selectedMonthIndex = carouselMonths.indexOf(selectedMonth);
+
+  // Карусель месяцев на той же механике, что и карусель счетов: осевшая
+  // прокрутка выбирает слайд, отличается только смысл выбора.
+  const monthCarousel = useSnapCarousel({
+    onSettle: (index) => {
+      const month = carouselMonths[index];
+      if (!month || month === selectedMonth) return;
+      handlePeriodChange({ timeRange: 'month', selectedMonth: month });
+    },
+  });
+
+  // Месяц сменили не свайпом (чип периода, столбик тренда в «Аналитике») -
+  // карусель должна доехать до него сама.
+  useEffect(() => {
+    if (timeRange !== 'month' || selectedMonthIndex === -1) return;
+    monthCarousel.scrollToIndex(selectedMonthIndex, { skipIfSynced: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeRange, selectedMonthIndex]);
+
 
 
   // Expense of this month vs the same stretch of the previous one. For the
@@ -881,8 +814,8 @@ function App() {
           div::-webkit-scrollbar { display: none; }
         `}</style>
         <div
-          ref={carouselRef}
-          onScroll={handleCarouselScroll}
+          ref={accountCarousel.setContainer}
+          onScroll={accountCarousel.handleScroll}
           data-testid="balance-carousel"
           style={{
             display: 'flex',
@@ -1064,137 +997,82 @@ function App() {
         {/* Summary Card with Budget Limit */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '24px' }}>
           {summaryView === 'stats' ? (
-            /* Карточку можно листать вбок - это второй, «пальцевый» путь к
-               смене месяца рядом с чипом периода. На «Год» и «Всё время»
-               свайп выключен: листать там нечего. */
-            <MonthSwipeArea
-              enabled={timeRange === 'month'}
-              selectedMonth={selectedMonth}
-              onSelectMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
-              className="glass-panel"
-              style={{ padding: '24px' }}
-            >
-
-              {/* The period's expense is the headline: for a month it sits
-                  inside the spending-limit ring, so "how much" and "how much
-                  of the budget" are one glance. Income and saldo are a
-                  supporting row, and the categories that produced the number
-                  are right below instead of behind the Аналитика tab. */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <button
-                  type="button"
-                  onClick={() => toggleTypeFilter('expense')}
-                  aria-pressed={selectedType === 'expense'}
-                  aria-label={`Расход: €${periodExpenseAbs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}${timeRange === 'month' && isLimitUsable ? ` из лимита €${monthlyLimit.toLocaleString('de-DE')}` : ''}`}
-                  style={{
-                    alignSelf: 'center',
-                    background: 'transparent',
-                    border: 'none',
-                    padding: '4px',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '10px'
-                  }}
-                >
-                  {timeRange === 'month' && isLimitUsable ? (
-                    <div style={{ position: 'relative', width: '188px', height: '188px' }}>
-                      <svg width="188" height="188" viewBox="0 0 188 188" aria-hidden="true" style={{ transform: 'rotate(-90deg)' }}>
-                        <circle cx="94" cy="94" r="82" fill="none" stroke="var(--color-border-subtle)" strokeWidth="14" />
-                        <circle
-                          cx="94"
-                          cy="94"
-                          r="82"
-                          fill="none"
-                          stroke={isOverLimit ? 'var(--color-negative)' : 'var(--color-primary)'}
-                          strokeWidth="14"
-                          strokeLinecap="round"
-                          strokeDasharray={2 * Math.PI * 82}
-                          strokeDashoffset={2 * Math.PI * 82 * (1 - limitBarWidthDisplay / 100)}
-                          style={{ transition: 'stroke-dashoffset 0.4s ease' }}
-                        />
-                      </svg>
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '2px'
-                      }}>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600' }}>Расход</div>
-                        <div style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-main)', lineHeight: 1.1 }}>
-                          €{periodExpenseAbs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                        </div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: '600' }}>
-                          {isOverLimit
-                            ? `сверх лимита €${Math.abs(limitRemaining).toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
-                            : `осталось €${limitRemaining.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
-                        </div>
-                        <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>
-                          {limitPercentDisplay}% от €{monthlyLimit.toLocaleString('de-DE')}
-                        </div>
+            timeRange === 'month' ? (
+              /* Месяцы листаются так же, как счета в шапке: не «жест меняет
+                 данные», а лента карточек, которая едет за пальцем. Соседние
+                 месяцы видно по краям и приглушены, чтобы читалось, какой
+                 сейчас выбран. */
+              <div
+                ref={monthCarousel.setContainer}
+                onScroll={monthCarousel.handleScroll}
+                data-testid="month-carousel"
+                style={{
+                  display: 'flex',
+                  overflowX: 'auto',
+                  scrollSnapType: 'x mandatory',
+                  WebkitOverflowScrolling: 'touch',
+                  gap: '12px',
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none'
+                }}
+              >
+                {/* Отступы по краям: при выравнивании по центру у первого и
+                    последнего слайда иначе не хватает слака, чтобы доехать до
+                    середины. Не слайды - без data-carousel-slide. */}
+                <div aria-hidden="true" style={{ flex: '0 0 max(0px, 6% - 12px)', pointerEvents: 'none' }} />
+                {carouselMonths.map((month) => {
+                  const totals = monthlyTotals[month] || { income: 0, expense: 0 };
+                  const isActive = month === selectedMonth;
+                  const [monthYear] = month.split('-');
+                  return (
+                    <div
+                      key={month}
+                      data-carousel-slide
+                      className="glass-panel"
+                      style={{
+                        flex: '0 0 88%',
+                        scrollSnapAlign: 'center',
+                        scrollSnapStop: 'always',
+                        boxSizing: 'border-box',
+                        padding: '20px 24px 24px',
+                        opacity: isActive ? 1 : 0.5,
+                        transition: 'opacity 0.2s ease'
+                      }}
+                    >
+                      {/* Свой месяц подписан на каждой карточке - иначе во
+                          время свайпа не понять, куда едешь. */}
+                      <div style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)', textAlign: 'center', marginBottom: '12px' }}>
+                        {formatMonthName(month)} {monthYear}
                       </div>
+                      <SummaryCard
+                        income={totals.income}
+                        expense={totals.expense}
+                        monthlyLimit={monthlyLimit}
+                        showLimitRing
+                        selectedType={selectedType}
+                        onToggleType={toggleTypeFilter}
+                        isActive={isActive}
+                      />
                     </div>
-                  ) : (
-                    <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600', marginBottom: '4px' }}>
-                        {timeRange === 'year' ? 'Расход за год' : timeRange === 'lifetime' ? 'Расход за всё время' : 'Расход'}
-                      </div>
-                      <div style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
-                        €{periodExpenseAbs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  )}
-                  {selectedType === 'expense' && (
-                    <span style={{ fontSize: 'var(--text-2xs)', fontWeight: '600', color: 'var(--color-primary)' }}>
-                      список отфильтрован по расходам
-                    </span>
-                  )}
-                </button>
-
-                <div style={{ display: 'flex', gap: '12px' }}>
-                  <button
-                    type="button"
-                    onClick={() => toggleTypeFilter('income')}
-                    aria-pressed={selectedType === 'income'}
-                    aria-label={`Доход: €${periodStats.income.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
-                    style={{
-                      flex: 1,
-                      textAlign: 'left',
-                      background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.12)' : 'var(--color-surface-muted)',
-                      border: '1px solid',
-                      borderColor: selectedType === 'income' ? '#4ade80' : 'var(--color-border-subtle)',
-                      borderRadius: 'var(--radius-lg)',
-                      padding: '12px 14px',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Доход</div>
-                    <div style={{ fontSize: 'var(--text-2xl)', fontWeight: '700', color: 'var(--color-positive)' }}>
-                      +€{periodStats.income.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                    </div>
-                  </button>
-                  <div style={{
-                    flex: 1,
-                    background: 'var(--color-surface-muted)',
-                    border: '1px solid var(--color-border-subtle)',
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '12px 14px'
-                  }}>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Сальдо</div>
-                    <div style={{ fontSize: 'var(--text-2xl)', fontWeight: '700', color: periodSaldo >= 0 ? 'var(--color-text-main)' : 'var(--color-negative)' }}>
-                      {periodSaldo > 0 ? '+' : ''}€{periodSaldo.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                    </div>
-                  </div>
-                </div>
-
+                  );
+                })}
+                <div aria-hidden="true" style={{ flex: '0 0 max(0px, 6% - 12px)', pointerEvents: 'none' }} />
               </div>
-
-            </MonthSwipeArea>
+            ) : (
+              /* Год и «всё время» листать нечем - одна карточка без кольца:
+                 месячный лимит для такого периода ничего не значит. */
+              <div className="glass-panel" style={{ padding: '24px' }}>
+                <SummaryCard
+                  income={periodStats.income}
+                  expense={periodStats.expense}
+                  monthlyLimit={monthlyLimit}
+                  showLimitRing={false}
+                  headlineLabel={timeRange === 'year' ? 'Расход за год' : 'Расход за всё время'}
+                  selectedType={selectedType}
+                  onToggleType={toggleTypeFilter}
+                />
+              </div>
+            )
           ) : (
             /* Analytics tab: same period as the stats tab (periodStats), so
                switching tabs never silently changes what range you're

@@ -493,63 +493,58 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
-  test('свайп по карточке сводки листает месяцы, не трогая фильтр и прокрутку', async ({ page }) => {
-    // Смена месяца пальцем - жест, а жесты жизнь проверяет только в реальном
-    // движке: в jsdom нет ни раскладки, ни pointer-событий с координатами.
-    // Здесь важны три вещи разом - месяц меняется, фильтр по расходам от
-    // этого не включается (свайп кончается на кнопке кольца, и браузер шлёт
-    // по ней click), и вертикальная прокрутка страницы по карточке остаётся
-    // рабочей.
+  test('карточка сводки - лента месяцев: листается и держит выбранный месяц', async ({ page }) => {
+    // Месяцы листаются той же каруселью со снапом, что и счета в шапке
+    // (utils/useSnapCarousel.js). Проверять это можно только в реальном
+    // движке: в jsdom нет ни раскладки, ни настоящей прокрутки, а весь смысл
+    // здесь именно в ней - карточки едут за пальцем, а не «жест меняет
+    // данные».
     await mockApi(page, { accounts: manyAccounts });
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
 
-    // Карточка нижним краем уходит под плавающий таб-бар - прокручиваем так,
-    // чтобы жест точно попал в неё, а не в бар поверх неё.
-    await page.evaluate(() => window.scrollTo(0, 350));
-    await page.waitForTimeout(200);
+    const carousel = page.getByTestId('month-carousel');
+    const slides = carousel.locator('[data-carousel-slide]');
+    await expect(slides.first()).toBeVisible();
+    const count = await slides.count();
+    expect(count).toBeGreaterThan(1);
 
     const chip = page.getByRole('button', { name: /^Период:/ });
-    const card = page.locator('.glass-panel').filter({ hasText: 'осталось' }).first();
-    const box = await card.boundingBox();
-    const y = Math.round(box.y + 80);
-    const x = Math.round(box.x + box.width / 2);
+    const startLabel = (await chip.textContent()).replace('▼', '').trim();
 
-    const swipe = async (dx) => {
-      await page.mouse.move(x, y);
-      await page.mouse.down();
-      for (let i = 1; i <= 6; i++) {
-        await page.mouse.move(x + (dx * i) / 6, y);
-        await page.waitForTimeout(10);
-      }
-      await page.mouse.up();
-      await page.waitForTimeout(300);
-    };
+    // Лента открывается на выбранном месяце, а не на первом слайде: он
+    // самый старый, и увидеть при запуске ноябрь позапрошлого года вместо
+    // текущего месяца было бы неожиданно.
+    const startScroll = await carousel.evaluate((el) => el.scrollLeft);
+    expect(startScroll).toBeGreaterThan(0);
 
-    const before = await chip.textContent();
+    // Каждый слайд - жёсткая остановка: один свайп = один месяц, а не
+    // пролёт через полгода по инерции.
+    for (let i = 0; i < count; i++) {
+      const stop = await slides.nth(i).evaluate((el) => getComputedStyle(el).scrollSnapStop);
+      expect(stop).toBe('always');
+    }
 
-    await swipe(140);   // вправо - назад по времени
-    const previous = await chip.textContent();
-    expect(previous).not.toBe(before);
+    // Прокрутка на слайд назад - и выбранный месяц меняется сам, без нажатий.
+    await carousel.evaluate((el) => {
+      const slide = el.querySelector('[data-carousel-slide]');
+      el.scrollBy({ left: -(slide.offsetWidth + 12), behavior: 'instant' });
+    });
+    await page.waitForTimeout(500);
+    const afterLabel = (await chip.textContent()).replace('▼', '').trim();
+    expect(afterLabel).not.toBe(startLabel);
 
-    await swipe(-140);  // влево - вперёд
-    await expect(chip).toHaveText(before);
+    // Соседняя карточка подписана своим месяцем - иначе во время свайпа не
+    // понять, куда едешь.
+    await expect(carousel.getByText(new RegExp(afterLabel.split(' ')[0], 'i')).first()).toBeVisible();
 
-    // Листание не включило фильтр по расходам, хотя жест и закончился на
-    // кнопке кольца.
-    const expenseButton = page.getByRole('button', { name: /^Расход: / });
-    await expect(expenseButton).toHaveAttribute('aria-pressed', 'false');
-
-    // А короткое движение - это по-прежнему нажатие: месяц не меняется, зато
-    // кнопка под пальцем срабатывает как обычно.
-    await swipe(20);
-    await expect(chip).toHaveText(before);
-    await expect(expenseButton).toHaveAttribute('aria-pressed', 'true');
-
-    // Вертикальный жест остаётся системе - иначе страница перестала бы
-    // прокручиваться пальцем по карточке.
-    const touchAction = await card.evaluate((el) => getComputedStyle(el).touchAction);
-    expect(touchAction).toBe('pan-y');
+    // Обратный путь: месяц, выбранный в чипе, подтягивает ленту к себе.
+    await chip.click();
+    const sheet = page.getByRole('dialog', { name: 'Выбор периода' });
+    await sheet.getByRole('button', { name: startLabel.split(' ')[0] }).click();
+    await page.waitForTimeout(600);
+    await expect(chip).toHaveText(new RegExp(startLabel.split(' ')[0]));
+    expect(await carousel.evaluate((el) => el.scrollLeft)).toBe(startScroll);
   });
 
   test('bottom tab bar sits clear of the drawer peek and never covers page content', async ({ page }) => {

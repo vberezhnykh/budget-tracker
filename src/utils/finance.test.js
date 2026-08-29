@@ -3,6 +3,7 @@ import {
     transformTransactions,
     calculateBalances,
     getMonthlyData,
+    getMonthlyTotals,
     getPeriodData,
     getPeriodPrefix,
     getYearlyData,
@@ -661,5 +662,49 @@ describe('getCategoryUsage', () => {
     it('переживает пустой вход', () => {
         expect(getCategoryUsage(null)).toEqual({});
         expect(getCategoryUsage([])).toEqual({});
+    });
+});
+
+describe('getMonthlyTotals', () => {
+    // Карусель месяцев рисует карточку на каждый месяц, и её числа обязаны
+    // совпадать с тем, что показывает панель за выбранный месяц. Поэтому
+    // главная проверка - не «какие-то суммы посчитались», а «ровно те же,
+    // что у getMonthlyData».
+    const tx = [
+        { id: '1', date: '2026-01-05', type: 'expense', visualAmount: -100, account: 'card', accountType: 'card', category: 'Еда' },
+        { id: '2', date: '2026-01-20', type: 'income', visualAmount: 3000, account: 'card', accountType: 'card', category: 'Зарплата' },
+        { id: '3', date: '2026-02-02', type: 'expense', visualAmount: -50, account: 'cash', accountType: 'cash', category: 'Еда' },
+        { id: '4', date: '2026-02-03', type: 'transfer', visualAmount: -500, account: 'card', toAccount: 'cash', accountType: 'card', toAccountType: 'cash' },
+        { id: '5', date: '2026-02-04', type: 'expense', visualAmount: -999, account: 'card', accountType: 'card', category: 'Еда', excludeFromStats: true },
+        { id: '6', date: '2025-11-09', type: 'initial', visualAmount: 1000, account: 'card', accountType: 'card' },
+    ];
+
+    it('считает доход и расход по месяцам так же, как getMonthlyData', () => {
+        const totals = getMonthlyTotals(tx);
+        for (const month of ['2025-11', '2026-01', '2026-02']) {
+            const expected = getMonthlyData(tx, month);
+            expect(totals[month]?.income ?? 0).toBe(expected.income);
+            expect(totals[month]?.expense ?? 0).toBe(expected.expense);
+        }
+    });
+
+    it('не считает переводы, исключённые операции и начальные остатки доходом', () => {
+        const totals = getMonthlyTotals(tx);
+        // Февраль: только расход 50 - перевод и исключённая операция мимо.
+        expect(totals['2026-02']).toEqual({ income: 0, expense: -50 });
+        // Ноябрь 2025: начальный остаток в доход не идёт.
+        expect(totals['2025-11']).toEqual({ income: 0, expense: 0 });
+    });
+
+    it('уважает фильтры по счёту и категории, как и панель', () => {
+        expect(getMonthlyTotals(tx, 'cash')['2026-01']).toBeUndefined();
+        expect(getMonthlyTotals(tx, 'cash')['2026-02']).toEqual({ income: 0, expense: -50 });
+
+        const byCategory = getMonthlyTotals(tx, null, 'Зарплата');
+        expect(byCategory['2026-01']).toEqual({ income: 3000, expense: 0 });
+
+        // И то же самое, но проверенное через getMonthlyData - чтобы правила
+        // фильтрации не разъехались между двумя реализациями.
+        expect(byCategory['2026-01'].income).toBe(getMonthlyData(tx, '2026-01', null, 'Зарплата').income);
     });
 });

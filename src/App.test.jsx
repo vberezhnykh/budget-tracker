@@ -346,74 +346,87 @@ describe('App Integration Tests', () => {
         });
     });
 
-    // Свайп по карточке сводки - второй путь к смене месяца рядом с чипом
-    // периода. Жест собирается из pointer-событий: жёстко проверяются и порог
-    // (короткое движение - это нажатие, а не листание), и то, что листание не
-    // включает заодно фильтр по расходам, на кнопке которого оно кончается.
-    const swipeSummary = (dx, dy = 0) => {
-        const card = screen.getByRole('button', { name: /^Расход: / }).closest('.glass-panel');
-        fireEvent.pointerDown(card, { pointerId: 1, clientX: 200, clientY: 300 });
-        fireEvent.pointerUp(card, { pointerId: 1, clientX: 200 + dx, clientY: 300 + dy });
-        return card;
+    // Карусель месяцев - та же механика, что и у карусели счетов: прокрутка
+    // со снапом, выбор фиксируется, когда события прокрутки перестали
+    // приходить (см. utils/useSnapCarousel.js). Поэтому и проверяется она
+    // так же - подменённой геометрией плюс событием scroll, а не жестом:
+    // в jsdom нет раскладки, offsetLeft/offsetWidth там нули.
+    const scrollMonthCarouselTo = (container, index, count) => {
+        const slideWidth = 300;
+        const gap = 12;
+        const spacerWidth = 20;
+        expect(container.querySelectorAll('[data-carousel-slide]').length).toBe(count);
+        stubCarouselGeometry(container, slideWidth, gap, spacerWidth);
+        container.scrollLeft = spacerWidth + gap + index * (slideWidth + gap);
+
+        vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
+        vi.setSystemTime(new Date('2026-01-15'));
+        fireEvent.scroll(container);
+        act(() => {
+            vi.advanceTimersByTime(200);
+        });
+        vi.useRealTimers();
     };
 
-    it('листает месяцы свайпом по карточке сводки', async () => {
+    it('листает месяцы прокруткой карусели', async () => {
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Выбираемые месяцы - от начала истории (ноябрь 2025) до текущего
+        // месяца, которым в тестах подменено время: ноябрь, декабрь, январь.
+        const container = screen.getByTestId('month-carousel');
         expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
 
-        // Вправо - назад по времени.
-        swipeSummary(120);
+        scrollMonthCarouselTo(container, 1, 3);
         await waitFor(() => {
             expect(screen.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeInTheDocument();
         });
 
-        // Влево - вперёд.
-        swipeSummary(-120);
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
-        });
-    });
-
-    it('не считает листанием короткое движение и не включает им фильтр расходов', async () => {
-        render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
-
-        // Дрожание пальца при нажатии - месяц не меняется.
-        swipeSummary(20);
-        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
-
-        // Почти вертикальное движение - это прокрутка страницы, не листание.
-        swipeSummary(60, 90);
-        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
-
-        // Настоящий свайп кончается на кнопке кольца, и браузер шлёт по ней
-        // click - листание месяца не должно заодно включать фильтр расходов.
-        const expenseButton = screen.getByRole('button', { name: /^Расход: / });
-        expect(expenseButton).toHaveAttribute('aria-pressed', 'false');
-        swipeSummary(120);
-        fireEvent.click(expenseButton);
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeInTheDocument();
-        });
-        expect(screen.getByRole('button', { name: /^Расход: / })).toHaveAttribute('aria-pressed', 'false');
-    });
-
-    it('не листает в будущее и раньше начала истории', async () => {
-        render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
-
-        // Январь 2026 - «текущий» месяц (время в тестах подменено), вперёд
-        // идти некуда.
-        swipeSummary(-120);
-        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
-
-        // Назад - до ноября 2025 (MIN_MONTH, начало истории) и ни месяцем
-        // раньше.
-        for (let i = 0; i < 4; i++) swipeSummary(120);
+        scrollMonthCarouselTo(container, 0, 3);
         await waitFor(() => {
             expect(screen.getByRole('button', { name: 'Период: Ноябрь 2025' })).toBeInTheDocument();
         });
+    });
+
+    it('показывает на каждой карточке итоги её месяца, а не выбранного', async () => {
+        // Декабрьская операция - чтобы у соседней карточки были свои числа.
+        currentTransactions = [...mockTransactions, {
+            _id: '9',
+            title: 'Декабрьская трата',
+            amount: 700,
+            type: 'expense',
+            account: 'card',
+            date: '2025-12-10T00:00:00Z',
+            category: 'Housing'
+        }];
+
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        const slides = screen.getByTestId('month-carousel').querySelectorAll('[data-carousel-slide]');
+        const december = within(slides[1]);
+        const january = within(slides[2]);
+
+        expect(december.getByText('Декабрь 2025')).toBeInTheDocument();
+        expect(december.getByText('€700,00')).toBeInTheDocument();
+        expect(january.getByText('Январь 2026')).toBeInTheDocument();
+        // Январь: расход из mockTransactions, декабрьская трата в него не
+        // просочилась.
+        expect(january.queryByText('€700,00')).not.toBeInTheDocument();
+    });
+
+    it('фильтры расхода и дохода живут только на выбранной карточке', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        // Кнопок-фильтров ровно по одной: соседние месяцы показывают те же
+        // цифры текстом, иначе они спорили бы с выбором месяца.
+        expect(screen.getAllByRole('button', { name: /^Расход: / })).toHaveLength(1);
+        expect(screen.getAllByRole('button', { name: /^Доход: / })).toHaveLength(1);
+
+        const slides = screen.getByTestId('month-carousel').querySelectorAll('[data-carousel-slide]');
+        expect(within(slides[2]).getByRole('button', { name: /^Расход: / })).toBeInTheDocument();
+        expect(within(slides[1]).queryByRole('button', { name: /^Расход: / })).not.toBeInTheDocument();
     });
 
     it('toggles between monthly and lifetime stats', async () => {

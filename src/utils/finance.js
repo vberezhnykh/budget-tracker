@@ -198,6 +198,37 @@ export const getPeriodData = (transactions, periodPrefix, accountFilter = null, 
     return { transactions: grouped, income, expense, categoryTotals };
 };
 
+// Итоги по каждому месяцу сразу - тем же правилам, что и getPeriodData
+// выше, но за один проход по истории и без группировки операций по дням.
+// Нужны карусели месяцев: она рисует карточку на каждый выбираемый месяц,
+// и звать getPeriodData по разу на месяц значило бы строить эти группы
+// десятки раз впустую.
+//
+// Фильтр по типу здесь намеренно отсутствует: доход и расход в карточках
+// от него не зависят и в getPeriodData тоже считаются до его применения -
+// иначе, включив фильтр «доход», пользователь увидел бы нулевой расход.
+export const getMonthlyTotals = (transactions, accountFilter = null, categoryFilter = null) => {
+    const totals = {};
+
+    (transactions || []).forEach(t => {
+        if (t.type === 'transfer' || t.excludeFromStats) return;
+        if (accountFilter && !matchesAccount(t, accountFilter)) return;
+        if (categoryFilter && t.category !== categoryFilter) return;
+
+        const month = (t.date || '').slice(0, 7);
+        if (!month) return;
+        if (!totals[month]) totals[month] = { income: 0, expense: 0 };
+
+        if (t.visualAmount > 0) {
+            if (t.type !== 'initial') totals[month].income += t.visualAmount;
+        } else {
+            totals[month].expense += t.visualAmount;
+        }
+    });
+
+    return totals;
+};
+
 // The month-shaped view of the same aggregation - what the monthly limit
 // and pace forecast are computed from, whatever period is on screen.
 export const getMonthlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null, typeFilter = null) =>
