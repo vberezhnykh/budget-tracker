@@ -818,7 +818,7 @@ function App() {
     return <LoginScreen onSuccess={() => { setIsAuthenticated(null); initData(); }} />;
   }
 
-  if (isLoading || isAuthenticated === null) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#fff' }}>Загрузка...</div>;
+  if (isLoading || isAuthenticated === null) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--color-text-inverse)' }}>Загрузка...</div>;
 
   return (
     <div className="layout-container">
@@ -839,10 +839,10 @@ function App() {
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: '12px',
-            borderLeft: `4px solid ${notice.type === 'success' ? '#22c55e' : '#ef4444'}`,
+            borderLeft: `4px solid ${notice.type === 'success' ? 'var(--color-success)' : 'var(--color-negative)'}`,
           }}
         >
-          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: 'var(--color-text-main)' }}>
+          <span style={{ fontSize: 'var(--text-md)', fontWeight: '500', color: 'var(--color-text-main)' }}>
             {notice.message}
           </span>
           <button
@@ -856,7 +856,7 @@ function App() {
               background: 'transparent',
               border: 'none',
               cursor: 'pointer',
-              fontSize: '1.1rem',
+              fontSize: 'var(--text-2xl)',
               lineHeight: 1,
               color: 'var(--color-text-muted)',
               flexShrink: 0,
@@ -875,7 +875,7 @@ function App() {
           <button 
             onClick={() => setShowAccountsSettings(true)}
             style={{ 
-              background: 'rgba(0,0,0,0.03)', 
+              background: 'var(--color-surface-sunken)', 
               border: 'none', 
               borderRadius: '50%', 
               width: '38px', 
@@ -884,7 +884,7 @@ function App() {
               alignItems: 'center', 
               justifyContent: 'center', 
               cursor: 'pointer',
-              fontSize: '1.2rem',
+              fontSize: 'var(--text-3xl)',
               color: 'var(--color-text-main)',
               transition: 'all 0.2s ease',
               outline: 'none'
@@ -952,9 +952,9 @@ function App() {
                   scrollSnapStop: 'always',
                   boxSizing: 'border-box',
                   textAlign: 'center',
-                  background: isActive ? 'rgba(37, 99, 235, 0.05)' : 'rgba(0,0,0,0.02)',
-                  borderRadius: '24px',
-                  border: isActive ? '1.5px solid var(--color-primary)' : '1px solid rgba(0,0,0,0.05)',
+                  background: isActive ? 'var(--color-primary-soft)' : 'var(--color-surface-muted)',
+                  borderRadius: 'var(--radius-xl)',
+                  border: isActive ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border-subtle)',
                   transition: 'all 0.2s ease',
                   padding: '18px 16px',
                   cursor: 'pointer'
@@ -966,18 +966,18 @@ function App() {
                     below keeps the card's height, and centred text is unaffected. */}
                 <div
                   aria-hidden="true"
-                  style={{ position: 'absolute', top: '12px', right: '14px', fontSize: '1.25rem', lineHeight: 1, pointerEvents: 'none' }}
+                  style={{ position: 'absolute', top: '12px', right: '14px', fontSize: 'var(--text-3xl)', lineHeight: 1, pointerEvents: 'none' }}
                 >
                   {slide.icon}
                 </div>
-                <div style={{ fontSize: '0.9rem', color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.5px', padding: '0 28px' }}>
+                <div style={{ fontSize: 'var(--text-md)', color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.5px', padding: '0 28px' }}>
                   {slide.name}
                 </div>
                 <div className="balance-amount" style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
                   {balanceText}
                 </div>
                 {slide.note && (
-                  <div style={{ marginTop: '4px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                  <div style={{ marginTop: '4px', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                     {slide.note}
                   </div>
                 )}
@@ -1044,7 +1044,7 @@ function App() {
                     width: '6px',
                     height: '6px',
                     borderRadius: '50%',
-                    background: isActive ? 'var(--color-primary)' : 'rgba(0,0,0,0.15)',
+                    background: isActive ? 'var(--color-primary)' : 'var(--color-control-off)',
                     transition: 'background 0.2s ease'
                   }}
                 />
@@ -1059,13 +1059,13 @@ function App() {
         {/* Quick Actions */}
         <section style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => openAddModal('income')} className="btn-primary" style={{ flex: 1, background: 'linear-gradient(135deg, #10b981, #059669)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', padding: '12px 8px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+            <button onClick={() => openAddModal('income')} className="btn-primary" style={{ flex: 1, background: 'var(--color-positive-gradient)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
               <span>+</span> Доход
             </button>
-            <button onClick={() => openAddModal('expense')} className="btn-primary" style={{ flex: 1, background: 'linear-gradient(135deg, #f43f5e, #e11d48)', boxShadow: '0 4px 15px rgba(244, 63, 94, 0.3)', padding: '12px 8px', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+            <button onClick={() => openAddModal('expense')} className="btn-primary" style={{ flex: 1, background: 'var(--color-expense-gradient)', boxShadow: '0 4px 15px rgba(244, 63, 94, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
               <span>-</span> Расход
             </button>
-            <button onClick={() => openAddModal('transfer')} className="glass-panel" style={{ flex: 1, border: '1px solid rgba(129, 140, 248, 0.2)', color: '#818cf8', padding: '12px 8px', borderRadius: '16px', fontWeight: '600', fontSize: '0.9rem', whiteSpace: 'nowrap' }}>
+            <button onClick={() => openAddModal('transfer')} className="glass-panel" style={{ flex: 1, border: '1px solid rgba(129, 140, 248, 0.2)', color: '#818cf8', padding: '12px 8px', borderRadius: 'var(--radius-lg)', fontWeight: '600', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
               ⇄ Перевод
             </button>
           </div>
@@ -1111,13 +1111,13 @@ function App() {
                   {timeRange === 'month' && isLimitUsable ? (
                     <div style={{ position: 'relative', width: '188px', height: '188px' }}>
                       <svg width="188" height="188" viewBox="0 0 188 188" aria-hidden="true" style={{ transform: 'rotate(-90deg)' }}>
-                        <circle cx="94" cy="94" r="82" fill="none" stroke="rgba(0,0,0,0.06)" strokeWidth="14" />
+                        <circle cx="94" cy="94" r="82" fill="none" stroke="var(--color-border-subtle)" strokeWidth="14" />
                         <circle
                           cx="94"
                           cy="94"
                           r="82"
                           fill="none"
-                          stroke={isOverLimit ? '#ef4444' : '#2563eb'}
+                          stroke={isOverLimit ? 'var(--color-negative)' : 'var(--color-primary)'}
                           strokeWidth="14"
                           strokeLinecap="round"
                           strokeDasharray={2 * Math.PI * 82}
@@ -1134,23 +1134,23 @@ function App() {
                         justifyContent: 'center',
                         gap: '2px'
                       }}>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: '600' }}>Расход</div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600' }}>Расход</div>
                         <div style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-main)', lineHeight: 1.1 }}>
                           €{periodExpenseAbs.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: isOverLimit ? '#ef4444' : 'var(--color-text-muted)', fontWeight: '600' }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: '600' }}>
                           {isOverLimit
                             ? `сверх лимита €${Math.abs(limitRemaining).toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
                             : `осталось €${limitRemaining.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
                         </div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                        <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>
                           {limitPercentDisplay}% от €{monthlyLimit.toLocaleString('de-DE')}
                         </div>
                       </div>
                     </div>
                   ) : (
                     <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: '600', marginBottom: '4px' }}>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600', marginBottom: '4px' }}>
                         {timeRange === 'year' ? 'Расход за год' : timeRange === 'lifetime' ? 'Расход за всё время' : 'Расход'}
                       </div>
                       <div style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
@@ -1159,7 +1159,7 @@ function App() {
                     </div>
                   )}
                   {selectedType === 'expense' && (
-                    <span style={{ fontSize: '0.7rem', fontWeight: '600', color: 'var(--color-primary)' }}>
+                    <span style={{ fontSize: 'var(--text-2xs)', fontWeight: '600', color: 'var(--color-primary)' }}>
                       список отфильтрован по расходам
                     </span>
                   )}
@@ -1168,22 +1168,22 @@ function App() {
                 {/* The period is spelled out under the headline number, so
                     what the figure covers is readable without going back up
                     to the chip. */}
-                <div style={{ fontSize: '0.7rem', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: '-12px' }}>
+                <div style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)', textAlign: 'center', marginTop: '-12px' }}>
                   {formatPeriodLabel(timeRange, selectedMonth)}
                 </div>
 
                 {timeRange === 'month' && (
                   <div style={{ textAlign: 'center', marginTop: '-8px' }}>
                     {expenseComparison.percent === null ? (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
                         В прошлом месяце трат не было
                       </div>
                     ) : (
-                      <div style={{ fontSize: '0.85rem', fontWeight: '700', color: expenseComparison.diff > 0 ? '#ef4444' : '#10b981' }}>
+                      <div style={{ fontSize: 'var(--text-base)', fontWeight: '700', color: expenseComparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
                         {expenseComparison.diff > 0 ? '↑' : '↓'} {Math.abs(expenseComparison.percent)}% к прошлому месяцу
                       </div>
                     )}
-                    <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                    <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
                       {expenseComparison.label}
                     </div>
                   </div>
@@ -1198,29 +1198,29 @@ function App() {
                     style={{
                       flex: 1,
                       textAlign: 'left',
-                      background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.12)' : 'rgba(0,0,0,0.02)',
+                      background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.12)' : 'var(--color-surface-muted)',
                       border: '1px solid',
-                      borderColor: selectedType === 'income' ? '#4ade80' : 'rgba(0,0,0,0.05)',
-                      borderRadius: '14px',
+                      borderColor: selectedType === 'income' ? '#4ade80' : 'var(--color-border-subtle)',
+                      borderRadius: 'var(--radius-lg)',
                       padding: '12px 14px',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease'
                     }}
                   >
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Доход</div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: '700', color: '#10b981' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Доход</div>
+                    <div style={{ fontSize: 'var(--text-2xl)', fontWeight: '700', color: 'var(--color-positive)' }}>
                       +€{periodStats.income.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                     </div>
                   </button>
                   <div style={{
                     flex: 1,
-                    background: 'rgba(0,0,0,0.02)',
-                    border: '1px solid rgba(0,0,0,0.05)',
-                    borderRadius: '14px',
+                    background: 'var(--color-surface-muted)',
+                    border: '1px solid var(--color-border-subtle)',
+                    borderRadius: 'var(--radius-lg)',
                     padding: '12px 14px'
                   }}>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Сальдо</div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: '700', color: periodSaldo >= 0 ? 'var(--color-text-main)' : '#ef4444' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Сальдо</div>
+                    <div style={{ fontSize: 'var(--text-2xl)', fontWeight: '700', color: periodSaldo >= 0 ? 'var(--color-text-main)' : 'var(--color-negative)' }}>
                       {periodSaldo > 0 ? '+' : ''}€{periodSaldo.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                     </div>
                   </div>
@@ -1228,7 +1228,7 @@ function App() {
 
                 {topCategories.length > 0 && (
                   <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--color-text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '10px' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: '700', color: 'var(--color-text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '10px' }}>
                       Куда ушло
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -1253,7 +1253,7 @@ function App() {
                               cursor: 'pointer'
                             }}
                           >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '0.8rem', marginBottom: '4px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)', marginBottom: '4px' }}>
                               <span style={{
                                 color: isActive ? 'var(--color-primary)' : 'var(--color-text-main)',
                                 fontWeight: isActive ? '700' : '500',
@@ -1267,7 +1267,7 @@ function App() {
                                 €{cat.value.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
                               </span>
                             </div>
-                            <div style={{ height: '6px', background: 'rgba(0,0,0,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div style={{ height: '6px', background: 'var(--color-surface-inset)', borderRadius: '3px', overflow: 'hidden' }}>
                               <div style={{
                                 height: '100%',
                                 width: `${Math.max(cat.share * 100, 2)}%`,

@@ -235,7 +235,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     maxWidth: '520px',
                     // Only the top corners are rounded - the bottom ones would
                     // otherwise cut into the screen edge the sheet rests on.
-                    borderRadius: '24px 24px 0 0',
+                    borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
                     // The extra bottom padding clears the iOS home indicator,
                     // which now overlaps the sheet's own last row.
                     padding: '24px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
@@ -269,9 +269,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 {!initialData && !isSplit && (
                     <div style={{
                         display: 'flex',
-                        background: 'rgba(0,0,0,0.05)',
+                        background: 'var(--color-surface-inset)',
                         padding: '4px',
-                        borderRadius: '12px'
+                        borderRadius: 'var(--radius-md)'
                     }}>
                         {[
                             { id: 'expense', label: 'Расход' },
@@ -303,11 +303,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 style={{
                                     flex: 1,
                                     padding: '8px',
-                                    borderRadius: '8px',
-                                    background: formData.type === t.id ? '#fff' : 'transparent',
+                                    borderRadius: 'var(--radius-sm)',
+                                    background: formData.type === t.id ? 'var(--color-surface)' : 'transparent',
                                     color: formData.type === t.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                     fontWeight: '600',
-                                    fontSize: '0.9rem',
+                                    fontSize: 'var(--text-md)',
                                     transition: 'all 0.2s',
                                     boxShadow: formData.type === t.id ? '0 2px 4px rgba(0,0,0,0.05)' : 'none'
                                 }}
@@ -322,7 +322,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
                     {/* Main Amount Input */}
                     <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
+                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>
                             {isSplit ? 'Общая сумма' : 'Сумма'}
                         </label>
                         <div style={{ position: 'relative' }}>
@@ -332,7 +332,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 top: '50%',
                                 transform: 'translateY(-50%)',
                                 color: 'var(--color-text-muted)',
-                                fontSize: '1.25rem'
+                                fontSize: 'var(--text-3xl)'
                             }}>€</span>
                             <input
                                 type="number"
@@ -343,9 +343,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 onChange={e => setFormData({ ...formData, amount: e.target.value })}
                                 style={{
                                     width: '100%',
-                                    background: 'rgba(0,0,0,0.03)',
-                                    border: '1px solid rgba(0,0,0,0.08)',
-                                    borderRadius: '16px',
+                                    background: 'var(--color-surface-sunken)',
+                                    border: '1px solid var(--color-border)',
+                                    borderRadius: 'var(--radius-lg)',
                                     padding: '16px 16px 16px 36px',
                                     color: 'var(--color-text-main)',
                                     fontSize: '1.5rem',
@@ -368,10 +368,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         alignItems: 'center',
                                         gap: '12px',
                                         padding: '12px',
-                                        background: 'rgba(0,0,0,0.03)',
-                                        borderRadius: '12px',
+                                        background: 'var(--color-surface-sunken)',
+                                        borderRadius: 'var(--radius-md)',
                                         cursor: 'pointer',
-                                        border: '1px solid rgba(0,0,0,0.05)',
+                                        border: '1px solid var(--color-border-subtle)',
                                         transition: 'all 0.2s'
                                     }}
                                 >
@@ -379,7 +379,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         width: '40px',
                                         height: '20px',
                                         background: isSplit ? 'var(--color-primary)' : 'rgba(255,255,255,0.2)',
-                                        borderRadius: '20px',
+                                        borderRadius: 'var(--radius-pill)',
                                         position: 'relative',
                                         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
                                     }}>
@@ -389,13 +389,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             left: isSplit ? '22px' : '2px',
                                             width: '16px',
                                             height: '16px',
-                                            background: '#fff',
+                                            background: 'var(--color-surface)',
                                             borderRadius: '50%',
                                             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                                             boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
                                         }} />
                                     </div>
-                                    <span style={{ fontSize: '0.9rem', fontWeight: '500', color: isSplit ? '#fff' : 'var(--color-text-muted)' }}>
+                                    <span style={{ fontSize: 'var(--text-md)', fontWeight: '500', color: isSplit ? 'var(--color-text-inverse)' : 'var(--color-text-muted)' }}>
                                         Разделить на несколько категорий
                                     </span>
                                 </div>
@@ -405,7 +405,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 <>
                                     {/* Account Selector */}
                                     <div>
-                                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
+                                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>
                                             {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
                                         </label>
                                         <div style={{ 
@@ -423,10 +423,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                         flex: accounts.length > 3 ? '0 0 auto' : 1,
                                                         minWidth: accounts.length > 3 ? '120px' : 'auto',
                                                         padding: '12px',
-                                                        borderRadius: '12px',
+                                                        borderRadius: 'var(--radius-md)',
                                                         border: '1px solid',
-                                                        borderColor: formData.account === acc._id ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
-                                                        background: formData.account === acc._id ? 'rgba(37, 99, 235, 0.05)' : '#fff',
+                                                        borderColor: formData.account === acc._id ? 'var(--color-primary)' : 'var(--color-border)',
+                                                        background: formData.account === acc._id ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                                                         color: formData.account === acc._id ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                                         fontWeight: '600',
                                                         transition: 'all 0.2s',
@@ -443,7 +443,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
                                     {/* Category Selection */}
                                     <div>
-                                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Категория</label>
+                                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Категория</label>
                                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                             {visibleCategories.map(cat => (
                                                 <button
@@ -452,12 +452,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     onClick={() => setFormData({ ...formData, category: cat.name })}
                                                     style={{
                                                         padding: '8px 16px',
-                                                        borderRadius: '20px',
+                                                        borderRadius: 'var(--radius-pill)',
                                                         border: '1px solid',
-                                                        borderColor: formData.category === cat.name ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
-                                                        background: formData.category === cat.name ? 'rgba(37, 99, 235, 0.05)' : '#fff',
+                                                        borderColor: formData.category === cat.name ? 'var(--color-primary)' : 'var(--color-border)',
+                                                        background: formData.category === cat.name ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                                                         color: formData.category === cat.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                                                        fontSize: '0.875rem',
+                                                        fontSize: 'var(--text-base)',
                                                         fontWeight: formData.category === cat.name ? '600' : 'normal',
                                                         transition: 'all 0.2s'
                                                     }}
@@ -473,11 +473,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     aria-expanded={showAllCategories}
                                                     style={{
                                                         padding: '8px 16px',
-                                                        borderRadius: '20px',
-                                                        border: '1px dashed rgba(0,0,0,0.15)',
+                                                        borderRadius: 'var(--radius-pill)',
+                                                        border: '1px dashed var(--color-border-strong)',
                                                         background: 'transparent',
                                                         color: 'var(--color-primary)',
-                                                        fontSize: '0.875rem',
+                                                        fontSize: 'var(--text-base)',
                                                         fontWeight: '600',
                                                         cursor: 'pointer',
                                                         transition: 'all 0.2s'
@@ -498,23 +498,23 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 alignItems: 'center',
                                                 justifyContent: 'space-between',
                                                 padding: '10px 14px',
-                                                borderRadius: '12px',
+                                                borderRadius: 'var(--radius-md)',
                                                 border: '1px solid',
-                                                borderColor: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.3)' : 'rgba(0,0,0,0.08)',
-                                                background: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.03)' : '#fff',
+                                                borderColor: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.3)' : 'var(--color-border)',
+                                                background: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.03)' : 'var(--color-surface)',
                                                 cursor: 'pointer',
                                                 transition: 'all 0.2s',
                                                 userSelect: 'none'
                                             }}
                                         >
-                                            <span style={{ fontSize: '0.85rem', color: formData.excludeFromStats ? '#ef4444' : 'var(--color-text-muted)' }}>
+                                            <span style={{ fontSize: 'var(--text-base)', color: formData.excludeFromStats ? 'var(--color-negative)' : 'var(--color-text-muted)' }}>
                                                 Не считать в статистике
                                             </span>
                                             <div style={{
                                                 width: '40px',
                                                 height: '22px',
-                                                borderRadius: '11px',
-                                                background: formData.excludeFromStats ? '#ef4444' : 'rgba(0,0,0,0.15)',
+                                                borderRadius: 'var(--radius-pill)',
+                                                background: formData.excludeFromStats ? 'var(--color-negative)' : 'var(--color-control-off)',
                                                 position: 'relative',
                                                 transition: 'background 0.2s'
                                             }}>
@@ -522,7 +522,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     width: '18px',
                                                     height: '18px',
                                                     borderRadius: '50%',
-                                                    background: '#fff',
+                                                    background: 'var(--color-surface)',
                                                     position: 'absolute',
                                                     top: '2px',
                                                     left: formData.excludeFromStats ? '20px' : '2px',
@@ -546,10 +546,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 style={{
                                                     flex: 1,
                                                     padding: '8px 12px',
-                                                    borderRadius: '20px',
+                                                    borderRadius: 'var(--radius-pill)',
                                                     border: '1px solid rgba(37, 99, 235, 0.3)',
-                                                    background: '#fff',
-                                                    fontSize: '0.875rem',
+                                                    background: 'var(--color-surface)',
+                                                    fontSize: 'var(--text-base)',
                                                     outline: 'none',
                                                     color: 'var(--color-text-main)',
                                                     boxSizing: 'border-box'
@@ -561,11 +561,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 disabled={!newCategoryName.trim()}
                                                 style={{
                                                     padding: '8px 14px',
-                                                    borderRadius: '20px',
+                                                    borderRadius: 'var(--radius-pill)',
                                                     border: 'none',
-                                                    background: newCategoryName.trim() ? 'var(--color-primary)' : 'rgba(0,0,0,0.05)',
-                                                    color: newCategoryName.trim() ? '#fff' : 'var(--color-text-muted)',
-                                                    fontSize: '0.875rem',
+                                                    background: newCategoryName.trim() ? 'var(--color-primary)' : 'var(--color-surface-inset)',
+                                                    color: newCategoryName.trim() ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
+                                                    fontSize: 'var(--text-base)',
                                                     fontWeight: '600',
                                                     cursor: newCategoryName.trim() ? 'pointer' : 'default'
                                                 }}
@@ -575,11 +575,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 onClick={() => { setIsAddingCategory(false); setNewCategoryName(''); }}
                                                 style={{
                                                     padding: '8px 14px',
-                                                    borderRadius: '20px',
-                                                    border: '1px solid rgba(0,0,0,0.08)',
-                                                    background: '#fff',
+                                                    borderRadius: 'var(--radius-pill)',
+                                                    border: '1px solid var(--color-border)',
+                                                    background: 'var(--color-surface)',
                                                     color: 'var(--color-text-muted)',
-                                                    fontSize: '0.875rem',
+                                                    fontSize: 'var(--text-base)',
                                                     cursor: 'pointer'
                                                 }}
                                             >×</button>
@@ -590,11 +590,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             onClick={() => setIsAddingCategory(true)}
                                             style={{
                                                 padding: '8px 16px',
-                                                borderRadius: '20px',
+                                                borderRadius: 'var(--radius-pill)',
                                                 border: '1px dashed rgba(37, 99, 235, 0.3)',
                                                 background: 'transparent',
                                                 color: 'var(--color-primary)',
-                                                fontSize: '0.875rem',
+                                                fontSize: 'var(--text-base)',
                                                 fontWeight: '500',
                                                 cursor: 'pointer',
                                                 transition: 'all 0.2s'
@@ -606,20 +606,20 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 </>
                             ) : (
                                 /* Split UI */
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'rgba(0,0,0,0.02)', padding: '16px', borderRadius: '16px', border: '1px solid rgba(0,0,0,0.05)' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'var(--color-surface-muted)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-md)' }}>
                                         <span>Осталось распределить:</span>
-                                        <span style={{ color: remainingAmount === 0 ? '#4ade80' : ((remainingAmount < 0) ? '#ef4444' : '#fbbf24'), fontWeight: 'bold' }}>
+                                        <span style={{ color: remainingAmount === 0 ? '#4ade80' : ((remainingAmount < 0) ? 'var(--color-negative)' : 'var(--color-warning)'), fontWeight: 'bold' }}>
                                             €{remainingAmount.toFixed(2)}
                                         </span>
                                     </div>
 
                                     {splits.map((split, index) => (
-                                        <div key={split.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', borderBottom: '1px solid rgba(0,0,0,0.05)' }}>
+                                        <div key={split.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Категория {index + 1}</span>
+                                                <span style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>Категория {index + 1}</span>
                                                 {splits.length > 2 && (
-                                                    <button type="button" onClick={() => removeSplit(split.id)} style={{ color: '#ef4444', background: 'transparent', fontSize: '1.1rem' }}>×</button>
+                                                    <button type="button" onClick={() => removeSplit(split.id)} style={{ color: 'var(--color-negative)', background: 'transparent', fontSize: 'var(--text-2xl)' }}>×</button>
                                                 )}
                                             </div>
 
@@ -644,13 +644,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                             onClick={() => updateSplit(split.id, 'category', cat.name)}
                                                             style={{
                                                                 padding: '6px 12px',
-                                                                borderRadius: '16px',
+                                                                borderRadius: 'var(--radius-lg)',
                                                                 whiteSpace: 'nowrap',
                                                                 border: '1px solid',
-                                                                borderColor: split.category === cat.name ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
-                                                                background: split.category === cat.name ? 'rgba(37, 99, 235, 0.05)' : '#fff',
+                                                                borderColor: split.category === cat.name ? 'var(--color-primary)' : 'var(--color-border)',
+                                                                background: split.category === cat.name ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                                                                 color: split.category === cat.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                                                                fontSize: '0.8rem',
+                                                                fontSize: 'var(--text-sm)',
                                                                 fontWeight: split.category === cat.name ? '600' : 'normal'
                                                             }}
                                                         >
@@ -666,7 +666,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     placeholder="Сумма"
                                                     value={split.amount}
                                                     onChange={e => updateSplit(split.id, 'amount', e.target.value)}
-                                                    style={{ flex: 1, background: '#fff', border: '1px solid rgba(0,0,0,0.08)', padding: '10px', borderRadius: '8px', color: 'var(--color-text-main)', boxSizing: 'border-box' }}
+                                                    style={{ flex: 1, background: 'var(--color-surface)', border: '1px solid var(--color-border)', padding: '10px', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-main)', boxSizing: 'border-box' }}
                                                 />
                                             </div>
                                         </div>
@@ -675,7 +675,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     <button
                                         type="button"
                                         onClick={addSplit}
-                                        style={{ width: '100%', padding: '10px', borderRadius: '12px', background: '#fff', color: 'var(--color-text-muted)', border: '1px dashed rgba(0,0,0,0.2)', fontWeight: '500' }}
+                                        style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px dashed var(--color-border-strong)', fontWeight: '500' }}
                                     >
                                         + Добавить категорию
                                     </button>
@@ -695,13 +695,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{
                                 position: 'relative',
-                                background: 'rgba(0,0,0,0.02)',
-                                border: '1px solid rgba(0,0,0,0.08)',
-                                borderRadius: '16px'
+                                background: 'var(--color-surface-muted)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-lg)'
                             }}>
                                 {[
-                                    { side: 'account', label: 'Откуда', value: formData.account, accent: '#ef4444', badge: '↑' },
-                                    { side: 'toAccount', label: 'Куда', value: formData.toAccount, accent: '#10b981', badge: '↓' }
+                                    { side: 'account', label: 'Откуда', value: formData.account, accent: 'var(--color-negative)', badge: '↑' },
+                                    { side: 'toAccount', label: 'Куда', value: formData.toAccount, accent: 'var(--color-positive)', badge: '↓' }
                                 ].map((row, index) => (
                                     <div
                                         key={row.side}
@@ -713,7 +713,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             // Room for the swap button so a long
                                             // account name never runs under it.
                                             paddingRight: '62px',
-                                            borderTop: index === 0 ? 'none' : '1px solid rgba(0,0,0,0.08)'
+                                            borderTop: index === 0 ? 'none' : '1px solid var(--color-border)'
                                         }}
                                     >
                                         <div style={{
@@ -727,7 +727,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             alignItems: 'center',
                                             justifyContent: 'center',
                                             fontWeight: '700',
-                                            fontSize: '1rem'
+                                            fontSize: 'var(--text-xl)'
                                         }}>
                                             {row.badge}
                                         </div>
@@ -737,7 +737,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 style={{
                                                     display: 'block',
                                                     color: 'var(--color-text-muted)',
-                                                    fontSize: '0.7rem',
+                                                    fontSize: 'var(--text-2xs)',
                                                     fontWeight: '600',
                                                     letterSpacing: '0.6px',
                                                     textTransform: 'uppercase',
@@ -757,7 +757,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     padding: 0,
                                                     color: 'var(--color-text-main)',
                                                     fontFamily: 'inherit',
-                                                    fontSize: '1rem',
+                                                    fontSize: 'var(--text-xl)',
                                                     fontWeight: '700',
                                                     cursor: 'pointer',
                                                     outline: 'none'
@@ -784,10 +784,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         width: '38px',
                                         height: '38px',
                                         borderRadius: '50%',
-                                        background: '#fff',
-                                        border: '1px solid rgba(0,0,0,0.1)',
+                                        background: 'var(--color-surface)',
+                                        border: '1px solid var(--color-border)',
                                         color: 'var(--color-primary)',
-                                        fontSize: '1.1rem',
+                                        fontSize: 'var(--text-2xl)',
                                         lineHeight: 1,
                                         cursor: 'pointer',
                                         boxShadow: '0 1px 4px rgba(0,0,0,0.08)'
@@ -796,7 +796,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     ⇅
                                 </button>
                             </div>
-                            <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 }}>
+                            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 }}>
                                 Общий баланс не изменится
                             </p>
                         </div>
@@ -805,7 +805,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     {/* Description & Account for split (if split, account is shared) */}
                     {isSplit && (
                         <div>
-                            <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>
+                            <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>
                                 Списать с
                             </label>
                              <div style={{ 
@@ -823,10 +823,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                              flex: accounts.length > 3 ? '0 0 auto' : 1,
                                              minWidth: accounts.length > 3 ? '120px' : 'auto',
                                              padding: '12px',
-                                             borderRadius: '12px',
+                                             borderRadius: 'var(--radius-md)',
                                              border: '1px solid',
-                                             borderColor: formData.account === acc._id ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
-                                             background: formData.account === acc._id ? 'rgba(37, 99, 235, 0.05)' : '#fff',
+                                             borderColor: formData.account === acc._id ? 'var(--color-primary)' : 'var(--color-border)',
+                                             background: formData.account === acc._id ? 'var(--color-primary-soft)' : 'var(--color-surface)',
                                              color: formData.account === acc._id ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                              fontWeight: '600',
                                              transition: 'all 0.2s',
@@ -844,7 +844,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
                     {/* Date Input */}
                     <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Дата</label>
+                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Дата</label>
                         <input
                             type="date"
                             value={formData.date}
@@ -855,12 +855,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 width: '100%',
                                 display: 'block',
                                 margin: 0,
-                                background: 'rgba(0,0,0,0.03)',
-                                border: '1px solid rgba(0,0,0,0.08)',
-                                borderRadius: '16px',
+                                background: 'var(--color-surface-sunken)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-lg)',
                                 padding: '16px',
                                 color: 'var(--color-text-main)',
-                                fontSize: '1.25rem',
+                                fontSize: 'var(--text-3xl)',
                                 fontWeight: '700',
                                 outline: 'none',
                                 fontFamily: 'inherit',
@@ -874,7 +874,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
                     {/* Description */}
                     <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: '0.875rem' }}>Описание (опц.)</label>
+                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Описание (опц.)</label>
                         <input
                             type="text"
                             placeholder="Комментарий..."
@@ -882,12 +882,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
                             style={{
                                 width: '100%',
-                                background: 'rgba(0,0,0,0.03)',
-                                border: '1px solid rgba(0,0,0,0.08)',
-                                borderRadius: '16px',
+                                background: 'var(--color-surface-sunken)',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 'var(--radius-lg)',
                                 padding: '16px',
                                 color: 'var(--color-text-main)',
-                                fontSize: '1.25rem',
+                                fontSize: 'var(--text-3xl)',
                                 fontWeight: '700',
                                 outline: 'none',
                                 boxSizing: 'border-box'
@@ -917,11 +917,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             flex: '0 0 auto',
                                             maxWidth: '100%',
                                             padding: '6px 12px',
-                                            borderRadius: '16px',
-                                            border: '1px solid rgba(0,0,0,0.08)',
-                                            background: '#fff',
+                                            borderRadius: 'var(--radius-lg)',
+                                            border: '1px solid var(--color-border)',
+                                            background: 'var(--color-surface)',
                                             color: 'var(--color-text-muted)',
-                                            fontSize: '0.8rem',
+                                            fontSize: 'var(--text-sm)',
                                             whiteSpace: 'nowrap',
                                             overflow: 'hidden',
                                             textOverflow: 'ellipsis',
@@ -951,12 +951,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 }}
                                 style={{
                                     padding: '16px',
-                                    borderRadius: '12px',
-                                    background: '#fff',
-                                    color: '#ef4444',
+                                    borderRadius: 'var(--radius-md)',
+                                    background: 'var(--color-surface)',
+                                    color: 'var(--color-negative)',
                                     fontWeight: '700',
                                     border: '1px solid rgba(239, 68, 68, 0.2)',
-                                    fontSize: '1.2rem',
+                                    fontSize: 'var(--text-3xl)',
                                     lineHeight: 1,
                                     boxShadow: '0 2px 4px rgba(239, 68, 68, 0.05)'
                                 }}
@@ -971,7 +971,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             style={{
                                 flex: 1,
                                 padding: '16px',
-                                fontSize: '1.1rem',
+                                fontSize: 'var(--text-2xl)',
                                 opacity: isSaveDisabled ? 0.5 : 1,
                                 cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
                             }}

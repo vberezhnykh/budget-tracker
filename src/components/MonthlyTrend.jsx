@@ -20,16 +20,16 @@ export default function MonthlyTrend({ series, selectedMonth, onSelectMonth }) {
     return (
         <div className="glass-panel" style={{ padding: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                <h3 style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                     Динамика по месяцам
                 </h3>
-                <div style={{ display: 'flex', gap: '10px', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                <div style={{ display: 'flex', gap: '10px', fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#f43f5e', display: 'inline-block' }} />
+                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'var(--color-expense)', display: 'inline-block' }} />
                         Расход
                     </span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: '#10b981', display: 'inline-block' }} />
+                        <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'var(--color-positive)', display: 'inline-block' }} />
                         Доход
                     </span>
                 </div>
@@ -58,16 +58,16 @@ export default function MonthlyTrend({ series, selectedMonth, onSelectMonth }) {
                                 alignItems: 'center',
                                 background: isSelected ? 'rgba(37, 99, 235, 0.08)' : 'transparent',
                                 border: 'none',
-                                borderRadius: '8px',
+                                borderRadius: 'var(--radius-sm)',
                                 padding: '4px 2px 6px',
                                 cursor: 'pointer'
                             }}
                         >
                             <div style={{ display: 'flex', alignItems: 'flex-end', gap: '3px', height: `${CHART_HEIGHT}px` }}>
-                                <div style={{ width: '6px', height: `${expenseHeight}px`, background: '#f43f5e', borderRadius: '2px 2px 0 0', transition: 'height 0.3s ease' }} />
-                                <div style={{ width: '6px', height: `${incomeHeight}px`, background: '#10b981', borderRadius: '2px 2px 0 0', transition: 'height 0.3s ease' }} />
+                                <div style={{ width: '6px', height: `${expenseHeight}px`, background: 'var(--color-expense)', borderRadius: '2px 2px 0 0', transition: 'height 0.3s ease' }} />
+                                <div style={{ width: '6px', height: `${incomeHeight}px`, background: 'var(--color-positive)', borderRadius: '2px 2px 0 0', transition: 'height 0.3s ease' }} />
                             </div>
-                            <div style={{ fontSize: '0.7rem', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: isSelected ? '700' : '500', marginTop: '6px' }}>
+                            <div style={{ fontSize: 'var(--text-2xs)', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: isSelected ? '700' : '500', marginTop: '6px' }}>
                                 {s.label}
                             </div>
                             {/* Reserved for every column once any of them

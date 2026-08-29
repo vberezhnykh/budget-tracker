@@ -83,9 +83,13 @@ describe('AddTransactionForm Component', () => {
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
         fireEvent.click(screen.getByText('Продукты'));
 
-        // Neither account button is preselected...
-        expect(screen.getByText('💳 Карта')).toHaveStyle({ borderColor: 'rgba(0,0,0,0.08)' });
-        expect(screen.getByText('💵 Наличные')).toHaveStyle({ borderColor: 'rgba(0,0,0,0.08)' });
+        // Neither account button is preselected - обе рамки нейтральные,
+        // а не фирменные. Сверяемся с токеном, а не с самим цветом: значение
+        // живёт в src/index.css, и тест не должен ломаться от смены палитры.
+        // (toHaveStyle тут не годится: он сверяет вычисленный стиль, а
+        // var() в jsdom никто не раскрывает - смотрим на сам инлайн-стиль.)
+        expect(screen.getByText('💳 Карта').style.borderColor).toBe('var(--color-border)');
+        expect(screen.getByText('💵 Наличные').style.borderColor).toBe('var(--color-border)');
         // ...and saving is blocked until one is picked.
         expect(screen.getByText('Сохранить')).toBeDisabled();
     });

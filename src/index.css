@@ -2,31 +2,98 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
 
 :root {
+  /* =====================================================================
+     Дизайн-токены. Единственное место, где живут «сырые» значения цвета,
+     кегля и радиуса: в компонентах их быть не должно - там только var().
+     Токен называется по роли («что это в интерфейсе»), а не по виду
+     («какой это цвет»), поэтому одно и то же значение может стоять за
+     двумя именами - см. --color-border-strong и --color-control-off.
+     ===================================================================== */
+
   --font-main: 'Inter', sans-serif;
   --font-heading: 'Outfit', sans-serif;
 
+  /* ---- Кегли ----------------------------------------------------------
+     Шкала собрана из значений, уже сложившихся в интерфейсе; близкие
+     дубли (0.875 / 1.05 / 1.2rem) сведены к соседям - разница была
+     меньше пикселя. Крупные акцентные числа (сумма на слайде счёта,
+     цифра в кольце лимита) в шкалу не входят: они задаются точечно и
+     существуют в одном экземпляре. */
+  --text-2xs: 0.7rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8rem;
+  --text-base: 0.85rem;
+  --text-md: 0.9rem;
+  --text-lg: 0.95rem;
+  --text-xl: 1rem;
+  --text-2xl: 1.1rem;
+  --text-3xl: 1.25rem;
+
+  /* ---- Поверхности ---- */
   --color-bg: #f0f9ff;
   /* Sky 50 */
   --color-surface: #ffffff;
   --color-surface-glass: rgba(255, 255, 255, 0.82);
+  /* Подложки внутри карточек: muted - самая светлая (строка списка),
+     sunken - заметнее (блок статистики), inset - фон кнопки-иконки. */
+  --color-surface-muted: rgba(0, 0, 0, 0.02);
+  --color-surface-sunken: rgba(0, 0, 0, 0.03);
+  --color-surface-inset: rgba(0, 0, 0, 0.05);
 
+  /* ---- Границы ---- */
+  --color-border-subtle: rgba(0, 0, 0, 0.05);
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-strong: rgba(0, 0, 0, 0.15);
+  /* Тот же цвет, что и border-strong, но другая роль: выключенное
+     состояние контрола - неактивная точка карусели, дорожка тумблера,
+     полоска-ручка шторки. Разъезжаются они независимо. */
+  --color-control-off: rgba(0, 0, 0, 0.15);
+
+  /* ---- Фирменный ---- */
   --color-primary: #2563eb;
   /* Blue 600 */
+  --color-primary-soft: rgba(37, 99, 235, 0.05);
   --color-primary-glow: rgba(37, 99, 235, 0.2);
   --color-primary-gradient: linear-gradient(135deg, #2563eb, #3b82f6);
 
   --color-secondary: #ec4899;
   /* Pink 500 */
 
+  /* ---- Смысловые ------------------------------------------------------
+     positive - доход и «стало лучше»; expense - расход как категория
+     операции (роза, не красный); negative - число ушло в минус, лимит
+     превышен; danger - деструктивное действие (удалить, выйти).
+     negative и danger сегодня одного цвета, но это разные роли. */
+  --color-positive: #10b981;
+  --color-positive-strong: #059669;
+  --color-positive-gradient: linear-gradient(135deg, #10b981, #059669);
+
+  --color-expense: #f43f5e;
+  --color-expense-strong: #e11d48;
+  --color-expense-gradient: linear-gradient(135deg, #f43f5e, #e11d48);
+
+  --color-negative: #ef4444;
+  --color-danger: var(--color-negative);
+  --color-danger-soft: rgba(239, 68, 68, 0.08);
+
+  --color-success: #22c55e;
+  --color-warning: #fbbf24;
+
+  /* ---- Текст ---- */
   --color-text-main: #1e293b;
   /* Slate 800 */
   --color-text-muted: #64748b;
   /* Slate 500 */
+  --color-text-inverse: #ffffff;
 
+  /* ---- Радиусы ---- */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;
+  /* Скругление «во всю высоту»: чипы, дорожки тумблеров. Заведомо
+     больше половины высоты, поэтому браузер сам ограничит его. */
+  --radius-pill: 999px;
 
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
@@ -77,7 +144,7 @@ button {
   background: var(--color-surface-glass);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
 }
@@ -98,38 +165,8 @@ button {
   filter: brightness(1.1);
 }
 
-.card {
-  padding: 24px;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-  border-radius: var(--radius-lg);
-  transition: transform 0.2s ease, border-color 0.2s ease;
-}
-
-.card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(37, 99, 235, 0.2);
-}
-
 .layout-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
-}
-
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.animate-fade-in {
-  animation: fadeIn 0.6s ease-out forwards;
 }

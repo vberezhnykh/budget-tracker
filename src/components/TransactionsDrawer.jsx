@@ -218,7 +218,7 @@ export default function TransactionsDrawer({
           bottom: 0,
           height: '88vh',
           zIndex: 900,
-          background: '#fff',
+          background: 'var(--color-surface)',
           borderTopLeftRadius: '16px',
           borderTopRightRadius: '16px',
           boxShadow: '0 -10px 15px -3px rgba(0, 0, 0, 0.1), 0 -4px 6px -4px rgba(0, 0, 0, 0.1)',
@@ -261,10 +261,10 @@ export default function TransactionsDrawer({
               width: '40px',
               height: '4px',
               borderRadius: '2px',
-              background: 'rgba(0,0,0,0.15)',
+              background: 'var(--color-control-off)',
             }}
           />
-          <span style={{ fontSize: '0.85rem', fontWeight: '600', color: 'var(--color-text-muted)' }}>
+          <span style={{ fontSize: 'var(--text-base)', fontWeight: '600', color: 'var(--color-text-muted)' }}>
             {title}
           </span>
           {/* Purely visual close/open affordance - the handle's role="button",
@@ -305,7 +305,7 @@ export default function TransactionsDrawer({
             <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
-                <button onClick={exportToCSV} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: '8px', color: 'var(--color-text-muted)', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <button onClick={exportToCSV} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '5px' }}>
                   <span>💾</span> Экспорт
                 </button>
               </div>
@@ -320,11 +320,11 @@ export default function TransactionsDrawer({
                   style={{
                     width: '100%',
                     padding: '12px 16px 12px 40px',
-                    background: '#fff',
-                    border: '1px solid rgba(0,0,0,0.08)',
-                    borderRadius: '12px',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-md)',
                     color: 'var(--color-text-main)',
-                    fontSize: '0.9rem',
+                    fontSize: 'var(--text-md)',
                     boxSizing: 'border-box'
                   }}
                 />
@@ -332,7 +332,7 @@ export default function TransactionsDrawer({
                 {searchQuery && (
                   <button
                     onClick={() => setSearchQuery('')}
-                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}
+                    style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 'var(--text-3xl)', cursor: 'pointer' }}
                   >
                     ×
                   </button>
@@ -351,11 +351,11 @@ export default function TransactionsDrawer({
                     style={{
                       flexShrink: 0,
                       padding: '6px 12px',
-                      borderRadius: '20px',
-                      background: selectedCategory === cat.name ? 'var(--color-primary)' : '#fff',
-                      border: '1px solid ' + (selectedCategory === cat.name ? 'var(--color-primary)' : 'rgba(0,0,0,0.1)'),
-                      color: selectedCategory === cat.name ? '#fff' : 'var(--color-text-muted)',
-                      fontSize: '0.75rem',
+                      borderRadius: 'var(--radius-pill)',
+                      background: selectedCategory === cat.name ? 'var(--color-primary)' : 'var(--color-surface)',
+                      border: '1px solid ' + (selectedCategory === cat.name ? 'var(--color-primary)' : 'var(--color-border)'),
+                      color: selectedCategory === cat.name ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
+                      fontSize: 'var(--text-xs)',
                       fontWeight: '600',
                       cursor: 'pointer',
                       transition: 'all 0.2s ease',
@@ -369,33 +369,33 @@ export default function TransactionsDrawer({
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {selectedAccount && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
                       Счет: <strong>{getAccountFilterLabel(selectedAccount)}</strong>
                     </span>
-                    <button onClick={() => setSelectedAccount(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                    <button onClick={() => setSelectedAccount(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
                       Сбросить ×
                     </button>
                   </div>
                 )}
 
                 {selectedType && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid', borderColor: selectedType === 'income' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
-                    <span style={{ fontSize: '0.8rem', color: selectedType === 'income' ? '#10b981' : '#ef4444' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid', borderColor: selectedType === 'income' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
+                    <span style={{ fontSize: 'var(--text-sm)', color: selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-negative)' }}>
                       Тип: <strong>{selectedType === 'income' ? 'Доходы' : 'Расходы'}</strong>
                     </span>
-                    <button onClick={() => setSelectedType(null)} style={{ background: 'none', border: 'none', color: selectedType === 'income' ? '#10b981' : '#ef4444', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                    <button onClick={() => setSelectedType(null)} style={{ background: 'none', border: 'none', color: selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-negative)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
                       Сбросить ×
                     </button>
                   </div>
                 )}
 
                 {selectedCategory && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(37, 99, 235, 0.05)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--color-primary)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
                       Категория: <strong>{selectedCategory}</strong>
                     </span>
-                    <button onClick={() => setSelectedCategory(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: 'bold' }}>
+                    <button onClick={() => setSelectedCategory(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
                       Сбросить ×
                     </button>
                   </div>
@@ -410,10 +410,10 @@ export default function TransactionsDrawer({
                 ) : (
                   Object.keys(searchResults.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
                     <div key={date}>
-                      <div style={{ padding: '10px 24px', background: 'rgba(0,0,0,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ padding: '10px 24px', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{formatDate(date)}</span>
                         {searchResults.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: searchResults.transactions[date].dailySum > 0 ? '#10b981' : 'var(--color-text-muted)' }}>
+                          <span style={{ fontWeight: '600', color: searchResults.transactions[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
                             {searchResults.transactions[date].dailySum > 0 ? '+' : ''}{searchResults.transactions[date].dailySum.toFixed(2)}€
                           </span>
                         )}
@@ -429,7 +429,7 @@ export default function TransactionsDrawer({
                         return (
                         <div
                           key={item.id}
-                          style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
+                          style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}>
                           {isEditable && (
                             // Full-row "stretched" button: a plain <div role="button">
                             // wrapping the whole row (the previous shape) would make
@@ -447,14 +447,14 @@ export default function TransactionsDrawer({
                             />
                           )}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                            <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
                               {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                             </div>
                             <div>
-                              <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
-                                {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
+                              <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
+                                {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: 'var(--text-2xs)', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
                               </div>
-                              <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                                 {getRowAccountDisplay(item)}
                                 {item.category && (
                                   <>
@@ -473,7 +473,7 @@ export default function TransactionsDrawer({
                               </div>
                             </div>
                           </div>
-                          <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? '#059669' : 'var(--color-text-main)') }}>
+                          <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? 'var(--color-positive-strong)' : 'var(--color-text-main)') }}>
                             {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                           </div>
                         </div>
@@ -489,10 +489,10 @@ export default function TransactionsDrawer({
                 ) : (
                   Object.keys(periodData.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
                     <div key={date}>
-                      <div style={{ padding: '10px 24px', background: 'rgba(0,0,0,0.02)', fontSize: '0.8rem', color: 'var(--color-text-muted)', borderBottom: '1px solid rgba(0,0,0,0.03)', display: 'flex', justifyContent: 'space-between' }}>
+                      <div style={{ padding: '10px 24px', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
                         <span>{formatDate(date)}</span>
                         {periodData.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: periodData.transactions[date].dailySum > 0 ? '#10b981' : 'var(--color-text-muted)' }}>
+                          <span style={{ fontWeight: '600', color: periodData.transactions[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
                             {periodData.transactions[date].dailySum > 0 ? '+' : ''}{periodData.transactions[date].dailySum.toFixed(2)}€
                           </span>
                         )}
@@ -500,15 +500,15 @@ export default function TransactionsDrawer({
                       {periodData.transactions[date].items.map(item => {
                         if (item.type === 'split_group') {
                           return (
-                            <div key={item.id} style={{ borderBottom: '1px solid rgba(0,0,0,0.05)', background: '#fff' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'rgba(0,0,0,0.01)' }}>
+                            <div key={item.id} style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'var(--color-surface-muted)' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                  <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: 'rgba(37, 99, 235, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                                  <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: 'rgba(37, 99, 235, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
                                     🗂️
                                   </div>
                                   <div>
-                                    <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
-                                    <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                    <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
+                                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                                       {getAccountDisplay(item.account)} • {item.items.length} катег.
                                     </div>
                                   </div>
@@ -527,7 +527,7 @@ export default function TransactionsDrawer({
                                   // category control) applies here.
                                   <div
                                     key={subItem.id}
-                                    style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: '0.85rem', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
+                                    style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: 'var(--text-base)', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
                                     <button
                                       type="button"
                                       aria-label={`${item.description} (Разделено): ${getTransactionAriaLabel(subItem)}`}
@@ -561,7 +561,7 @@ export default function TransactionsDrawer({
                         return (
                           <div
                             key={item.id}
-                            style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid rgba(0,0,0,0.05)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'rgba(0,0,0,0.02)' : '#fff', opacity: item.excludeFromStats ? 0.5 : 1 }}>
+                            style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}>
                             {isEditable && (
                               // Full-row "stretched" button, kept out of the category
                               // control's ancestry - see the search-results view above
@@ -574,14 +574,14 @@ export default function TransactionsDrawer({
                               />
                             )}
                             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                              <div style={{ width: '38px', height: '38px', borderRadius: '12px', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+                              <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
                                 {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
                               </div>
                               <div>
-                                <div style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--color-text-main)' }}>
-                                  {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: '0.7rem', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
+                                <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
+                                  {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: 'var(--text-2xs)', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
                                 </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                                   {getRowAccountDisplay(item)}
                                   {item.category && (
                                     <>
@@ -600,7 +600,7 @@ export default function TransactionsDrawer({
                                 </div>
                               </div>
                             </div>
-                            <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? '#059669' : 'var(--color-text-main)') }}>
+                            <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? 'var(--color-positive-strong)' : 'var(--color-text-main)') }}>
                               {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                             </div>
                           </div>

@@ -27,7 +27,7 @@ function LegendRow({ name, count, value, percent, color, comparison, isSelected,
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
                 {color && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, flexShrink: 0 }} />}
                 <span style={{
-                    fontSize: indent ? '0.75rem' : '0.8rem',
+                    fontSize: indent ? 'var(--text-xs)' : 'var(--text-sm)',
                     color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)',
                     fontWeight: isSelected ? '700' : '400',
                     overflow: 'hidden',
@@ -40,7 +40,7 @@ function LegendRow({ name, count, value, percent, color, comparison, isSelected,
                     name string) so the plain category name stays matchable
                     on its own, e.g. by accessible-name or text queries. */}
                 {count != null && (
-                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                    <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', flexShrink: 0 }}>
                         ({count})
                     </span>
                 )}
@@ -51,16 +51,16 @@ function LegendRow({ name, count, value, percent, color, comparison, isSelected,
                 )}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                <span style={{ fontSize: indent ? '0.75rem' : '0.8rem', fontWeight: '500', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)' }}>
+                <span style={{ fontSize: indent ? 'var(--text-xs)' : 'var(--text-sm)', fontWeight: '500', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)' }}>
                     €{value.toFixed(0)}
                 </span>
                 {percent !== null && (
-                    <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', width: '30px', textAlign: 'right' }}>
+                    <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', width: '30px', textAlign: 'right' }}>
                         {Math.round(percent * 100)}%
                     </span>
                 )}
                 {showDelta && (
-                    <span style={{ fontSize: '0.7rem', fontWeight: '700', color: comparison.diff > 0 ? '#ef4444' : '#10b981' }}>
+                    <span style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', color: comparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
                         {comparison.diff > 0 ? '+' : '−'}{Math.abs(comparison.percent)}%
                     </span>
                 )}
@@ -175,23 +175,23 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
                     <button
                         onClick={onToggle}
                         style={{
-                            background: 'rgba(0,0,0,0.03)',
-                            border: '1px solid rgba(0,0,0,0.08)',
-                            borderRadius: '8px',
+                            background: 'var(--color-surface-sunken)',
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 'var(--radius-sm)',
                             padding: '4px 12px',
                             color: 'var(--color-primary)',
                             cursor: 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             gap: '4px',
-                            fontSize: '0.8rem',
+                            fontSize: 'var(--text-sm)',
                             fontWeight: '600'
                         }}
                     >
                         <span>←</span> Назад
                     </button>
                 )}
-                <h3 style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                <h3 style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                     Аналитика трат
                 </h3>
             </div>
@@ -249,8 +249,8 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
                         textAlign: 'center'
                     }}>
                         <div style={{ width: '100%' }}>
-                            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>Всего</div>
-                            <div style={{ fontWeight: '700', fontSize: '1rem', color: 'var(--color-text-main)' }}>€{total.toFixed(0)}</div>
+                            <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>Всего</div>
+                            <div style={{ fontWeight: '700', fontSize: 'var(--text-xl)', color: 'var(--color-text-main)' }}>€{total.toFixed(0)}</div>
                         </div>
                     </div>
                 </div>

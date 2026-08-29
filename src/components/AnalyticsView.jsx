@@ -47,7 +47,7 @@ export default function AnalyticsView({
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div className="glass-panel" style={{ padding: '20px' }}>
-                <h3 style={{ margin: '0 0 16px', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                <h3 style={{ margin: '0 0 16px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                     Сводка
                 </h3>
                 {/* Three equal boxes at phone width leave ~100px each, so the
@@ -58,13 +58,13 @@ export default function AnalyticsView({
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
                     {[
                         { label: 'Расход', value: expenseAbs, color: 'var(--color-text-main)', sign: '' },
-                        { label: 'Доход', value: periodStats.income, color: '#10b981', sign: '' },
-                        { label: 'Сальдо', value: Math.abs(saldo), color: saldo < 0 ? '#ef4444' : '#10b981', sign: saldo < 0 ? '−' : (saldo > 0 ? '+' : '') }
+                        { label: 'Доход', value: periodStats.income, color: 'var(--color-positive)', sign: '' },
+                        { label: 'Сальдо', value: Math.abs(saldo), color: saldo < 0 ? 'var(--color-negative)' : 'var(--color-positive)', sign: saldo < 0 ? '−' : (saldo > 0 ? '+' : '') }
                     ].map(box => (
-                        <div key={box.label} style={{ flex: 1, minWidth: 0, background: 'rgba(0,0,0,0.02)', border: '1px solid rgba(0,0,0,0.05)', borderRadius: '14px', padding: '12px 10px' }}>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '2px' }}>{box.label}</div>
+                        <div key={box.label} style={{ flex: 1, minWidth: 0, background: 'var(--color-surface-muted)', border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-lg)', padding: '12px 10px' }}>
+                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>{box.label}</div>
                             <div style={{
-                                fontSize: '0.95rem',
+                                fontSize: 'var(--text-lg)',
                                 fontWeight: '700',
                                 color: box.color,
                                 whiteSpace: 'nowrap',
@@ -76,7 +76,7 @@ export default function AnalyticsView({
                         </div>
                     ))}
                 </div>
-                <div style={{ fontSize: '0.7rem', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                <div style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
                     {periodLabel}
                 </div>
             </div>
@@ -86,10 +86,10 @@ export default function AnalyticsView({
                 the month view - a year/lifetime total isn't "on pace". */}
             {pace && timeRange === 'month' && (
                 <div className="glass-panel" style={{ padding: '20px' }}>
-                    <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+                    <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                         Темп трат
                     </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', color: 'var(--color-text-main)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 'var(--text-base)', color: 'var(--color-text-main)' }}>
                         <div>В среднем €{formatEuro(pace.perDay)} в день</div>
                         <div>Прогноз до конца месяца ~€{formatEuro(pace.forecast)}</div>
                         {/* On the last day of the month there is no "per day
@@ -106,11 +106,11 @@ export default function AnalyticsView({
                             forecast warning would only muddy it by adding
                             that it "will be" exceeded. */}
                         {pace.remaining !== null && pace.remaining < 0 ? (
-                            <div style={{ color: '#ef4444', fontWeight: '600' }}>
+                            <div style={{ color: 'var(--color-negative)', fontWeight: '600' }}>
                                 Лимит €{monthlyLimit.toLocaleString('de-DE')} уже превышен на €{formatEuro(Math.abs(pace.remaining))}
                             </div>
                         ) : pace.willExceedLimit && (
-                            <div style={{ color: '#ef4444', fontWeight: '600' }}>
+                            <div style={{ color: 'var(--color-negative)', fontWeight: '600' }}>
                                 При текущем темпе лимит €{monthlyLimit.toLocaleString('de-DE')} будет превышен
                             </div>
                         )}
@@ -123,7 +123,7 @@ export default function AnalyticsView({
             {hasSpending ? (
                 <div>
                     {showCategoryComparison && comparisonLabel && (
-                        <div style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
+                        <div style={{ textAlign: 'center', fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
                             {comparisonLabel}
                         </div>
                     )}
@@ -135,7 +135,7 @@ export default function AnalyticsView({
                     />
                 </div>
             ) : (
-                <div className="glass-panel" style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+                <div className="glass-panel" style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
                     За выбранный период трат нет
                 </div>
             )}

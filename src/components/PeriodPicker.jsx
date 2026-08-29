@@ -79,20 +79,20 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
           display: 'inline-flex',
           alignItems: 'center',
           gap: '8px',
-          background: '#fff',
-          border: '1px solid rgba(0,0,0,0.08)',
-          borderRadius: '999px',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          borderRadius: 'var(--radius-pill)',
           padding: '10px 16px',
           minHeight: '40px',
           color: 'var(--color-text-main)',
-          fontSize: '0.85rem',
+          fontSize: 'var(--text-base)',
           fontWeight: '700',
           cursor: 'pointer',
           boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
         }}
       >
         {formatPeriodLabel(timeRange, selectedMonth)}
-        <span aria-hidden="true" style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>▼</span>
+        <span aria-hidden="true" style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>▼</span>
       </button>
 
       {isOpen && (
@@ -114,7 +114,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
             aria-label="Выбор периода"
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: '#fff',
+              background: 'var(--color-surface)',
               width: '100%',
               maxWidth: '520px',
               maxHeight: '80vh',
@@ -128,7 +128,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: '700' }}>Период</h3>
+              <h3 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: '700' }}>Период</h3>
               <button
                 type="button"
                 onClick={close}
@@ -147,7 +147,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '4px', background: 'rgba(0,0,0,0.04)', padding: '4px', borderRadius: '12px' }}>
+            <div style={{ display: 'flex', gap: '4px', background: 'var(--color-surface-sunken)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
               {[
                 { id: 'month', label: 'Месяц' },
                 { id: 'year', label: 'Год' },
@@ -165,12 +165,12 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
                     aria-pressed={isActive}
                     style={{
                       flex: 1,
-                      background: isActive ? '#fff' : 'transparent',
+                      background: isActive ? 'var(--color-surface)' : 'transparent',
                       border: 'none',
-                      borderRadius: '8px',
+                      borderRadius: 'var(--radius-sm)',
                       padding: '10px 8px',
                       color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                      fontSize: '0.85rem',
+                      fontSize: 'var(--text-base)',
                       fontWeight: '600',
                       cursor: 'pointer',
                       boxShadow: isActive ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
@@ -186,7 +186,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {years.map(year => (
                   <div key={year}>
-                    <div style={{ fontSize: '0.75rem', fontWeight: '700', color: 'var(--color-text-muted)', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: '700', color: 'var(--color-text-muted)', letterSpacing: '0.5px', marginBottom: '8px' }}>
                       {year}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
@@ -201,13 +201,13 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
                             aria-pressed={isActive}
                             style={{
                               border: '1px solid',
-                              borderColor: isActive ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
-                              background: isActive ? 'rgba(37, 99, 235, 0.08)' : 'rgba(0,0,0,0.02)',
+                              borderColor: isActive ? 'var(--color-primary)' : 'var(--color-border)',
+                              background: isActive ? 'rgba(37, 99, 235, 0.08)' : 'var(--color-surface-muted)',
                               color: isActive ? 'var(--color-primary)' : 'var(--color-text-main)',
-                              borderRadius: '12px',
+                              borderRadius: 'var(--radius-md)',
                               padding: '12px 4px',
                               minHeight: '44px',
-                              fontSize: '0.8rem',
+                              fontSize: 'var(--text-sm)',
                               fontWeight: isActive ? '700' : '500',
                               cursor: 'pointer',
                             }}
@@ -235,12 +235,12 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
                       style={{
                         textAlign: 'left',
                         border: '1px solid',
-                        borderColor: isActive ? 'var(--color-primary)' : 'rgba(0,0,0,0.08)',
-                        background: isActive ? 'rgba(37, 99, 235, 0.08)' : 'rgba(0,0,0,0.02)',
+                        borderColor: isActive ? 'var(--color-primary)' : 'var(--color-border)',
+                        background: isActive ? 'rgba(37, 99, 235, 0.08)' : 'var(--color-surface-muted)',
                         color: isActive ? 'var(--color-primary)' : 'var(--color-text-main)',
-                        borderRadius: '12px',
+                        borderRadius: 'var(--radius-md)',
                         padding: '14px 16px',
-                        fontSize: '0.9rem',
+                        fontSize: 'var(--text-md)',
                         fontWeight: isActive ? '700' : '500',
                         cursor: 'pointer',
                       }}

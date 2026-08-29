@@ -31,14 +31,14 @@ class ErrorBoundary extends Component {
             <h1 style={{ fontSize: '1.4rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>
               Что-то пошло не так
             </h1>
-            <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>
+            <p style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
               Приложение столкнулось с ошибкой. Попробуйте перезагрузить страницу.
             </p>
             <button
               type="button"
               className="btn-primary"
               onClick={() => window.location.reload()}
-              style={{ padding: '12px', borderRadius: '12px', fontWeight: '700', border: 'none', cursor: 'pointer' }}
+              style={{ padding: '12px', borderRadius: 'var(--radius-md)', fontWeight: '700', border: 'none', cursor: 'pointer' }}
             >
               Перезагрузить
             </button>

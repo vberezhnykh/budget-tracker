@@ -27,8 +27,8 @@ export default function BottomTabs({ active, onChange }) {
         // Opaque rather than the translucent .glass-panel used elsewhere:
         // the bar floats over the scrolling page, and page text showing
         // through it made both unreadable.
-        background: '#fff',
-        border: '1px solid rgba(0, 0, 0, 0.06)',
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border-subtle)',
         boxShadow: '0 6px 20px -6px rgba(0, 0, 0, 0.18)',
         position: 'fixed',
         bottom: `${PEEK_HEIGHT + GAP_ABOVE_DRAWER}px`,
@@ -42,7 +42,7 @@ export default function BottomTabs({ active, onChange }) {
         alignItems: 'stretch',
         gap: '4px',
         padding: '5px',
-        borderRadius: '18px',
+        borderRadius: 'var(--radius-lg)',
       }}
     >
       {TABS.map(tab => {
@@ -60,16 +60,20 @@ export default function BottomTabs({ active, onChange }) {
               justifyContent: 'center',
               gap: '8px',
               border: 'none',
-              borderRadius: '14px',
+              // На ступень меньше внешнего --radius-lg: кнопка лежит внутри
+              // контейнера с отступом 5px, и вложенный угол должен быть
+              // меньше внешнего примерно на этот отступ - иначе выглядит
+              // толще родителя.
+              borderRadius: 'var(--radius-md)',
               background: isActive ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
               color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)',
-              fontSize: '0.85rem',
+              fontSize: 'var(--text-base)',
               fontWeight: isActive ? '700' : '600',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
             }}
           >
-            <span aria-hidden="true" style={{ fontSize: '1.05rem', lineHeight: 1 }}>{tab.icon}</span>
+            <span aria-hidden="true" style={{ fontSize: 'var(--text-2xl)', lineHeight: 1 }}>{tab.icon}</span>
             {tab.label}
           </button>
         );

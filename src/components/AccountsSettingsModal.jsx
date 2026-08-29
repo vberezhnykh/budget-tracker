@@ -18,23 +18,23 @@ function AccountListItem({ account, onDelete, onEdit }) {
       alignItems: 'center',
       justifyContent: 'space-between',
       padding: '12px 16px',
-      background: 'rgba(0, 0, 0, 0.02)',
-      borderRadius: '16px',
-      border: '1px solid rgba(0, 0, 0, 0.05)'
+      background: 'var(--color-surface-muted)',
+      borderRadius: 'var(--radius-lg)',
+      border: '1px solid var(--color-border-subtle)'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
         <span
           {...attributes}
           {...listeners}
           aria-label={`Изменить порядок: ${account.name}`}
-          style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: '1.1rem', lineHeight: 1, padding: '4px 2px', flexShrink: 0 }}
+          style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: 'var(--text-2xl)', lineHeight: 1, padding: '4px 2px', flexShrink: 0 }}
         >
           ⠿
         </span>
-        <span style={{ fontSize: '1.25rem', flexShrink: 0 }}>{account.icon || (account.type === 'cash' ? '💵' : '💳')}</span>
+        <span style={{ fontSize: 'var(--text-3xl)', flexShrink: 0 }}>{account.icon || (account.type === 'cash' ? '💵' : '💳')}</span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontSize: 'var(--text-md)', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {account.type === 'cash' ? 'Наличные' : 'Карта'} {account.isDefault ? '(Стандартный)' : ''}
           </div>
         </div>
@@ -44,12 +44,12 @@ function AccountListItem({ account, onDelete, onEdit }) {
           onClick={onEdit}
           aria-label="Изменить"
           style={{
-            background: 'rgba(0, 0, 0, 0.04)',
+            background: 'var(--color-surface-sunken)',
             border: 'none',
-            borderRadius: '10px',
+            borderRadius: 'var(--radius-md)',
             color: 'var(--color-primary)',
             cursor: 'pointer',
-            fontSize: '1rem',
+            fontSize: 'var(--text-xl)',
             fontWeight: '600',
             padding: '8px',
             minWidth: '36px',
@@ -65,12 +65,12 @@ function AccountListItem({ account, onDelete, onEdit }) {
           onClick={onDelete}
           aria-label="Удалить"
           style={{
-            background: 'rgba(239, 68, 68, 0.08)',
+            background: 'var(--color-danger-soft)',
             border: 'none',
-            borderRadius: '10px',
-            color: '#ef4444',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--color-danger)',
             cursor: 'pointer',
-            fontSize: '1rem',
+            fontSize: 'var(--text-xl)',
             fontWeight: '600',
             padding: '8px',
             minWidth: '36px',
@@ -222,8 +222,8 @@ export default function AccountsSettingsModal({
     >
       <div
         style={{
-          background: '#fff',
-          borderRadius: '24px 24px 0 0',
+          background: 'var(--color-surface)',
+          borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
           width: '100%',
           maxWidth: '520px',
           maxHeight: '92vh',
@@ -238,17 +238,17 @@ export default function AccountsSettingsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '800', color: 'var(--color-text-main)', margin: 0 }}>Настройки</h2>
+          <h2 style={{ fontSize: 'var(--text-3xl)', fontWeight: '800', color: 'var(--color-text-main)', margin: 0 }}>Настройки</h2>
           <button
             onClick={handleClose}
             style={{
-              background: 'rgba(0,0,0,0.05)',
+              background: 'var(--color-surface-inset)',
               border: 'none',
               borderRadius: '50%',
               width: '32px',
               height: '32px',
               cursor: 'pointer',
-              fontSize: '1rem',
+              fontSize: 'var(--text-xl)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -261,8 +261,8 @@ export default function AccountsSettingsModal({
         </div>
 
         {/* Account Form */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'rgba(0,0,0,0.01)', padding: '16px', borderRadius: '16px', border: '1px dashed rgba(0,0,0,0.1)' }}>
-          <h3 style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--color-surface-muted)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--color-border)' }}>
+          <h3 style={{ fontSize: 'var(--text-md)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>
             {editingAccountId ? 'Редактировать счёт' : 'Добавить новый счёт'}
           </h3>
 
@@ -276,9 +276,9 @@ export default function AccountsSettingsModal({
               style={{
                 flex: 1,
                 padding: '10px 14px',
-                borderRadius: '12px',
-                border: '1px solid rgba(0,0,0,0.15)',
-                fontSize: '0.85rem',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border-strong)',
+                fontSize: 'var(--text-base)',
                 outline: 'none'
               }}
             />
@@ -292,9 +292,9 @@ export default function AccountsSettingsModal({
                 width: '60px',
                 padding: '10px 0',
                 textAlign: 'center',
-                borderRadius: '12px',
-                border: '1px solid rgba(0,0,0,0.15)',
-                fontSize: '1rem',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border-strong)',
+                fontSize: 'var(--text-xl)',
                 outline: 'none'
               }}
               title="Эмодзи для счёта"
@@ -302,7 +302,7 @@ export default function AccountsSettingsModal({
           </div>
 
           {!editingAccountId && (
-            <div style={{ display: 'flex', gap: '16px', fontSize: '0.85rem' }}>
+            <div style={{ display: 'flex', gap: '16px', fontSize: 'var(--text-base)' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                 <input
                   type="radio"
@@ -335,7 +335,7 @@ export default function AccountsSettingsModal({
           {/* Показывается и при редактировании, в отличие от типа счёта: тип
               задаётся раз и навсегда, а "заморожен ли счёт" со временем
               меняется - залог возвращают, вклад закрывают. */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--text-base)', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={formExcludeFromTotal}
@@ -351,8 +351,8 @@ export default function AccountsSettingsModal({
               style={{
                 flex: 1,
                 padding: '10px',
-                borderRadius: '12px',
-                fontSize: '0.85rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 'var(--text-base)',
                 fontWeight: '600',
                 cursor: 'pointer'
               }}
@@ -365,11 +365,11 @@ export default function AccountsSettingsModal({
                 type="button"
                 onClick={resetForm}
                 style={{
-                  background: 'rgba(0,0,0,0.05)',
+                  background: 'var(--color-surface-inset)',
                   border: 'none',
                   padding: '10px 16px',
-                  borderRadius: '12px',
-                  fontSize: '0.85rem',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 'var(--text-base)',
                   fontWeight: '600',
                   cursor: 'pointer',
                   color: 'var(--color-text-main)'
@@ -383,7 +383,7 @@ export default function AccountsSettingsModal({
 
         {/* Accounts List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Список счетов</h3>
+          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Список счетов</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
             <DndContext sensors={accountDndSensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={accounts.map(acc => acc._id)} strategy={verticalListSortingStrategy}>
@@ -411,10 +411,10 @@ export default function AccountsSettingsModal({
             here rather than as new chrome on the main screen. */}
         {/* Categories */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Категории</h3>
+          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Категории</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
             {categories.length === 0 ? (
-              <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Категорий пока нет</div>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Категорий пока нет</div>
             ) : (
               categories.map(cat => {
                 const used = categoryUsage[categoryUsageKey(cat)] || 0;
@@ -428,9 +428,9 @@ export default function AccountsSettingsModal({
                       alignItems: 'center',
                       gap: '10px',
                       padding: '8px 12px',
-                      borderRadius: '12px',
-                      border: '1px solid rgba(0,0,0,0.06)',
-                      background: '#fff',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--color-border-subtle)',
+                      background: 'var(--color-surface)',
                     }}
                   >
                     {isEditing ? (
@@ -449,16 +449,16 @@ export default function AccountsSettingsModal({
                               width: '100%',
                               boxSizing: 'border-box',
                               padding: '6px 10px',
-                              borderRadius: '10px',
-                              border: '1px solid rgba(0,0,0,0.15)',
-                              fontSize: '0.85rem',
+                              borderRadius: 'var(--radius-md)',
+                              border: '1px solid var(--color-border-strong)',
+                              fontSize: 'var(--text-base)',
                               outline: 'none',
                             }}
                           />
                           {/* Тот же подстрочник, что и в обычном виде строки:
                               переименование затрагивает все эти операции, и
                               счётчик лучше держать перед глазами. */}
-                          <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                          <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
                             {meta}
                           </div>
                         </div>
@@ -469,7 +469,7 @@ export default function AccountsSettingsModal({
                           style={{
                             background: 'rgba(37, 99, 235, 0.08)',
                             border: 'none',
-                            borderRadius: '10px',
+                            borderRadius: 'var(--radius-md)',
                             color: 'var(--color-primary)',
                             cursor: savingCategory ? 'default' : 'pointer',
                             opacity: savingCategory ? 0.6 : 1,
@@ -489,9 +489,9 @@ export default function AccountsSettingsModal({
                           onClick={cancelCategoryEdit}
                           aria-label={`Отменить переименование: ${cat.name}`}
                           style={{
-                            background: 'rgba(0,0,0,0.04)',
+                            background: 'var(--color-surface-sunken)',
                             border: 'none',
-                            borderRadius: '10px',
+                            borderRadius: 'var(--radius-md)',
                             color: 'var(--color-text-muted)',
                             cursor: 'pointer',
                             padding: '8px',
@@ -509,10 +509,10 @@ export default function AccountsSettingsModal({
                     ) : (
                       <>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ fontSize: 'var(--text-md)', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {cat.name}
                           </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                          <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>
                             {meta}
                           </div>
                         </div>
@@ -565,7 +565,7 @@ export default function AccountsSettingsModal({
 
         {/* Monthly limit */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h3 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Лимит трат в месяц</h3>
+          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Лимит трат в месяц</h3>
           <form onSubmit={handleSaveLimit} style={{ display: 'flex', gap: '10px' }}>
             <input
               type="number"
@@ -576,9 +576,9 @@ export default function AccountsSettingsModal({
               style={{
                 flex: 1,
                 padding: '10px 14px',
-                borderRadius: '12px',
-                border: '1px solid rgba(0,0,0,0.15)',
-                fontSize: '0.85rem',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--color-border-strong)',
+                fontSize: 'var(--text-base)',
                 outline: 'none'
               }}
             />
@@ -587,8 +587,8 @@ export default function AccountsSettingsModal({
               className="btn-primary"
               style={{
                 padding: '10px 16px',
-                borderRadius: '12px',
-                fontSize: '0.85rem',
+                borderRadius: 'var(--radius-md)',
+                fontSize: 'var(--text-base)',
                 fontWeight: '600',
                 cursor: 'pointer'
               }}
@@ -604,12 +604,12 @@ export default function AccountsSettingsModal({
           type="button"
           onClick={onLogout}
           style={{
-            background: 'rgba(239, 68, 68, 0.08)',
+            background: 'var(--color-danger-soft)',
             border: 'none',
-            borderRadius: '12px',
-            color: '#ef4444',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--color-danger)',
             cursor: 'pointer',
-            fontSize: '0.85rem',
+            fontSize: 'var(--text-base)',
             fontWeight: '600',
             padding: '10px'
           }}
