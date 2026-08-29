@@ -50,6 +50,30 @@ export default defineConfig([
       sourceType: 'module',
     },
   },
+  // Service worker живёт в своей области видимости: ни window, ни document
+  // там нет, зато есть self, caches и clients. Раньше это описывалось
+  // комментарием /* eslint-env serviceworker */ в самом файле, но плоский
+  // конфиг такие комментарии больше не читает.
+  {
+    files: ['public/sw.js'],
+    languageOptions: {
+      globals: {
+        ...globals.serviceworker,
+      },
+    },
+  },
+  // Тесты с докблоком @vitest-environment node внутри src/: браузерных
+  // глобалей у них нет, зато есть node-овские (fs, Buffer). Файлы
+  // перечислены поимённо, а не шаблоном: остальные сьюты в src/ идут в
+  // jsdom, и подмена окружения им бы навредила.
+  {
+    files: ['src/pwa.test.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
   // Конфиги в корне и Playwright-сьют исполняются Node, но остаются
   // ES-модулями: им нужны только node-глобали (process.env в
   // playwright.config.js), а не смена sourceType.

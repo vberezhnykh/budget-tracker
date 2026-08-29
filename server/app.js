@@ -698,8 +698,15 @@ if (process.env.NODE_ENV === 'production') {
         app.use(express.static(distPath, {
             maxAge: '1h',
             setHeaders: (res, filePath) => {
-                // Never cache index.html even if requested directly
-                if (filePath.endsWith('.html')) {
+                // Never cache index.html even if requested directly.
+                //
+                // sw.js - по той же причине, но следствия у неё другие:
+                // браузер сверяет воркер с сервером при каждом заходе, и
+                // час кеша означал бы, что после выката пользователь до часа
+                // сидит под старым воркером. Имя файла при этом не
+                // хешируется (адрес /sw.js зафиксирован в регистрации), так
+                // что отличить новую версию по адресу нельзя.
+                if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
                     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                     res.setHeader('Pragma', 'no-cache');
                     res.setHeader('Expires', '0');

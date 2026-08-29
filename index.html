@@ -5,10 +5,23 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <!-- Установка на домашний экран. Без манифеста мета-теги ниже ничего не
+         делали: mobile-web-app-capable сам по себе окно приложения не даёт.
+         theme_color в манифесте и theme-color здесь должны совпадать -
+         Android берёт цвет строки состояния из мета-тега, а не из
+         манифеста. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#2563eb" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BudgetPro" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <!-- iOS манифест для иконки не читает - только этот тег, и только PNG. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
     <title>BudgetPro</title>
   </head>
   <body>

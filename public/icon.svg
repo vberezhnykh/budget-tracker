@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="BudgetPro">
+  <!-- Тот же рисунок, что у PNG-иконок (см. scripts/generate-icons.mjs):
+       столбики диаграммы на фирменном градиенте из src/index.css.
+       Отдельным файлом, потому что фавикон в браузере отдаётся вектором, а
+       манифесту и iOS нужны растровые размеры. -->
+  <defs>
+    <linearGradient id="plate" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#4f46e5"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="113" fill="url(#plate)"/>
+  <g fill="#ffffff">
+    <path d="M112.6 399.4V301.9a31.5 31.5 0 0 1 63.1 0v97.5z"/>
+    <path d="M224.5 399.4V215.9a31.5 31.5 0 0 1 63 0v183.5z"/>
+    <path d="M336.2 399.4V144.2a31.5 31.5 0 0 1 63.1 0v255.2z"/>
+  </g>
+</svg>
