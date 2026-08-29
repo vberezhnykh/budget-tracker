@@ -42,8 +42,10 @@ export default defineConfig([
   // Тесты сервера, в отличие от самого сервера, написаны на ES-модулях:
   // их исполняет vitest, а не Node напрямую, и import из 'vitest' в них
   // обязателен. Возвращаем им sourceType: 'module' поверх блока выше.
+  // server/test/ - обвязка этих тестов, она живёт по тем же правилам,
+  // но в имени файла .test. нет (иначе vitest счёл бы её сьютом).
   {
-    files: ['server/**/*.test.js'],
+    files: ['server/**/*.test.js', 'server/test/**/*.js'],
     languageOptions: {
       sourceType: 'module',
     },

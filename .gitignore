@@ -26,6 +26,11 @@ backups
 .env.test.local
 .env.production.local
 
+# Бинарник mongod, который mongodb-memory-server качает для тестов роутов.
+# Лежит здесь, а не в node_modules/.cache: оттуда его сносит каждая
+# переустановка зависимостей, и ~780 МБ качаются заново.
+.cache
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
