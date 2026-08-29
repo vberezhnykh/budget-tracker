@@ -151,7 +151,7 @@ export default function AccountsSettingsModal({
   };
 
   // Mirrors the server's own validation (see PUT /api/settings in
-  // server/index.js): the limit must be a finite, strictly positive number.
+  // server/app.js): the limit must be a finite, strictly positive number.
   // Number.isFinite rules out NaN and +/-Infinity (e.g. a stray "1e999") in
   // one check; `<= 0` rules out zero and negatives. Without this, a bad
   // value could reach onSaveSettings and later render as NaN%/Infinity% in
@@ -315,7 +315,7 @@ export default function AccountsSettingsModal({
         </div>
 
         {/* Monthly spending limit - shared across devices via the server
-            (see GET/PUT /api/settings in server/index.js), so it's edited
+            (see GET/PUT /api/settings in server/app.js), so it's edited
             here rather than as new chrome on the main screen. */}
         {/* Categories */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

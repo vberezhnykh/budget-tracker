@@ -144,7 +144,7 @@ describe('AccountsSettingsModal', () => {
     });
 
     // Finding 4: the server rejects non-finite and non-positive limits (see
-    // PUT /api/settings in server/index.js) - the client mirrors that
+    // PUT /api/settings in server/app.js) - the client mirrors that
     // exactly so a bad value never reaches onSaveSettings, and never ends up
     // rendering as NaN%/Infinity% in App.jsx's limit progress bar.
     it('rejects a zero limit locally, without calling onSaveSettings', () => {

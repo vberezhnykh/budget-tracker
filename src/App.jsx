@@ -19,7 +19,7 @@ const CATEGORIES_URL = '/api/categories';
 const ACCOUNTS_URL = '/api/accounts';
 const SETTINGS_URL = '/api/settings';
 // Used until the server's settings document has loaded (or if it 404s on an
-// older deployment) - mirrors the server's own default in server/index.js.
+// older deployment) - mirrors the server's own default in server/app.js.
 const DEFAULT_MONTHLY_LIMIT = 7000;
 
 function App() {
