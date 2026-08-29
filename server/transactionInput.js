@@ -17,6 +17,10 @@
 // Обновление остаётся частичным: проверяются и переписываются только те
 // поля, которые реально пришли в запросе. Ключ, которого в теле нет,
 // в объект обновления не попадает и потому сохранённое значение не трогает.
+//
+// Ровно одно исключение из этого правила - toAccount, см. ниже: у операции,
+// переставшей быть переводом, поле «куда» не может остаться от прежней
+// жизни, а частичное обновление само его не снимет.
 
 const TRANSACTION_TYPES = ['income', 'expense', 'initial', 'transfer'];
 
@@ -50,6 +54,8 @@ function validateTransactionUpdate(body) {
     }
 
     const update = {};
+    // Поля, которые надо не переписать, а убрать из документа ($unset).
+    const unset = [];
 
     if (isPresent(body, 'type')) {
         if (!TRANSACTION_TYPES.includes(body.type)) {
@@ -98,7 +104,23 @@ function validateTransactionUpdate(body) {
         update.account = account;
     }
 
-    if (isPresent(body, 'toAccount')) {
+    // «Куда» есть только у перевода. Форма при сохранении не-перевода
+    // просто не кладёт toAccount в тело (см. handleSubmit в
+    // src/components/AddTransactionForm.jsx), а частичное обновление
+    // отсутствующие поля не трогает - поэтому у перевода, переделанного в
+    // расход, поле оставалось от прежней жизни. Читать его у не-перевода
+    // сейчас некому, но это ложные данные в базе, и первый же отчёт по
+    // переводам на них споткнётся.
+    //
+    // Поэтому при явной смене типа на не-перевод поле снимается, а
+    // присланное вместе с таким типом значение игнорируется: «расход, но
+    // куда-то» - противоречие, и разрешать его молча записью не стоит.
+    // Когда типа в теле нет, поле не трогается вовсе: обновление одной
+    // только суммы не должно ничего вычищать.
+    const becomesNonTransfer = update.type !== undefined && update.type !== 'transfer';
+    if (becomesNonTransfer) {
+        unset.push('toAccount');
+    } else if (isPresent(body, 'toAccount')) {
         const toAccount = nonEmptyString(body.toAccount);
         if (toAccount !== null) {
             update.toAccount = toAccount;
@@ -126,7 +148,7 @@ function validateTransactionUpdate(body) {
         update.excludeFromStats = Boolean(body.excludeFromStats);
     }
 
-    return { update };
+    return { update, unset };
 }
 
 module.exports = { validateTransactionUpdate, TRANSACTION_TYPES };

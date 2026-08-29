@@ -111,6 +111,43 @@ describe('validateTransactionUpdate: остальные поля', () => {
     });
 });
 
+describe('validateTransactionUpdate: toAccount у бывшего перевода', () => {
+    // Форма не кладёт toAccount в тело, когда операция не перевод, а
+    // частичное обновление отсутствующие поля не трогает - поэтому поле
+    // и оставалось от прежней жизни операции.
+    it.each(['expense', 'income', 'initial'])('снимает toAccount при смене типа на %s', (type) => {
+        const { error, update, unset } = validateTransactionUpdate({ type, category: 'Продукты', amount: 30 });
+        expect(error).toBeUndefined();
+        expect(unset).toEqual(['toAccount']);
+        expect(update).not.toHaveProperty('toAccount');
+    });
+
+    // «Расход, но куда-то» - противоречие; молча записывать его не стоит.
+    it('игнорирует toAccount, присланный вместе с типом не-перевода', () => {
+        const { update, unset } = validateTransactionUpdate({ type: 'expense', category: 'Продукты', toAccount: 'acc-cash' });
+        expect(update).not.toHaveProperty('toAccount');
+        expect(unset).toEqual(['toAccount']);
+    });
+
+    it('у перевода toAccount сохраняется и ничего не снимается', () => {
+        const { update, unset } = validateTransactionUpdate({ type: 'transfer', account: 'acc-card-1', toAccount: 'acc-cash' });
+        expect(update.toAccount).toBe('acc-cash');
+        expect(unset).toEqual([]);
+    });
+
+    // Обновление одной только суммы не должно ничего вычищать: типа в теле
+    // нет, значит, перевод остаётся переводом.
+    it('не трогает toAccount, когда тип в запросе не участвует', () => {
+        const { update, unset } = validateTransactionUpdate({ amount: 42 });
+        expect(update).not.toHaveProperty('toAccount');
+        expect(unset).toEqual([]);
+    });
+
+    it('не снимает toAccount, когда тип пришёл, но остался переводом', () => {
+        expect(validateTransactionUpdate({ type: 'transfer', amount: 42 }).unset).toEqual([]);
+    });
+});
+
 describe('validateTransactionUpdate: форма обновления', () => {
     it('пропускает полное тело из формы редактирования', () => {
         const { error, update } = validateTransactionUpdate(validBody());
@@ -140,7 +177,7 @@ describe('validateTransactionUpdate: форма обновления', () => {
     });
 
     it('пустое тело - валидное обновление, которое ничего не меняет', () => {
-        expect(validateTransactionUpdate({})).toEqual({ update: {} });
+        expect(validateTransactionUpdate({})).toEqual({ update: {}, unset: [] });
     });
 
     it.each([null, undefined, 'строка', [{ amount: 1 }]])('отклоняет тело %j', (body) => {

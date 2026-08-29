@@ -575,14 +575,26 @@ app.put('/api/transactions/:id', async (req, res) => {
             return res.status(400).json({ message: 'Invalid transaction ID' });
         }
 
-        const { error, update } = validateTransactionUpdate(req.body);
+        const { error, update, unset } = validateTransactionUpdate(req.body);
         if (error) {
             return res.status(400).json({ message: error });
         }
 
+        // $set и $unset собираются явно, а не отдаются на автоматическое
+        // оборачивание mongoose: оно надёжно только пока в документе
+        // обновления нет ни одного оператора. Пустой $set при этом не
+        // отправляется вовсе - MongoDB такой документ отвергает.
+        const mongoUpdate = {};
+        if (Object.keys(update).length > 0) {
+            mongoUpdate.$set = update;
+        }
+        if (unset.length > 0) {
+            mongoUpdate.$unset = Object.fromEntries(unset.map(field => [field, '']));
+        }
+
         const updatedTransaction = await Transaction.findByIdAndUpdate(
             req.params.id,
-            update,
+            mongoUpdate,
             { new: true, runValidators: true }
         );
         if (!updatedTransaction) {
