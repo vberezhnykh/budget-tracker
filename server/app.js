@@ -9,6 +9,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const Transaction = require('./models/Transaction');
@@ -50,6 +51,55 @@ const authDisabled = process.env.AUTH_DISABLED === 'true';
 // both the login rate limiter and the AUTH_DISABLED loopback check rely on
 // for req.ip to mean "the actual caller".
 app.set('trust proxy', 1);
+
+// Заголовки безопасности. Ставятся первыми, до всего остального, чтобы
+// попасть и на ответы роутов, и на отдачу статики, и на страницы ошибок.
+//
+// Дефолты helmet берутся как есть - X-Content-Type-Options, Referrer-Policy,
+// HSTS и прочее, - а руками задаётся только CSP: политику по умолчанию это
+// приложение не переживает, и молча выключить её (contentSecurityPolicy:
+// false) значило бы оставить незакрытым ровно то, ради чего helmet и ставят.
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+
+            // Скрипты только свои, инлайновых в сборке нет.
+            scriptSrc: ["'self'"],
+
+            // 'unsafe-inline' здесь - не небрежность, а состояние
+            // интерфейса: в компонентах больше трёхсот атрибутов style={{}}
+            // плюс несколько блоков <style> (см. App.jsx,
+            // AddTransactionForm.jsx, TransactionsDrawer.jsx), а CSP
+            // распространяется и на атрибут style, не только на теги.
+            // Убрать это можно, только переписав их на классы; до тех пор
+            // ограничение бессмысленно, а остальные директивы работают.
+            // Хост Google - из-за двух @import в начале src/index.css.
+            styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+            fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+
+            // data: нужен иконкам, которые Vite инлайнит в сборке мелкими.
+            imgSrc: ["'self'", 'data:'],
+
+            // Запросы уходят только на свой origin: в проде фронт и API на
+            // одном домене, в разработке - через прокси Vite.
+            connectSrc: ["'self'"],
+
+            manifestSrc: ["'self'"],
+            workerSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"],
+            // Строже, чем X-Frame-Options: приложение не встраивается никуда.
+            frameAncestors: ["'none'"],
+
+            // Только в проде. Локально собранное приложение открывают по
+            // http://localhost, и апгрейд до https сломал бы его на ровном
+            // месте - включая проверку сборки перед выкатом.
+            upgradeInsecureRequests: isProduction ? [] : null
+        }
+    }
+}));
 
 const allowedOrigins = [
     'http://localhost:5173',
