@@ -91,7 +91,7 @@ function AccountListItem({ account, onDelete, onEdit }) {
 // `accounts` and `categories` state and every API mutation (it owns the
 // apiFetch wrapper). Everything here is either local UI state (the add/edit
 // form, drag sensors) or a callback passed down from App: onSaveAccount/
-// onDeleteAccount/onDeleteCategory/onDragEnd/onSaveSettings do the actual
+// onDeleteAccount/onDeleteCategory/onRenameCategory/onDragEnd/onSaveSettings do the actual
 // fetching, onLogout clears the session, and showNotice reports errors
 // through App's notice banner.
 export default function AccountsSettingsModal({
@@ -103,6 +103,7 @@ export default function AccountsSettingsModal({
   onSaveAccount,
   onDeleteAccount,
   onDeleteCategory,
+  onRenameCategory,
   onDragEnd,
   onSaveSettings,
   onLogout,
@@ -114,6 +115,12 @@ export default function AccountsSettingsModal({
   const [formExcludeFromTotal, setFormExcludeFromTotal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [limitInput, setLimitInput] = useState(String(monthlyLimit));
+  // Переименование категории правится прямо в строке списка: отдельная форма
+  // сверху уже занята счетами, а у категории и редактировать-то нечего, кроме
+  // названия. Хранится id редактируемой строки и текущий текст поля.
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [categoryNameInput, setCategoryNameInput] = useState('');
+  const [savingCategory, setSavingCategory] = useState(false);
 
   // Drag-to-reorder sensors for the account list below. A minimum drag
   // distance keeps an imprecise tap on the grip from being mistaken for a
@@ -132,8 +139,34 @@ export default function AccountsSettingsModal({
     setEditingAccountId(null);
   };
 
+  const startCategoryEdit = (cat) => {
+    setEditingCategoryId(cat._id);
+    setCategoryNameInput(cat.name);
+  };
+
+  const cancelCategoryEdit = () => {
+    setEditingCategoryId(null);
+    setCategoryNameInput('');
+  };
+
+  // Строка возвращается в обычный вид только при успехе: если сервер
+  // отказал (пустое имя, дубль), поле остаётся открытым с введённым
+  // текстом, чтобы было что поправить.
+  const handleCategoryRenameSubmit = async (e, cat) => {
+    e.preventDefault();
+    if (savingCategory) return;
+    setSavingCategory(true);
+    try {
+      const ok = await onRenameCategory(cat, categoryNameInput);
+      if (ok) cancelCategoryEdit();
+    } finally {
+      setSavingCategory(false);
+    }
+  };
+
   const handleClose = () => {
     resetForm();
+    cancelCategoryEdit();
     onClose();
   };
 
@@ -385,6 +418,8 @@ export default function AccountsSettingsModal({
             ) : (
               categories.map(cat => {
                 const used = categoryUsage[categoryUsageKey(cat)] || 0;
+                const isEditing = editingCategoryId === cat._id;
+                const meta = `${cat.type === 'income' ? 'Доход' : 'Расход'} · ${used === 0 ? 'не используется' : `операций: ${used}`}`;
                 return (
                   <div
                     key={cat._id}
@@ -398,35 +433,129 @@ export default function AccountsSettingsModal({
                       background: '#fff',
                     }}
                   >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {cat.name}
-                      </div>
-                      <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                        {cat.type === 'income' ? 'Доход' : 'Расход'}
-                        {' · '}
-                        {used === 0 ? 'не используется' : `операций: ${used}`}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onDeleteCategory(cat, used)}
-                      aria-label={`Удалить категорию: ${cat.name}`}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: '8px',
-                        minWidth: '36px',
-                        minHeight: '36px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      🗑️
-                    </button>
+                    {isEditing ? (
+                      <form
+                        onSubmit={(e) => handleCategoryRenameSubmit(e, cat)}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <input
+                            type="text"
+                            value={categoryNameInput}
+                            onChange={(e) => setCategoryNameInput(e.target.value)}
+                            aria-label={`Название категории: ${cat.name}`}
+                            autoFocus
+                            style={{
+                              width: '100%',
+                              boxSizing: 'border-box',
+                              padding: '6px 10px',
+                              borderRadius: '10px',
+                              border: '1px solid rgba(0,0,0,0.15)',
+                              fontSize: '0.85rem',
+                              outline: 'none',
+                            }}
+                          />
+                          {/* Тот же подстрочник, что и в обычном виде строки:
+                              переименование затрагивает все эти операции, и
+                              счётчик лучше держать перед глазами. */}
+                          <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                            {meta}
+                          </div>
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={savingCategory}
+                          aria-label={`Сохранить название категории: ${cat.name}`}
+                          style={{
+                            background: 'rgba(37, 99, 235, 0.08)',
+                            border: 'none',
+                            borderRadius: '10px',
+                            color: 'var(--color-primary)',
+                            cursor: savingCategory ? 'default' : 'pointer',
+                            opacity: savingCategory ? 0.6 : 1,
+                            padding: '8px',
+                            minWidth: '36px',
+                            minHeight: '36px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          ✓
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelCategoryEdit}
+                          aria-label={`Отменить переименование: ${cat.name}`}
+                          style={{
+                            background: 'rgba(0,0,0,0.04)',
+                            border: 'none',
+                            borderRadius: '10px',
+                            color: 'var(--color-text-muted)',
+                            cursor: 'pointer',
+                            padding: '8px',
+                            minWidth: '36px',
+                            minHeight: '36px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </form>
+                    ) : (
+                      <>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {cat.name}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                            {meta}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => startCategoryEdit(cat)}
+                          aria-label={`Переименовать категорию: ${cat.name}`}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '8px',
+                            minWidth: '36px',
+                            minHeight: '36px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDeleteCategory(cat, used)}
+                          aria-label={`Удалить категорию: ${cat.name}`}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: '8px',
+                            minWidth: '36px',
+                            minHeight: '36px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      </>
+                    )}
                   </div>
                 );
               })

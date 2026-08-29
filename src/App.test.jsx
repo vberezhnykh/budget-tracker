@@ -56,6 +56,23 @@ function createFetchMock() {
                 currentCategories = currentCategories.filter(c => c._id !== id);
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ message: 'Category deleted' }) });
             }
+            // Переименование - как на сервере (PUT /api/categories/:id):
+            // вместе с категорией переписываются операции того же типа со
+            // старым названием.
+            if (options?.method === 'PUT') {
+                const id = url.split('/').pop();
+                const { name } = JSON.parse(options.body);
+                const cat = currentCategories.find(c => c._id === id);
+                if (!cat) {
+                    return Promise.resolve({ ok: false, json: () => Promise.resolve({ message: 'Category not found' }) });
+                }
+                const oldName = cat.name;
+                currentTransactions = currentTransactions.map(t => (
+                    t.type === cat.type && t.category === oldName ? { ...t, category: name } : t
+                ));
+                currentCategories = currentCategories.map(c => (c._id === id ? { ...c, name } : c));
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ category: { ...cat, name }, updatedTransactions: 1 }) });
+            }
             return Promise.resolve({
                 ok: true,
                 json: () => Promise.resolve(currentCategories),
@@ -610,6 +627,46 @@ describe('App Integration Tests', () => {
         await waitFor(() => {
             expect(screen.queryByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'false');
         });
+    });
+
+    it('переименовывает категорию, переписывает историю и переносит фильтр на новое имя', async () => {
+        currentCategories = [
+            { _id: 'c1', name: 'Продукты', type: 'expense', order: 1 },
+            { _id: 'c2', name: 'Подписки', type: 'expense', order: 2 },
+        ];
+        currentTransactions = [
+            { _id: '1', title: 'Netflix', amount: 20, type: 'expense', account: 'card', date: '2026-01-05T00:00:00Z', category: 'Подписки' },
+        ];
+
+        render(<App />);
+        await screen.findByTitle('Настройки');
+
+        // Фильтр стоит на категории, которую сейчас переименуем.
+        fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
+        });
+
+        fireEvent.click(screen.getByTitle('Настройки'));
+        fireEvent.click(await screen.findByLabelText('Переименовать категорию: Подписки'));
+        fireEvent.change(screen.getByLabelText('Название категории: Подписки'), { target: { value: 'Сервисы' } });
+        fireEvent.click(screen.getByLabelText('Сохранить название категории: Подписки'));
+
+        await waitFor(() => {
+            expect(fetchMock).toHaveBeenCalledWith('/api/categories/c2', expect.objectContaining({
+                method: 'PUT',
+                body: JSON.stringify({ name: 'Сервисы' }),
+            }));
+        });
+        // Список категорий перечитан - строка уже под новым именем.
+        expect(await screen.findByLabelText('Переименовать категорию: Сервисы')).toBeInTheDocument();
+
+        // История перечитана: разбивка расхода знает новое имя, а фильтр
+        // переехал на него вместе с ней.
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: /^Сервисы: €/ })).toHaveAttribute('aria-pressed', 'true');
+        });
+        expect(screen.queryByRole('button', { name: /^Подписки: €/ })).not.toBeInTheDocument();
     });
 
     // Finding 3: a non-ok response (or one whose body isn't actually an

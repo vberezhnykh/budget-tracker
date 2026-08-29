@@ -14,6 +14,7 @@ function renderModal(overrides = {}) {
         onClose: vi.fn(),
         onSaveAccount: vi.fn().mockResolvedValue(true),
         onDeleteAccount: vi.fn(),
+        onRenameCategory: vi.fn().mockResolvedValue(true),
         onDragEnd: vi.fn(),
         onSaveSettings: vi.fn().mockResolvedValue(true),
         onLogout: vi.fn(),
@@ -236,5 +237,50 @@ describe('AccountsSettingsModal', () => {
         });
 
         expect(screen.getByText('не используется', { exact: false })).toBeInTheDocument();
+    });
+
+    it('переименовывает категорию из строки списка и закрывает поле при успехе', async () => {
+        const categories = [{ _id: 'c1', name: 'Продукты', type: 'expense' }];
+        const { props } = renderModal({ categories, categoryUsage: { 'expense::Продукты': 3 } });
+
+        fireEvent.click(screen.getByLabelText('Переименовать категорию: Продукты'));
+
+        const input = screen.getByLabelText('Название категории: Продукты');
+        expect(input).toHaveValue('Продукты');
+
+        fireEvent.change(input, { target: { value: 'Еда' } });
+        fireEvent.click(screen.getByLabelText('Сохранить название категории: Продукты'));
+
+        await waitFor(() => expect(props.onRenameCategory).toHaveBeenCalledWith(categories[0], 'Еда'));
+        await waitFor(() => {
+            expect(screen.queryByLabelText('Название категории: Продукты')).not.toBeInTheDocument();
+        });
+    });
+
+    it('оставляет поле открытым с введённым текстом, если переименование не удалось', async () => {
+        const categories = [{ _id: 'c1', name: 'Продукты', type: 'expense' }];
+        const { props } = renderModal({
+            categories,
+            onRenameCategory: vi.fn().mockResolvedValue(false),
+        });
+
+        fireEvent.click(screen.getByLabelText('Переименовать категорию: Продукты'));
+        fireEvent.change(screen.getByLabelText('Название категории: Продукты'), { target: { value: 'Подписки' } });
+        fireEvent.click(screen.getByLabelText('Сохранить название категории: Продукты'));
+
+        await waitFor(() => expect(props.onRenameCategory).toHaveBeenCalled());
+        expect(screen.getByLabelText('Название категории: Продукты')).toHaveValue('Подписки');
+    });
+
+    it('возвращает строку в обычный вид по кнопке отмены, не вызывая onRenameCategory', () => {
+        const { props } = renderModal({ categories: [{ _id: 'c1', name: 'Продукты', type: 'expense' }] });
+
+        fireEvent.click(screen.getByLabelText('Переименовать категорию: Продукты'));
+        fireEvent.change(screen.getByLabelText('Название категории: Продукты'), { target: { value: 'Еда' } });
+        fireEvent.click(screen.getByLabelText('Отменить переименование: Продукты'));
+
+        expect(props.onRenameCategory).not.toHaveBeenCalled();
+        expect(screen.queryByLabelText('Название категории: Продукты')).not.toBeInTheDocument();
+        expect(screen.getByLabelText('Переименовать категорию: Продукты')).toBeInTheDocument();
     });
 });

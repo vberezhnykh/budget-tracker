@@ -590,6 +590,44 @@ function App() {
     }
   };
 
+  // Переименование категории. Сервер вместе с самой категорией переписывает
+  // и все операции с прежним названием (см. PUT /api/categories/:id), поэтому
+  // после успеха перечитываются оба списка - иначе история и разбивка по
+  // категориям остались бы со старым именем до перезагрузки страницы.
+  const handleRenameCategory = async (category, newName) => {
+    const trimmed = (newName || '').trim();
+    if (!trimmed) {
+      showNotice('Название категории не может быть пустым');
+      return false;
+    }
+    if (trimmed === category.name) return true;
+
+    try {
+      const res = await apiFetch(`${CATEGORIES_URL}/${category._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: trimmed })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        showNotice((data && data.message) || 'Не удалось переименовать категорию');
+        return false;
+      }
+      // Фильтр по категории держится на названии, а не на id, - переносим
+      // его на новое имя, иначе экран остался бы отфильтрованным по строке,
+      // которой больше нет ни в одной операции.
+      setSelectedCategory(prev => prev === category.name ? trimmed : prev);
+      await fetchCategories();
+      await fetchTransactions();
+      showNotice('Категория переименована', 'success');
+      return true;
+    } catch (err) {
+      console.error('Rename category error:', err);
+      showNotice('Не удалось переименовать категорию');
+      return false;
+    }
+  };
+
   // Удаление категории. История от этого не страдает: операция хранит
   // категорию строкой, поэтому строки в списке и разбивка по категориям
   // остаются как были - исчезает только чип в форме. Но раз операции всё же
@@ -1327,6 +1365,7 @@ function App() {
           categories={categories}
           categoryUsage={categoryUsage}
           onDeleteCategory={handleDeleteCategory}
+          onRenameCategory={handleRenameCategory}
           onDragEnd={onAccountDragEnd}
           onSaveSettings={handleSaveSettings}
           onLogout={handleLogout}

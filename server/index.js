@@ -364,6 +364,51 @@ app.post('/api/categories', async (req, res) => {
     }
 });
 
+// Переименование категории. Операции хранят категорию строкой, а не
+// ссылкой на документ, поэтому одного апдейта в коллекции категорий мало:
+// историю пришлось бы читать со старым названием, а разбивка по категориям
+// разъехалась бы на две. Поэтому вместе с самой категорией переписываются и
+// все операции того же типа с прежним названием (тип важен: имя уникально
+// только в паре с ним, и одноимённая категория доходов должна остаться
+// нетронутой). Заголовок операции не трогаем - это текст, введённый
+// пользователем, даже когда он когда-то подставился из названия категории.
+app.put('/api/categories/:id', async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({ message: 'Invalid category ID' });
+        }
+        const { name } = req.body;
+        if (!name || !String(name).trim()) {
+            return res.status(400).json({ message: 'Name is required' });
+        }
+        const cat = await Category.findById(req.params.id);
+        if (!cat) {
+            return res.status(404).json({ message: 'Category not found' });
+        }
+
+        const newName = String(name).trim();
+        const oldName = cat.name;
+        if (newName === oldName) {
+            return res.json({ category: cat, updatedTransactions: 0 });
+        }
+
+        cat.name = newName;
+        const saved = await cat.save();
+
+        const result = await Transaction.updateMany(
+            { type: cat.type, category: oldName },
+            { $set: { category: newName } }
+        );
+
+        res.json({ category: saved, updatedTransactions: result.modifiedCount || 0 });
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(400).json({ message: 'Такая категория уже существует' });
+        }
+        res.status(400).json({ message: err.message });
+    }
+});
+
 // Delete a category. Засеянные при первом запуске ничем не отличаются
 // от заведённых руками: список категорий - личный, и вычищать из него
 // лишнее должно быть можно. Пустой список сидер зальёт заново при
