@@ -19,6 +19,19 @@ const Settings = require('./models/Settings');
 const { validateTransactionUpdate } = require('./transactionInput');
 const { parseTransactionQuery } = require('./transactionQuery');
 const { computeBalances, computeMonthlyTotals } = require('./stats');
+const { transformTransactions } = require('./transform');
+const { computePeriodData, periodPrefixOf } = require('./periodStats');
+const {
+    computeComparison,
+    computeCategoryComparison,
+    computeMonthlySeries,
+    computeYearlyData,
+    computeLifetimeStats,
+    computeSearchResults,
+    computeDescriptionSuggestions,
+    computeCategoryUsage,
+    computeCategoryCounts
+} = require('./analytics');
 const {
     COOKIE_NAME,
     TOKEN_TTL_MS,
@@ -491,6 +504,122 @@ app.get('/api/stats/monthly', async (req, res) => {
             Account.find().lean()
         ]);
         res.json(computeMonthlyTotals(transactions, accounts, { account, category }));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+
+// Все сводные величины главного экрана одним ответом.
+//
+// Одним, а не восемью отдельными роутами, по двум причинам. Первая: экран
+// показывает их вместе, и восемь запросов - это восемь чтений истории и
+// восемь шансов, что телефон получит цифры, посчитанные в разные моменты.
+// Расхождение в деньгах между соседними блоками одного экрана хуже, чем
+// лишний килобайт. Вторая: история читается один раз и преобразуется один
+// раз, а не восемь.
+//
+// Ответ не зависит от размера истории: наружу уходят только итоги, а не
+// операции. Список операций отдаётся отдельно и постранично.
+//
+// today присылает клиент. От него зависят окно сравнения и окно частоты
+// категорий, а сервер живёт в UTC: взяв «сегодня» из своих часов, он
+// несколько часов в сутки считал бы по другому календарю, чем телефон.
+app.get('/api/stats/dashboard', async (req, res) => {
+    try {
+        const str = (key) => (typeof req.query[key] === 'string' && req.query[key] ? req.query[key] : null);
+
+        const month = str('month') || new Date().toISOString().slice(0, 7);
+        const timeRange = str('timeRange') || 'month';
+        const account = str('account');
+        const category = str('category');
+        const type = str('type');
+        const today = str('today') || new Date().toISOString().slice(0, 10);
+        const seriesMonths = timeRange === 'month' ? 6 : 12;
+
+        if (!/^\d{4}-\d{2}$/.test(month)) {
+            return res.status(400).json({ message: 'Некорректное значение month: ожидается YYYY-MM' });
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+            return res.status(400).json({ message: 'Некорректное значение today: ожидается YYYY-MM-DD' });
+        }
+
+        const [docs, accounts] = await Promise.all([
+            Transaction.find().lean(),
+            Account.find().lean()
+        ]);
+        const transactions = transformTransactions(docs, accounts);
+
+        // Итоги периода и месяца считаются одной функцией: месячный вид -
+        // это тот же период с префиксом месяца. Лимит и прогноз темпа
+        // считаются от месячных цифр, какой бы период ни был на экране,
+        // поэтому нужны оба.
+        const periodTotals = computePeriodData(transactions, periodPrefixOf(timeRange, month), { account, category, type });
+        const monthTotals = computePeriodData(transactions, month, { account, category, type });
+        const stripList = ({ income, expense, categoryTotals }) => ({ income, expense, categoryTotals });
+
+        res.json({
+            balances: computeBalances(docs, accounts),
+            monthlyTotals: computeMonthlyTotals(docs, accounts, { account, category }),
+            period: stripList(periodTotals),
+            month: stripList(monthTotals),
+            yearly: computeYearlyData(transactions, month, account, category),
+            lifetime: computeLifetimeStats(transactions, '2025-11-09', account, category),
+            comparison: computeComparison(transactions, month, today),
+            categoryComparison: computeCategoryComparison(transactions, month, today, account),
+            monthlySeries: computeMonthlySeries(transactions, month, seriesMonths, account, category),
+            categoryUsage: computeCategoryUsage(transactions),
+            // Частота считается сразу по обоим типам: форма добавления
+            // переключается между расходом и доходом без похода на сервер.
+            categoryCounts: {
+                expense: computeCategoryCounts(transactions, 'expense', today),
+                income: computeCategoryCounts(transactions, 'income', today)
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Поиск по истории. Отдельно от сводки: он идёт от набора в строке поиска,
+// а не от выбранного периода, и запрашивается только когда в строке
+// что-то есть.
+app.get('/api/search', async (req, res) => {
+    try {
+        const str = (key) => (typeof req.query[key] === 'string' && req.query[key] ? req.query[key] : null);
+        const query = str('q');
+        if (!query) {
+            return res.json({ transactions: {}, count: 0 });
+        }
+
+        const [docs, accounts] = await Promise.all([
+            Transaction.find().lean(),
+            Account.find().lean()
+        ]);
+        const transactions = transformTransactions(docs, accounts);
+
+        res.json(computeSearchResults(transactions, query, str('account'), str('category'), str('type')));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Частые комментарии для категории - подсказки под полем описания в форме.
+app.get('/api/suggestions/descriptions', async (req, res) => {
+    try {
+        const str = (key) => (typeof req.query[key] === 'string' && req.query[key] ? req.query[key] : null);
+        const category = str('category');
+        if (!category) {
+            return res.json([]);
+        }
+
+        const [docs, accounts] = await Promise.all([
+            Transaction.find().lean(),
+            Account.find().lean()
+        ]);
+        const transactions = transformTransactions(docs, accounts);
+
+        res.json(computeDescriptionSuggestions(transactions, category, str('type')));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
