@@ -7,6 +7,7 @@ const Transaction = require('./models/Transaction');
 const Category = require('./models/Category');
 const Account = require('./models/Account');
 const Settings = require('./models/Settings');
+const { validateTransactionUpdate } = require('./transactionInput');
 const {
     COOKIE_NAME,
     TOKEN_TTL_MS,
@@ -559,17 +560,30 @@ app.post('/api/transactions', async (req, res) => {
     }
 });
 
-// Update transaction
+// Update transaction.
+//
+// Тело запроса проверяется и приводится к типам до записи (см.
+// server/transactionInput.js), а findByIdAndUpdate вызывается с
+// runValidators: true. Раньше не было ни того, ни другого: значения из
+// запроса уходили в базу как есть, а findByIdAndUpdate схему по умолчанию
+// не применяет - в результате через PUT можно было записать type вне enum
+// модели, нулевую сумму или нечитаемую дату, хотя POST рядом всё это
+// отсекал (он создаёт документ через save(), а тот валидацию выполняет).
 app.put('/api/transactions/:id', async (req, res) => {
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ message: 'Invalid transaction ID' });
         }
-        const { title, amount, type, category, description, account, toAccount, date, excludeFromStats } = req.body;
+
+        const { error, update } = validateTransactionUpdate(req.body);
+        if (error) {
+            return res.status(400).json({ message: error });
+        }
+
         const updatedTransaction = await Transaction.findByIdAndUpdate(
             req.params.id,
-            { title, amount, type, category, description, account, toAccount, date, excludeFromStats },
-            { new: true }
+            update,
+            { new: true, runValidators: true }
         );
         if (!updatedTransaction) {
             return res.status(404).json({ message: 'Transaction not found' });
