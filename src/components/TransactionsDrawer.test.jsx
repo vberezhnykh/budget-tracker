@@ -201,7 +201,9 @@ describe('TransactionsDrawer Component', () => {
     });
 
     it('renders transaction rows from the passed-in data', () => {
-        render(<Wrapper />);
+        // Список рендерится только у раскрытой шторки - в свёрнутой его нет
+        // в дереве вовсе (см. TransactionsDrawer).
+        render(<Wrapper initialExpanded />);
         expect(screen.getByText('Coffee')).toBeInTheDocument();
         expect(screen.getByText('Salary')).toBeInTheDocument();
     });
@@ -225,7 +227,7 @@ describe('TransactionsDrawer Component', () => {
     // activatable entirely on its own.
     it('exposes each category filter as its own focusable, keyboard-activatable control', () => {
         const toggleCategoryFilter = vi.fn();
-        render(<Wrapper toggleCategoryFilter={toggleCategoryFilter} />);
+        render(<Wrapper initialExpanded toggleCategoryFilter={toggleCategoryFilter} />);
 
         const categoryChip = screen.getByRole('button', { name: 'Food' });
         categoryChip.focus();
@@ -238,7 +240,7 @@ describe('TransactionsDrawer Component', () => {
     it('activates a category filter with Space too, without also opening the edit modal', () => {
         const toggleCategoryFilter = vi.fn();
         const openEditModal = vi.fn();
-        render(<Wrapper toggleCategoryFilter={toggleCategoryFilter} openEditModal={openEditModal} />);
+        render(<Wrapper initialExpanded toggleCategoryFilter={toggleCategoryFilter} openEditModal={openEditModal} />);
 
         const categoryChip = screen.getByRole('button', { name: 'Job' });
         fireEvent.keyDown(categoryChip, { key: ' ' });
@@ -249,7 +251,7 @@ describe('TransactionsDrawer Component', () => {
 
     it('still opens the edit modal by clicking anywhere else on an editable row', () => {
         const openEditModal = vi.fn();
-        render(<Wrapper openEditModal={openEditModal} />);
+        render(<Wrapper initialExpanded openEditModal={openEditModal} />);
 
         fireEvent.click(screen.getByRole('button', { name: /Coffee/ }));
 
@@ -281,7 +283,7 @@ describe('TransactionsDrawer Component', () => {
                 }
             }
         };
-        render(<Wrapper periodData={initialPeriodData} openEditModal={openEditModal} />);
+        render(<Wrapper initialExpanded periodData={initialPeriodData} openEditModal={openEditModal} />);
 
         expect(screen.getByText('Starting balance')).toBeInTheDocument();
         // No accessible button exists for this row at all - not merely a
@@ -314,7 +316,7 @@ describe('TransactionsDrawer Component', () => {
                 }
             }
         };
-        render(<Wrapper periodData={transferPeriodData} />);
+        render(<Wrapper initialExpanded periodData={transferPeriodData} />);
 
         expect(screen.getByText(
             (_, el) => el?.textContent === '💵 Наличные → 💳 Карта • Перевод',

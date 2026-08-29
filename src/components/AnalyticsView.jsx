@@ -30,6 +30,7 @@ export default function AnalyticsView({
     series,
     selectedMonth,
     onSelectMonth,
+    expenseComparison,
     categoryComparison,
     comparisonLabel,
     selectedCategory,
@@ -79,6 +80,30 @@ export default function AnalyticsView({
                 <div style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
                     {periodLabel}
                 </div>
+
+                {/* Расход против прошлого месяца. Раньше эта строка стояла на
+                    главной, но отвечает она на вопрос разбора («стало больше
+                    или меньше»), а не на вопрос «сколько можно ещё потратить»,
+                    ради которого туда заходят. Сравнивать с «прошлым месяцем»
+                    имеет смысл только когда период - месяц. */}
+                {timeRange === 'month' && expenseComparison && (
+                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--color-border-subtle)' }}>
+                        {expenseComparison.percent === null ? (
+                            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+                                В прошлом месяце трат не было
+                            </div>
+                        ) : (
+                            <>
+                                <div style={{ fontSize: 'var(--text-base)', fontWeight: '700', color: expenseComparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
+                                    {expenseComparison.diff > 0 ? '↑' : '↓'} {Math.abs(expenseComparison.percent)}% к прошлому месяцу
+                                </div>
+                                <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                                    {expenseComparison.label}
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Pace only exists (getPaceForecast returns non-null) for the

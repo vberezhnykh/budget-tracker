@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import TransactionList from './TransactionList'
 import Field from './ui/Field'
 import Chip from './ui/Chip'
 
@@ -51,40 +52,6 @@ export default function TransactionsDrawer({
 }) {
   const sheetRef = useRef(null);
   const dragRef = useRef(null);
-
-  // Account line of a transaction row. A transfer moves money between two
-  // accounts, so naming only the source would read exactly like an ordinary
-  // expense - both ends are shown instead.
-  const getRowAccountDisplay = (item) => (
-    item.type === 'transfer' && item.toAccount
-      ? `${getAccountDisplay(item.account)} → ${getAccountDisplay(item.toAccount)}`
-      : getAccountDisplay(item.account)
-  );
-
-  // Accessible name for a transaction row - mirrors what's already shown
-  // visually (name/description, accounts, category, signed amount) so
-  // screen-reader users get the same information sighted users read off the row.
-  const getTransactionAriaLabel = (item) => {
-    const name = item.description || item.title;
-    const sign = item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : '';
-    const amount = `${sign}€${Math.abs(item.visualAmount).toFixed(2)}`;
-    const parts = [name, getRowAccountDisplay(item)];
-    if (item.category) parts.push(item.category);
-    parts.push(amount);
-    return parts.join(', ');
-  };
-
-  // Enter/Space activate a target (a row's overlay button, or a category
-  // filter span) exactly like a click - Space is prevented from also
-  // scrolling the drawer's list. The row overlays below are real <button>s,
-  // so they get this for free; it's still needed for the category filter
-  // spans (role="button"), which have no native keyboard handling.
-  const handleRowKeyDown = (e, onActivate) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onActivate();
-    }
-  };
 
   // Travel distance (px) between the collapsed and expanded positions.
   // Measured from the sheet's own rendered height rather than derived from
@@ -300,9 +267,15 @@ export default function TransactionsDrawer({
           }}
         />
 
-        {/* Scrollable region - everything below the handle. */}
+        {/* Scrollable region - everything below the handle. Содержимое
+            существует только у раскрытой шторки: в свёрнутом виде оно и так
+            уехало за нижний край экрана, а в дереве оставалось - и после
+            того, как последние операции появились прямо на главной, каждая
+            строка оказывалась в документе дважды. Глазами второй список не
+            виден, а скринридер читал обе копии. */}
         <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain' }}>
           {/* Transaction History (moved verbatim from App.jsx) */}
+          {expanded && (
           <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
             <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -400,215 +373,21 @@ export default function TransactionsDrawer({
               </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {searchQuery ? (
-                // Search Results View
-                searchResults.count === 0 ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Ничего не найдено</div>
-                ) : (
-                  Object.keys(searchResults.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
-                    <div key={date}>
-                      <div style={{ padding: '10px 24px', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{formatDate(date)}</span>
-                        {searchResults.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: searchResults.transactions[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
-                            {searchResults.transactions[date].dailySum > 0 ? '+' : ''}{searchResults.transactions[date].dailySum.toFixed(2)}€
-                          </span>
-                        )}
-                      </div>
-                      {searchResults.transactions[date].items.map(item => {
-                        // openEditModal() deliberately no-ops for seeded
-                        // 'initial' transactions - a focusable, clickable
-                        // control that does nothing is worse than not
-                        // exposing one, so those rows get no row-level
-                        // button at all (see the non-search view below for
-                        // the same rule).
-                        const isEditable = item.type !== 'initial';
-                        return (
-                        <div
-                          key={item.id}
-                          style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}>
-                          {isEditable && (
-                            // Full-row "stretched" button: a plain <div role="button">
-                            // wrapping the whole row (the previous shape) would make
-                            // the category filter below an interactive element nested
-                            // inside another one - invalid regardless of keyboard
-                            // reachability. This overlay provides the row's click/
-                            // keyboard affordance without being an ancestor of the
-                            // category control (see its position: relative + z-index,
-                            // which lifts it back above this overlay).
-                            <button
-                              type="button"
-                              aria-label={getTransactionAriaLabel(item)}
-                              onClick={() => openEditModal(item)}
-                              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', margin: 0, padding: 0, border: 'none', background: 'none', cursor: 'pointer', zIndex: 0 }}
-                            />
-                          )}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
-                              {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
-                            </div>
-                            <div>
-                              <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
-                                {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: 'var(--text-2xs)', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
-                              </div>
-                              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                                {getRowAccountDisplay(item)}
-                                {item.category && (
-                                  <>
-                                    {' • '}
-                                    <span
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() => toggleCategoryFilter(item.category)}
-                                      onKeyDown={(e) => handleRowKeyDown(e, () => toggleCategoryFilter(item.category))}
-                                      style={{ position: 'relative', zIndex: 1, color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-                                    >
-                                      {item.category}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? 'var(--color-positive-strong)' : 'var(--color-text-main)') }}>
-                            {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
-                          </div>
-                        </div>
-                        );
-                      })}
-                    </div>
-                  ))
-                )
-              ) : (
-                // Period history view (month / year / all time, per the period picker)
-                Object.keys(periodData.transactions).length === 0 ? (
-                  <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Нет операций</div>
-                ) : (
-                  Object.keys(periodData.transactions).sort((a, b) => new Date(b) - new Date(a)).map(date => (
-                    <div key={date}>
-                      <div style={{ padding: '10px 24px', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{formatDate(date)}</span>
-                        {periodData.transactions[date].dailySum !== 0 && (
-                          <span style={{ fontWeight: '600', color: periodData.transactions[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
-                            {periodData.transactions[date].dailySum > 0 ? '+' : ''}{periodData.transactions[date].dailySum.toFixed(2)}€
-                          </span>
-                        )}
-                      </div>
-                      {periodData.transactions[date].items.map(item => {
-                        if (item.type === 'split_group') {
-                          return (
-                            <div key={item.id} style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', background: 'var(--color-surface-muted)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                  <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: 'rgba(37, 99, 235, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
-                                    🗂️
-                                  </div>
-                                  <div>
-                                    <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
-                                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                                      {getAccountDisplay(item.account)} • {item.items.length} катег.
-                                    </div>
-                                  </div>
-                                </div>
-                                <div style={{ fontWeight: '700', color: 'var(--color-text-main)' }}>
-                                  €{Math.abs(item.visualAmount).toFixed(2)}
-                                </div>
-                              </div>
-                              {/* Sub-items */}
-                              <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
-                                {item.items.map(subItem => (
-                                  // Split sub-items are never seeded 'initial' transactions
-                                  // (those aren't split), so unlike the top-level rows below
-                                  // this one is always editable - only the nesting fix
-                                  // (stretched overlay button + separately focusable
-                                  // category control) applies here.
-                                  <div
-                                    key={subItem.id}
-                                    style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: 'var(--text-base)', cursor: 'pointer', borderLeft: '2px solid rgba(37, 99, 235, 0.2)', marginBottom: '4px' }}>
-                                    <button
-                                      type="button"
-                                      aria-label={`${item.description} (Разделено): ${getTransactionAriaLabel(subItem)}`}
-                                      onClick={() => openEditModal(subItem)}
-                                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', margin: 0, padding: 0, border: 'none', background: 'none', cursor: 'pointer', zIndex: 0 }}
-                                    />
-                                    <span
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={() => toggleCategoryFilter(subItem.category)}
-                                      onKeyDown={(e) => handleRowKeyDown(e, () => toggleCategoryFilter(subItem.category))}
-                                      style={{ position: 'relative', zIndex: 1, color: selectedCategory === subItem.category ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: selectedCategory === subItem.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-                                    >
-                                      {subItem.category}
-                                    </span>
-                                    <div style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-main)' }}>
-                                      €{Math.abs(subItem.visualAmount).toFixed(2)}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        // openEditModal() deliberately no-ops for seeded 'initial'
-                        // transactions - a focusable, clickable control that does
-                        // nothing is worse than not exposing one, so those rows get
-                        // no row-level button, tabIndex, or click/keyboard handler.
-                        const isEditable = item.type !== 'initial';
-                        return (
-                          <div
-                            key={item.id}
-                            style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}>
-                            {isEditable && (
-                              // Full-row "stretched" button, kept out of the category
-                              // control's ancestry - see the search-results view above
-                              // for the full rationale.
-                              <button
-                                type="button"
-                                aria-label={getTransactionAriaLabel(item)}
-                                onClick={() => openEditModal(item)}
-                                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', margin: 0, padding: 0, border: 'none', background: 'none', cursor: 'pointer', zIndex: 0 }}
-                              />
-                            )}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                              <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: item.type === 'initial' ? 'rgba(37, 99, 235, 0.1)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
-                                {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
-                              </div>
-                              <div>
-                                <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
-                                  {item.description || item.title}{item.excludeFromStats && <span style={{ marginLeft: '6px', fontSize: 'var(--text-2xs)', color: '#94a3b8', fontWeight: '500' }}>🚫</span>}
-                                </div>
-                                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                                  {getRowAccountDisplay(item)}
-                                  {item.category && (
-                                    <>
-                                      {' • '}
-                                      <span
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => toggleCategoryFilter(item.category)}
-                                        onKeyDown={(e) => handleRowKeyDown(e, () => toggleCategoryFilter(item.category))}
-                                        style={{ position: 'relative', zIndex: 1, color: selectedCategory === item.category ? 'var(--color-primary)' : 'inherit', fontWeight: selectedCategory === item.category ? '700' : 'normal', textDecoration: 'underline', textUnderlineOffset: '2px' }}
-                                      >
-                                        {item.category}
-                                      </span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? 'var(--color-positive-strong)' : 'var(--color-text-main)') }}>
-                              {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))
-                )
-              )}
+              {/* Один и тот же список в двух режимах - результаты поиска и
+                  история за период; отличаются они только источником групп и
+                  текстом пустого состояния (см. TransactionList). */}
+              <TransactionList
+                groups={searchQuery ? searchResults.transactions : periodData.transactions}
+                emptyText={searchQuery ? 'Ничего не найдено' : 'Нет операций'}
+                selectedCategory={selectedCategory}
+                toggleCategoryFilter={toggleCategoryFilter}
+                openEditModal={openEditModal}
+                getAccountDisplay={getAccountDisplay}
+                formatDate={formatDate}
+              />
             </div>
           </div>
+          )}
         </div>
       </div>
     </>

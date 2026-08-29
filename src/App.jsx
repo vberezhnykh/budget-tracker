@@ -6,6 +6,7 @@ import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer
 import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
+import TransactionList from './components/TransactionList'
 import IconButton from './components/ui/IconButton'
 import { formatPeriodLabel, toDativeMonth } from './utils/period'
 import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
@@ -14,6 +15,10 @@ import { handleAccountDragEnd } from './utils/accountReorder'
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
 const CATEGORIES_URL = '/api/categories';
+
+// Сколько операций показывать на главной: экран отвечает на вопрос «что
+// происходило только что», а не заменяет историю - за ней есть шторка.
+const RECENT_LIMIT = 5;
 const ACCOUNTS_URL = '/api/accounts';
 const SETTINGS_URL = '/api/settings';
 // Used until the server's settings document has loaded (or if it 404s on an
@@ -771,25 +776,32 @@ function App() {
   const periodSaldo = periodStats.income + periodStats.expense;
   const periodExpenseAbs = Math.abs(periodStats.expense);
 
-  // Top spending categories of the period. Bar widths are relative to the
-  // largest category rather than to the total, so the smaller ones stay
-  // visible when one category dominates the month.
-  const topCategories = useMemo(() => {
-    const entries = Object.entries(periodStats.categoryTotals || {})
-      .filter(([, value]) => value > 0)
-      .sort((a, b) => b[1] - a[1]);
-    const max = entries.length > 0 ? entries[0][1] : 0;
-    return entries.slice(0, 5).map(([name, value]) => ({
-      name,
-      value,
-      share: max > 0 ? value / max : 0
-    }));
-  }, [periodStats]);
 
   // Expense of this month vs the same stretch of the previous one. For the
   // current month getComparisonData cuts the previous month at today's day
   // number (comparing like with like); for a past month it compares whole
   // months, and the wording below follows that split.
+  // Последние операции периода - для блока на главной. Берём готовую
+  // группировку по дням из periodData и отрезаем первые RECENT_LIMIT
+  // операций, идя от свежей даты к старой: главная показывает «что
+  // происходило только что», а вся история - в шторке.
+  const recentGroups = useMemo(() => {
+    const groups = {};
+    let left = RECENT_LIMIT;
+    const dates = Object.keys(periodData.transactions || {}).sort((a, b) => new Date(b) - new Date(a));
+    for (const date of dates) {
+      if (left <= 0) break;
+      const items = periodData.transactions[date].items.slice(0, left);
+      // dailySum относится ко всему дню, а не к обрезку - если день влез
+      // не целиком, сумму дня не показываем, чтобы она не спорила с тем,
+      // что видно в строках.
+      const whole = items.length === periodData.transactions[date].items.length;
+      groups[date] = { items, dailySum: whole ? periodData.transactions[date].dailySum : 0 };
+      left -= items.length;
+    }
+    return groups;
+  }, [periodData]);
+
   const expenseComparison = useMemo(() => {
     const previous = comparisonData.expense;
     const diff = Math.abs(monthlyData.expense) - previous;
@@ -1166,23 +1178,6 @@ function App() {
                   {formatPeriodLabel(timeRange, selectedMonth)}
                 </div>
 
-                {timeRange === 'month' && (
-                  <div style={{ textAlign: 'center', marginTop: '-8px' }}>
-                    {expenseComparison.percent === null ? (
-                      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-                        В прошлом месяце трат не было
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 'var(--text-base)', fontWeight: '700', color: expenseComparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
-                        {expenseComparison.diff > 0 ? '↑' : '↓'} {Math.abs(expenseComparison.percent)}% к прошлому месяцу
-                      </div>
-                    )}
-                    <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-                      {expenseComparison.label}
-                    </div>
-                  </div>
-                )}
-
                 <div style={{ display: 'flex', gap: '12px' }}>
                   <button
                     type="button"
@@ -1220,61 +1215,31 @@ function App() {
                   </div>
                 </div>
 
-                {topCategories.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: '700', color: 'var(--color-text-muted)', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '10px' }}>
-                      Куда ушло
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {topCategories.map(cat => {
-                        const isActive = selectedCategory === cat.name;
-                        return (
-                          <button
-                            key={cat.name}
-                            type="button"
-                            onClick={() => toggleCategoryFilter(cat.name)}
-                            aria-pressed={isActive}
-                            // Without this the name and amount spans run
-                            // together into "Housing€98,40" for screen readers.
-                            aria-label={`${cat.name}: €${cat.value.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
-                            style={{
-                              display: 'block',
-                              width: '100%',
-                              textAlign: 'left',
-                              background: 'transparent',
-                              border: 'none',
-                              padding: '2px 0',
-                              cursor: 'pointer'
-                            }}
-                          >
-                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)', marginBottom: '4px' }}>
-                              <span style={{
-                                color: isActive ? 'var(--color-primary)' : 'var(--color-text-main)',
-                                fontWeight: isActive ? '700' : '500',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}>
-                                {cat.name}
-                              </span>
-                              <span style={{ color: 'var(--color-text-muted)', fontWeight: '600', flexShrink: 0 }}>
-                                €{cat.value.toLocaleString('de-DE', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                            <div style={{ height: '6px', background: 'var(--color-surface-inset)', borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{
-                                height: '100%',
-                                width: `${Math.max(cat.share * 100, 2)}%`,
-                                background: isActive ? 'var(--color-primary)' : 'rgba(37, 99, 235, 0.45)',
-                                transition: 'width 0.4s ease'
-                              }} />
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+              </div>
+
+              {/* Список операций прямо на экране. Раньше здесь была разбивка
+                  «Куда ушло», повторявшая донат в «Аналитике», а сами
+                  операции лежали за шторкой, которую надо тянуть. Теперь
+                  наоборот: разбор - на вкладке разбора, а на главной то,
+                  ради чего в трекер заходят чаще всего. */}
+              <div className="glass-panel" style={{ padding: 0, overflow: 'hidden' }}>
+                {/* Ссылки «все операции» здесь нет намеренно: ручка шторки
+                    висит прямо под этой карточкой и делает ровно то же
+                    самое - две кнопки рядом с одинаковым действием только
+                    сбивают с толку. */}
+                <h3 style={{ margin: 0, padding: '16px 20px 12px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
+                  Последние операции
+                </h3>
+                <TransactionList
+                  groups={recentGroups}
+                  emptyText="За выбранный период операций нет"
+                  selectedCategory={selectedCategory}
+                  toggleCategoryFilter={toggleCategoryFilter}
+                  openEditModal={openEditModal}
+                  getAccountDisplay={getAccountDisplay}
+                  formatDate={formatDate}
+                  rowPadding="14px 20px"
+                />
               </div>
             </div>
           ) : (
@@ -1292,6 +1257,7 @@ function App() {
               series={monthlySeries}
               selectedMonth={selectedMonth}
               onSelectMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
+              expenseComparison={expenseComparison}
               categoryComparison={categoryComparison}
               comparisonLabel={comparisonLabel}
               selectedCategory={selectedCategory}

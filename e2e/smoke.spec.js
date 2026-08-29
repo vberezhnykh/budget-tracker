@@ -70,9 +70,11 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // ~120ms (see scheduleCarouselSettle in src/App.jsx).
     await page.waitForTimeout(500);
 
-    const chip = page.getByText(/Счет:/);
-    await expect(chip).toContainText(targetAccountName);
-    await expect(chip).not.toContainText(lastAccountName);
+    // Выбранный счёт назван в заголовке на ручке шторки. Чип «Счет:» лежит
+    // в её содержимом, а оно рендерится только у раскрытой шторки.
+    const drawerTitle = page.getByText(/^Список операций/);
+    await expect(drawerTitle).toContainText(targetAccountName);
+    await expect(drawerTitle).not.toContainText(lastAccountName);
   });
 
   test('each carousel slide is a hard scroll-snap stop (one slide per swipe)', async ({ page }) => {
@@ -317,7 +319,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // Each dot still selects its own account - shrunken boxes must stay
     // aligned with the slide they stand for.
     await dots.nth(3).click();
-    await expect(page.getByText(/Счет:/)).toContainText(manyAccounts[2].name);
+    await expect(page.getByText(/^Список операций/)).toContainText(manyAccounts[2].name);
   });
 
   test('quick-action buttons (income/expense/transfer) sit on one row, fit the viewport, and are not text-clipped', async ({ page }) => {

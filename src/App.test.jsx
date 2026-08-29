@@ -106,6 +106,21 @@ function stubCarouselGeometry(container, slideWidth = 300, gap = 12, spacerWidth
     return slideEls;
 }
 
+// Ручка шторки слушает pointer-события, а не click, поэтому «открыть» - это
+// pointerDown + pointerUp по ней. Содержимое шторки (поиск, фильтры, полная
+// история) существует в дереве только когда она раскрыта.
+function openDrawer() {
+    const handle = screen.getByRole('button', { name: 'Открыть список операций' });
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 200 });
+    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 200 });
+}
+
+// Разбивка по категориям живёт на вкладке «Аналитика»: на главной её больше
+// нет, чтобы вкладки не повторяли друг друга.
+function openAnalytics() {
+    fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
+}
+
 describe('App Integration Tests', () => {
     beforeEach(() => {
         currentTransactions = [...mockTransactions];
@@ -220,9 +235,10 @@ describe('App Integration Tests', () => {
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        // The stats panel names the categories that produced the expense
-        // figure, so the breakdown is reachable without the Аналитика tab.
-        const categoryButton = screen.getByRole('button', { name: /^Housing: €/ });
+        // Разбивка по категориям - на вкладке «Аналитика»; на главной её
+        // больше нет, там теперь лимит и последние операции.
+        openAnalytics();
+        const categoryButton = await screen.findByRole('button', { name: /^Housing: €/ });
         expect(categoryButton).toHaveAttribute('aria-pressed', 'false');
 
         fireEvent.click(categoryButton);
@@ -385,13 +401,17 @@ describe('App Integration Tests', () => {
         expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
 
         // Type "Rent" in search
+        openDrawer();
         const searchInput = screen.getByPlaceholderText(/Поиск/);
         fireEvent.change(searchInput, { target: { value: 'Rent' } });
 
-        // Should only show Rent
+        // Ищем внутри шторки: блок «Последние операции» на главной поиску не
+        // подчиняется (он показывает период целиком) и лежит под раскрытой
+        // шторкой, поэтому глобальный queryByText нашёл бы обе копии.
+        const drawer = within(screen.getByTestId('transactions-drawer'));
         await waitFor(() => {
-            expect(screen.queryByText('Salary')).not.toBeInTheDocument();
-            expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
+            expect(drawer.queryByText('Salary')).not.toBeInTheDocument();
+            expect(drawer.getByText('Monthly flat rent')).toBeInTheDocument();
             expect(screen.getByText(/Результаты поиска \(1\)/)).toBeInTheDocument();
         });
 
@@ -399,10 +419,10 @@ describe('App Integration Tests', () => {
         const clearBtn = screen.getByText('×');
         fireEvent.click(clearBtn);
 
-        // Should show both again
+        // Should show both again - снова внутри шторки, по той же причине.
         await waitFor(() => {
-            expect(screen.getByText('Salary')).toBeInTheDocument();
-            expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
+            expect(drawer.getByText('Salary')).toBeInTheDocument();
+            expect(drawer.getByText('Monthly flat rent')).toBeInTheDocument();
             expect(screen.getByText('История')).toBeInTheDocument();
         });
     });
@@ -499,8 +519,9 @@ describe('App Integration Tests', () => {
         // whatever the last slide happens to be.
         expect(screen.queryByText('Coffee')).not.toBeInTheDocument();
         expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
-        const chip = screen.getByText(/Счет:/).closest('div');
-        expect(chip).toHaveTextContent('Карта');
+        // Выбранный счёт виден в заголовке на ручке шторки - чип «Счет:»
+        // лежит в её содержимом, а оно рендерится только у раскрытой.
+        expect(screen.getByText(/^Список операций/)).toHaveTextContent('Карта');
     });
 
     it('navigates the carousel via the dot indicators', async () => {
@@ -511,8 +532,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(cardDot);
 
         await waitFor(() => {
-            const chip = screen.getByText(/Счет:/).closest('div');
-            expect(chip).toHaveTextContent('Карта');
+            expect(screen.getByText(/^Список операций/)).toHaveTextContent('Карта');
         });
         expect(cardDot).toHaveAttribute('aria-current', 'true');
     });
@@ -524,11 +544,14 @@ describe('App Integration Tests', () => {
         const cardSlide = screen.getByText('Карта').closest('[data-carousel-slide]');
         fireEvent.click(cardSlide);
         await waitFor(() => {
-            expect(screen.getByText(/Счет:/)).toBeInTheDocument();
+            expect(screen.getByText(/^Список операций/)).toHaveTextContent('Карта');
         });
 
         Element.prototype.scrollIntoView.mockClear();
 
+        // Сброс фильтра живёт в содержимом шторки - чтобы до него добраться,
+        // её надо раскрыть, как это делает и пользователь.
+        openDrawer();
         const resetBtn = screen.getByText('Сбросить ×');
         fireEvent.click(resetBtn);
 
@@ -557,8 +580,7 @@ describe('App Integration Tests', () => {
         const walletSlide = screen.getByText('Кошелёк').closest('[data-carousel-slide]');
         fireEvent.click(walletSlide);
         await waitFor(() => {
-            const chip = screen.getByText(/Счет:/).closest('div');
-            expect(chip).toHaveTextContent('Кошелёк');
+            expect(screen.getByText(/^Список операций/)).toHaveTextContent('Кошелёк');
         });
 
         // Delete it via the accounts settings panel.
@@ -569,10 +591,13 @@ describe('App Integration Tests', () => {
         expect(window.confirm).toHaveBeenCalled();
 
         // The filter pointed at an id that no longer exists - it must be reset.
+        // Признак сброса - заголовок шторки без имени счёта.
         await waitFor(() => {
-            expect(screen.queryByText(/Счет:/)).not.toBeInTheDocument();
+            expect(screen.getByText(/^Список операций/)).not.toHaveTextContent('Кошелёк');
         });
-        expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'true');
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'true');
+        });
     });
 
     it('держит замороженный счёт вне общего капитала и подписывает сумму отдельно', async () => {
@@ -610,7 +635,8 @@ describe('App Integration Tests', () => {
         await screen.findByTitle('Настройки');
 
         // Ставим фильтр на категорию, которую сейчас удалим - через разбивку
-        // расхода в панели статистики.
+        // расхода на вкладке «Аналитика».
+        openAnalytics();
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
@@ -642,6 +668,7 @@ describe('App Integration Tests', () => {
         await screen.findByTitle('Настройки');
 
         // Фильтр стоит на категории, которую сейчас переименуем.
+        openAnalytics();
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
