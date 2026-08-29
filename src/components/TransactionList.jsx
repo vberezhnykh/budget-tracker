@@ -108,7 +108,7 @@ export default function TransactionList({
             <div style={{ padding: '10px 24px', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>{formatDate(date)}</span>
                 {groups[date].dailySum !== 0 && (
-                    <span style={{ fontWeight: '600', color: groups[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
+                    <span style={{ fontWeight: '600', whiteSpace: 'nowrap', color: groups[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
                         {groups[date].dailySum > 0 ? '+' : ''}{groups[date].dailySum.toFixed(2)}€
                     </span>
                 )}
@@ -130,7 +130,7 @@ export default function TransactionList({
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ fontWeight: '700', color: 'var(--color-text-main)' }}>
+                                <div style={{ fontWeight: '700', whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--color-text-main)' }}>
                                     €{Math.abs(item.visualAmount).toFixed(2)}
                                 </div>
                             </div>
@@ -201,7 +201,9 @@ export default function TransactionList({
                                 </div>
                             </div>
                         </div>
-                        <div style={{ fontWeight: '700', color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? 'var(--color-positive-strong)' : 'var(--color-text-main)') }}>
+                        {/* nowrap - чтобы знак «+» не оставался на строке один,
+                            когда сумма длинная, а название операции широкое. */}
+                        <div style={{ fontWeight: '700', whiteSpace: 'nowrap', flexShrink: 0, color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? 'var(--color-positive-strong)' : 'var(--color-text-main)') }}>
                             {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                         </div>
                     </div>

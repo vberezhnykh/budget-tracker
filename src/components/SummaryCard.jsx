@@ -11,6 +11,24 @@
 
 const formatEuro = (value) => value.toLocaleString('de-DE', { minimumFractionDigits: 2 });
 
+// Знак и сумма - одно неразрывное целое. Без nowrap браузер переносил строку
+// ровно по этому пробелу-по-смыслу, и «+» оставался висеть на строке один,
+// а сумма уезжала под него.
+//
+// Кегль подобран с запасом, а не впритык: под сумму в этих боксах остаётся
+// ~93px, и «+€8.649,42» прежним кеглем занимал 89 - то есть помещался на
+// одном телефоне и не помещался на другом, где шрифт чуть шире. Тот же
+// кегль стоит у этих чисел в «Сводке» на «Аналитике», так что заодно и
+// одинаково. Совсем длинные суммы (от миллиона) уходят на ступень ниже, а
+// многоточие - последняя страховка, чтобы карточка не поехала.
+const amountStyle = (text) => ({
+    fontSize: text.length > 11 ? 'var(--text-sm)' : 'var(--text-lg)',
+    fontWeight: '700',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+});
+
 // Кнопка на активной карточке и просто блок на соседней. Разметка одна:
 // иначе соседние карточки поехали бы на пиксель-другой относительно
 // активной, и это было бы видно прямо во время свайпа.
@@ -39,6 +57,8 @@ export default function SummaryCard({
 }) {
     const expenseAbs = Math.abs(expense);
     const saldo = income + expense;
+    const incomeText = `+€${formatEuro(income)}`;
+    const saldoText = `${saldo > 0 ? '+' : ''}€${formatEuro(saldo)}`;
 
     const isLimitUsable = Number.isFinite(monthlyLimit) && monthlyLimit > 0;
     const withRing = showLimitRing && isLimitUsable;
@@ -143,8 +163,8 @@ export default function SummaryCard({
                     }}
                 >
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Доход</div>
-                    <div style={{ fontSize: 'var(--text-2xl)', fontWeight: '700', color: 'var(--color-positive)' }}>
-                        +€{formatEuro(income)}
+                    <div style={{ ...amountStyle(incomeText), color: 'var(--color-positive)' }}>
+                        {incomeText}
                     </div>
                 </Pressable>
                 <div style={{
@@ -155,8 +175,8 @@ export default function SummaryCard({
                     padding: '12px 14px'
                 }}>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Сальдо</div>
-                    <div style={{ fontSize: 'var(--text-2xl)', fontWeight: '700', color: saldo >= 0 ? 'var(--color-text-main)' : 'var(--color-negative)' }}>
-                        {saldo > 0 ? '+' : ''}€{formatEuro(saldo)}
+                    <div style={{ ...amountStyle(saldoText), color: saldo >= 0 ? 'var(--color-text-main)' : 'var(--color-negative)' }}>
+                        {saldoText}
                     </div>
                 </div>
             </div>

@@ -547,6 +547,54 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(await carousel.evaluate((el) => el.scrollLeft)).toBe(startScroll);
   });
 
+  test('знак суммы не отрывается от числа в карточке сводки', async ({ page }) => {
+    // «+» висел на строке один, а сумма уезжала под него: строка ломалась
+    // ровно по пробелу между знаком и числом. Под сумму в этих боксах
+    // остаётся ~93px, а прежним кеглем «+€8.649,42» занимал 89 - то есть
+    // помещалось это на одном телефоне и не помещалось на другом, где шрифт
+    // чуть шире. Поэтому сумма здесь заведомо длиннее той, что была на
+    // скриншоте: «+€28.649,42» прежним кеглем требовал 99px и не влезал
+    // никак - на нём тест и падает, если убрать перенос и уменьшенный кегль.
+    // jsdom такого не покажет: он не переносит строки, потому что их не
+    // измеряет.
+    const now = new Date();
+    const inThisMonth = (day) => new Date(Date.UTC(now.getFullYear(), now.getMonth(), day)).toISOString();
+    await mockApi(page, {
+      accounts: manyAccounts,
+      transactions: [
+        { _id: 'w1', title: 'Зарплата', amount: 28649.42, type: 'income', account: 'acc-card-1', date: inThisMonth(1), category: 'Зарплата' },
+        { _id: 'w2', title: 'Аренда', amount: 5760.09, type: 'expense', account: 'acc-card-1', date: inThisMonth(2), category: 'Еда' },
+      ],
+    });
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    // Выбранная карточка - единственная, где расход и доход остались
+    // кнопками-фильтрами (у соседних месяцев это просто текст).
+    const activeCard = page.locator('[data-carousel-slide]').filter({ has: page.locator('button[aria-label^="Доход:"]') });
+    await expect(activeCard).toHaveCount(1);
+
+    for (const label of ['Доход', 'Сальдо']) {
+      const value = activeCard.locator(`div:text-is("${label}") + div`);
+      await expect(value).toBeVisible();
+
+      const box = await value.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return {
+          text: el.textContent.trim(),
+          height: el.getBoundingClientRect().height,
+          lineHeight: parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2,
+          overflows: el.scrollWidth > el.clientWidth,
+        };
+      });
+
+      // Знак на месте, строка одна, и в бокс она влезает целиком.
+      expect(box.text.startsWith('+€')).toBe(true);
+      expect(box.height).toBeLessThan(box.lineHeight * 1.6);
+      expect(box.overflows).toBe(false);
+    }
+  });
+
   test('bottom tab bar sits clear of the drawer peek and never covers page content', async ({ page }) => {
     // Аналитика moved out of the stats panel into a fixed bottom tab bar.
     // Being fixed, the bar is out of normal flow: it can overlap the
