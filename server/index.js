@@ -70,7 +70,7 @@ const corsOptionsDelegate = function (req, callback) {
             if (originHost === requestHost) {
                 isAllowed = true;
             }
-        } catch (e) {
+        } catch {
             // Invalid URL in origin header
         }
     }

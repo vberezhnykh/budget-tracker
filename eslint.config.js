@@ -26,4 +26,37 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  // Бэкенд - тоже .js, но другой рантайм: Node и CommonJS. Без этого блока
+  // на него распространялись browser-глобали и sourceType: 'module' из
+  // блока выше, и весь server/** был красным - require, module и process
+  // читались как необъявленные переменные.
+  {
+    files: ['server/**/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
+  // Тесты сервера, в отличие от самого сервера, написаны на ES-модулях:
+  // их исполняет vitest, а не Node напрямую, и import из 'vitest' в них
+  // обязателен. Возвращаем им sourceType: 'module' поверх блока выше.
+  {
+    files: ['server/**/*.test.js'],
+    languageOptions: {
+      sourceType: 'module',
+    },
+  },
+  // Конфиги в корне и Playwright-сьют исполняются Node, но остаются
+  // ES-модулями: им нужны только node-глобали (process.env в
+  // playwright.config.js), а не смена sourceType.
+  {
+    files: ['*.config.js', 'e2e/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
 ])

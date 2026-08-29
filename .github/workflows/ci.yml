@@ -1,0 +1,95 @@
+# Прогон тех же проверок, что запускаются локально: линт, модульные тесты,
+# сборка и смоук-сьют в реальном браузере. Базы данных ни одной из них не
+# нужно - серверные тесты работают на моках, а Playwright подменяет каждый
+# вызов /api/** фикстурой (см. e2e/fixtures.js), так что весь CI укладывается
+# в обычный раннер без сервисов.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# Пуш в ту же ветку отменяет предыдущий, ещё не доехавший прогон: смысла
+# дожидаться проверок устаревшего коммита нет.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Быстрые проверки одной работой: каждая занимает секунды, и разносить их
+  # по отдельным job'ам значило бы трижды платить за установку зависимостей.
+  checks:
+    name: Линт, тесты, сборка
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Та же мажорная версия, что и локально; Vite 7 требует минимум
+          # Node 20.19/22.12.
+          node-version: 22
+          cache: npm
+
+      # postinstall из package.json ставит заодно зависимости server/,
+      # поэтому отдельного шага для бэкенда не нужно.
+      - run: npm ci
+
+      - run: npm run lint
+
+      # vitest прогоняет и фронтенд (jsdom), и юнит-тесты сервера:
+      # server/*.test.js подхватываются тем же конфигом, e2e/ исключён.
+      - run: npm test
+
+      # Сборка ловит то, что не ловят тесты: битые импорты и всё, что
+      # разъезжается только при продакшен-бандлинге.
+      - run: npm run build
+
+  e2e:
+    name: Смоук в браузере
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Браузер кладётся в кеш по версии playwright из package-lock.json:
+      # обновится зависимость - сменится ключ, и Chromium скачается заново.
+      - name: Кеш браузера Playwright
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      # Только Chromium: сьют явно фиксирует browserName: 'chromium'
+      # (см. playwright.config.js), остальные движки тянуть незачем.
+      # При попадании в кеш сам браузер уже на месте, но системные
+      # библиотеки под него в образе раннера - нет, их ставим всегда.
+      - name: Установить Chromium
+        run: npx playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+
+      - name: Установить системные зависимости
+        run: npx playwright install-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+
+      - run: npm run test:e2e
+
+      # Скриншоты и контекст падений: без них красный прогон геометрического
+      # теста невозможно разобрать, не воспроизведя его руками.
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-test-results
+          path: test-results/
+          retention-days: 7

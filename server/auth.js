@@ -94,7 +94,7 @@ function verifyToken(token, secret, appPassword) {
     let payload;
     try {
         payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
-    } catch (err) {
+    } catch {
         return false;
     }
 

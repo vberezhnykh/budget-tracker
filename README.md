@@ -222,6 +222,12 @@ Mongo. Это доказывает только настоящее восста�
   поднимает dev-сервер Vite, а каждый вызов `/api/**` подменяется фикстурой
   (см. `e2e/fixtures.js`). Перед первым запуском один раз выполните
   `npx playwright install chromium`.
+- `npm run lint` - ESLint. Фронтенд разбирается как браузерные ES-модули,
+  `server/**` - как CommonJS под Node (см. `eslint.config.js`).
+
+Все три плюс продакшен-сборка гоняются в CI на каждый пуш и пул-реквест
+(`.github/workflows/ci.yml`). Ничего из этого не требует базы: серверные
+тесты работают на моках, а Playwright подменяет `/api/**` фикстурами.
 
 Currently, two official plugins are available:
 
