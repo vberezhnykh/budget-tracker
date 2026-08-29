@@ -2,21 +2,14 @@
 // между тестами. Держится отдельно от самих тестов, потому что каждая из
 // этих вещей - ловушка, и ошибиться в ней проще, чем в проверке.
 
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { inject } from 'vitest';
 import mongoose from 'mongoose';
 import request from 'supertest';
 
-// Первый прогон качает mongod (~780 МБ) и в дефолтном месте кладёт его в
-// server/node_modules/.cache - то есть теряет при каждой переустановке
-// зависимостей. Отсюда явный каталог вне node_modules (в .gitignore).
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-process.env.MONGOMS_DOWNLOAD_DIR ||= path.join(REPO_ROOT, '.cache', 'mongodb-binaries');
-
-// Скачивание и холодный старт mongod в дефолтные 10 секунд vitest не
-// укладываются. Прогретый инстанс поднимается примерно за секунду, но
-// закладываться надо на первый запуск и на CI.
-export const DB_HOOK_TIMEOUT = 180_000;
+// Подключение к уже поднятой базе занимает миллисекунды, но первый файл в
+// прогоне может прийти, пока mongod ещё разогревается, а на холодном
+// раннере CI сервис-контейнер отвечает не сразу.
+export const DB_HOOK_TIMEOUT = 60_000;
 
 // Пароль и секрет тестового окружения. Не «отключаем» аутентификацию через
 // AUTH_DISABLED: тот путь работает только при незаданных APP_PASSWORD /
@@ -25,21 +18,18 @@ export const DB_HOOK_TIMEOUT = 180_000;
 export const TEST_PASSWORD = 'test-password';
 export const TEST_SECRET = 'test-session-secret-at-least-32-chars-long';
 
-let memoryServer = null;
-
-// URI берётся из окружения, а memory-server поднимается только когда
-// переменной нет. Так одни и те же тесты идут локально на скачанном mongod и
-// в CI на сервис-контейнере mongo:7, без развилки в самих тестах.
-async function resolveUri() {
-    if (process.env.MONGODB_URI_TEST) return process.env.MONGODB_URI_TEST;
-
-    const { MongoMemoryServer } = await import('mongodb-memory-server');
-    // Свой launchTimeout вместо дефолтных 10 секунд: прогретый mongod
-    // поднимается примерно за секунду, но первый запуск после скачивания
-    // (и запуск на холодном раннере CI) в десять секунд не укладывается, и
-    // падение выглядит как «инстанс не стартовал», хотя он просто не успел.
-    memoryServer = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
-    return memoryServer.getUri();
+// URI один на весь прогон: его поднимает и отдаёт server/test/globalSetup.js -
+// либо это сервис-контейнер из MONGODB_URI_TEST, либо поднятый им
+// mongodb-memory-server. Развилки в самих тестах при этом нет.
+function resolveUri() {
+    const uri = process.env.MONGODB_URI_TEST || inject('mongoUri');
+    if (!uri) {
+        throw new Error(
+            'Нет URI базы для тестов. Их поднимает server/test/globalSetup.js - ' +
+            'проверьте globalSetup в vitest.config.js.'
+        );
+    }
+    return uri;
 }
 
 // dbName задаётся вызывающим и должен быть свой у каждого файла: vitest
@@ -50,8 +40,7 @@ export async function connectTestDb(dbName) {
     process.env.SESSION_SECRET = TEST_SECRET;
     delete process.env.AUTH_DISABLED;
 
-    const uri = await resolveUri();
-    await mongoose.connect(uri, { dbName });
+    await mongoose.connect(resolveUri(), { dbName });
 
     // app.js импортируется только после подключения и только динамически:
     // статический import подняли бы наверх файла, и модель успела бы
@@ -68,12 +57,10 @@ export async function connectTestDb(dbName) {
     return app;
 }
 
+// Инстанс базы общий на прогон и останавливается в globalSetup - здесь
+// закрывается только своё подключение.
 export async function disconnectTestDb() {
     await mongoose.disconnect();
-    if (memoryServer) {
-        await memoryServer.stop();
-        memoryServer = null;
-    }
 }
 
 // dropDatabase() пересоздал бы коллекции без индексов, поэтому чистим
