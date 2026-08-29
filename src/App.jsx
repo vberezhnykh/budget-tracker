@@ -135,11 +135,15 @@ function App() {
     }
   };
 
-  // Lock body scroll when a modal or the expanded history drawer is open.
-  // The drawer's own list still scrolls - it's inside the fixed sheet with
-  // its own overflowY: 'auto'.
+  // Раскрытая шторка истории тоже не должна пускать под собой страницу.
+  // Модальные листы (форма операции, настройки, выбор периода) держат
+  // прокрутку сами - см. useBodyScrollLock в components/ui/Sheet.jsx;
+  // дублировать это здесь нельзя, иначе два владельца одного стиля будут
+  // затирать друг друга при закрытии. Собственный список шторки при этом
+  // продолжает скроллиться: он внутри фиксированного листа со своим
+  // overflowY: 'auto'.
   useEffect(() => {
-    if (showAddTransaction || editingTransaction || historyDrawerExpanded) {
+    if (historyDrawerExpanded) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -149,7 +153,7 @@ function App() {
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [showAddTransaction, editingTransaction, historyDrawerExpanded]);
+  }, [historyDrawerExpanded]);
 
   // Cancel any pending rAF-throttled carousel scroll handler / settle-debounce timer on unmount
   useEffect(() => {

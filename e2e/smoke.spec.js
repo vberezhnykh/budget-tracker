@@ -423,6 +423,74 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await expect(page.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeVisible();
   });
 
+  test('an open sheet freezes the page under it', async ({ page }) => {
+    // С открытым листом страница под ним продолжала двигаться: подложка
+    // листа сама прокручиваема, и когда её содержимое короче экрана (лист
+    // не выше 92vh), браузер передаёт жест дальше - главному экрану. Замок
+    // был только у формы операции; у настроек и выбора периода его не было
+    // вовсе, а пальцем пользователь чаще всего попадает именно в просвет
+    // над листом.
+    //
+    // Сам симптом здесь не воспроизводится: он проявляется на касании в
+    // мобильном Safari, а Chromium в headless ни через page.mouse, ни
+    // через CDP Input.synthesizeScrollGesture страницу под подложкой не
+    // двигает (та же причина, по которой соседний тест про scroll-snap
+    // проверяет вычисленный стиль, а не свайп). Поэтому проверяется сам
+    // механизм: страница на время жизни листа переводится в
+    // position: fixed со сдвигом на текущую прокрутку - именно это её и
+    // держит - и возвращается в исходное состояние при закрытии.
+    await mockApi(page, { accounts: manyAccounts });
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    const bodyState = () => page.evaluate(() => ({
+      position: document.body.style.position,
+      overflow: document.body.style.overflow,
+      top: document.body.style.top,
+    }));
+
+    // До открытия страница обычная. overflow здесь 'unset', а не пустая
+    // строка: его выставляет App для раскрытой шторки истории (шторка -
+    // не лист и держит прокрутку сама).
+    const free = await bodyState();
+    expect(free.position).toBe('');
+    expect(free.overflow).not.toBe('hidden');
+
+    for (const open of [
+      () => page.getByTitle('Настройки').click(),
+      () => page.getByRole('button', { name: /^Период:/ }).click(),
+      () => page.getByRole('button', { name: /- Расход/ }).click(),
+    ]) {
+      await open();
+      await expect(page.getByRole('dialog').first()).toBeVisible();
+
+      const locked = await bodyState();
+      expect(locked.position).toBe('fixed');
+      expect(locked.overflow).toBe('hidden');
+      // Сдвиг равен минус текущей прокрутке. В тесте она нулевая (клик по
+      // элементу шапки сам подтягивает страницу наверх), а CSSOM
+      // нормализует "-0px" в "0px" - отсюда допуск на знак.
+      expect(locked.top).toMatch(/^-?\d+px$/);
+
+      // Подложка не отдаёт жест странице, даже когда сама прокрутиться не
+      // может: лист ниже экрана, прокручивать ей нечего.
+      const contain = await page.getByRole('dialog').first().evaluate(
+        (el) => getComputedStyle(el.parentElement).overscrollBehaviorY
+      );
+      expect(contain).toBe('contain');
+
+      await page.mouse.click(200, 40);
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await page.waitForTimeout(200);
+
+      // Закрылся - и не оставил страницу приколоченной.
+      const released = await bodyState();
+      expect(released.position).toBe('');
+      expect(released.top).toBe('');
+      expect(released.overflow).not.toBe('hidden');
+    }
+  });
+
   test('bottom tab bar sits clear of the drawer peek and never covers page content', async ({ page }) => {
     // Аналитика moved out of the stats panel into a fixed bottom tab bar.
     // Being fixed, the bar is out of normal flow: it can overlap the

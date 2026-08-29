@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import Field from './ui/Field'
 import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
@@ -192,23 +192,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             setShowAllCategories(true);
         }
     };
-
-    // Lock body scroll when modal is open
-    useEffect(() => {
-        const scrollY = window.scrollY;
-        document.body.style.overflow = 'hidden';
-        document.body.style.position = 'fixed';
-        document.body.style.width = '100%';
-        document.body.style.top = `-${scrollY}px`;
-
-        return () => {
-            document.body.style.overflow = '';
-            document.body.style.position = '';
-            document.body.style.width = '';
-            document.body.style.top = '';
-            window.scrollTo(0, scrollY);
-        };
-    }, []);
 
 
     return (
