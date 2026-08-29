@@ -8,6 +8,7 @@ const Category = require('./models/Category');
 const Account = require('./models/Account');
 const Settings = require('./models/Settings');
 const { validateTransactionUpdate } = require('./transactionInput');
+const { parseTransactionQuery } = require('./transactionQuery');
 const {
     COOKIE_NAME,
     TOKEN_TTL_MS,
@@ -77,7 +78,13 @@ const corsOptionsDelegate = function (req, callback) {
     }
 
     if (isAllowed) {
-        callback(null, { origin: true, credentials: true });
+        // exposedHeaders: без этого браузер не отдаёт X-Total-Count скрипту
+        // при кросс-доменном запросе - в список безопасных по умолчанию он
+        // не входит. В проде фронт и API на одном origin, а в разработке
+        // запрос идёт через прокси Vite, так что сегодня это на всякий
+        // случай; но заголовок без него бесполезен ровно в тот момент,
+        // когда понадобится.
+        callback(null, { origin: true, credentials: true, exposedHeaders: ['X-Total-Count'] });
     } else {
         // Instead of throwing an Error (which returns a 500 Internal Server Error page),
         // we just disable CORS for this origin, which allows standard browser CORS blocking.
@@ -489,10 +496,38 @@ app.put('/api/settings', async (req, res) => {
 
 // ---- Transactions ----
 
-// Get all transactions
+// Get transactions.
+//
+// Без параметров ведёт себя ровно как раньше - вся история одним массивом по
+// убыванию даты, - но принимает период (from/to) и постраничную выборку
+// (limit/skip); разбор и проверка параметров в server/transactionQuery.js.
+// Сортировка совпадает с индексом { date: -1 } из модели, поэтому берётся
+// из него, а не выполняется в памяти после выборки.
+//
+// Форма ответа не меняется от наличия параметров - это всегда массив, - а
+// общее число подходящих операций уезжает отдельным заголовком
+// X-Total-Count: клиенту нужно знать, сколько всего страниц, но менять из-за
+// этого тип тела ответа значило бы ломать всех, кто уже читает массив.
 app.get('/api/transactions', async (req, res) => {
     try {
-        const transactions = await Transaction.find().sort({ date: -1 });
+        const { error, filter, limit, skip } = parseTransactionQuery(req.query);
+        if (error) {
+            return res.status(400).json({ message: error });
+        }
+
+        let query = Transaction.find(filter).sort({ date: -1 });
+        if (skip > 0) query = query.skip(skip);
+        if (limit !== null) query = query.limit(limit);
+
+        const transactions = await query;
+
+        // Лишний запрос в базу нужен только когда выдача урезана: иначе
+        // общее число - это длина уже полученного массива.
+        const total = (limit !== null || skip > 0)
+            ? await Transaction.countDocuments(filter)
+            : transactions.length;
+        res.set('X-Total-Count', String(total));
+
         res.json(transactions);
     } catch (err) {
         res.status(500).json({ message: err.message });
