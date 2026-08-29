@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mockApi, accounts } from './fixtures.js';
+import { mockApi, accounts, manyAccounts } from './fixtures.js';
 
 // Real-browser smoke suite. Three real bugs shipped this month and every one
 // was found by a human on a phone, never by the (jsdom-based) unit suite:
@@ -270,6 +270,54 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
         expect(a.x + a.width).toBeLessThanOrEqual(b.x + 0.5);
       }
     }
+  });
+
+  test('carousel dots stay on one row when there are many accounts', async ({ page }) => {
+    // With eight accounts the row of fixed 40px hit boxes no longer fit a
+    // phone's width and wrapped onto a second line (reported from a real
+    // device: "точек из-за счетов стало много, перенеслись на другую
+    // строку"). The boxes now shrink instead of wrapping. Only real layout
+    // can show this: jsdom neither measures the 40px boxes against the
+    // viewport nor performs flex line-breaking at all.
+    await mockApi(page, { accounts: manyAccounts });
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    const dots = page.locator('button[aria-label^="Показать"]');
+    const count = await dots.count();
+    expect(count).toBe(manyAccounts.length + 1);
+
+    const viewport = page.viewportSize();
+    const boxes = [];
+    for (let i = 0; i < count; i++) {
+      const box = await dots.nth(i).boundingBox();
+      expect(box).not.toBeNull();
+      boxes.push(box);
+    }
+
+    // One row: every dot shares the first one's vertical position, and the
+    // whole row fits inside the viewport.
+    for (const box of boxes) {
+      expect(Math.abs(box.y - boxes[0].y)).toBeLessThanOrEqual(1);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 0.5);
+    }
+
+    // Shrinking must not reintroduce the overlap the sibling test above
+    // guards against, and the hit boxes must stay tappable rather than
+    // collapsing to the 6px visual dot.
+    for (let i = 0; i < boxes.length; i++) {
+      expect(boxes[i].width).toBeGreaterThanOrEqual(20);
+      expect(boxes[i].height).toBeGreaterThanOrEqual(40);
+      if (i < boxes.length - 1) {
+        expect(boxes[i].x + boxes[i].width).toBeLessThanOrEqual(boxes[i + 1].x + 0.5);
+      }
+    }
+
+    // Each dot still selects its own account - shrunken boxes must stay
+    // aligned with the slide they stand for.
+    await dots.nth(3).click();
+    await expect(page.getByText(/Счет:/)).toContainText(manyAccounts[2].name);
   });
 
   test('quick-action buttons (income/expense/transfer) sit on one row, fit the viewport, and are not text-clipped', async ({ page }) => {

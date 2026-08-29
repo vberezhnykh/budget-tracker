@@ -30,24 +30,40 @@ export const transactions = [
   { _id: 'tx-4', title: 'Пополнение', amount: 500, type: 'income', account: 'acc-wallet', date: '2026-01-07T00:00:00Z', category: 'Зарплата' },
 ];
 
+// Больше счетов, чем в основном наборе: ряд точек-индикаторов карусели при
+// восьми счетах перестал помещаться в ширину телефона и переносился на
+// вторую строку. Отдельный набор, а не расширение основного, - остальные
+// тесты рассчитаны на четыре счёта и их геометрию.
+export const manyAccounts = [
+  ...accounts,
+  { _id: 'acc-extra-1', name: 'Revolut', type: 'card', icon: '💳', isDefault: false, order: 4 },
+  { _id: 'acc-extra-2', name: 'Wise', type: 'card', icon: '💳', isDefault: false, order: 5 },
+  { _id: 'acc-extra-3', name: 'Обмен', type: 'cash', icon: '💱', isDefault: false, order: 6 },
+  { _id: 'acc-extra-4', name: 'Копилка', type: 'cash', icon: '🐷', isDefault: false, order: 7 },
+];
+
 // Installs a single catch-all route for every /api/** call. GETs for the
-// three endpoints App.jsx fetches on load return the fixtures above; every
-// other /api/** call (writes, logout, anything else) gets a generic 200 so
-// nothing the app does mid-test can hang waiting on a real server.
-export async function mockApi(page) {
+// three endpoints App.jsx fetches on load return the fixtures above (or the
+// per-test overrides passed in); every other /api/** call (writes, logout,
+// anything else) gets a generic 200 so nothing the app does mid-test can
+// hang waiting on a real server.
+export async function mockApi(page, overrides = {}) {
+  const accountsData = overrides.accounts || accounts;
+  const transactionsData = overrides.transactions || transactions;
+  const categoriesData = overrides.categories || categories;
   await page.route('**/api/**', (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
     const method = request.method();
 
     if (method === 'GET' && pathname === '/api/accounts') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(accounts) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(accountsData) });
     }
     if (method === 'GET' && pathname === '/api/transactions') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(transactions) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(transactionsData) });
     }
     if (method === 'GET' && pathname === '/api/categories') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(categories) });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(categoriesData) });
     }
 
     return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });

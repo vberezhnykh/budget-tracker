@@ -960,7 +960,7 @@ function App() {
         </div>
 
         {/* Carousel dot indicators */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', marginTop: '12px' }}>
+        <div style={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center', marginTop: '12px' }}>
           {slides.map((slide, index) => {
             const isActive = slide.filter === selectedAccount;
             return (
@@ -971,20 +971,24 @@ function App() {
                 aria-label={`Показать ${slide.name}`}
                 aria-current={isActive}
                 style={{
-                  flexShrink: 0,
-                  // Hit target is enlarged to 40x40 for touch, but only the
-                  // vertical margin is pulled back with a negative value -
-                  // there are no vertical neighbours, so that can't overlap
-                  // anything and keeps the row from growing taller. The
-                  // horizontal margin is left at 0 so adjacent 40px boxes
-                  // tile edge-to-edge instead of overlapping (a negative
-                  // horizontal margin here made a wider dot's box paint over
-                  // its neighbour, so taps meant for one dot's visible
-                  // marker landed on the next dot instead). The row is
-                  // wider as a result and may wrap (flexWrap: 'wrap' above
-                  // already handles that) - that's an acceptable trade for
-                  // correct tap targeting.
-                  width: '40px',
+                  // Hit target wants to be 40x40 for touch, but with many
+                  // accounts a row of fixed 40px boxes no longer fits the
+                  // width and used to wrap onto a second line. So the box is
+                  // 40px wide at most and allowed to shrink (flexShrink: 1)
+                  // down to 20px, which keeps every dot on one row up to
+                  // ~16 accounts. The horizontal margin stays at 0 so the
+                  // boxes tile edge-to-edge instead of overlapping (a
+                  // negative horizontal margin here made a wider dot's box
+                  // paint over its neighbour, so taps meant for one dot's
+                  // visible marker landed on the next dot instead); only the
+                  // vertical margin is pulled back, where there are no
+                  // neighbours to overlap and it keeps the row from growing
+                  // taller.
+                  flexShrink: 1,
+                  flexGrow: 0,
+                  flexBasis: '40px',
+                  maxWidth: '40px',
+                  minWidth: '20px',
                   height: '40px',
                   margin: '-9px 0',
                   padding: 0,
