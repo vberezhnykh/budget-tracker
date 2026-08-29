@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
+import Field from './ui/Field'
+import Chip from './ui/Chip'
 import { getDescriptionSuggestions, splitCategoriesByUsage } from '../utils/finance';
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [] }) {
@@ -334,8 +336,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 color: 'var(--color-text-muted)',
                                 fontSize: 'var(--text-3xl)'
                             }}>€</span>
-                            <input
+                            <Field
                                 type="number"
+                                tone="sunken"
+                                size="xl"
                                 inputMode="decimal"
                                 step="0.01"
                                 placeholder="0.00"
@@ -343,15 +347,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 onChange={e => setFormData({ ...formData, amount: e.target.value })}
                                 style={{
                                     width: '100%',
-                                    background: 'var(--color-surface-sunken)',
-                                    border: '1px solid var(--color-border)',
-                                    borderRadius: 'var(--radius-lg)',
+                                    // слева оставлено место под знак валюты,
+                                    // который лежит поверх поля
                                     padding: '16px 16px 16px 36px',
-                                    color: 'var(--color-text-main)',
                                     fontSize: '1.5rem',
                                     fontWeight: 'bold',
-                                    outline: 'none',
-                                    boxSizing: 'border-box'
                                 }}
                             />
                         </div>
@@ -415,28 +415,23 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             paddingBottom: accounts.length > 3 ? '8px' : '0'
                                         }}>
                                             {accounts.map(acc => (
-                                                <button
+                                                <Chip
                                                     key={acc._id}
-                                                    type="button"
+                                                    shape="block"
+                                                    selected={formData.account === acc._id}
                                                     onClick={() => setFormData({ ...formData, account: acc._id })}
                                                     style={{
                                                         flex: accounts.length > 3 ? '0 0 auto' : 1,
                                                         minWidth: accounts.length > 3 ? '120px' : 'auto',
                                                         padding: '12px',
-                                                        borderRadius: 'var(--radius-md)',
-                                                        border: '1px solid',
-                                                        borderColor: formData.account === acc._id ? 'var(--color-primary)' : 'var(--color-border)',
-                                                        background: formData.account === acc._id ? 'var(--color-primary-soft)' : 'var(--color-surface)',
-                                                        color: formData.account === acc._id ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                                         fontWeight: '600',
-                                                        transition: 'all 0.2s',
                                                         whiteSpace: 'nowrap',
                                                         overflow: 'hidden',
                                                         textOverflow: 'ellipsis'
                                                     }}
                                                 >
                                                     {acc.icon || (acc.type === 'cash' ? '💵' : '💳')} {acc.name}
-                                                </button>
+                                                </Chip>
                                             ))}
                                         </div>
                                     </div>
@@ -446,24 +441,14 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Категория</label>
                                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                                             {visibleCategories.map(cat => (
-                                                <button
+                                                <Chip
                                                     key={cat._id}
-                                                    type="button"
+                                                    selected={formData.category === cat.name}
                                                     onClick={() => setFormData({ ...formData, category: cat.name })}
-                                                    style={{
-                                                        padding: '8px 16px',
-                                                        borderRadius: 'var(--radius-pill)',
-                                                        border: '1px solid',
-                                                        borderColor: formData.category === cat.name ? 'var(--color-primary)' : 'var(--color-border)',
-                                                        background: formData.category === cat.name ? 'var(--color-primary-soft)' : 'var(--color-surface)',
-                                                        color: formData.category === cat.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                                                        fontSize: 'var(--text-base)',
-                                                        fontWeight: formData.category === cat.name ? '600' : 'normal',
-                                                        transition: 'all 0.2s'
-                                                    }}
+                                                    style={{ padding: '8px 16px' }}
                                                 >
                                                     {cat.name}
-                                                </button>
+                                                </Chip>
                                             ))}
 
                                             {restCategories.length > 0 && (
@@ -536,8 +521,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     {/* Add New Category */}
                                     {isAddingCategory ? (
                                         <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                                            <input
+                                            <Field
                                                 type="text"
+                                                tone="muted"
+                                                radius="var(--radius-pill)"
                                                 placeholder="Название..."
                                                 value={newCategoryName}
                                                 onChange={e => setNewCategoryName(e.target.value)}
@@ -546,13 +533,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 style={{
                                                     flex: 1,
                                                     padding: '8px 12px',
-                                                    borderRadius: 'var(--radius-pill)',
+                                                    // поле-чип рядом с чипами категорий: рамка
+                                                    // фирменная, а не нейтральная
                                                     border: '1px solid rgba(37, 99, 235, 0.3)',
-                                                    background: 'var(--color-surface)',
-                                                    fontSize: 'var(--text-base)',
-                                                    outline: 'none',
-                                                    color: 'var(--color-text-main)',
-                                                    boxSizing: 'border-box'
                                                 }}
                                             />
                                             <button
@@ -638,35 +621,32 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     if (isSelectedInOtherSplit) return null;
 
                                                     return (
-                                                        <button
+                                                        <Chip
                                                             key={cat._id}
-                                                            type="button"
+                                                            selected={split.category === cat.name}
                                                             onClick={() => updateSplit(split.id, 'category', cat.name)}
                                                             style={{
                                                                 padding: '6px 12px',
                                                                 borderRadius: 'var(--radius-lg)',
                                                                 whiteSpace: 'nowrap',
-                                                                border: '1px solid',
-                                                                borderColor: split.category === cat.name ? 'var(--color-primary)' : 'var(--color-border)',
-                                                                background: split.category === cat.name ? 'var(--color-primary-soft)' : 'var(--color-surface)',
-                                                                color: split.category === cat.name ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                                                 fontSize: 'var(--text-sm)',
-                                                                fontWeight: split.category === cat.name ? '600' : 'normal'
                                                             }}
                                                         >
                                                             {cat.name}
-                                                        </button>
+                                                        </Chip>
                                                     );
                                                 })}
                                             </div>
 
                                             <div style={{ display: 'flex', gap: '8px' }}>
-                                                <input
+                                                <Field
                                                     type="number"
+                                                    tone="muted"
+                                                    radius="var(--radius-sm)"
                                                     placeholder="Сумма"
                                                     value={split.amount}
                                                     onChange={e => updateSplit(split.id, 'amount', e.target.value)}
-                                                    style={{ flex: 1, background: 'var(--color-surface)', border: '1px solid var(--color-border)', padding: '10px', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-main)', boxSizing: 'border-box' }}
+                                                    style={{ flex: 1, padding: '10px' }}
                                                 />
                                             </div>
                                         </div>
@@ -815,28 +795,23 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                  paddingBottom: accounts.length > 3 ? '8px' : '0'
                              }}>
                                  {accounts.map(acc => (
-                                     <button
+                                     <Chip
                                          key={acc._id}
-                                         type="button"
+                                         shape="block"
+                                         selected={formData.account === acc._id}
                                          onClick={() => setFormData({ ...formData, account: acc._id })}
                                          style={{
                                              flex: accounts.length > 3 ? '0 0 auto' : 1,
                                              minWidth: accounts.length > 3 ? '120px' : 'auto',
                                              padding: '12px',
-                                             borderRadius: 'var(--radius-md)',
-                                             border: '1px solid',
-                                             borderColor: formData.account === acc._id ? 'var(--color-primary)' : 'var(--color-border)',
-                                             background: formData.account === acc._id ? 'var(--color-primary-soft)' : 'var(--color-surface)',
-                                             color: formData.account === acc._id ? 'var(--color-primary)' : 'var(--color-text-muted)',
                                              fontWeight: '600',
-                                             transition: 'all 0.2s',
                                              whiteSpace: 'nowrap',
                                              overflow: 'hidden',
                                              textOverflow: 'ellipsis'
                                          }}
                                      >
                                          {acc.icon || (acc.type === 'cash' ? '💵' : '💳')} {acc.name}
-                                     </button>
+                                     </Chip>
                                  ))}
                              </div>
                         </div>
@@ -845,8 +820,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     {/* Date Input */}
                     <div>
                         <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Дата</label>
-                        <input
+                        <Field
                             type="date"
+                            tone="sunken"
+                            size="xl"
                             value={formData.date}
                             min="2025-11-09"
                             max={today}
@@ -855,17 +832,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 width: '100%',
                                 display: 'block',
                                 margin: 0,
-                                background: 'var(--color-surface-sunken)',
-                                border: '1px solid var(--color-border)',
-                                borderRadius: 'var(--radius-lg)',
-                                padding: '16px',
-                                color: 'var(--color-text-main)',
-                                fontSize: 'var(--text-3xl)',
-                                fontWeight: '700',
-                                outline: 'none',
+                                // родное оформление поля даты в iOS/Safari
+                                // сбивается только этими четырьмя строками
                                 fontFamily: 'inherit',
                                 colorScheme: 'light',
-                                boxSizing: 'border-box',
                                 WebkitAppearance: 'none',
                                 appearance: 'none'
                             }}
@@ -875,23 +845,14 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     {/* Description */}
                     <div>
                         <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Описание (опц.)</label>
-                        <input
+                        <Field
                             type="text"
+                            tone="sunken"
+                            size="xl"
                             placeholder="Комментарий..."
                             value={formData.description}
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
-                            style={{
-                                width: '100%',
-                                background: 'var(--color-surface-sunken)',
-                                border: '1px solid var(--color-border)',
-                                borderRadius: 'var(--radius-lg)',
-                                padding: '16px',
-                                color: 'var(--color-text-main)',
-                                fontSize: 'var(--text-3xl)',
-                                fontWeight: '700',
-                                outline: 'none',
-                                boxSizing: 'border-box'
-                            }}
+                            style={{ width: '100%' }}
                         />
                         {visibleSuggestions.length > 0 && (
                             <div

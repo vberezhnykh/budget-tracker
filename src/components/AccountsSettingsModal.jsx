@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { categoryUsageKey } from '../utils/finance'
+import Field from './ui/Field'
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 
@@ -267,36 +268,21 @@ export default function AccountsSettingsModal({
           </h3>
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            <input
+            <Field
               type="text"
               placeholder="Имя счёта (например, Мой Revolut)"
               value={formName}
               onChange={(e) => setFormName(e.target.value)}
               required
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-strong)',
-                fontSize: 'var(--text-base)',
-                outline: 'none'
-              }}
+              style={{ flex: 1 }}
             />
 
-            <input
+            <Field
               type="text"
               placeholder="Иконка/Эмодзи"
               value={formIcon}
               onChange={(e) => setFormIcon(e.target.value)}
-              style={{
-                width: '60px',
-                padding: '10px 0',
-                textAlign: 'center',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-strong)',
-                fontSize: 'var(--text-xl)',
-                outline: 'none'
-              }}
+              style={{ width: '60px', padding: '10px 0', textAlign: 'center', fontSize: 'var(--text-xl)' }}
               title="Эмодзи для счёта"
             />
           </div>
@@ -439,21 +425,14 @@ export default function AccountsSettingsModal({
                         style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <input
+                          <Field
                             type="text"
+                            size="sm"
                             value={categoryNameInput}
                             onChange={(e) => setCategoryNameInput(e.target.value)}
                             aria-label={`Название категории: ${cat.name}`}
                             autoFocus
-                            style={{
-                              width: '100%',
-                              boxSizing: 'border-box',
-                              padding: '6px 10px',
-                              borderRadius: 'var(--radius-md)',
-                              border: '1px solid var(--color-border-strong)',
-                              fontSize: 'var(--text-base)',
-                              outline: 'none',
-                            }}
+                            style={{ width: '100%' }}
                           />
                           {/* Тот же подстрочник, что и в обычном виде строки:
                               переименование затрагивает все эти операции, и
@@ -567,20 +546,13 @@ export default function AccountsSettingsModal({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Лимит трат в месяц</h3>
           <form onSubmit={handleSaveLimit} style={{ display: 'flex', gap: '10px' }}>
-            <input
+            <Field
               type="number"
               step="0.01"
               placeholder="Например, 7000"
               value={limitInput}
               onChange={(e) => setLimitInput(e.target.value)}
-              style={{
-                flex: 1,
-                padding: '10px 14px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-strong)',
-                fontSize: 'var(--text-base)',
-                outline: 'none'
-              }}
+              style={{ flex: 1 }}
             />
             <button
               type="submit"

@@ -1,4 +1,6 @@
 import { useRef } from 'react';
+import Field from './ui/Field'
+import Chip from './ui/Chip'
 
 // Bottom-sheet chrome (CoinKeeper-style) wrapping the transaction history.
 // Geometry:
@@ -312,20 +314,17 @@ export default function TransactionsDrawer({
 
               {/* Search Bar */}
               <div style={{ position: 'relative' }}>
-                <input
+                <Field
                   type="text"
+                  tone="muted"
                   placeholder="Поиск по названию или сумме..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{
                     width: '100%',
+                    // отступ слева - под иконку лупы, лежащую поверх поля
                     padding: '12px 16px 12px 40px',
-                    background: 'var(--color-surface)',
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-md)',
-                    color: 'var(--color-text-main)',
                     fontSize: 'var(--text-md)',
-                    boxSizing: 'border-box'
                   }}
                 />
                 <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
@@ -345,25 +344,23 @@ export default function TransactionsDrawer({
                   div::-webkit-scrollbar { display: none; }
                 `}</style>
                 {categories.filter(c => !selectedType || c.type === selectedType).map(cat => (
-                  <button
+                  <Chip
                     key={cat._id}
+                    tone="solid"
+                    selected={selectedCategory === cat.name}
                     onClick={() => toggleCategoryFilter(cat.name)}
                     style={{
                       flexShrink: 0,
                       padding: '6px 12px',
-                      borderRadius: 'var(--radius-pill)',
-                      background: selectedCategory === cat.name ? 'var(--color-primary)' : 'var(--color-surface)',
-                      border: '1px solid ' + (selectedCategory === cat.name ? 'var(--color-primary)' : 'var(--color-border)'),
-                      color: selectedCategory === cat.name ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
                       fontSize: 'var(--text-xs)',
-                      fontWeight: '600',
-                      cursor: 'pointer',
                       transition: 'all 0.2s ease',
+                      // включённый фильтр приподнят над лентой - её можно
+                      // листать, и он должен быть виден боковым зрением
                       boxShadow: selectedCategory === cat.name ? '0 2px 6px rgba(37, 99, 235, 0.2)' : 'none'
                     }}
                   >
                     {cat.name}
-                  </button>
+                  </Chip>
                 ))}
               </div>
 

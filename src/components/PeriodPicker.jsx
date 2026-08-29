@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import Chip from './ui/Chip'
 import {
   getCurrentMonth,
   getLastMonthOfYear,
@@ -193,27 +194,21 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
                       {months.filter(m => m.startsWith(`${year}-`)).map(month => {
                         const isActive = timeRange === 'month' && month === selectedMonth;
                         return (
-                          <button
+                          <Chip
                             key={month}
-                            type="button"
+                            tone="quiet"
+                            shape="block"
+                            selected={isActive}
                             data-testid="period-month"
                             onClick={() => chooseMonth(month)}
-                            aria-pressed={isActive}
                             style={{
-                              border: '1px solid',
-                              borderColor: isActive ? 'var(--color-primary)' : 'var(--color-border)',
-                              background: isActive ? 'rgba(37, 99, 235, 0.08)' : 'var(--color-surface-muted)',
-                              color: isActive ? 'var(--color-primary)' : 'var(--color-text-main)',
-                              borderRadius: 'var(--radius-md)',
                               padding: '12px 4px',
                               minHeight: '44px',
                               fontSize: 'var(--text-sm)',
-                              fontWeight: isActive ? '700' : '500',
-                              cursor: 'pointer',
                             }}
                           >
                             {formatMonthName(month)}
-                          </button>
+                          </Chip>
                         );
                       })}
                     </div>
@@ -227,26 +222,20 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
                 {years.map(year => {
                   const isActive = timeRange === 'year' && year === selectedYear;
                   return (
-                    <button
+                    <Chip
                       key={year}
-                      type="button"
+                      tone="quiet"
+                      shape="block"
+                      selected={isActive}
                       onClick={() => chooseYear(year)}
-                      aria-pressed={isActive}
                       style={{
                         textAlign: 'left',
-                        border: '1px solid',
-                        borderColor: isActive ? 'var(--color-primary)' : 'var(--color-border)',
-                        background: isActive ? 'rgba(37, 99, 235, 0.08)' : 'var(--color-surface-muted)',
-                        color: isActive ? 'var(--color-primary)' : 'var(--color-text-main)',
-                        borderRadius: 'var(--radius-md)',
                         padding: '14px 16px',
                         fontSize: 'var(--text-md)',
-                        fontWeight: isActive ? '700' : '500',
-                        cursor: 'pointer',
                       }}
                     >
                       {year} год
-                    </button>
+                    </Chip>
                   );
                 })}
               </div>

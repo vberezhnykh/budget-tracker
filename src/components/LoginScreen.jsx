@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Field from './ui/Field'
 
 // Single shared-password login screen. Shown whenever the app detects an
 // unauthenticated state (a 401 from the API) - see App.jsx. There is no
@@ -50,23 +51,15 @@ function LoginScreen({ onSuccess }) {
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           <label style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', fontWeight: '600' }}>
             Пароль
-            <input
+            <Field
               type="password"
+              size="lg"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
               placeholder="Введите пароль"
               aria-label="Пароль"
-              style={{
-                width: '100%',
-                marginTop: '6px',
-                padding: '12px 14px',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--color-border-strong)',
-                fontSize: 'var(--text-lg)',
-                outline: 'none',
-                boxSizing: 'border-box'
-              }}
+              style={{ width: '100%', marginTop: '6px' }}
             />
           </label>
 
