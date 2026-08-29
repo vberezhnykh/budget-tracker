@@ -6,6 +6,7 @@ import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer
 import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
+import IconButton from './components/ui/IconButton'
 import { formatPeriodLabel, toDativeMonth } from './utils/period'
 import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
@@ -872,27 +873,16 @@ function App() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
           <div style={{ width: '24px' }}></div>
           <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
-          <button 
+          <IconButton
+            tone="neutral"
+            round
+            size={38}
             onClick={() => setShowAccountsSettings(true)}
-            style={{ 
-              background: 'var(--color-surface-sunken)', 
-              border: 'none', 
-              borderRadius: '50%', 
-              width: '38px', 
-              height: '38px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              cursor: 'pointer',
-              fontSize: 'var(--text-3xl)',
-              color: 'var(--color-text-main)',
-              transition: 'all 0.2s ease',
-              outline: 'none'
-            }}
             title="Настройки"
+            style={{ fontSize: 'var(--text-3xl)', transition: 'all 0.2s ease', outline: 'none' }}
           >
             ⚙️
-          </button>
+          </IconButton>
         </div>
 
         {/* Balance Carousel: total capital, type groups, then one slide per account */}

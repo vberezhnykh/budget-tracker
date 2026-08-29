@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import Field from './ui/Field'
 import Chip from './ui/Chip'
+import Sheet from './ui/Sheet'
+import IconButton from './ui/IconButton'
 import { getDescriptionSuggestions, splitCategoriesByUsage } from '../utils/finance';
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [] }) {
@@ -210,49 +212,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
 
     return (
-        <div style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(30, 41, 59, 0.4)',
-            backdropFilter: 'blur(8px)',
-            display: 'flex',
-            // The sheet sits on the bottom edge rather than floating in the
-            // middle: it uses the full width and the full height it needs,
-            // and the gap left above it is what still reads as "a card".
-            alignItems: 'flex-end',
-            justifyContent: 'center',
-            zIndex: 1000,
-            animation: 'fadeIn 0.2s ease-out',
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            touchAction: 'pan-y',
-            WebkitOverflowScrolling: 'touch'
-        }} onClick={onClose}>
-            <div
-                onClick={e => e.stopPropagation()}
-                className="glass-panel"
-                style={{
-                    background: 'var(--color-surface)',
-                    width: '100%',
-                    maxWidth: '520px',
-                    // Only the top corners are rounded - the bottom ones would
-                    // otherwise cut into the screen edge the sheet rests on.
-                    borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
-                    // The extra bottom padding clears the iOS home indicator,
-                    // which now overlaps the sheet's own last row.
-                    padding: '24px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
-                    position: 'relative',
-                    animation: 'slideUp 0.3s ease-out',
-                    maxHeight: '92vh',
-                    overflowY: 'auto',
-                    overflowX: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '20px',
-                    margin: 0,
-                    touchAction: 'pan-y'
-                }}
-            >
+        <Sheet ariaLabel={getTitle()} onClose={onClose}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h3 style={{ margin: 0 }}>{getTitle()}</h3>
                     <button
@@ -752,8 +712,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         </div>
                                     </div>
                                 ))}
-                                <button
-                                    type="button"
+                                <IconButton
+                                    round
+                                    size={38}
                                     onClick={swapTransferAccounts}
                                     aria-label="Поменять счета местами"
                                     style={{
@@ -761,20 +722,19 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         top: '50%',
                                         right: '14px',
                                         transform: 'translateY(-50%)',
-                                        width: '38px',
-                                        height: '38px',
-                                        borderRadius: '50%',
+                                        // приподнята над строками счетов, между
+                                        // которыми лежит - отсюда своя подложка,
+                                        // рамка и тень вместо тона
                                         background: 'var(--color-surface)',
                                         border: '1px solid var(--color-border)',
                                         color: 'var(--color-primary)',
                                         fontSize: 'var(--text-2xl)',
                                         lineHeight: 1,
-                                        cursor: 'pointer',
                                         boxShadow: '0 1px 4px rgba(0,0,0,0.08)'
                                     }}
                                 >
                                     ⇅
-                                </button>
+                                </IconButton>
                             </div>
                             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 }}>
                                 Общий баланс не изменится
@@ -941,7 +901,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         </button>
                     </div>
                 </form>
-            </div>
             <style>{`
         @keyframes scaleIn {
           from { transform: scale(0.9); opacity: 0; }
@@ -955,6 +914,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
           scrollbar-width: none;
         }
       `}</style>
-        </div >
+        </Sheet>
     );
 }

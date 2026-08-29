@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Chip from './ui/Chip'
+import Sheet from './ui/Sheet'
 import {
   getCurrentMonth,
   getLastMonthOfYear,
@@ -97,37 +98,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
       </button>
 
       {isOpen && (
-        <div
-          onClick={close}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(15, 23, 42, 0.35)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'center',
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Выбор периода"
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: 'var(--color-surface)',
-              width: '100%',
-              maxWidth: '520px',
-              maxHeight: '80vh',
-              overflowY: 'auto',
-              borderTopLeftRadius: '20px',
-              borderTopRightRadius: '20px',
-              padding: '20px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '18px',
-            }}
-          >
+        <Sheet ariaLabel="Выбор периода" onClose={close} maxHeight="80vh">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h3 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: '700' }}>Период</h3>
               <button
@@ -240,8 +211,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
                 })}
               </div>
             )}
-          </div>
-        </div>
+        </Sheet>
       )}
     </>
   );

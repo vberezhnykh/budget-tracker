@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { categoryUsageKey } from '../utils/finance'
 import Field from './ui/Field'
+import Sheet from './ui/Sheet'
+import IconButton from './ui/IconButton'
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 
@@ -41,48 +43,12 @@ function AccountListItem({ account, onDelete, onEdit }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
-        <button
-          onClick={onEdit}
-          aria-label="Изменить"
-          style={{
-            background: 'var(--color-surface-sunken)',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--color-primary)',
-            cursor: 'pointer',
-            fontSize: 'var(--text-xl)',
-            fontWeight: '600',
-            padding: '8px',
-            minWidth: '36px',
-            minHeight: '36px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
+        <IconButton tone="primary" onClick={onEdit} aria-label="Изменить">
           ✏️
-        </button>
-        <button
-          onClick={onDelete}
-          aria-label="Удалить"
-          style={{
-            background: 'var(--color-danger-soft)',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--color-danger)',
-            cursor: 'pointer',
-            fontSize: 'var(--text-xl)',
-            fontWeight: '600',
-            padding: '8px',
-            minWidth: '36px',
-            minHeight: '36px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
+        </IconButton>
+        <IconButton tone="danger" onClick={onDelete} aria-label="Удалить">
           🗑️
-        </button>
+        </IconButton>
       </div>
     </div>
   );
@@ -202,63 +168,19 @@ export default function AccountsSettingsModal({
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(15, 23, 42, 0.4)',
-        backdropFilter: 'blur(8px)',
-        display: 'flex',
-        // Same bottom-sheet shape as the transaction form: full width, resting
-        // on the bottom edge, with the gap above it doing the "this is a card"
-        // work (see AddTransactionForm).
-        alignItems: 'flex-end',
-        justifyContent: 'center',
-        zIndex: 1000
-      }}
-      onClick={handleClose}
-    >
-      <div
-        style={{
-          background: 'var(--color-surface)',
-          borderRadius: 'var(--radius-xl) var(--radius-xl) 0 0',
-          width: '100%',
-          maxWidth: '520px',
-          maxHeight: '92vh',
-          overflowY: 'auto',
-          padding: '24px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
-          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '20px',
-          position: 'relative'
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Sheet ariaLabel="Настройки" onClose={handleClose}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: 'var(--text-3xl)', fontWeight: '800', color: 'var(--color-text-main)', margin: 0 }}>Настройки</h2>
-          <button
+          <IconButton
+            tone="neutral"
+            round
+            size={32}
             onClick={handleClose}
-            style={{
-              background: 'var(--color-surface-inset)',
-              border: 'none',
-              borderRadius: '50%',
-              width: '32px',
-              height: '32px',
-              cursor: 'pointer',
-              fontSize: 'var(--text-xl)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--color-text-muted)',
-              fontWeight: 'bold'
-            }}
+            aria-label="Закрыть настройки"
+            style={{ fontWeight: 'bold' }}
           >
             ✕
-          </button>
+          </IconButton>
         </div>
 
         {/* Account Form */}
@@ -441,49 +363,25 @@ export default function AccountsSettingsModal({
                             {meta}
                           </div>
                         </div>
-                        <button
+                        <IconButton
                           type="submit"
+                          tone="primary"
                           disabled={savingCategory}
                           aria-label={`Сохранить название категории: ${cat.name}`}
                           style={{
-                            background: 'rgba(37, 99, 235, 0.08)',
-                            border: 'none',
-                            borderRadius: 'var(--radius-md)',
-                            color: 'var(--color-primary)',
                             cursor: savingCategory ? 'default' : 'pointer',
                             opacity: savingCategory ? 0.6 : 1,
-                            padding: '8px',
-                            minWidth: '36px',
-                            minHeight: '36px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
                           }}
                         >
                           ✓
-                        </button>
-                        <button
-                          type="button"
+                        </IconButton>
+                        <IconButton
+                          tone="neutral"
                           onClick={cancelCategoryEdit}
                           aria-label={`Отменить переименование: ${cat.name}`}
-                          style={{
-                            background: 'var(--color-surface-sunken)',
-                            border: 'none',
-                            borderRadius: 'var(--radius-md)',
-                            color: 'var(--color-text-muted)',
-                            cursor: 'pointer',
-                            padding: '8px',
-                            minWidth: '36px',
-                            minHeight: '36px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}
                         >
                           ✕
-                        </button>
+                        </IconButton>
                       </form>
                     ) : (
                       <>
@@ -495,44 +393,18 @@ export default function AccountsSettingsModal({
                             {meta}
                           </div>
                         </div>
-                        <button
-                          type="button"
+                        <IconButton
                           onClick={() => startCategoryEdit(cat)}
                           aria-label={`Переименовать категорию: ${cat.name}`}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            padding: '8px',
-                            minWidth: '36px',
-                            minHeight: '36px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}
                         >
                           ✏️
-                        </button>
-                        <button
-                          type="button"
+                        </IconButton>
+                        <IconButton
                           onClick={() => onDeleteCategory(cat, used)}
                           aria-label={`Удалить категорию: ${cat.name}`}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            cursor: 'pointer',
-                            padding: '8px',
-                            minWidth: '36px',
-                            minHeight: '36px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                          }}
                         >
                           🗑️
-                        </button>
+                        </IconButton>
                       </>
                     )}
                   </div>
@@ -588,7 +460,6 @@ export default function AccountsSettingsModal({
         >
           Выйти
         </button>
-      </div>
-    </div>
+    </Sheet>
   );
 }
