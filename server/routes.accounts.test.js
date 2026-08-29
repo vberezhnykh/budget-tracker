@@ -191,16 +191,20 @@ describe('Настройки', () => {
         expect((await agent.get('/api/settings')).body.monthlyLimit).toBe(6500);
     });
 
-    it('два одновременных первых сохранения не создают двух документов', async () => {
-        // Ради этого запись переведена на findOneAndUpdate с upsert: при
-        // read-then-write оба запроса не находили документа и каждый создавал
-        // свой, а следующее чтение брало произвольный из двух.
-        await Promise.all([
-            agent.put('/api/settings').send({ monthlyLimit: 5000 }),
-            agent.put('/api/settings').send({ monthlyLimit: 6000 })
-        ]);
+    it('повторные сохранения не плодят документов', async () => {
+        // Это то, что findOneAndUpdate с upsert действительно гарантирует:
+        // последовательные записи находят существующий документ и правят
+        // его. От ОДНОВРЕМЕННЫХ первых записей он не защищает - MongoDB
+        // обещает атомарность upsert'а только при уникальном индексе по
+        // полям фильтра, а фильтр здесь пустой. См. пункт «Настройки:
+        // одновременное первое сохранение» в BACKLOG.md; тест на этот случай
+        // не ставится, потому что он проверял бы несуществующее свойство.
+        for (const monthlyLimit of [5000, 6000, 7500]) {
+            await agent.put('/api/settings').send({ monthlyLimit });
+        }
 
         expect(await Settings.countDocuments()).toBe(1);
+        expect((await agent.get('/api/settings')).body.monthlyLimit).toBe(7500);
     });
 
     it('отвергает значения, на которых лимит на фронте превращается в NaN% или Infinity%', async () => {

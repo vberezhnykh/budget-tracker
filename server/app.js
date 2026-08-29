@@ -428,12 +428,16 @@ app.put('/api/settings', async (req, res) => {
             return res.status(400).json({ message: 'Некорректное значение лимита' });
         }
 
-        // Atomic upsert instead of findOne + new Settings(...): the previous
-        // read-then-write was not atomic, so two concurrent first writes
-        // could each find no document and each create one, leaving two
-        // singleton documents behind (a later read would then pick an
-        // arbitrary one). findOneAndUpdate with upsert performs the
-        // find-or-create as a single atomic operation at the database level.
+        // Upsert instead of findOne + new Settings(...): последовательные
+        // записи благодаря этому находят существующий документ и правят
+        // его, а не создают второй.
+        //
+        // От ОДНОВРЕМЕННЫХ первых записей это не защищает, хотя раньше
+        // здесь было написано обратное. MongoDB обещает атомарность
+        // upsert'а только когда фильтр покрыт уникальным индексом, а фильтр
+        // тут пустой: два запроса, пришедшие вместе на пустую коллекцию,
+        // оба вставляют свой документ. Измерено - 199 случаев из 200. См.
+        // пункт «Настройки: одновременное первое сохранение» в BACKLOG.md.
         // runValidators re-applies the schema validation above (which
         // findOneAndUpdate skips by default) so the model-level constraint
         // still holds on this write path.
