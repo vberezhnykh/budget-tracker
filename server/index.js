@@ -9,6 +9,7 @@ const Account = require('./models/Account');
 const Settings = require('./models/Settings');
 const { validateTransactionUpdate } = require('./transactionInput');
 const { parseTransactionQuery } = require('./transactionQuery');
+const { computeBalances, computeMonthlyTotals } = require('./stats');
 const {
     COOKIE_NAME,
     TOKEN_TTL_MS,
@@ -491,6 +492,50 @@ app.put('/api/settings', async (req, res) => {
         res.json(saved);
     } catch (err) {
         res.status(400).json({ message: err.message });
+    }
+});
+
+// ---- Статистика ----
+//
+// Величины, которые фронтенд до сих пор считал сам из полной истории
+// операций. Считаются рядом с базой (см. server/stats.js), чтобы телефону
+// не приходилось скачивать всю историю ради двух сводных цифр.
+//
+// Пока фронтенд их не использует - переход на них меняет весь слой загрузки
+// данных в App.jsx и делается отдельно. Тесты (server/stats.test.js)
+// сверяют эти ответы с тем, что считает src/utils/finance.js, на одних и тех
+// же данных: разойтись в деньгах два экрана одного приложения не имеют
+// права.
+
+// Остатки по счетам, по типам счетов, общий капитал и сумма на замороженных
+// счетах - всё, из чего собрана карусель капитала в шапке.
+app.get('/api/stats/balances', async (req, res) => {
+    try {
+        const [transactions, accounts] = await Promise.all([
+            Transaction.find().lean(),
+            Account.find().lean()
+        ]);
+        res.json(computeBalances(transactions, accounts));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Доход и расход по каждому месяцу истории - то, из чего рисуется лента
+// карточек месяцев. Принимает те же фильтры, что и интерфейс: account
+// (id счёта либо 'type:card' / 'type:cash') и category.
+app.get('/api/stats/monthly', async (req, res) => {
+    try {
+        const account = typeof req.query.account === 'string' && req.query.account ? req.query.account : null;
+        const category = typeof req.query.category === 'string' && req.query.category ? req.query.category : null;
+
+        const [transactions, accounts] = await Promise.all([
+            Transaction.find().lean(),
+            Account.find().lean()
+        ]);
+        res.json(computeMonthlyTotals(transactions, accounts, { account, category }));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
     }
 });
 
