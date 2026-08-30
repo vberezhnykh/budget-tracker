@@ -451,9 +451,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       top: document.body.style.top,
     }));
 
-    // До открытия страница обычная. overflow здесь 'unset', а не пустая
-    // строка: его выставляет App для раскрытой шторки истории (шторка -
-    // не лист и держит прокрутку сама).
+    // До открытия страница обычная.
     const free = await bodyState();
     expect(free.position).toBe('');
     expect(free.overflow).not.toBe('hidden');
@@ -491,6 +489,73 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       expect(released.top).toBe('');
       expect(released.overflow).not.toBe('hidden');
     }
+  });
+
+  test('раскрытая шторка истории тоже замораживает страницу под собой', async ({ page }) => {
+    // Палец, ведущий по размытому фону над раскрытой шторкой, прокручивал
+    // главный экран: затемнение жест не съедает, а `overflow: hidden` на
+    // body - единственное, что стояло под шторкой раньше, - в мобильном
+    // Safari касание не останавливает. Теперь шторка запирает страницу тем
+    // же замком, что и модальные листы: position: fixed со сдвигом на
+    // текущую прокрутку.
+    //
+    // Симптом здесь, как и в соседнем тесте про листы, не воспроизводится
+    // (headless Chromium страницу под подложкой не двигает), поэтому
+    // проверяется механизм - и то, что страница не прыгает: ни при
+    // раскрытии, ни при закрытии.
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+
+    const bodyState = () => page.evaluate(() => ({
+      position: document.body.style.position,
+      overflow: document.body.style.overflow,
+      top: document.body.style.top,
+      scrollY: window.scrollY,
+    }));
+
+    // Прокручиваем страницу вниз, насколько она вообще прокручивается: замок
+    // должен запомнить именно эту позицию, а не ноль.
+    const scrolled = await page.evaluate(() => {
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      window.scrollTo(0, Math.min(120, Math.max(0, max)));
+      return window.scrollY;
+    });
+
+    const header = page.getByText('BudgetTracker');
+    const headerTopBefore = (await header.boundingBox()).y;
+
+    const handle = page.getByRole('button', { name: /список операций/ });
+    await handle.click();
+    await expect(handle).toHaveAttribute('aria-expanded', 'true');
+    await page.waitForTimeout(400);
+
+    const locked = await bodyState();
+    expect(locked.position).toBe('fixed');
+    expect(locked.overflow).toBe('hidden');
+    expect(locked.top).toBe(`-${scrolled}px`);
+    // Сдвиг компенсирует вынутый из потока body: страница осталась ровно
+    // там же, где была, - под размытием видно тот же кусок экрана.
+    expect((await header.boundingBox()).y).toBeCloseTo(headerTopBefore, 0);
+
+    // Список внутри шторки при этом листается: замок держит страницу, а не
+    // содержимое шторки.
+    const list = page.getByTestId('transactions-drawer').locator(':scope > div').last();
+    expect(await list.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
+
+    // Бить надо в просвет над шторкой: раскрытая шторка занимает 88vh и
+    // накрывает середину затемнения, куда click целится по умолчанию.
+    await page.getByTestId('drawer-backdrop').click({ position: { x: 200, y: 20 } });
+    await expect(handle).toHaveAttribute('aria-expanded', 'false');
+    await page.waitForTimeout(400);
+
+    // Отпустил страницу - и вернул её на то же место, а не наверх.
+    const released = await bodyState();
+    expect(released.position).toBe('');
+    expect(released.overflow).not.toBe('hidden');
+    expect(released.top).toBe('');
+    expect(released.scrollY).toBe(scrolled);
+    expect((await header.boundingBox()).y).toBeCloseTo(headerTopBefore, 0);
   });
 
   test('карточка сводки - лента месяцев: листается и держит выбранный месяц', async ({ page }) => {

@@ -24,55 +24,10 @@
 // получается: подложка прокручиваема, и когда её содержимое короче экрана,
 // браузер передаёт жест дальше - главному экрану. Отсюда две меры:
 // overscrollBehavior: 'contain' обрывает эту передачу, а на время жизни
-// листа страница фиксируется (см. useBodyScrollLock ниже).
+// листа страница фиксируется - см. utils/useBodyScrollLock, тем же
+// замком заперта страница под раскрытой шторкой истории.
 
-import { useEffect } from 'react';
-
-// Фиксация страницы под листом. Одного `overflow: hidden` на body мало:
-// в мобильном Safari он не останавливает касание, поэтому страница ещё и
-// переводится в position: fixed со сдвигом на текущую прокрутку - так она
-// остаётся на месте визуально. При закрытии прокрутка возвращается: без
-// этого экран прыгал бы наверх.
-//
-// Счётчик нужен на случай, когда листов открыто два (выбор периода поверх
-// другого листа): фиксировать надо на первом, а возвращать прокрутку - на
-// последнем закрытом, иначе второй лист запомнил бы уже обнулённую
-// позицию и вернул экран не туда.
-let lockCount = 0;
-let lockedScrollY = 0;
-
-function useBodyScrollLock() {
-    useEffect(() => {
-        const { body } = document;
-        if (lockCount === 0) {
-            lockedScrollY = window.scrollY;
-            body.style.overflow = 'hidden';
-            body.style.position = 'fixed';
-            body.style.width = '100%';
-            body.style.top = `-${lockedScrollY}px`;
-        }
-        lockCount += 1;
-
-        return () => {
-            lockCount -= 1;
-            if (lockCount === 0) {
-                body.style.overflow = '';
-                body.style.position = '';
-                body.style.width = '';
-                body.style.top = '';
-                // Чтение offsetHeight заставляет браузер пересчитать
-                // раскладку прямо здесь. Без этого страница ещё «сложена»
-                // (body только что был вынут из потока), её высота меньше
-                // прокрутки, и scrollTo обрезается до нуля - экран прыгает
-                // наверх. Заметно это в первую очередь в dev-сборке, где
-                // StrictMode монтирует эффект дважды и второй заход
-                // считывает уже обнулённую позицию.
-                void body.offsetHeight;
-                window.scrollTo(0, lockedScrollY);
-            }
-        };
-    }, []);
-}
+import useBodyScrollLock from '../../utils/useBodyScrollLock';
 
 export default function Sheet({
     ariaLabel,

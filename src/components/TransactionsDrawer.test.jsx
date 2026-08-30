@@ -324,4 +324,47 @@ describe('TransactionsDrawer Component', () => {
         )).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /💵 Наличные → 💳 Карта/ })).toBeInTheDocument();
     });
+
+    // Палец, ведущий по размытому фону раскрытой шторки, прокручивал главный
+    // экран под ней: затемнение жест не съедает. Пока шторка раскрыта,
+    // страница заперта (position: fixed со сдвигом на текущую прокрутку) -
+    // ровно тем же замком, что и модальные листы.
+    it('locks the page under the expanded drawer', () => {
+        const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => { });
+        Object.defineProperty(window, 'scrollY', { configurable: true, value: 240 });
+
+        render(<Wrapper initialExpanded />);
+
+        expect(document.body.style.position).toBe('fixed');
+        expect(document.body.style.overflow).toBe('hidden');
+        // Сдвиг на прокрутку (`top: -240px`) здесь не проверить: cssstyle в
+        // jsdom отрицательные длины у `top` молча отбрасывает. Что позиция
+        // всё-таки запомнена, видно в следующем тесте - по тому, куда
+        // страницу возвращают.
+        expect(scrollTo).not.toHaveBeenCalled();
+    });
+
+    // ...и отпускает её, когда шторку свернули: свёрнутая шторка - это
+    // обычный экран, он должен листаться. Прокрутка при этом возвращается на
+    // прежнее место, иначе экран прыгал бы наверх.
+    it('releases the page - and restores its scroll position - when the drawer collapses', () => {
+        const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => { });
+        Object.defineProperty(window, 'scrollY', { configurable: true, value: 240 });
+
+        render(<Wrapper initialExpanded />);
+        fireEvent.click(screen.getByTestId('drawer-backdrop'));
+
+        expect(document.body.style.position).toBe('');
+        expect(document.body.style.overflow).toBe('');
+        expect(scrollTo).toHaveBeenCalledWith(0, 240);
+    });
+
+    // Свёрнутая шторка из дерева не исчезает - и запирать под собой ничего
+    // не должна.
+    it('leaves the page scrollable while the drawer is collapsed', () => {
+        render(<Wrapper />);
+
+        expect(document.body.style.position).toBe('');
+        expect(document.body.style.overflow).toBe('');
+    });
 });
