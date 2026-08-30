@@ -122,25 +122,14 @@ function App() {
     }
   };
 
-  // Раскрытая шторка истории тоже не должна пускать под собой страницу.
-  // Модальные листы (форма операции, настройки, выбор периода) держат
-  // прокрутку сами - см. useBodyScrollLock в components/ui/Sheet.jsx;
-  // дублировать это здесь нельзя, иначе два владельца одного стиля будут
-  // затирать друг друга при закрытии. Собственный список шторки при этом
-  // продолжает скроллиться: он внутри фиксированного листа со своим
-  // overflowY: 'auto'.
-  useEffect(() => {
-    if (historyDrawerExpanded) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-
-    // Cleanup on unmount
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [historyDrawerExpanded]);
+  // Прокрутку под раскрытой шторкой истории здесь больше не трогаем: этим
+  // занимается сама шторка (useBodyScrollLock в utils/), тем же замком, что
+  // и модальные листы. Владелец у стилей body должен быть один - иначе,
+  // когда шторка и лист открыты одновременно, закрытие любого из них
+  // затирало бы замок другого. Раньше отсюда выставлялся только
+  // `overflow: hidden`, а его в мобильном Safari мало: касание он не
+  // останавливает, и палец, ведущий по размытому фону, продолжал двигать
+  // страницу под шторкой.
 
   // Thin fetch wrapper used for every /api/* call. A 401 means the session
   // cookie is missing/expired - flip to the login screen right away rather

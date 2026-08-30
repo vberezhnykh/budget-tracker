@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import TransactionList from './TransactionList'
+import useBodyScrollLock from '../utils/useBodyScrollLock'
 import Field from './ui/Field'
 import Chip from './ui/Chip'
 
@@ -52,6 +53,14 @@ export default function TransactionsDrawer({
 }) {
   const sheetRef = useRef(null);
   const dragRef = useRef(null);
+
+  // Страница под раскрытой шторкой должна стоять. Затемнение поверх неё
+  // жест не съедает: палец, ведущий по размытому фону, прокручивал
+  // главный экран - и тот уезжал под шторкой, хотя трогали, казалось бы,
+  // неподвижную подложку. Замок тот же, что и у модальных листов
+  // (utils/useBodyScrollLock), но включается только на время раскрытия:
+  // свёрнутая шторка - это обычный экран, он листается.
+  useBodyScrollLock(expanded);
 
   // Travel distance (px) between the collapsed and expanded positions.
   // Measured from the sheet's own rendered height rather than derived from
