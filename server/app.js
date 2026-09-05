@@ -13,10 +13,20 @@ const helmet = require('helmet');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const Transaction = require('./models/Transaction');
+const PlannedPayment = require('./models/PlannedPayment');
 const Category = require('./models/Category');
 const Account = require('./models/Account');
-const Settings = require('./models/Settings');
-const { validateTransactionUpdate } = require('./transactionInput');
+const {
+    validateTransactionCreate,
+    validateTransactionUpdate,
+    validateTransactionVersion
+} = require('./transactionInput');
+const { getCanonicalSettings, saveCanonicalSettings } = require('./settingsSingleton');
+const { createOperationalRouter } = require('./operational');
+const { activeTransactionFilter } = require('./ledgerState');
+const { validateAccountReferences } = require('./accountRefs');
+const { createTrashRouter, softDeleteTransaction } = require('./trash');
+const { createPlannedPaymentsRouter } = require('./plannedPayments');
 const { parseTransactionQuery } = require('./transactionQuery');
 const { computeBalances, computeMonthlyTotals } = require('./stats');
 const { transformTransactions } = require('./transform');
@@ -60,9 +70,10 @@ const authDisabled = process.env.AUTH_DISABLED === 'true';
 // client. Trusting exactly one hop tells Express to derive req.ip from the
 // rightmost untrusted entry of X-Forwarded-For (i.e. the one the proxy
 // itself appended), rather than either using the proxy's own address or
-// naively trusting a client-suppliable header value outright. This is what
-// both the login rate limiter and the AUTH_DISABLED loopback check rely on
-// for req.ip to mean "the actual caller".
+// naively trusting a client-suppliable header value outright. The login rate
+// limiter relies on req.ip. AUTH_DISABLED is stricter: auth.js requires both
+// req.ip and the actual socket peer to be loopback, covering direct requests
+// and a local reverse proxy without trusting either signal alone.
 app.set('trust proxy', 1);
 
 // Заголовки безопасности. Ставятся первыми, до всего остального, чтобы
@@ -165,11 +176,17 @@ app.use(cookieParser());
 
 // Auth gate for the API. Mounted before any route definitions (not after),
 // so it can't be bypassed by route ordering. Excludes /api/login (you need
-// to be able to reach it while unauthenticated) and /api/health (used by
-// uptime pings). See server/auth.js for the fail-closed behavior when
+// to be able to reach it while unauthenticated), /api/health (liveness) and
+// /api/ready (readiness). See server/auth.js for the fail-closed behavior when
 // APP_PASSWORD/SESSION_SECRET are missing or too weak, and for the
 // AUTH_DISABLED/loopback-only bypass.
 app.use(createAuthMiddleware(authDisabled));
+
+// Readiness is public so an orchestrator can decide whether to route traffic;
+// client error reports pass through the auth gate above like business APIs.
+app.use('/api', createOperationalRouter({ mongoose }));
+app.use('/api/trash', createTrashRouter());
+app.use('/api/planned-payments', createPlannedPaymentsRouter());
 
 // ---- Auth ----
 
@@ -275,31 +292,44 @@ app.put('/api/accounts/:id', async (req, res) => {
 
 // Delete a custom account
 app.delete('/api/accounts/:id', async (req, res) => {
+    let session;
     try {
         if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
             return res.status(400).json({ message: 'Invalid account ID' });
         }
-        const account = await Account.findById(req.params.id);
-        if (!account) {
-            return res.status(404).json({ message: 'Account not found' });
-        }
-        
-        // Check if there are any transactions associated with this account
-        const txCount = await Transaction.countDocuments({
-            $or: [
-                { account: req.params.id },
-                { toAccount: req.params.id }
-            ]
+        session = await mongoose.startSession();
+        let outcome;
+        await session.withTransaction(async () => {
+            const account = await Account.findById(req.params.id).session(session);
+            if (!account) {
+                outcome = { status: 404, message: 'Account not found' };
+                return;
+            }
+
+            const txCount = await Transaction.countDocuments({
+                $or: [
+                    { account: req.params.id },
+                    { toAccount: req.params.id }
+                ]
+            }).session(session);
+            const planCount = await PlannedPayment.countDocuments({ account: req.params.id }).session(session);
+            if (txCount > 0) {
+                outcome = { status: 400, message: 'Нельзя удалить счёт, по которому есть транзакции' };
+                return;
+            }
+            if (planCount > 0) {
+                outcome = { status: 400, message: 'Нельзя удалить счёт, на который ссылаются предстоящие платежи' };
+                return;
+            }
+            await Account.deleteOne({ _id: account._id }, { session });
+            outcome = { status: 200 };
         });
-        
-        if (txCount > 0) {
-            return res.status(400).json({ message: 'Нельзя удалить счёт, по которому есть транзакции' });
-        }
-        
-        await Account.findByIdAndDelete(req.params.id);
+        if (outcome.status !== 200) return res.status(outcome.status).json({ message: outcome.message });
         res.json({ message: 'Account deleted' });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    } finally {
+        if (session) await session.endSession();
     }
 });
 
@@ -356,31 +386,55 @@ app.put('/api/categories/:id', async (req, res) => {
         if (!name || !String(name).trim()) {
             return res.status(400).json({ message: 'Name is required' });
         }
-        const cat = await Category.findById(req.params.id);
-        if (!cat) {
+        const newName = String(name).trim();
+        const session = await mongoose.startSession();
+        let outcome;
+        try {
+            await session.withTransaction(async () => {
+                const cat = await Category.findById(req.params.id).session(session);
+                if (!cat) {
+                    outcome = { notFound: true };
+                    return;
+                }
+
+                const oldName = cat.name;
+                if (newName === oldName) {
+                    outcome = { category: cat, updatedTransactions: 0 };
+                    return;
+                }
+
+                cat.name = newName;
+                const saved = await cat.save({ session });
+                const result = await Transaction.updateMany(
+                    { type: cat.type, category: oldName },
+                    { $set: { category: newName }, $inc: { __v: 1 } },
+                    { session }
+                );
+                if (cat.type === 'expense') {
+                    await PlannedPayment.updateMany(
+                        { category: oldName },
+                        { $set: { category: newName }, $inc: { __v: 1 } },
+                        { session }
+                    );
+                }
+                outcome = {
+                    category: saved,
+                    updatedTransactions: result.modifiedCount || 0
+                };
+            });
+        } finally {
+            await session.endSession();
+        }
+
+        if (outcome?.notFound) {
             return res.status(404).json({ message: 'Category not found' });
         }
-
-        const newName = String(name).trim();
-        const oldName = cat.name;
-        if (newName === oldName) {
-            return res.json({ category: cat, updatedTransactions: 0 });
-        }
-
-        cat.name = newName;
-        const saved = await cat.save();
-
-        const result = await Transaction.updateMany(
-            { type: cat.type, category: oldName },
-            { $set: { category: newName } }
-        );
-
-        res.json({ category: saved, updatedTransactions: result.modifiedCount || 0 });
+        res.json(outcome);
     } catch (err) {
         if (err.code === 11000) {
             return res.status(400).json({ message: 'Такая категория уже существует' });
         }
-        res.status(400).json({ message: err.message });
+        res.status(500).json({ message: err.message });
     }
 });
 
@@ -412,14 +466,18 @@ app.delete('/api/categories/:id', async (req, res) => {
 
 const DEFAULT_MONTHLY_LIMIT = 7000;
 
-// Get settings. Returns the default rather than 404/erroring when no
-// document exists yet, so an existing database keeps working untouched -
-// the document is only created the first time someone saves a new value.
+// Get settings. Returns the default rather than 404 when the collection is
+// empty. A single legacy document is adopted under the canonical key without
+// changing its value; multiple documents fail explicitly instead of picking
+// one and silently losing another saved limit.
 app.get('/api/settings', async (req, res) => {
     try {
-        const settings = await Settings.findOne();
+        const settings = await getCanonicalSettings();
         res.json({ monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT });
     } catch (err) {
+        if (err.code === 'SETTINGS_INTEGRITY') {
+            return res.status(409).json({ message: err.message });
+        }
         res.status(500).json({ message: err.message });
     }
 });
@@ -441,26 +499,12 @@ app.put('/api/settings', async (req, res) => {
             return res.status(400).json({ message: 'Некорректное значение лимита' });
         }
 
-        // Upsert instead of findOne + new Settings(...): последовательные
-        // записи благодаря этому находят существующий документ и правят
-        // его, а не создают второй.
-        //
-        // От ОДНОВРЕМЕННЫХ первых записей это не защищает, хотя раньше
-        // здесь было написано обратное. MongoDB обещает атомарность
-        // upsert'а только когда фильтр покрыт уникальным индексом, а фильтр
-        // тут пустой: два запроса, пришедшие вместе на пустую коллекцию,
-        // оба вставляют свой документ. Измерено - 199 случаев из 200. См.
-        // пункт «Настройки: одновременное первое сохранение» в BACKLOG.md.
-        // runValidators re-applies the schema validation above (which
-        // findOneAndUpdate skips by default) so the model-level constraint
-        // still holds on this write path.
-        const saved = await Settings.findOneAndUpdate(
-            {},
-            { monthlyLimit: parsedLimit },
-            { upsert: true, new: true, runValidators: true, setDefaultsOnInsert: true }
-        );
+        const saved = await saveCanonicalSettings(parsedLimit);
         res.json(saved);
     } catch (err) {
+        if (err.code === 'SETTINGS_INTEGRITY') {
+            return res.status(409).json({ message: err.message });
+        }
         res.status(400).json({ message: err.message });
     }
 });
@@ -482,7 +526,7 @@ app.put('/api/settings', async (req, res) => {
 app.get('/api/stats/balances', async (req, res) => {
     try {
         const [transactions, accounts] = await Promise.all([
-            Transaction.find().lean(),
+            Transaction.find(activeTransactionFilter()).lean(),
             Account.find().lean()
         ]);
         res.json(computeBalances(transactions, accounts));
@@ -500,7 +544,7 @@ app.get('/api/stats/monthly', async (req, res) => {
         const category = typeof req.query.category === 'string' && req.query.category ? req.query.category : null;
 
         const [transactions, accounts] = await Promise.all([
-            Transaction.find().lean(),
+            Transaction.find(activeTransactionFilter()).lean(),
             Account.find().lean()
         ]);
         res.json(computeMonthlyTotals(transactions, accounts, { account, category }));
@@ -545,7 +589,7 @@ app.get('/api/stats/dashboard', async (req, res) => {
         }
 
         const [docs, accounts] = await Promise.all([
-            Transaction.find().lean(),
+            Transaction.find(activeTransactionFilter()).lean(),
             Account.find().lean()
         ]);
         const transactions = transformTransactions(docs, accounts);
@@ -593,7 +637,7 @@ app.get('/api/search', async (req, res) => {
         }
 
         const [docs, accounts] = await Promise.all([
-            Transaction.find().lean(),
+            Transaction.find(activeTransactionFilter()).lean(),
             Account.find().lean()
         ]);
         const transactions = transformTransactions(docs, accounts);
@@ -614,7 +658,7 @@ app.get('/api/suggestions/descriptions', async (req, res) => {
         }
 
         const [docs, accounts] = await Promise.all([
-            Transaction.find().lean(),
+            Transaction.find(activeTransactionFilter()).lean(),
             Account.find().lean()
         ]);
         const transactions = transformTransactions(docs, accounts);
@@ -646,7 +690,11 @@ app.get('/api/transactions', async (req, res) => {
             return res.status(400).json({ message: error });
         }
 
-        let query = Transaction.find(filter).sort({ date: -1 });
+        // Ответ только сериализуется и не меняется через методы документа,
+        // поэтому hydration Mongoose здесь не нужна. lean сохраняет форму
+        // JSON, сортировку и пагинацию, уменьшая накладные расходы выборки.
+        const activeFilter = activeTransactionFilter(filter);
+        let query = Transaction.find(activeFilter).sort({ date: -1 }).lean();
         if (skip > 0) query = query.skip(skip);
         if (limit !== null) query = query.limit(limit);
 
@@ -655,7 +703,7 @@ app.get('/api/transactions', async (req, res) => {
         // Лишний запрос в базу нужен только когда выдача урезана: иначе
         // общее число - это длина уже полученного массива.
         const total = (limit !== null || skip > 0)
-            ? await Transaction.countDocuments(filter)
+            ? await Transaction.countDocuments(activeFilter)
             : transactions.length;
         res.set('X-Total-Count', String(total));
 
@@ -675,48 +723,31 @@ app.post('/api/transactions', async (req, res) => {
                 return res.status(400).json({ message: 'Batch must contain at least one transaction' });
             }
 
-            // Basic validation and sanitization for each item
+            // Пакет проходит ту же строгую нормализацию, что одиночная
+            // операция: иначе отрицательная сумма или пустой счёт могли
+            // попасть в split только потому, что выбран другой endpoint.
             const sanitizedTransactions = [];
             for (const tx of transactions) {
-                if (!tx.amount || (!tx.category && tx.type !== 'transfer')) {
-                    return res.status(400).json({ message: 'Amount and category are required for all items' });
-                }
-                sanitizedTransactions.push({
-                    title: tx.title || tx.category,
-                    amount: Number(tx.amount),
-                    type: String(tx.type),
-                    category: tx.category ? String(tx.category) : undefined,
-                    description: tx.description ? String(tx.description) : undefined,
-                    account: String(tx.account),
-                    toAccount: tx.toAccount ? String(tx.toAccount) : undefined,
-                    date: String(tx.date),
-                    splitId: tx.splitId ? String(tx.splitId) : undefined,
-                    excludeFromStats: Boolean(tx.excludeFromStats)
-                });
+                const { error, transaction } = validateTransactionCreate(tx, { allowSplitId: true });
+                if (error) return res.status(400).json({ message: error });
+                sanitizedTransactions.push(transaction);
             }
+
+            const accountCheck = await validateAccountReferences(
+                sanitizedTransactions.flatMap(transaction => [transaction.account, transaction.toAccount])
+            );
+            if (accountCheck.error) return res.status(400).json({ message: accountCheck.error });
 
             const savedTransactions = await Transaction.insertMany(sanitizedTransactions);
             return res.json(savedTransactions);
         }
 
-        const { title, amount, type, category, description, account, toAccount, date, excludeFromStats } = req.body;
+        const { error, transaction } = validateTransactionCreate(req.body);
+        if (error) return res.status(400).json({ message: error });
+        const accountCheck = await validateAccountReferences([transaction.account, transaction.toAccount]);
+        if (accountCheck.error) return res.status(400).json({ message: accountCheck.error });
 
-        // Validate required fields
-        if (!amount || (!category && type !== 'transfer')) {
-            return res.status(400).json({ message: 'Amount and category are required' });
-        }
-
-        const newTransaction = new Transaction({
-            title: title || category,
-            amount: Number(amount),
-            type: String(type),
-            category: category ? String(category) : undefined,
-            description: description ? String(description) : undefined,
-            account: String(account),
-            toAccount: toAccount ? String(toAccount) : undefined,
-            date: String(date),
-            excludeFromStats: Boolean(excludeFromStats)
-        });
+        const newTransaction = new Transaction(transaction);
 
         const savedTransaction = await newTransaction.save();
         res.json(savedTransaction);
@@ -729,8 +760,9 @@ app.post('/api/transactions', async (req, res) => {
 // Update transaction.
 //
 // Тело запроса проверяется и приводится к типам до записи (см.
-// server/transactionInput.js), а findByIdAndUpdate вызывается с
-// runValidators: true. Раньше не было ни того, ни другого: значения из
+// server/transactionInput.js), а условный findOneAndUpdate вызывается с
+// runValidators: true и ожидаемой версией снимка. Раньше не было ни того,
+// ни другого: значения из
 // запроса уходили в базу как есть, а findByIdAndUpdate схему по умолчанию
 // не применяет - в результате через PUT можно было записать type вне enum
 // модели, нулевую сумму или нечитаемую дату, хотя POST рядом всё это
@@ -741,9 +773,41 @@ app.put('/api/transactions/:id', async (req, res) => {
             return res.status(400).json({ message: 'Invalid transaction ID' });
         }
 
-        const { error, update, unset } = validateTransactionUpdate(req.body);
+        const currentTransaction = await Transaction.findById(req.params.id);
+        if (!currentTransaction) {
+            return res.status(404).json({ message: 'Transaction not found' });
+        }
+        if (currentTransaction.deletedAt) {
+            return res.status(409).json({ message: 'Операция находится в корзине и не может быть изменена' });
+        }
+
+        const { error: versionError, expectedVersion } = validateTransactionVersion(req.body);
+        if (versionError) {
+            return res.status(400).json({ message: versionError });
+        }
+
+        const currentVersion = Number.isInteger(currentTransaction.__v) ? currentTransaction.__v : 0;
+        if (expectedVersion !== currentVersion) {
+            return res.status(409).json({ message: 'Операция уже была изменена. Обновите данные и повторите попытку.' });
+        }
+
+        const { error, update, unset } = validateTransactionUpdate(req.body, currentTransaction);
         if (error) {
             return res.status(400).json({ message: error });
+        }
+        if (update.account !== undefined || update.toAccount !== undefined) {
+            const accountCheck = await validateAccountReferences([
+                update.account !== undefined ? update.account : currentTransaction.account,
+                update.toAccount !== undefined ? update.toAccount : currentTransaction.toAccount
+            ]);
+            if (accountCheck.error) return res.status(400).json({ message: accountCheck.error });
+        }
+
+        if (update.type !== undefined && update.type !== 'expense') {
+            const linked = await PlannedPayment.exists({ transactionId: currentTransaction._id, status: 'paid' });
+            if (linked) {
+                return res.status(409).json({ message: 'Связанный с платежом расход нельзя изменить на другой тип' });
+            }
         }
 
         // $set и $unset собираются явно, а не отдаются на автоматическое
@@ -757,14 +821,27 @@ app.put('/api/transactions/:id', async (req, res) => {
         if (unset.length > 0) {
             mongoUpdate.$unset = Object.fromEntries(unset.map(field => [field, '']));
         }
+        mongoUpdate.$inc = { __v: 1 };
 
-        const updatedTransaction = await Transaction.findByIdAndUpdate(
-            req.params.id,
+        const versionFilter = expectedVersion === 0
+            ? {
+                _id: req.params.id,
+                deletedAt: null,
+                $or: [{ __v: 0 }, { __v: { $exists: false } }]
+            }
+            : { _id: req.params.id, __v: expectedVersion, deletedAt: null };
+
+        const updatedTransaction = await Transaction.findOneAndUpdate(
+            versionFilter,
             mongoUpdate,
             { new: true, runValidators: true }
         );
         if (!updatedTransaction) {
-            return res.status(404).json({ message: 'Transaction not found' });
+            const stillExists = await Transaction.exists({ _id: req.params.id });
+            if (!stillExists) {
+                return res.status(404).json({ message: 'Transaction not found' });
+            }
+            return res.status(409).json({ message: 'Операция уже была изменена. Обновите данные и повторите попытку.' });
         }
         res.json(updatedTransaction);
     } catch (err) {
@@ -780,17 +857,12 @@ app.delete('/api/transactions/:id', async (req, res) => {
             return res.status(400).json({ message: 'Invalid transaction ID' });
         }
         const { splitId } = req.query;
-        if (splitId) {
-            await Transaction.deleteMany({ splitId: String(splitId) });
-        } else {
-            const deleted = await Transaction.findByIdAndDelete(req.params.id);
-            if (!deleted) {
-                return res.status(404).json({ message: 'Transaction not found' });
-            }
+        if (splitId !== undefined && typeof splitId !== 'string') {
+            return res.status(400).json({ message: 'Invalid splitId' });
         }
-        res.json({ message: 'Transaction deleted' });
+        res.json(await softDeleteTransaction(req.params.id, splitId));
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        res.status(err.status || 500).json({ message: err.message });
     }
 });
 

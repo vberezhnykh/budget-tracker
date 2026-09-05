@@ -16,6 +16,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { MongoClient } = require('mongodb');
 const { EJSON } = require('bson');
 const {
@@ -26,8 +27,6 @@ const {
     selectBackupsToDelete,
     summarizeCounts
 } = require('./backup-core');
-
-require('dotenv').config();
 
 function parseArgs(argv) {
     const args = { out: path.join(__dirname, '..', 'backups'), keep: null };
@@ -63,7 +62,25 @@ function rotateBackups(directory, keep) {
     return stale;
 }
 
+// The temporary file lives beside the destination so rename is atomic on the
+// same filesystem. A failed write/rename removes its own temp file and leaves
+// any previous good backup untouched.
+function writeAtomic(filePath, contents) {
+    const tempPath = `${filePath}.${process.pid}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+    let committed = false;
+    try {
+        fs.writeFileSync(tempPath, contents, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+        fs.renameSync(tempPath, filePath);
+        committed = true;
+    } finally {
+        if (!committed) {
+            try { fs.unlinkSync(tempPath); } catch { /* already absent */ }
+        }
+    }
+}
+
 async function main() {
+    require('dotenv').config({ path: path.join(__dirname, '.env') });
     const args = parseArgs(process.argv.slice(2));
     const uri = process.env.MONGODB_BACKUP_URI || process.env.MONGODB_URI;
     if (!uri) {
@@ -76,11 +93,16 @@ async function main() {
     }
 
     const client = new MongoClient(uri);
+    let session;
     try {
         await client.connect();
         const db = client.db();
 
-        const doc = buildBackupDocument(await readAllCollections(db));
+        // Snapshot sessions provide one point-in-time view without starting a
+        // write transaction, so the configured backup credential can remain
+        // read-only.
+        session = client.startSession({ snapshot: true });
+        const doc = buildBackupDocument(await readAllCollections(db, { session }));
 
         if (isEmptyBackup(doc.counts)) {
             // Failing here rather than writing the file keeps a
@@ -95,7 +117,7 @@ async function main() {
         const filePath = path.join(args.out, formatBackupFilename(new Date(doc.exportedAt)));
         // Written with mode 0600: this file is the entire family's financial
         // history in plain text.
-        fs.writeFileSync(filePath, EJSON.stringify(doc, null, 2), { mode: 0o600 });
+        writeAtomic(filePath, EJSON.stringify(doc, null, 2));
 
         console.log(`Бэкап записан: ${filePath}`);
         console.log(summarizeCounts(doc.counts));
@@ -107,6 +129,7 @@ async function main() {
             }
         }
     } finally {
+        if (session) await session.endSession();
         await client.close();
     }
 }
@@ -118,4 +141,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { parseArgs };
+module.exports = { parseArgs, rotateBackups, writeAtomic };

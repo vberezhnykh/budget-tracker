@@ -43,6 +43,16 @@ describe('Finance Utilities', () => {
         expect(transformed[3].visualAmount).toBe(100); // Visual should stay positive for transfers
     });
 
+    it('preserves the optimistic-concurrency version and maps legacy rows to version zero', () => {
+        const transformed = transformTransactions([
+            { _id: 'versioned', __v: 4, amount: 10, type: 'expense', account: 'card', date: '2026-01-01' },
+            { _id: 'legacy', amount: 20, type: 'expense', account: 'card', date: '2026-01-02' },
+        ]);
+
+        expect(transformed[0].__v).toBe(4);
+        expect(transformed[1].__v).toBe(0);
+    });
+
     it('renames the legacy "Обмен" transfer category to "Перевод"', () => {
         const transformed = transformTransactions([
             { _id: 't1', amount: '100', type: 'transfer', account: 'card', toAccount: 'cash', category: 'Обмен', date: '2026-01-15T00:00:00Z' },
@@ -111,6 +121,20 @@ describe('Finance Utilities', () => {
         expect(Object.keys(lifetime.transactions)).toContain('2025-12-20');
         expect(Object.keys(lifetime.transactions)).toContain('2026-03-04');
         expect(lifetime.expense).toBe(-340);
+    });
+
+    it.each([undefined, null])('groups a split whose description is %s', (description) => {
+        const transformed = transformTransactions([
+            { _id: 's1', splitId: 'split-1', amount: '40', type: 'expense', account: 'card', category: 'Food', description, date: '2026-01-10T00:00:00Z' },
+            { _id: 's2', splitId: 'split-1', amount: '60', type: 'expense', account: 'card', category: 'Transport', description, date: '2026-01-10T00:00:00Z' },
+        ]);
+
+        const result = getPeriodData(transformed, '2026-01');
+        const group = result.transactions['2026-01-10'].items[0];
+
+        expect(group.type).toBe('split_group');
+        expect(group.description).toBe('');
+        expect(group.items).toHaveLength(2);
     });
 
     it('keeps account/category/type filters working outside the month view', () => {

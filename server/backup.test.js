@@ -1,4 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { MongoClient } from 'mongodb';
+import { EJSON } from 'bson';
+import { describe, it, expect, vi, inject } from 'vitest';
 import {
     BACKUP_COLLECTIONS,
     BACKUP_FORMAT_VERSION,
@@ -12,9 +16,10 @@ import {
     restoreCollections,
     selectBackupsToDelete,
     summarizeCounts,
-    validateBackupDocument
+    validateBackupDocument,
+    normalizeBackupDocument
 } from './backup-core';
-import { parseArgs as parseBackupArgs } from './backup';
+import { parseArgs as parseBackupArgs, writeAtomic } from './backup';
 import { parseArgs as parseRestoreArgs } from './restore';
 import { probeWriteAccess } from './check-backup-access';
 
@@ -23,6 +28,7 @@ const fullCollections = (overrides = {}) => ({
     accounts: [{ _id: 'a1' }],
     categories: [{ _id: 'c1' }],
     settings: [{ _id: 's1' }],
+    plannedpayments: [],
     ...overrides
 });
 
@@ -32,7 +38,7 @@ describe('buildBackupDocument', () => {
 
         expect(doc.formatVersion).toBe(BACKUP_FORMAT_VERSION);
         expect(doc.exportedAt).toBe('2026-08-16T05:30:00.000Z');
-        expect(doc.counts).toEqual({ transactions: 2, accounts: 1, categories: 1, settings: 1 });
+        expect(doc.counts).toEqual({ transactions: 2, accounts: 1, categories: 1, settings: 1, plannedpayments: 0 });
         expect(Object.keys(doc.data).sort()).toEqual([...BACKUP_COLLECTIONS].sort());
     });
 
@@ -97,6 +103,51 @@ describe('validateBackupDocument', () => {
     it('rejects an unparseable export date', () => {
         const doc = { ...buildBackupDocument(fullCollections()), exportedAt: 'позавчера' };
         expect(validateBackupDocument(doc).ok).toBe(false);
+    });
+
+    it('accepts a v1 document and normalizes its missing planned payments', () => {
+        const legacy = {
+            formatVersion: 1,
+            exportedAt: '2026-08-16T05:30:00.000Z',
+            counts: { transactions: 0, accounts: 0, categories: 0, settings: 0 },
+            data: { transactions: [], accounts: [], categories: [], settings: [] }
+        };
+
+        expect(validateBackupDocument(legacy)).toEqual({ ok: true, errors: [] });
+        const normalized = normalizeBackupDocument(legacy);
+        expect(normalized.formatVersion).toBe(1);
+        expect(normalized.data.plannedpayments).toEqual([]);
+        expect(normalized.counts.plannedpayments).toBe(0);
+    });
+
+    it('checks the count when a v1 document already contains planned payments', () => {
+        const legacy = {
+            formatVersion: 1, exportedAt: '2026-08-16T05:30:00.000Z',
+            counts: { transactions: 0, accounts: 0, categories: 0, settings: 0, plannedpayments: 2 },
+            data: { transactions: [], accounts: [], categories: [], settings: [], plannedpayments: [] }
+        };
+        expect(validateBackupDocument(legacy).ok).toBe(false);
+        expect(validateBackupDocument(legacy).errors.join(' ')).toMatch(/plannedpayments.*заявлено 2/);
+    });
+
+    it('requires plannedpayments and its count in v2', () => {
+        const doc = buildBackupDocument(fullCollections());
+        delete doc.data.plannedpayments;
+        delete doc.counts.plannedpayments;
+        const { ok, errors } = validateBackupDocument(doc);
+        expect(ok).toBe(false);
+        expect(errors.join(' ')).toMatch(/plannedpayments/);
+    });
+
+    it('round-trips a v2 planned payment through EJSON', () => {
+        const plan = {
+            _id: 'p1', title: 'Аренда', amount: 1000, dueDate: new Date('2026-04-01'),
+            account: 'a1', category: 'Жильё', status: 'pending', paidAt: null
+        };
+        const doc = buildBackupDocument(fullCollections({ plannedpayments: [plan] }));
+        const parsed = EJSON.parse(EJSON.stringify(doc));
+        expect(validateBackupDocument(parsed)).toEqual({ ok: true, errors: [] });
+        expect(parsed.data.plannedpayments[0].dueDate).toBeInstanceOf(Date);
     });
 });
 
@@ -180,7 +231,11 @@ describe('inspectBackupContents', () => {
         transactions: [tx(), tx({ _id: 't2', type: 'income', amount: 3000, date: new Date('2026-01-10') })],
         accounts: [{ _id: 'acc-1', name: 'Тинькофф' }],
         categories: [{ _id: 'c1' }],
-        settings: []
+        settings: [],
+        plannedpayments: [{
+            _id: 'p1', title: 'Аренда', amount: 1000, dueDate: new Date('2026-04-01'),
+            account: 'acc-1', category: 'Жильё', status: 'paid', transactionId: 't1', paidAt: new Date('2026-04-02')
+        }]
     });
 
     it('accepts an intact backup and describes what is in it', () => {
@@ -190,6 +245,7 @@ describe('inspectBackupContents', () => {
         expect(summary.join('\n')).toMatch(/Транзакции: 2, с 2026-01-10 по 2026-03-05/);
         expect(summary.join('\n')).toMatch(/Доходов на 3000\.00, расходов на 5\.00/);
         expect(summary.join('\n')).toMatch(/Счета \(1\): Тинькофф/);
+        expect(summary.join('\n')).toMatch(/Разовые платежи: 1/);
     });
 
     it('catches dates that stopped being dates', () => {
@@ -235,8 +291,43 @@ describe('inspectBackupContents', () => {
     });
 
     it('survives an entirely empty backup without throwing', () => {
-        const { summary } = inspectBackupContents({ transactions: [], accounts: [], categories: [], settings: [] });
+        const { summary } = inspectBackupContents({ transactions: [], accounts: [], categories: [], settings: [], plannedpayments: [] });
         expect(summary.join(' ')).toMatch(/Категории: 0/);
+    });
+
+    it('checks planned payment type, date and references', () => {
+        const data = healthy();
+        data.plannedpayments.push({
+            _id: 'p2', title: 'Bad', amount: 0, dueDate: '2026-02-31', account: 'missing',
+            status: 'later', transactionId: 'missing', paidAt: 'yesterday'
+        });
+        const { ok, problems } = inspectBackupContents(data);
+        expect(ok).toBe(false);
+        expect(problems.join(' ')).toMatch(/положительная сумма/);
+        expect(problems.join(' ')).toMatch(/dueDate/);
+        expect(problems.join(' ')).toMatch(/status/);
+        expect(problems.join(' ')).toMatch(/отсутствует счёт/);
+        expect(problems.join(' ')).toMatch(/связанная транзакция/);
+        expect(problems.join(' ')).toMatch(/paidAt/);
+    });
+
+    it('allows legacy card and cash plan accounts', () => {
+        const data = healthy();
+        data.plannedpayments[0].account = 'card';
+        expect(inspectBackupContents(data).ok).toBe(true);
+    });
+
+    it('rejects duplicate paid links and unpaid plans carrying paid references', () => {
+        const data = healthy();
+        data.plannedpayments.push({
+            _id: 'p2', title: 'Другая запись', amount: 50, dueDate: new Date('2026-04-02'),
+            account: 'acc-1', category: 'Жильё', status: 'paid', transactionId: 't1', paidAt: new Date('2026-04-02')
+        });
+        data.plannedpayments[0].status = 'pending';
+        data.plannedpayments[0].paidAt = null;
+        const { problems } = inspectBackupContents(data);
+        expect(problems.join(' ')).toMatch(/pending\/skipped/);
+        expect(problems.join(' ')).toMatch(/уже связана/);
     });
 });
 
@@ -320,7 +411,7 @@ describe('probeWriteAccess', () => {
 
 describe('summarizeCounts', () => {
     it('lists every collection, including ones missing from the input', () => {
-        expect(summarizeCounts({ transactions: 3 })).toBe('transactions: 3, accounts: 0, categories: 0, settings: 0');
+        expect(summarizeCounts({ transactions: 3 })).toBe('transactions: 3, accounts: 0, categories: 0, settings: 0, plannedpayments: 0');
     });
 });
 
@@ -330,12 +421,14 @@ describe('summarizeCounts', () => {
 // assert that the backup path never writes.
 function fakeDb(contents = {}) {
     const calls = [];
+    const findCalls = [];
     const collections = {};
     for (const name of BACKUP_COLLECTIONS) {
         const docs = contents[name] ?? [];
         collections[name] = {
-            find: vi.fn(() => {
+            find: vi.fn((filter, options) => {
                 calls.push(`${name}.find`);
+                findCalls.push({ name, filter, options });
                 return { toArray: async () => docs };
             }),
             countDocuments: vi.fn(async () => {
@@ -346,26 +439,36 @@ function fakeDb(contents = {}) {
             insertMany: vi.fn(async () => { calls.push(`${name}.insertMany`); })
         };
     }
-    return { calls, collections, collection: (name) => collections[name] };
+    return { calls, findCalls, collections, collection: (name) => collections[name] };
+}
+
+function fakeSession() {
+    return {
+        withTransaction: vi.fn(async callback => callback()),
+        endSession: vi.fn(async () => {})
+    };
 }
 
 describe('readAllCollections', () => {
     it('reads every collection and nothing else', async () => {
         const db = fakeDb({ transactions: [{ _id: 't1' }], accounts: [{ _id: 'a1' }] });
+        const session = fakeSession();
 
-        const result = await readAllCollections(db);
+        const result = await readAllCollections(db, { session });
 
         expect(result.transactions).toEqual([{ _id: 't1' }]);
         expect(result.accounts).toEqual([{ _id: 'a1' }]);
         expect(result.categories).toEqual([]);
         expect(result.settings).toEqual([]);
         expect(db.calls).toEqual(BACKUP_COLLECTIONS.map(name => `${name}.find`));
+        expect(db.findCalls.every(call => call.options.session === session)).toBe(true);
     });
 
     it('makes no write call at all - the backup must run under a read-only user', async () => {
         const db = fakeDb({ transactions: [{ _id: 't1' }] });
+        const session = fakeSession();
 
-        await readAllCollections(db);
+        await readAllCollections(db, { session });
 
         for (const name of BACKUP_COLLECTIONS) {
             expect(db.collections[name].deleteMany).not.toHaveBeenCalled();
@@ -375,14 +478,15 @@ describe('readAllCollections', () => {
 });
 
 describe('restoreCollections', () => {
-    const data = () => ({ transactions: [{ _id: 't1' }, { _id: 't2' }], accounts: [{ _id: 'a1' }], categories: [], settings: [{ _id: 's1' }] });
+    const data = () => ({ transactions: [{ _id: 't1' }, { _id: 't2' }], accounts: [{ _id: 'a1' }], categories: [], settings: [{ _id: 's1' }], plannedpayments: [] });
 
     it('inserts without clearing when replace is off', async () => {
         const db = fakeDb();
+        const session = fakeSession();
 
-        const restored = await restoreCollections(db, data());
+        const restored = await restoreCollections(db, data(), { session });
 
-        expect(restored).toEqual({ transactions: 2, accounts: 1, categories: 0, settings: 1 });
+        expect(restored).toEqual({ transactions: 2, accounts: 1, categories: 0, settings: 1, plannedpayments: 0 });
         for (const name of BACKUP_COLLECTIONS) {
             expect(db.collections[name].deleteMany).not.toHaveBeenCalled();
         }
@@ -390,8 +494,9 @@ describe('restoreCollections', () => {
 
     it('clears each collection before inserting when replace is on', async () => {
         const db = fakeDb();
+        const session = fakeSession();
 
-        await restoreCollections(db, data(), { replace: true });
+        await restoreCollections(db, data(), { replace: true, session });
 
         // deleteMany must land before insertMany for the same collection,
         // or the restore would append to the data it meant to replace.
@@ -403,11 +508,129 @@ describe('restoreCollections', () => {
         // The driver rejects an empty batch, which would fail the whole
         // restore over a legitimately empty collection.
         const db = fakeDb();
+        const session = fakeSession();
 
-        await restoreCollections(db, data(), { replace: true });
+        await restoreCollections(db, data(), { replace: true, session });
 
         expect(db.collections.categories.insertMany).not.toHaveBeenCalled();
         expect(db.collections.categories.deleteMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('restores a v1-shaped data block with an empty plannedpayments collection', async () => {
+        const db = fakeDb();
+        const session = fakeSession();
+        const legacyDoc = {
+            formatVersion: 1,
+            data: { transactions: [{ _id: 't1' }], accounts: [], categories: [], settings: [] },
+            counts: { transactions: 1, accounts: 0, categories: 0, settings: 0 }
+        };
+        const legacyData = normalizeBackupDocument(legacyDoc).data;
+
+        const restored = await restoreCollections(db, legacyData, { session });
+
+        expect(restored).toEqual({ transactions: 1, accounts: 0, categories: 0, settings: 0, plannedpayments: 0 });
+        expect(db.collections.plannedpayments.insertMany).not.toHaveBeenCalled();
+    });
+
+    it('aborts the transaction when a later collection fails', async () => {
+        const db = fakeDb();
+        db.collections.categories.insertMany = vi.fn(async () => { throw new Error('duplicate key'); });
+        const abortTransaction = vi.fn(async () => {});
+        const session = {
+            withTransaction: vi.fn(async callback => {
+                try { await callback(); } catch (error) { await abortTransaction(); throw error; }
+            })
+        };
+
+        await expect(restoreCollections(db, { ...data(), categories: [{ _id: 'c1' }] }, { replace: true, session })).rejects.toThrow('duplicate key');
+        expect(abortTransaction).toHaveBeenCalledTimes(1);
+        expect(db.collections.transactions.insertMany).toHaveBeenCalledTimes(1);
+        expect(db.collections.settings.insertMany).not.toHaveBeenCalled();
+    });
+
+    it('rechecks the non-empty guard inside the transaction', async () => {
+        const db = fakeDb({ accounts: [{ _id: 'existing' }] });
+        const abortTransaction = vi.fn(async () => {});
+        const session = {
+            withTransaction: vi.fn(async callback => {
+                try { await callback(); } catch (error) { await abortTransaction(); throw error; }
+            })
+        };
+
+        await expect(restoreCollections(db, data(), { session })).rejects.toThrow(/accounts/);
+        expect(abortTransaction).toHaveBeenCalledTimes(1);
+        expect(db.collections.transactions.insertMany).not.toHaveBeenCalled();
+    });
+});
+
+describe('atomic backup files', () => {
+    it('replaces the destination only after the complete temp write', () => {
+        const directory = fs.mkdtempSync(path.join(process.cwd(), '.tmp-backup-test-'));
+        const destination = path.join(directory, 'backup.json');
+        try {
+            writeAtomic(destination, 'new complete backup');
+            expect(fs.readFileSync(destination, 'utf8')).toBe('new complete backup');
+            writeAtomic(destination, 'second complete backup');
+            expect(fs.readFileSync(destination, 'utf8')).toBe('second complete backup');
+        } finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+
+    it('cleans its temp file when the final rename fails', () => {
+        const directory = fs.mkdtempSync(path.join(process.cwd(), '.tmp-backup-test-'));
+        const destination = path.join(directory, 'existing-directory');
+        fs.mkdirSync(destination);
+        try {
+            expect(() => writeAtomic(destination, 'cannot replace a directory')).toThrow();
+            expect(fs.readdirSync(directory)).toEqual(['existing-directory']);
+        } finally {
+            fs.rmSync(directory, { recursive: true, force: true });
+        }
+    });
+});
+
+describe('replica-set backup integrity', () => {
+    it('keeps one snapshot and rolls back a failed restore', async () => {
+        const client = new MongoClient(inject('mongoUri'));
+        const dbName = `backup-integrity-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        await client.connect();
+        const db = client.db(dbName);
+        let snapshotSession;
+        try {
+            for (const name of BACKUP_COLLECTIONS) await db.createCollection(name);
+            await db.collection('transactions').insertOne({ _id: 'before' });
+
+            snapshotSession = client.startSession({ snapshot: true });
+            await db.collection('transactions').find({}, { session: snapshotSession }).toArray();
+            await db.collection('accounts').insertOne({ _id: 'after-snapshot' });
+            const snapshot = await readAllCollections(db, { session: snapshotSession });
+            expect(snapshot.accounts).toEqual([]);
+            await snapshotSession.endSession();
+            snapshotSession = null;
+
+            const failedRestore = {
+                transactions: [{ _id: 'replacement' }],
+                accounts: [{ _id: 'replacement-account' }],
+                categories: [{ _id: 'same' }, { _id: 'same' }],
+                settings: [],
+                plannedpayments: []
+            };
+            const restoreSession = client.startSession();
+            try {
+                await expect(restoreCollections(db, failedRestore, { replace: true, session: restoreSession })).rejects.toThrow();
+            } finally {
+                await restoreSession.endSession();
+            }
+
+            expect(await countAllCollections(db)).toEqual({ transactions: 1, accounts: 1, categories: 0, settings: 0, plannedpayments: 0 });
+            expect(await db.collection('transactions').findOne({ _id: 'before' })).not.toBeNull();
+            expect(await db.collection('transactions').findOne({ _id: 'replacement' })).toBeNull();
+        } finally {
+            if (snapshotSession) await snapshotSession.endSession();
+            await db.dropDatabase();
+            await client.close();
+        }
     });
 });
 
@@ -415,7 +638,7 @@ describe('countAllCollections', () => {
     it('reports the current size of every collection', async () => {
         const db = fakeDb({ transactions: [{}, {}, {}], settings: [{}] });
 
-        expect(await countAllCollections(db)).toEqual({ transactions: 3, accounts: 0, categories: 0, settings: 1 });
+        expect(await countAllCollections(db)).toEqual({ transactions: 3, accounts: 0, categories: 0, settings: 1, plannedpayments: 0 });
     });
 });
 

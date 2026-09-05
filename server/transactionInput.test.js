@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { validateTransactionUpdate } from './transactionInput.js';
+import {
+    validateTransactionCreate,
+    validateTransactionUpdate,
+    validateTransactionVersion
+} from './transactionInput.js';
 
 // Полное тело, какое присылает форма редактирования (см. handleSubmit в
 // src/components/AddTransactionForm.jsx): отдельные проверки ниже правят в
@@ -44,7 +48,7 @@ describe('validateTransactionUpdate: сумма', () => {
 
     // Суммы хранятся положительными, знак задаётся типом операции, поэтому
     // ноль и минус - это мусор, а не «другая сторона».
-    it.each([0, -5, '0', 'abc', '', null, true, [], {}])('отклоняет сумму %j', (amount) => {
+    it.each([0, -5, '0', 'abc', '', null, true, [], [1], {}])('отклоняет сумму %j', (amount) => {
         const { error, update } = validateTransactionUpdate({ amount });
         expect(update).toBeUndefined();
         expect(error).toMatch(/сумма/i);
@@ -56,6 +60,16 @@ describe('validateTransactionUpdate: сумма', () => {
         expect(validateTransactionUpdate({ amount: Infinity }).error).toBeTruthy();
         expect(validateTransactionUpdate({ amount: JSON.parse('1e999') }).error).toBeTruthy();
     });
+
+    it('разрешает отрицательный начальный остаток, но не нулевой', () => {
+        expect(validateTransactionUpdate({ type: 'initial', amount: -500 }).update.amount).toBe(-500);
+        expect(validateTransactionUpdate({ type: 'initial', amount: 0 }).error).toMatch(/остатка/i);
+    });
+
+    it('учитывает сохранённый тип при частичном обновлении суммы', () => {
+        const current = { ...validBody(), type: 'initial', amount: 100 };
+        expect(validateTransactionUpdate({ amount: -50 }, current).update.amount).toBe(-50);
+    });
 });
 
 describe('validateTransactionUpdate: дата', () => {
@@ -65,7 +79,7 @@ describe('validateTransactionUpdate: дата', () => {
         expect(update.date.toISOString().slice(0, 10)).toBe('2026-08-14');
     });
 
-    it.each(['вчера', '2026-13-45', ''])('отклоняет нечитаемую дату %j', (date) => {
+    it.each(['вчера', '2026-13-45', '', null, true, []])('отклоняет нечитаемую дату %j', (date) => {
         expect(validateTransactionUpdate({ date }).error).toMatch(/дата/i);
     });
 });
@@ -101,9 +115,11 @@ describe('validateTransactionUpdate: остальные поля', () => {
         expect(validateTransactionUpdate({ account: '' }).error).toMatch(/счёт/i);
     });
 
-    it('приводит excludeFromStats к булеву', () => {
-        expect(validateTransactionUpdate({ excludeFromStats: 'да' }).update.excludeFromStats).toBe(true);
-        expect(validateTransactionUpdate({ excludeFromStats: 0 }).update.excludeFromStats).toBe(false);
+    it('принимает только настоящие логические значения excludeFromStats', () => {
+        expect(validateTransactionUpdate({ excludeFromStats: true }).update.excludeFromStats).toBe(true);
+        expect(validateTransactionUpdate({ excludeFromStats: false }).update.excludeFromStats).toBe(false);
+        expect(validateTransactionUpdate({ excludeFromStats: 'false' }).error).toMatch(/логическим/i);
+        expect(validateTransactionUpdate({ excludeFromStats: 0 }).error).toMatch(/логическим/i);
     });
 
     it('позволяет стереть описание пустой строкой', () => {
@@ -183,4 +199,58 @@ describe('validateTransactionUpdate: форма обновления', () => {
     it.each([null, undefined, 'строка', [{ amount: 1 }]])('отклоняет тело %j', (body) => {
         expect(validateTransactionUpdate(body).error).toBeTruthy();
     });
+});
+
+describe('валидация итогового состояния частичного PUT', () => {
+    const expense = () => ({
+        ...validBody(),
+        date: new Date('2026-08-14T00:00:00.000Z')
+    });
+
+    it('не превращает расход в перевод без счёта назначения', () => {
+        expect(validateTransactionUpdate({ type: 'transfer' }, expense()).error).toMatch(/назначения/i);
+    });
+
+    it('не превращает перевод без категории в расход', () => {
+        const transfer = { ...expense(), type: 'transfer', category: undefined, toAccount: 'acc-cash' };
+        expect(validateTransactionUpdate({ type: 'expense' }, transfer).error).toMatch(/категория/i);
+    });
+
+    it('не разрешает перевод на тот же счёт при обновлении любой стороны', () => {
+        const transfer = { ...expense(), type: 'transfer', category: undefined, toAccount: 'acc-cash' };
+        expect(validateTransactionUpdate({ account: 'acc-cash' }, transfer).error).toMatch(/различаться/i);
+        expect(validateTransactionUpdate({ toAccount: 'acc-card-1' }, transfer).error).toMatch(/различаться/i);
+    });
+});
+
+describe('validateTransactionCreate', () => {
+    it('нормализует полную операцию и подставляет категорию в название', () => {
+        const { error, transaction } = validateTransactionCreate({ ...validBody(), title: undefined });
+        expect(error).toBeUndefined();
+        expect(transaction.title).toBe('Кафе и доставка');
+        expect(transaction.amount).toBe(12.5);
+    });
+
+    it('требует непустой счёт и корректный перевод', () => {
+        expect(validateTransactionCreate({ ...validBody(), account: undefined }).error).toMatch(/счёт/i);
+        expect(validateTransactionCreate({ ...validBody(), type: 'transfer', category: undefined, title: 'Перевод' }).error).toMatch(/назначения/i);
+        expect(validateTransactionCreate({ ...validBody(), type: 'transfer', category: undefined, title: 'Перевод', toAccount: 'acc-card-1' }).error).toMatch(/различаться/i);
+    });
+
+    it('разрешает отрицательный initial и запрещает отрицательные движения', () => {
+        expect(validateTransactionCreate({ ...validBody(), type: 'initial', amount: -100 }).transaction.amount).toBe(-100);
+        expect(validateTransactionCreate({ ...validBody(), type: 'expense', amount: -100 }).error).toMatch(/положительным/i);
+    });
+});
+
+describe('validateTransactionVersion', () => {
+    it('принимает нулевую и положительную целую версию', () => {
+        expect(validateTransactionVersion({ __v: 0 })).toEqual({ expectedVersion: 0 });
+        expect(validateTransactionVersion({ __v: 7 })).toEqual({ expectedVersion: 7 });
+    });
+
+    it.each([{}, { __v: -1 }, { __v: 1.5 }, { __v: '0' }, { __v: null }])(
+        'отклоняет отсутствующую или некорректную версию %j',
+        (body) => expect(validateTransactionVersion(body).error).toMatch(/__v/)
+    );
 });

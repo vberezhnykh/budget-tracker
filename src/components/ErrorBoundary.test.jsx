@@ -40,7 +40,7 @@ describe('ErrorBoundary Component', () => {
         expect(screen.getByRole('button', { name: 'Перезагрузить' })).toBeInTheDocument();
     });
 
-    it('logs the error and component stack via console.error', () => {
+    it('logs that a render error was caught without copying the stack', () => {
         render(
             <ErrorBoundary>
                 <Bomb />

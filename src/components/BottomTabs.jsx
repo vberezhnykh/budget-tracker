@@ -13,6 +13,7 @@ export const TAB_BAR_RESERVED_HEIGHT = TAB_BAR_HEIGHT + GAP_ABOVE_DRAWER;
 const TABS = [
   { id: 'stats', icon: '🏠', label: 'Главная' },
   { id: 'analytics', icon: '📊', label: 'Аналитика' },
+  { id: 'payments', icon: '🗓️', label: 'Платежи' },
 ];
 
 // Main-screen navigation, sitting directly above the transactions drawer's
@@ -37,6 +38,7 @@ export default function BottomTabs({ active, onChange }) {
         zIndex: 800,
         width: 'calc(100% - 40px)',
         maxWidth: '420px',
+        boxSizing: 'border-box',
         height: `${TAB_BAR_HEIGHT}px`,
         display: 'flex',
         alignItems: 'stretch',
@@ -58,7 +60,7 @@ export default function BottomTabs({ active, onChange }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '8px',
+              gap: '3px',
               border: 'none',
               // На ступень меньше внешнего --radius-lg: кнопка лежит внутри
               // контейнера с отступом 5px, и вложенный угол должен быть
@@ -67,7 +69,7 @@ export default function BottomTabs({ active, onChange }) {
               borderRadius: 'var(--radius-md)',
               background: isActive ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
               color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)',
-              fontSize: 'var(--text-base)',
+              fontSize: 'var(--text-xs)',
               fontWeight: isActive ? '700' : '600',
               cursor: 'pointer',
               transition: 'all 0.2s ease',

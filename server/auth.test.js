@@ -294,8 +294,8 @@ describe('createAuthMiddleware - fails closed', () => {
         process.env = { ...ORIGINAL_ENV };
     });
 
-    function makeReqRes(path, ip) {
-        const req = { path, cookies: {}, ip };
+    function makeReqRes(path, remoteAddress, ip = remoteAddress) {
+        const req = { path, cookies: {}, ip, socket: { remoteAddress } };
         const res = {
             statusCode: null,
             body: null,
@@ -332,6 +332,17 @@ describe('createAuthMiddleware - fails closed', () => {
     it('/api/health is always excluded, configured or not', () => {
         const middleware = createAuthMiddleware(false);
         const { req, res } = makeReqRes('/api/health');
+        const next = vi.fn();
+
+        middleware(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.statusCode).toBeNull();
+    });
+
+    it('/api/ready is always excluded, configured or not', () => {
+        const middleware = createAuthMiddleware(false);
+        const { req, res } = makeReqRes('/api/ready');
         const next = vi.fn();
 
         middleware(req, res, next);
@@ -395,7 +406,29 @@ describe('createAuthMiddleware - fails closed', () => {
             expect(next).not.toHaveBeenCalled();
         });
 
-        it('bypass refused when AUTH_DISABLED=true but req.ip is missing/unknown', () => {
+        it('не доверяет loopback в req.ip, если фактический TCP peer удалённый', () => {
+            const middleware = createAuthMiddleware(true);
+            const { req, res } = makeReqRes('/api/transactions', '203.0.113.7', '127.0.0.1');
+            const next = vi.fn();
+
+            middleware(req, res, next);
+
+            expect(res.statusCode).toBe(503);
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        it('не доверяет loopback-сокету локального proxy, если req.ip внешний', () => {
+            const middleware = createAuthMiddleware(true);
+            const { req, res } = makeReqRes('/api/transactions', '127.0.0.1', '203.0.113.7');
+            const next = vi.fn();
+
+            middleware(req, res, next);
+
+            expect(res.statusCode).toBe(503);
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        it('bypass refused when AUTH_DISABLED=true but socket address is missing/unknown', () => {
             const middleware = createAuthMiddleware(true);
             const { req, res } = makeReqRes('/api/transactions', undefined);
             const next = vi.fn();
@@ -520,6 +553,17 @@ describe('createAuthMiddleware - configured', () => {
     it('/API/HEALTH is still excluded regardless of casing (case-insensitive routing means this spelling reaches the route)', () => {
         const middleware = createAuthMiddleware(true);
         const { req, res } = makeReqRes('/API/HEALTH');
+        const next = vi.fn();
+
+        middleware(req, res, next);
+
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(res.statusCode).toBeNull();
+    });
+
+    it('/API/READY is still excluded regardless of casing', () => {
+        const middleware = createAuthMiddleware(true);
+        const { req, res } = makeReqRes('/API/READY');
         const next = vi.fn();
 
         middleware(req, res, next);

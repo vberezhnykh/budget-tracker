@@ -73,6 +73,7 @@ export default function AccountsSettingsModal({
   onRenameCategory,
   onDragEnd,
   onSaveSettings,
+  onOpenTrash,
   onLogout,
   showNotice,
 }) {
@@ -88,6 +89,8 @@ export default function AccountsSettingsModal({
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [categoryNameInput, setCategoryNameInput] = useState('');
   const [savingCategory, setSavingCategory] = useState(false);
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [savingLimit, setSavingLimit] = useState(false);
 
   // Drag-to-reorder sensors for the account list below. A minimum drag
   // distance keeps an imprecise tap on the grip from being mistaken for a
@@ -139,15 +142,20 @@ export default function AccountsSettingsModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formName.trim()) return;
-    const ok = await onSaveAccount({
-      name: formName,
-      type: formType,
-      icon: formIcon,
-      excludeFromTotal: formExcludeFromTotal,
-      editingAccountId,
-    });
-    if (ok) resetForm();
+    if (!formName.trim() || savingAccount) return;
+    setSavingAccount(true);
+    try {
+      const ok = await onSaveAccount({
+        name: formName,
+        type: formType,
+        icon: formIcon,
+        excludeFromTotal: formExcludeFromTotal,
+        editingAccountId,
+      });
+      if (ok) resetForm();
+    } finally {
+      setSavingAccount(false);
+    }
   };
 
   // Mirrors the server's own validation (see PUT /api/settings in
@@ -158,13 +166,19 @@ export default function AccountsSettingsModal({
   // the limit progress bar.
   const handleSaveLimit = async (e) => {
     e.preventDefault();
+    if (savingLimit) return;
     const parsed = Number(limitInput);
     if (!Number.isFinite(parsed) || parsed <= 0) {
       showNotice('Введите корректный лимит (положительное число)');
       return;
     }
-    const ok = await onSaveSettings(parsed);
-    if (ok) showNotice('Лимит обновлён', 'success');
+    setSavingLimit(true);
+    try {
+      const ok = await onSaveSettings(parsed);
+      if (ok) showNotice('Лимит обновлён', 'success');
+    } finally {
+      setSavingLimit(false);
+    }
   };
 
   return (
@@ -256,6 +270,7 @@ export default function AccountsSettingsModal({
             <button
               type="submit"
               className="btn-primary"
+              disabled={savingAccount}
               style={{
                 flex: 1,
                 padding: '10px',
@@ -265,7 +280,7 @@ export default function AccountsSettingsModal({
                 cursor: 'pointer'
               }}
             >
-              {editingAccountId ? 'Сохранить изменения' : 'Добавить счёт'}
+              {savingAccount ? 'Сохранение...' : (editingAccountId ? 'Сохранить изменения' : 'Добавить счёт')}
             </button>
 
             {editingAccountId && (
@@ -429,6 +444,7 @@ export default function AccountsSettingsModal({
             <button
               type="submit"
               className="btn-primary"
+              disabled={savingLimit}
               style={{
                 padding: '10px 16px',
                 borderRadius: 'var(--radius-md)',
@@ -437,10 +453,27 @@ export default function AccountsSettingsModal({
                 cursor: 'pointer'
               }}
             >
-              Сохранить лимит
+              {savingLimit ? 'Сохранение...' : 'Сохранить лимит'}
             </button>
           </form>
         </div>
+
+        <button
+          type="button"
+          onClick={onOpenTrash}
+          style={{
+            background: 'var(--color-surface-inset)',
+            border: '1px solid var(--color-border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            color: 'var(--color-text-main)',
+            cursor: 'pointer',
+            fontSize: 'var(--text-base)',
+            fontWeight: '700',
+            padding: '11px',
+          }}
+        >
+          🗑️ Корзина операций
+        </button>
 
         {/* Session: the only place a logout control lives - deliberately
             not added as new chrome on the main screen. */}

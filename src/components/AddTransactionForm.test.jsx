@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import AddTransactionForm from './AddTransactionForm';
 
@@ -107,7 +107,7 @@ describe('AddTransactionForm Component', () => {
     });
 
     it('keeps an edited transaction on its own account, even if presetAccountId is passed', () => {
-        const editData = { id: 'test-id', amount: 100, category: 'Food', type: 'expense', account: 'cash' };
+        const editData = { id: 'test-id', __v: 7, amount: 100, category: 'Food', type: 'expense', account: 'cash' };
 
         render(<AddTransactionForm initialData={editData} presetAccountId="card" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
@@ -116,10 +116,10 @@ describe('AddTransactionForm Component', () => {
         expect(screen.getByText('Сохранить')).not.toBeDisabled();
         fireEvent.click(screen.getByText('Сохранить'));
 
-        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash' }));
+        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash', __v: 7 }));
     });
 
-    it('submits correct data for an expense', () => {
+    it('submits correct data for an expense', async () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50.5' } });
@@ -134,7 +134,46 @@ describe('AddTransactionForm Component', () => {
             type: 'expense',
             account: 'card'
         }));
-        expect(mockOnClose).toHaveBeenCalled();
+        await waitFor(() => expect(mockOnClose).toHaveBeenCalled());
+    });
+
+    it('keeps entered values open after a failed save', async () => {
+        const onSubmit = vi.fn().mockResolvedValue(false);
+        const onClose = vi.fn();
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={onClose} onSubmit={onSubmit} />);
+
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50.5' } });
+        fireEvent.click(screen.getByText('Транспорт'));
+        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByPlaceholderText('0.00')).toHaveValue(50.5);
+        expect(screen.getByText('Сохранить')).toBeEnabled();
+    });
+
+    it('blocks duplicate submits and closing while a save is pending', async () => {
+        let resolveSave;
+        const onSubmit = vi.fn(() => new Promise(resolve => { resolveSave = resolve; }));
+        const onClose = vi.fn();
+        const { container } = render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={onClose} onSubmit={onSubmit} />);
+
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '20' } });
+        fireEvent.click(screen.getByText('Продукты'));
+        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        const pendingButton = await screen.findByText('Сохранение...');
+        fireEvent.click(pendingButton);
+        fireEvent.click(container.firstChild);
+        fireEvent.keyDown(document, { key: 'Escape' });
+
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+        expect(onClose).not.toHaveBeenCalled();
+
+        resolveSave(true);
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     });
 
     it('handles transfer type correctly', () => {
@@ -367,6 +406,20 @@ describe('AddTransactionForm Component', () => {
             fireEvent.click(screen.getByText('✓'));
 
             await screen.findByText('Отпуск');
+        });
+
+        it('показывает ошибку создания категории и сохраняет введённое название', async () => {
+            const onAddCategory = vi.fn().mockResolvedValue({ error: 'Категория уже существует' });
+
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onAddCategory={onAddCategory} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            fireEvent.click(screen.getByText('+ Новая'));
+            fireEvent.change(screen.getByPlaceholderText('Название...'), { target: { value: 'Кофе' } });
+            fireEvent.click(screen.getByText('✓'));
+
+            expect(await screen.findByRole('alert')).toHaveTextContent('Категория уже существует');
+            expect(screen.getByPlaceholderText('Название...')).toHaveValue('Кофе');
+            expect(onAddCategory).toHaveBeenCalledTimes(1);
         });
     });
 });

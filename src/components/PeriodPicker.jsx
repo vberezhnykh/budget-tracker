@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
 import {
@@ -39,15 +39,6 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
     // screen-reader users don't get dropped back at the top of the page.
     chipRef.current?.focus();
   };
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') close();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isOpen]);
 
   const chooseMonth = (month) => {
     onChange({ timeRange: 'month', selectedMonth: month });

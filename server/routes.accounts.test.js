@@ -192,19 +192,65 @@ describe('Настройки', () => {
     });
 
     it('повторные сохранения не плодят документов', async () => {
-        // Это то, что findOneAndUpdate с upsert действительно гарантирует:
-        // последовательные записи находят существующий документ и правят
-        // его. От ОДНОВРЕМЕННЫХ первых записей он не защищает - MongoDB
-        // обещает атомарность upsert'а только при уникальном индексе по
-        // полям фильтра, а фильтр здесь пустой. См. пункт «Настройки:
-        // одновременное первое сохранение» в BACKLOG.md; тест на этот случай
-        // не ставится, потому что он проверял бы несуществующее свойство.
         for (const monthlyLimit of [5000, 6000, 7500]) {
             await agent.put('/api/settings').send({ monthlyLimit });
         }
 
         expect(await Settings.countDocuments()).toBe(1);
         expect((await agent.get('/api/settings')).body.monthlyLimit).toBe(7500);
+    });
+
+    it('одновременные первые сохранения создают один канонический документ', async () => {
+        const limits = [4100, 4200, 4300, 4400, 4500, 4600];
+        const responses = await Promise.all(
+            limits.map(monthlyLimit => agent.put('/api/settings').send({ monthlyLimit }))
+        );
+
+        expect(responses.every(res => res.status === 200)).toBe(true);
+        const documents = await Settings.find({});
+        expect(documents).toHaveLength(1);
+        expect(documents[0].singletonKey).toBe('global');
+        expect(limits).toContain(documents[0].monthlyLimit);
+    });
+
+    it('принимает единственный legacy-документ без потери его значения', async () => {
+        const legacy = await Settings.create({ monthlyLimit: 4321 });
+
+        const res = await agent.get('/api/settings');
+
+        expect(res.status).toBe(200);
+        expect(res.body.monthlyLimit).toBe(4321);
+        const adopted = await Settings.findOne({ singletonKey: 'global' });
+        expect(adopted._id.toString()).toBe(legacy._id.toString());
+        expect(await Settings.countDocuments()).toBe(1);
+    });
+
+    it('принимает legacy-документ с singletonKey: null', async () => {
+        const legacy = await Settings.create({ monthlyLimit: 5432, singletonKey: null });
+
+        const res = await agent.get('/api/settings');
+
+        expect(res.status).toBe(200);
+        expect(res.body.monthlyLimit).toBe(5432);
+        const adopted = await Settings.findById(legacy._id);
+        expect(adopted.singletonKey).toBe('global');
+    });
+
+    it('явно отказывается выбирать между несколькими legacy-документами', async () => {
+        await Settings.create([
+            { monthlyLimit: 4000 },
+            { monthlyLimit: 8000 }
+        ]);
+
+        const read = await agent.get('/api/settings');
+        const write = await agent.put('/api/settings').send({ monthlyLimit: 6000 });
+
+        expect(read.status).toBe(409);
+        expect(write.status).toBe(409);
+        expect(read.body.message).toMatch(/несколько наборов настроек/i);
+        const documents = await Settings.find({}).sort({ monthlyLimit: 1 }).lean();
+        expect(documents.map(doc => doc.monthlyLimit)).toEqual([4000, 8000]);
+        expect(documents.every(doc => doc.singletonKey === undefined)).toBe(true);
     });
 
     it('отвергает значения, на которых лимит на фронте превращается в NaN% или Infinity%', async () => {

@@ -32,6 +32,7 @@ export const transformTransactions = (data, accounts = []) => {
 
         return {
             id: t._id,
+            __v: Number.isInteger(t.__v) ? t.__v : 0,
             title: t.title || t.category,
             amount: amount,
             visualAmount: visualAmount,
@@ -169,7 +170,7 @@ export const getPeriodData = (transactions, periodPrefix, accountFilter = null, 
                     id: t.splitId,
                     type: 'split_group',
                     date: t.date,
-                    description: t.description.split(' (')[0], // Base description
+                    description: (t.description || '').split(' (')[0], // Base description
                     account: t.account,
                     visualAmount: 0,
                     items: []

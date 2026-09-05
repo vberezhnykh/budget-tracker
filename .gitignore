@@ -18,6 +18,11 @@ build
 backups
 *.backup.json
 
+# Local server secrets and user exports. Keep server/.env.example tracked.
+server/.env.backup
+server/backup_before_multiaccounts/
+server/**/*.xlsx
+
 # Misc
 .DS_Store
 .env

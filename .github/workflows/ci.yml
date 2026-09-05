@@ -30,17 +30,34 @@ jobs:
     name: Линт, тесты, сборка
     runs-on: ubuntu-latest
 
-    # Без этого сервиса тесты роутов подняли бы mongodb-memory-server, а он
-    # на чистом раннере качает бинарник mongod (~780 МБ) на каждом прогоне.
-    # Локально переменной MONGODB_URI_TEST нет, и там как раз работает
-    # memory-server - развилки в коде тестов при этом никакой.
-    services:
-      mongo:
-        image: mongo:7
-        ports: ['27017:27017']
-
     steps:
       - uses: actions/checkout@v4
+
+      - name: Запустить MongoDB replica set
+        run: docker run --detach --name budget-tracker-test-mongo --publish 127.0.0.1:27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+
+      - name: Дождаться и инициализировать MongoDB replica set
+        shell: bash
+        run: |
+          for attempt in {1..60}; do
+            if docker exec budget-tracker-test-mongo mongosh --quiet --eval "db.adminCommand({ ping: 1 }).ok === 1" | grep -q true; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              echo 'MongoDB did not answer ping' >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          docker exec budget-tracker-test-mongo mongosh --quiet --eval "try { rs.initiate({_id: 'rs0', members: [{_id: 0, host: '127.0.0.1:27017'}]}); } catch (e) { if (e.codeName !== 'AlreadyInitialized') { print(e); quit(1); } }"
+          for attempt in {1..60}; do
+            if docker exec budget-tracker-test-mongo mongosh --quiet --eval "try { const hello = db.hello(); if (hello.isWritablePrimary === true) quit(0); quit(1); } catch (e) { quit(1); }"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'MongoDB replica set did not become primary' >&2
+          exit 1
 
       - uses: actions/setup-node@v4
         with:
@@ -48,6 +65,9 @@ jobs:
           # Node 20.19/22.12.
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
 
       # postinstall из package.json ставит заодно зависимости server/,
       # поэтому отдельного шага для бэкенда не нужно.
@@ -59,11 +79,15 @@ jobs:
       # server/*.test.js подхватываются тем же конфигом, e2e/ исключён.
       - run: npm test
         env:
-          MONGODB_URI_TEST: mongodb://localhost:27017/budget-tracker-test
+          MONGODB_URI_TEST: mongodb://localhost:27017/budget-tracker-test?replicaSet=rs0
 
       # Сборка ловит то, что не ловят тесты: битые импорты и всё, что
       # разъезжается только при продакшен-бандлинге.
       - run: npm run build
+
+      - name: Остановить MongoDB replica set
+        if: always()
+        run: docker rm --force budget-tracker-test-mongo || true
 
   e2e:
     name: Смоук в браузере
@@ -75,6 +99,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
 
       - run: npm ci
 

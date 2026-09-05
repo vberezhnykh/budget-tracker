@@ -1,10 +1,19 @@
 const mongoose = require('mongoose');
 
+const SETTINGS_SINGLETON_KEY = 'global';
+
 // A single shared document holding app-wide settings (currently just the
 // monthly spending limit shown on the stats panel). There is intentionally
 // no per-user scoping - this app has one shared household budget, mirroring
 // how Account/Category are also global rather than per-user.
 const SettingsSchema = new mongoose.Schema({
+    // Intentionally no default: old documents must remain visibly legacy
+    // until settingsSingleton adopts the only document. A default here
+    // would make hydration hide a conflicting set of multiple legacy rows.
+    singletonKey: {
+        type: String,
+        enum: [SETTINGS_SINGLETON_KEY]
+    },
     monthlyLimit: {
         type: Number,
         default: 7000,
@@ -21,4 +30,18 @@ const SettingsSchema = new mongoose.Schema({
     }
 });
 
-module.exports = mongoose.model('Settings', SettingsSchema);
+// The partial index permits legacy documents without singletonKey to be
+// inspected and adopted, while making creation of the canonical row atomic.
+SettingsSchema.index(
+    { singletonKey: 1 },
+    {
+        unique: true,
+        name: 'settings_singleton',
+        partialFilterExpression: { singletonKey: SETTINGS_SINGLETON_KEY }
+    }
+);
+
+const Settings = mongoose.model('Settings', SettingsSchema);
+Settings.SETTINGS_SINGLETON_KEY = SETTINGS_SINGLETON_KEY;
+
+module.exports = Settings;

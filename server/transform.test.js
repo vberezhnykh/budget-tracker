@@ -14,7 +14,7 @@ const accounts = [
 
 const transactions = [
     { _id: 't1', title: 'Стартовый баланс', amount: 5650, type: 'initial', category: 'Другое', account: 'acc-cash', date: '2025-11-09T00:00:00.000Z' },
-    { _id: 't2', title: 'Зарплата', amount: 4200, type: 'income', category: 'Зарплата', account: 'acc-card', date: '2026-07-05T00:00:00.000Z' },
+    { _id: 't2', __v: 3, title: 'Зарплата', amount: 4200, type: 'income', category: 'Зарплата', account: 'acc-card', date: '2026-07-05T00:00:00.000Z' },
     { _id: 't3', title: 'Продукты', amount: 120.55, type: 'expense', category: 'Продукты', account: 'acc-card', date: '2026-07-06T00:00:00.000Z' },
     { _id: 't5', title: 'Перевод', amount: 500, type: 'transfer', category: 'Перевод', account: 'acc-card', toAccount: 'acc-cash', date: '2026-08-02T00:00:00.000Z' },
     { _id: 't6', title: 'Возврат долга', amount: 900, type: 'expense', category: 'Другое', account: 'acc-card', date: '2026-08-03T00:00:00.000Z', excludeFromStats: true },
@@ -81,6 +81,11 @@ describe('transformTransactions: правила, которые легко по�
     it('excludeFromStats доезжает, а по умолчанию false', () => {
         expect(byId['t6'].excludeFromStats).toBe(true);
         expect(byId['t3'].excludeFromStats).toBe(false);
+    });
+
+    it('сохраняет версию документа, а legacy без __v считает версией 0', () => {
+        expect(byId['t2'].__v).toBe(3);
+        expect(byId['t3'].__v).toBe(0);
     });
 });
 

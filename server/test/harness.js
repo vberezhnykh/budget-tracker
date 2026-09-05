@@ -20,7 +20,7 @@ export const TEST_SECRET = 'test-session-secret-at-least-32-chars-long';
 
 // URI один на весь прогон: его поднимает и отдаёт server/test/globalSetup.js -
 // либо это сервис-контейнер из MONGODB_URI_TEST, либо поднятый им
-// mongodb-memory-server. Развилки в самих тестах при этом нет.
+// mongodb-memory-replset. Развилки в самих тестах при этом нет.
 function resolveUri() {
     const uri = process.env.MONGODB_URI_TEST || inject('mongoUri');
     if (!uri) {

@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "start": "node server/index.js",
-    "postinstall": "cd server && npm install"
+    "postinstall": "npm --prefix server ci"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

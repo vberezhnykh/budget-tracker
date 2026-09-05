@@ -32,6 +32,7 @@ let currentAccounts = [
     { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
 ];
 let currentCategories = [];
+let currentPlannedPayments = [];
 
 // Setup fetch mock. Stubbed fresh in the describe block's beforeEach (rather
 // than assigned once at module scope) so it can be paired with
@@ -76,6 +77,20 @@ function createFetchMock() {
             return Promise.resolve({
                 ok: true,
                 json: () => Promise.resolve(currentCategories),
+            });
+        }
+        if (typeof url === 'string' && url.includes('/api/settings')) {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve({ monthlyLimit: 7000 }),
+            });
+        }
+        if (typeof url === 'string' && url.includes('/api/planned-payments')) {
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve(currentPlannedPayments),
             });
         }
         return Promise.resolve({
@@ -129,6 +144,7 @@ describe('App Integration Tests', () => {
             { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
         ];
         currentCategories = [];
+        currentPlannedPayments = [];
         fetchMock = createFetchMock();
         vi.stubGlobal('fetch', fetchMock);
         vi.useFakeTimers({ toFake: ['Date'] });
@@ -149,6 +165,62 @@ describe('App Integration Tests', () => {
         }, { timeout: 3000 });
 
         expect(screen.getAllByText(/4\.000/)[0]).toBeInTheDocument();
+    });
+
+    it('shows an explicit initial error offline and applies the complete data set on retry', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const onlineFetch = createFetchMock();
+        let offline = true;
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/accounts' && offline) return Promise.reject(new Error('offline'));
+            return onlineFetch(url, options);
+        });
+
+        render(<App />);
+
+        expect(await screen.findByRole('heading', { name: 'Не удалось загрузить данные' })).toBeInTheDocument();
+        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+
+        offline = false;
+        fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+
+        await waitFor(() => expect(screen.getByTestId('balance-carousel')).toBeInTheDocument());
+        expect(screen.getByText(/Синхронизировано:/)).toBeInTheDocument();
+        consoleSpy.mockRestore();
+    });
+
+    it('starts categories and settings while the transactions request is still pending', async () => {
+        let resolveTransactions;
+        const pendingTransactions = new Promise(resolve => { resolveTransactions = resolve; });
+        const categoriesJson = vi.fn().mockResolvedValue([]);
+        const settingsJson = vi.fn().mockResolvedValue({ monthlyLimit: 7000 });
+
+        fetchMock.mockImplementation((url) => {
+            if (url === '/api/accounts') {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(currentAccounts) });
+            }
+            if (url === '/api/transactions') return pendingTransactions;
+            if (url === '/api/categories') {
+                return Promise.resolve({ ok: true, status: 200, json: categoriesJson });
+            }
+            if (url === '/api/settings') {
+                return Promise.resolve({ ok: true, status: 200, json: settingsJson });
+            }
+            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+        });
+
+        render(<App />);
+
+        await waitFor(() => {
+            expect(categoriesJson).toHaveBeenCalledTimes(1);
+            expect(settingsJson).toHaveBeenCalledTimes(1);
+        });
+        expect(screen.getByText('Загрузка...')).toBeInTheDocument();
+
+        await act(async () => {
+            resolveTransactions({ ok: true, status: 200, json: () => Promise.resolve(currentTransactions) });
+        });
+        await waitFor(() => expect(screen.getByText('BudgetTracker')).toBeInTheDocument());
     });
 
     it('changes the month from the Период chip', async () => {
@@ -229,6 +301,104 @@ describe('App Integration Tests', () => {
         await waitFor(() => {
             expect(screen.queryByText(/Новый доход/)).not.toBeInTheDocument();
         });
+    });
+
+    it('keeps the transaction form open and reports an API save failure', async () => {
+        currentCategories = [{ _id: 'food', name: 'Продукты', type: 'expense', order: 1 }];
+        const normalFetch = createFetchMock();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/transactions' && options?.method === 'POST') {
+                return Promise.resolve({
+                    ok: false,
+                    status: 500,
+                    json: () => Promise.resolve({ message: 'База временно недоступна' }),
+                });
+            }
+            return normalFetch(url, options);
+        });
+        render(<App />);
+
+        await waitFor(() => screen.getByText('BudgetTracker'));
+        fireEvent.click(screen.getByRole('button', { name: /- Расход/i }));
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
+        fireEvent.click(screen.getByText('Продукты'));
+        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('База временно недоступна');
+        expect(screen.getByRole('dialog', { name: 'Новый расход' })).toBeInTheDocument();
+        expect(screen.getByPlaceholderText('0.00')).toHaveValue(25);
+        expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions' && options?.method === 'POST')).toHaveLength(1);
+    });
+
+    it('keeps an edit open on a 409 and sends the loaded transaction version once', async () => {
+        const normalFetch = createFetchMock();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/transactions/2' && options?.method === 'PUT') {
+                return Promise.resolve({
+                    ok: false,
+                    status: 409,
+                    json: () => Promise.resolve({ message: 'stale' }),
+                });
+            }
+            return normalFetch(url, options);
+        });
+        render(<App />);
+        await waitFor(() => screen.getByTestId('balance-carousel'));
+
+        openDrawer();
+        fireEvent.click(screen.getByRole('button', { name: /Monthly flat rent/ }));
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Операция уже изменена');
+        expect(screen.getByRole('dialog', { name: 'Редактировать' })).toBeInTheDocument();
+        const putCalls = fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions/2' && options?.method === 'PUT');
+        expect(putCalls).toHaveLength(1);
+        expect(JSON.parse(putCalls[0][1].body).__v).toBe(0);
+    });
+
+    it('keeps the previous snapshot when a successful write cannot refresh, then retries GET only', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        currentCategories = [{ _id: 'food', name: 'Продукты', type: 'expense', order: 1 }];
+        const normalFetch = createFetchMock();
+        let failNextAccountsGet = false;
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/transactions' && options?.method === 'POST') {
+                currentTransactions = [...currentTransactions, {
+                    _id: 'new-expense', amount: 25, type: 'expense', account: 'card',
+                    category: 'Продукты', description: 'Новая покупка', date: '2026-01-15T00:00:00Z',
+                }];
+                failNextAccountsGet = true;
+                return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(currentTransactions.at(-1)) });
+            }
+            if (url === '/api/accounts' && !options?.method && failNextAccountsGet) {
+                failNextAccountsGet = false;
+                return Promise.reject(new Error('offline after write'));
+            }
+            return normalFetch(url, options);
+        });
+
+        render(<App />);
+        await waitFor(() => screen.getByTestId('balance-carousel'));
+        const firstSyncLabel = screen.getByText(/Синхронизировано:/).textContent;
+
+        fireEvent.click(screen.getByRole('button', { name: /- Расход/i }));
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
+        fireEvent.click(screen.getByText('Продукты'));
+        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByText('Сохранить'));
+
+        expect(await screen.findByText('Не удалось обновить данные')).toBeInTheDocument();
+        expect(screen.getByText(/Показана синхронизация:/)).toBeInTheDocument();
+        expect(screen.getAllByText(/4\.000/)[0]).toBeInTheDocument();
+
+        vi.setSystemTime(new Date('2026-01-15T13:30:00Z'));
+        fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+
+        await waitFor(() => expect(screen.queryByText('Не удалось обновить данные')).not.toBeInTheDocument());
+        expect(screen.getByText(/Синхронизировано:/).textContent).not.toBe(firstSyncLabel);
+        expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions' && options?.method === 'POST')).toHaveLength(1);
+        consoleSpy.mockRestore();
     });
 
     it('breaks the period expense down by category, and filters the list when one is tapped', async () => {
@@ -793,7 +963,8 @@ describe('App Integration Tests', () => {
     // later `.map(...)` over it threw, tripping the error boundary. It must
     // instead surface the server's own message via the notice banner and
     // leave state alone, rather than crashing or staying silently blank.
-    it('shows the server message via the notice banner instead of crashing when /api/accounts responds with a non-array body', async () => {
+    it('shows the server message in the initial error state when /api/accounts responds with a non-array body', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         vi.stubGlobal('fetch', vi.fn((url) => {
             if (typeof url === 'string' && url.includes('/api/accounts')) {
                 return Promise.resolve({
@@ -810,13 +981,14 @@ describe('App Integration Tests', () => {
 
         render(<App />);
 
-        // Must not crash into the error boundary's generic screen, and must
-        // show the server's own message rather than staying blank.
+        // Must not expose empty financial UI as a successful load.
         await waitFor(() => {
             expect(screen.getByText(/Сервер не настроен/)).toBeInTheDocument();
         });
-        expect(screen.getByText('BudgetTracker')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Не удалось загрузить данные' })).toBeInTheDocument();
+        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
 
+        consoleSpy.mockRestore();
         vi.unstubAllGlobals();
     });
 
@@ -825,7 +997,8 @@ describe('App Integration Tests', () => {
     // document from before that validation existed. fetchSettings' own guard
     // (typeof === 'number' && !isNaN) lets a legitimate-looking 0 through, so
     // the render-side guard is what actually has to catch it here.
-    it('drops the limit ring instead of rendering NaN%/Infinity% when the stored monthly limit is not usable', async () => {
+    it('rejects an invalid settings response instead of treating the default limit as synchronized', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         vi.stubGlobal('fetch', vi.fn((url) => {
             if (typeof url === 'string' && url.includes('/api/settings')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ monthlyLimit: 0 }) });
@@ -840,16 +1013,10 @@ describe('App Integration Tests', () => {
         }));
 
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        expect(await screen.findByText(/Сервер вернул некорректные настройки/)).toBeInTheDocument();
+        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
 
-        expect(screen.queryByText(/NaN%/)).not.toBeInTheDocument();
-        expect(screen.queryByText(/Infinity%/)).not.toBeInTheDocument();
-        // An unusable limit has nothing to show a ring against, so the panel
-        // falls back to the plain expense figure - and says nothing about a
-        // percentage of a limit that isn't there.
-        expect(screen.queryByText(/% от €/)).not.toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /^Расход: €/ })).toBeInTheDocument();
-
+        consoleSpy.mockRestore();
         vi.unstubAllGlobals();
     });
 
@@ -1010,10 +1177,11 @@ describe('handleAccountDragEnd', () => {
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
         });
         const setAccounts = vi.fn();
+        const onPersisted = vi.fn();
 
         await handleAccountDragEnd(
             { active: { id: 'a' }, over: { id: 'c' } },
-            { accounts: baseAccounts, setAccounts, apiFetch }
+            { accounts: baseAccounts, setAccounts, apiFetch, onPersisted }
         );
 
         // Optimistic update: state was set once, synchronously, to the reordered list.
@@ -1031,6 +1199,7 @@ describe('handleAccountDragEnd', () => {
         expect(puts.find(p => p.url === '/api/accounts/a').body).toEqual({ order: 2 });
         expect(puts.find(p => p.url === '/api/accounts/b').body).toEqual({ order: 0 });
         expect(puts.find(p => p.url === '/api/accounts/c').body).toEqual({ order: 1 });
+        expect(onPersisted).toHaveBeenCalledTimes(1);
     });
 
     it('sends no request and does not touch state when the drop is a no-op', async () => {
@@ -1122,6 +1291,68 @@ describe('Authentication flow', () => {
         { _id: 'card', name: 'Карта', type: 'card', icon: '💳', isDefault: true }
     ];
 
+    it('ignores a delayed refresh from the previous session after logout and login', async () => {
+        let resolveOldAccounts;
+        const delayedOldAccounts = new Promise(resolve => { resolveOldAccounts = resolve; });
+        let accountGets = 0;
+        let transactionGets = 0;
+        const initialAccounts = [{ _id: 'initial', name: 'Начальный счёт', type: 'card', icon: '💳' }];
+        const freshAccounts = [{ _id: 'fresh', name: 'Свежий счёт', type: 'card', icon: '💳' }];
+
+        vi.stubGlobal('fetch', vi.fn((url, options) => {
+            if (url === '/api/accounts' && options?.method === 'POST') {
+                return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve({ _id: 'saved' }) });
+            }
+            if (url === '/api/accounts') {
+                accountGets += 1;
+                if (accountGets === 1) return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(initialAccounts) });
+                if (accountGets === 2) return delayedOldAccounts;
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(freshAccounts) });
+            }
+            if (url === '/api/logout' || url === '/api/login') {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
+            }
+            if (url === '/api/transactions') {
+                transactionGets += 1;
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+            }
+            if (url === '/api/settings') {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ monthlyLimit: 7000 }) });
+            }
+            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+        }));
+
+        render(<App />);
+        await waitFor(() => screen.getByText('Начальный счёт'));
+
+        fireEvent.click(screen.getByTitle('Настройки'));
+        fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Сохранённый счёт' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
+        await waitFor(() => expect(accountGets).toBe(2));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
+        await waitFor(() => screen.getByLabelText('Пароль'));
+        expect(screen.queryByText('Начальный счёт')).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'family-secret' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
+        await waitFor(() => screen.getByText('Свежий счёт'));
+
+        await act(async () => {
+            resolveOldAccounts({
+                ok: true,
+                status: 200,
+                json: () => Promise.resolve([{ _id: 'old', name: 'Устаревший счёт', type: 'card', icon: '💳' }]),
+            });
+        });
+
+        expect(screen.getByText('Свежий счёт')).toBeInTheDocument();
+        expect(screen.queryByText('Устаревший счёт')).not.toBeInTheDocument();
+        // Initial session + fresh session only. The stale accounts response
+        // must stop before it launches child requests under the new session.
+        expect(transactionGets).toBe(2);
+    });
+
     it('shows the login screen when the initial accounts fetch comes back 401', async () => {
         vi.stubGlobal('fetch', vi.fn((url) => {
             if (typeof url === 'string' && url.includes('/api/accounts')) {
@@ -1156,6 +1387,9 @@ describe('Authentication flow', () => {
             if (typeof url === 'string' && url.includes('/api/categories')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
             }
+            if (typeof url === 'string' && url.includes('/api/settings')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ monthlyLimit: 7000 }) });
+            }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
         }));
 
@@ -1186,6 +1420,9 @@ describe('Authentication flow', () => {
             }
             if (typeof url === 'string' && url.includes('/api/categories')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+            }
+            if (typeof url === 'string' && url.includes('/api/settings')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ monthlyLimit: 7000 }) });
             }
             return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
         }));

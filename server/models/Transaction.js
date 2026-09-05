@@ -8,7 +8,23 @@ const TransactionSchema = new mongoose.Schema({
     },
     amount: {
         type: Number,
-        required: true
+        required: true,
+        validate: {
+            validator(value) {
+                if (!Number.isFinite(value) || value === 0) return false;
+
+                // Отрицательный initial - допустимый начальный долг. На
+                // обычном документе type известен; при query update без
+                // type окончательное состояние проверяет route validator.
+                if (typeof this.getUpdate === 'function') {
+                    const update = this.getUpdate();
+                    const type = update?.$set?.type ?? update?.type;
+                    return type === undefined || type === 'initial' || value > 0;
+                }
+                return this.type === 'initial' || value > 0;
+            },
+            message: 'amount must be finite and non-zero; only initial may be negative'
+        }
     },
     type: {
         type: String,
@@ -17,6 +33,7 @@ const TransactionSchema = new mongoose.Schema({
     },
     category: {
         type: String,
+        trim: true,
         required: function() {
             return this.type !== 'transfer';
         }
@@ -27,10 +44,23 @@ const TransactionSchema = new mongoose.Schema({
     },
     account: {
         type: String,
+        required: true,
+        trim: true,
         default: 'card'
     },
     toAccount: {
-        type: String
+        type: String,
+        trim: true,
+        required: function() {
+            return this.type === 'transfer';
+        },
+        validate: {
+            validator(value) {
+                if (this.type !== 'transfer') return true;
+                return Boolean(value) && value !== this.account;
+            },
+            message: 'transfer destination must differ from source account'
+        }
     },
     date: {
         type: Date,
@@ -47,6 +77,13 @@ const TransactionSchema = new mongoose.Schema({
     excludeFromStats: {
         type: Boolean,
         default: false
+    },
+    deletedAt: {
+        type: Date
+    },
+    deletionBatchId: {
+        type: String,
+        trim: true
     }
 });
 
@@ -63,6 +100,7 @@ const TransactionSchema = new mongoose.Schema({
 // сортировки, так что сортировка берётся из индекса, а не выполняется в
 // памяти после выборки.
 TransactionSchema.index({ date: -1 });
+TransactionSchema.index({ deletedAt: 1, date: -1 });
 
 // Переименование категории переписывает все операции с прежним именем:
 // updateMany({ type, category }) в PUT /api/categories/:id. Префикс этого
@@ -81,5 +119,6 @@ TransactionSchema.index({ toAccount: 1 }, { sparse: true });
 
 // Удаление всей группы разделённой операции: deleteMany({ splitId }).
 TransactionSchema.index({ splitId: 1 }, { sparse: true });
+TransactionSchema.index({ deletionBatchId: 1 }, { sparse: true });
 
 module.exports = mongoose.model('Transaction', TransactionSchema);

@@ -12,15 +12,29 @@ import { connectTestDb, disconnectTestDb, clearCollections, loginAgent, tx, DB_H
 let app;
 let agent;
 let Transaction;
+let Account;
 
 beforeAll(async () => {
     app = await connectTestDb('routes-transactions');
     agent = await loginAgent(app);
     Transaction = mongoose.model('Transaction');
+    Account = mongoose.model('Account');
 }, DB_HOOK_TIMEOUT);
 
 afterAll(disconnectTestDb, DB_HOOK_TIMEOUT);
 beforeEach(clearCollections);
+
+describe('Transaction schema: базовые инварианты', () => {
+    it('дублирует критичные проверки для записей вне HTTP route', async () => {
+        await expect(Transaction.create(tx({ type: 'expense', amount: -1 }))).rejects.toThrow();
+        await expect(Transaction.create(tx({
+            type: 'transfer', category: undefined, account: 'acc-1', toAccount: 'acc-1'
+        }))).rejects.toThrow();
+
+        const initial = await Transaction.create(tx({ type: 'initial', amount: -100 }));
+        expect(initial.amount).toBe(-100);
+    });
+});
 
 describe('PUT /api/transactions/:id: что доезжает до документа', () => {
     it('не записывает тип вне перечисления и оставляет документ прежним', async () => {
@@ -29,7 +43,7 @@ describe('PUT /api/transactions/:id: что доезжает до докумен
         // «минус»: знак суммы выводится из типа (см. transformTransactions).
         const created = await Transaction.create(tx({ type: 'expense', amount: 100 }));
 
-        const res = await agent.put(`/api/transactions/${created._id}`).send({ type: 'магия' });
+        const res = await agent.put(`/api/transactions/${created._id}`).send({ type: 'магия', __v: 0 });
 
         expect(res.status).toBe(400);
         const saved = await Transaction.findById(created._id);
@@ -37,11 +51,11 @@ describe('PUT /api/transactions/:id: что доезжает до докумен
         expect(saved.amount).toBe(100);
     });
 
-    it('не записывает нулевую и отрицательную сумму', async () => {
+    it('не записывает нулевую, отрицательную или составную сумму', async () => {
         const created = await Transaction.create(tx({ amount: 100 }));
 
-        for (const amount of [0, -50]) {
-            const res = await agent.put(`/api/transactions/${created._id}`).send({ amount });
+        for (const amount of [0, -50, [1]]) {
+            const res = await agent.put(`/api/transactions/${created._id}`).send({ amount, __v: 0 });
             expect(res.status).toBe(400);
         }
 
@@ -57,7 +71,7 @@ describe('PUT /api/transactions/:id: что доезжает до докумен
             account: 'acc-1'
         }));
 
-        const res = await agent.put(`/api/transactions/${created._id}`).send({ amount: 250 });
+        const res = await agent.put(`/api/transactions/${created._id}`).send({ amount: 250, __v: 0 });
 
         expect(res.status).toBe(200);
         const saved = await Transaction.findById(created._id);
@@ -77,12 +91,12 @@ describe('PUT /api/transactions/:id: что доезжает до докумен
         const created = await Transaction.create(tx({
             type: 'transfer',
             category: undefined,
-            account: 'acc-1',
+            account: 'card',
             toAccount: 'acc-2'
         }));
 
         const res = await agent.put(`/api/transactions/${created._id}`)
-            .send({ type: 'expense', category: 'Продукты' });
+            .send({ type: 'expense', category: 'Продукты', __v: 0 });
 
         expect(res.status).toBe(200);
         const raw = await Transaction.collection.findOne({ _id: created._id });
@@ -98,7 +112,7 @@ describe('PUT /api/transactions/:id: что доезжает до докумен
         }));
 
         await agent.put(`/api/transactions/${created._id}`)
-            .send({ type: 'expense', category: 'Продукты', toAccount: 'acc-3' });
+            .send({ type: 'expense', category: 'Продукты', toAccount: 'acc-3', __v: 0 });
 
         const raw = await Transaction.collection.findOne({ _id: created._id });
         expect(raw).not.toHaveProperty('toAccount');
@@ -111,7 +125,7 @@ describe('PUT /api/transactions/:id: что доезжает до докумен
             toAccount: 'acc-2'
         }));
 
-        const res = await agent.put(`/api/transactions/${created._id}`).send({ amount: 999 });
+        const res = await agent.put(`/api/transactions/${created._id}`).send({ amount: 999, __v: 0 });
 
         expect(res.status).toBe(200);
         const saved = await Transaction.findById(created._id);
@@ -119,10 +133,38 @@ describe('PUT /api/transactions/:id: что доезжает до докумен
         expect(saved.amount).toBe(999);
     });
 
+    it('проверяет итоговое состояние при смене типа', async () => {
+        const expense = await Transaction.create(tx({ type: 'expense' }));
+        const toTransfer = await agent.put(`/api/transactions/${expense._id}`)
+            .send({ type: 'transfer', __v: 0 });
+        expect(toTransfer.status).toBe(400);
+
+        const transfer = await Transaction.create(tx({
+            type: 'transfer', category: undefined, toAccount: 'acc-2'
+        }));
+        const toExpense = await agent.put(`/api/transactions/${transfer._id}`)
+            .send({ type: 'expense', __v: 0 });
+        expect(toExpense.status).toBe(400);
+
+        expect((await Transaction.findById(expense._id)).type).toBe('expense');
+        expect((await Transaction.findById(transfer._id)).type).toBe('transfer');
+    });
+
+    it('не разрешает сделать перевод самому себе частичным обновлением', async () => {
+        const transfer = await Transaction.create(tx({
+            type: 'transfer', category: undefined, account: 'acc-1', toAccount: 'acc-2'
+        }));
+
+        const res = await agent.put(`/api/transactions/${transfer._id}`).send({ toAccount: 'acc-1', __v: 0 });
+
+        expect(res.status).toBe(400);
+        expect((await Transaction.findById(transfer._id)).toAccount).toBe('acc-2');
+    });
+
     it('сохраняет дату как UTC-полночь присланного дня', async () => {
         const created = await Transaction.create(tx());
 
-        await agent.put(`/api/transactions/${created._id}`).send({ date: '2026-07-04' });
+        await agent.put(`/api/transactions/${created._id}`).send({ date: '2026-07-04', __v: 0 });
 
         const saved = await Transaction.findById(created._id);
         expect(saved.date.toISOString()).toBe('2026-07-04T00:00:00.000Z');
@@ -140,10 +182,70 @@ describe('PUT /api/transactions/:id: что доезжает до докумен
         // вовсе - это отдельный путь в коде, а не теоретический случай.
         const created = await Transaction.create(tx({ amount: 100 }));
 
-        const res = await agent.put(`/api/transactions/${created._id}`).send({});
+        const res = await agent.put(`/api/transactions/${created._id}`).send({ __v: 0 });
 
         expect(res.status).toBe(200);
         expect((await Transaction.findById(created._id)).amount).toBe(100);
+    });
+
+    it('требует версию снимка и отвергает устаревшее обновление', async () => {
+        const created = await Transaction.create(tx({ amount: 100 }));
+
+        expect((await agent.put(`/api/transactions/${created._id}`).send({ amount: 150 })).status).toBe(400);
+        const fresh = await agent.put(`/api/transactions/${created._id}`).send({ amount: 150, __v: 0 });
+        const stale = await agent.put(`/api/transactions/${created._id}`).send({ amount: 200, __v: 0 });
+
+        expect(fresh.status).toBe(200);
+        expect(fresh.body.__v).toBe(1);
+        expect(stale.status).toBe(409);
+        expect((await Transaction.findById(created._id)).amount).toBe(150);
+    });
+
+    it('не теряет независимые поля при последовательных свежих обновлениях', async () => {
+        const created = await Transaction.create(tx({ amount: 100, description: 'старое' }));
+
+        const first = await agent.put(`/api/transactions/${created._id}`)
+            .send({ amount: 150, __v: 0 });
+        const second = await agent.put(`/api/transactions/${created._id}`)
+            .send({ description: 'новое', __v: first.body.__v });
+
+        expect(first.status).toBe(200);
+        expect(second.status).toBe(200);
+        expect(second.body.__v).toBe(2);
+        const saved = await Transaction.findById(created._id);
+        expect(saved.amount).toBe(150);
+        expect(saved.description).toBe('новое');
+    });
+
+    it('из двух совместно противоречивых патчей применяет только один', async () => {
+        const thirdAccount = await Account.create({ name: 'Третий счёт', type: 'card' });
+        const thirdAccountId = String(thirdAccount._id);
+        const transfer = await Transaction.create(tx({
+            type: 'transfer', category: undefined, account: 'card', toAccount: 'cash'
+        }));
+
+        const [sourcePatch, destinationPatch] = await Promise.all([
+            agent.put(`/api/transactions/${transfer._id}`).send({ account: thirdAccountId, __v: 0 }),
+            agent.put(`/api/transactions/${transfer._id}`).send({ toAccount: thirdAccountId, __v: 0 })
+        ]);
+
+        expect([sourcePatch.status, destinationPatch.status].sort()).toEqual([200, 409]);
+        const saved = await Transaction.findById(transfer._id);
+        expect(saved.account).not.toBe(saved.toAccount);
+        expect(saved.__v).toBe(1);
+    });
+
+    it('считает legacy-документ без __v версией 0 и атомарно добавляет версию', async () => {
+        const { insertedId } = await Transaction.collection.insertOne({
+            ...tx({ amount: 100 }),
+            date: new Date('2026-03-15T00:00:00.000Z')
+        });
+
+        const res = await agent.put(`/api/transactions/${insertedId}`).send({ amount: 125, __v: 0 });
+
+        expect(res.status).toBe(200);
+        expect(res.body.__v).toBe(1);
+        expect((await Transaction.findById(insertedId)).amount).toBe(125);
     });
 });
 
@@ -224,7 +326,7 @@ describe('POST /api/transactions', () => {
             amount: 42,
             type: 'expense',
             category: 'Продукты',
-            account: 'acc-1',
+            account: 'card',
             date: '2026-03-15'
         });
 
@@ -235,8 +337,8 @@ describe('POST /api/transactions', () => {
 
     it('вставляет всю группу разделённой операции одним запросом', async () => {
         const res = await agent.post('/api/transactions').send([
-            { amount: 30, type: 'expense', category: 'Продукты', account: 'acc-1', date: '2026-03-15', splitId: 'split-1' },
-            { amount: 70, type: 'expense', category: 'Красота', account: 'acc-1', date: '2026-03-15', splitId: 'split-1' }
+            { amount: 30, type: 'expense', category: 'Продукты', account: 'card', date: '2026-03-15', splitId: 'split-1' },
+            { amount: 70, type: 'expense', category: 'Красота', account: 'card', date: '2026-03-15', splitId: 'split-1' }
         ]);
 
         expect(res.status).toBe(200);
@@ -259,14 +361,52 @@ describe('POST /api/transactions', () => {
         const res = await agent.post('/api/transactions').send({
             amount: 42,
             type: 'transfer',
-            account: 'acc-1',
-            toAccount: 'acc-2',
+            account: 'card',
+            toAccount: 'cash',
             date: '2026-03-15',
             title: 'Перевод'
         });
 
         expect(res.status).toBe(200);
-        expect(res.body.toAccount).toBe('acc-2');
+        expect(res.body.toAccount).toBe('cash');
+    });
+
+    it('принимает отрицательный начальный остаток', async () => {
+        const res = await agent.post('/api/transactions').send({
+            amount: -250,
+            type: 'initial',
+            category: 'Начальный баланс',
+            account: 'cash',
+            date: '2026-03-15'
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.amount).toBe(-250);
+    });
+
+    it('отклоняет отрицательные движения, пустой счёт и некорректный перевод', async () => {
+        const bodies = [
+            { amount: -1, type: 'expense', category: 'Продукты', account: 'acc-1', date: '2026-03-15' },
+            { amount: [1], type: 'expense', category: 'Продукты', account: 'acc-1', date: '2026-03-15' },
+            { amount: 1, type: 'expense', category: 'Продукты', date: '2026-03-15' },
+            { amount: 1, type: 'transfer', title: 'Перевод', account: 'acc-1', date: '2026-03-15' },
+            { amount: 1, type: 'transfer', title: 'Перевод', account: 'acc-1', toAccount: 'acc-1', date: '2026-03-15' }
+        ];
+
+        for (const body of bodies) {
+            expect((await agent.post('/api/transactions').send(body)).status).toBe(400);
+        }
+        expect(await Transaction.countDocuments()).toBe(0);
+    });
+
+    it('применяет те же проверки к каждому элементу пакета', async () => {
+        const res = await agent.post('/api/transactions').send([
+            { amount: 30, type: 'expense', category: 'Продукты', account: 'acc-1', date: '2026-03-15', splitId: 'split-1' },
+            { amount: -70, type: 'expense', category: 'Красота', account: 'acc-1', date: '2026-03-15', splitId: 'split-1' }
+        ]);
+
+        expect(res.status).toBe(400);
+        expect(await Transaction.countDocuments()).toBe(0);
     });
 
     it('отказывает на пустом пакете', async () => {
@@ -300,8 +440,10 @@ describe('DELETE /api/transactions/:id', () => {
         const res = await agent.delete(`/api/transactions/${first._id}?splitId=split-1`);
 
         expect(res.status).toBe(200);
-        expect(await Transaction.countDocuments({ splitId: 'split-1' })).toBe(0);
-        expect(await Transaction.countDocuments()).toBe(2);
+        expect(res.body).toMatchObject({ trashId: String(first._id), count: 2 });
+        expect(await Transaction.countDocuments({ splitId: 'split-1', deletedAt: { $ne: null } })).toBe(2);
+        expect(await Transaction.countDocuments({ deletedAt: null })).toBe(2);
+        expect(await Transaction.distinct('deletionBatchId', { splitId: 'split-1' })).toHaveLength(1);
     });
 
     it('без splitId удаляет ровно одну операцию', async () => {
@@ -310,6 +452,30 @@ describe('DELETE /api/transactions/:id', () => {
         const res = await agent.delete(`/api/transactions/${first._id}`);
 
         expect(res.status).toBe(200);
+        expect(res.body.count).toBe(1);
+        expect(await Transaction.countDocuments()).toBe(2);
+        expect(await Transaction.countDocuments({ deletedAt: null })).toBe(1);
+    });
+
+    it('не удаляет группу, если splitId не принадлежит операции из path', async () => {
+        const [first] = await Transaction.create([
+            tx({ title: 'группа 1', splitId: 'split-1' }),
+            tx({ title: 'группа 2', splitId: 'split-2' })
+        ]);
+
+        const res = await agent.delete(`/api/transactions/${first._id}?splitId=split-2`);
+
+        expect(res.status).toBe(400);
+        expect(await Transaction.countDocuments()).toBe(2);
+    });
+
+    it('не удаляет группу по splitId при несуществующем id', async () => {
+        await Transaction.create(tx({ splitId: 'split-1' }));
+        const missing = new mongoose.Types.ObjectId();
+
+        const res = await agent.delete(`/api/transactions/${missing}?splitId=split-1`);
+
+        expect(res.status).toBe(404);
         expect(await Transaction.countDocuments()).toBe(1);
     });
 

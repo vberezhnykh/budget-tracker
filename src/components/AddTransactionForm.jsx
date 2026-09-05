@@ -30,6 +30,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const [formData, setFormData] = useState(initialData ? {
         ...initialData,
+        __v: Number.isInteger(initialData.__v) ? initialData.__v : 0,
         date: initialData.date || new Date().toISOString().split('T')[0],
         account: initialAccount,
         toAccount: initialData.toAccount || (initialData.account === defaultToAccount ? defaultAccount : defaultToAccount)
@@ -50,6 +51,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     // Split Logic
     const [isSplit, setIsSplit] = useState(false);
     const [splits, setSplits] = useState([{ id: 1, amount: '', category: '' }, { id: 2, amount: '', category: '' }]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const totalSplitAmount = splits.reduce((sum, split) => sum + (parseFloat(split.amount) || 0), 0);
     const remainingAmount = (parseFloat(formData.amount) || 0) - totalSplitAmount;
@@ -61,43 +63,56 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     // submit handler (so the gate can't be bypassed some other way, e.g. an
     // Enter keypress). An account must be chosen unless transferring - that
     // flow has its own from/to selects and always starts pre-filled.
-    const isSaveDisabled = !(parseFloat(formData.amount) > 0)
+    const isSaveDisabled = isSubmitting
+        || !(parseFloat(formData.amount) > 0)
         || (!isTransfer && !formData.account)
         || (isSplit ? !isSplitValid : (!isTransfer && !formData.category));
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         if (isSaveDisabled) return;
 
-        if (isSplit && splits.length > 0) {
-            const splitGroupId = `split_${Date.now()}`;
-            const splitTransactions = splits.map(split => ({
-                title: split.category,
-                amount: parseFloat(split.amount),
-                category: split.category,
-                description: (formData.description + (split.description ? ` (${split.description})` : '')).trim(),
-                date: formData.date,
-                type: formData.type,
-                account: formData.account,
-                toAccount: formData.toAccount,
-                splitId: splitGroupId,
-                id: Date.now() + Math.random()
-            }));
-            onSubmit(splitTransactions);
-        } else {
-            const submitData = {
-                ...formData,
-                amount: parseFloat(formData.amount),
-                category: isTransfer ? 'Перевод' : formData.category,
-                id: initialData ? initialData.id : Date.now()
-            };
-            // Only include toAccount for transfers to avoid polluting the data
-            if (!isTransfer) {
-                delete submitData.toAccount;
+        setIsSubmitting(true);
+        try {
+            let submission;
+            if (isSplit && splits.length > 0) {
+                const splitGroupId = `split_${Date.now()}`;
+                const splitTransactions = splits.map(split => ({
+                    title: split.category,
+                    amount: parseFloat(split.amount),
+                    category: split.category,
+                    description: (formData.description + (split.description ? ` (${split.description})` : '')).trim(),
+                    date: formData.date,
+                    type: formData.type,
+                    account: formData.account,
+                    toAccount: formData.toAccount,
+                    splitId: splitGroupId,
+                    id: Date.now() + Math.random()
+                }));
+                submission = onSubmit(splitTransactions);
+            } else {
+                const submitData = {
+                    ...formData,
+                    amount: parseFloat(formData.amount),
+                    category: isTransfer ? 'Перевод' : formData.category,
+                    id: initialData ? initialData.id : Date.now()
+                };
+                // Only include toAccount for transfers to avoid polluting the data
+                if (!isTransfer) {
+                    delete submitData.toAccount;
+                }
+                submission = onSubmit(submitData);
             }
-            onSubmit(submitData);
+            const succeeded = submission && typeof submission.then === 'function'
+                ? await submission
+                : submission;
+            // Existing embedders that do not return a result retain the old
+            // close-on-submit contract; App returns false on an API failure
+            // so the user's entered values stay available for a retry.
+            if (succeeded !== false) onClose();
+        } finally {
+            setIsSubmitting(false);
         }
-        onClose();
     };
 
     // Both transfer selects go through here so the two sides can never point
@@ -158,11 +173,20 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     // New category inline creation
     const [isAddingCategory, setIsAddingCategory] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
+    const [categoryError, setCategoryError] = useState('');
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
 
     const getTitle = () => {
         if (initialData) return 'Редактировать';
         if (isTransfer) return 'Перевод';
         return formData.type === 'income' ? 'Новый доход' : 'Новый расход';
+    };
+
+    // Do not let backdrop/close-button/Escape destroy the entered values
+    // while the request is still in flight. Once a failed request settles,
+    // the form becomes closable again and remains filled for a retry.
+    const requestClose = () => {
+        if (!isSubmitting) onClose();
     };
 
     const addSplit = () => {
@@ -181,26 +205,38 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const handleCreateCategory = async () => {
         const trimmed = newCategoryName.trim();
-        if (!trimmed || !onAddCategory) return;
-        const result = await onAddCategory(trimmed, formData.type);
-        if (result && !result.error) {
-            setFormData({ ...formData, category: trimmed });
-            setNewCategoryName('');
-            setIsAddingCategory(false);
-            // Свежесозданная категория лежит в хвосте (частота нулевая), а
-            // прятать её сразу после создания нельзя - раскрываем список.
-            setShowAllCategories(true);
+        if (!trimmed || !onAddCategory || isCreatingCategory) return;
+        setCategoryError('');
+        setIsCreatingCategory(true);
+        try {
+            const result = await onAddCategory(trimmed, formData.type);
+            if (result?.error) {
+                setCategoryError(result.error);
+                return;
+            }
+            if (result) {
+                setFormData({ ...formData, category: trimmed });
+                setNewCategoryName('');
+                setIsAddingCategory(false);
+                // Свежесозданная категория лежит в хвосте (частота нулевая), а
+                // прятать её сразу после создания нельзя - раскрываем список.
+                setShowAllCategories(true);
+            }
+        } catch {
+            setCategoryError('Не удалось создать категорию');
+        } finally {
+            setIsCreatingCategory(false);
         }
     };
 
 
     return (
-        <Sheet ariaLabel={getTitle()} onClose={onClose}>
+        <Sheet ariaLabel={getTitle()} onClose={requestClose}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h3 style={{ margin: 0 }}>{getTitle()}</h3>
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={requestClose}
                         style={{
                             background: 'transparent',
                             color: 'var(--color-text-muted)',
@@ -463,14 +499,18 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
                                     {/* Add New Category */}
                                     {isAddingCategory ? (
-                                        <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                                            <Field
+                                        <div style={{ marginTop: '4px' }}>
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                              <Field
                                                 type="text"
                                                 tone="muted"
                                                 radius="var(--radius-pill)"
                                                 placeholder="Название..."
                                                 value={newCategoryName}
-                                                onChange={e => setNewCategoryName(e.target.value)}
+                                                onChange={e => {
+                                                    setNewCategoryName(e.target.value);
+                                                    if (categoryError) setCategoryError('');
+                                                }}
                                                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreateCategory(); } }}
                                                 autoFocus
                                                 style={{
@@ -480,11 +520,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     // фирменная, а не нейтральная
                                                     border: '1px solid rgba(37, 99, 235, 0.3)',
                                                 }}
-                                            />
+                                              />
                                             <button
                                                 type="button"
                                                 onClick={handleCreateCategory}
-                                                disabled={!newCategoryName.trim()}
+                                                disabled={!newCategoryName.trim() || isCreatingCategory}
                                                 style={{
                                                     padding: '8px 14px',
                                                     borderRadius: 'var(--radius-pill)',
@@ -495,10 +535,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     fontWeight: '600',
                                                     cursor: newCategoryName.trim() ? 'pointer' : 'default'
                                                 }}
-                                            >✓</button>
+                                            >{isCreatingCategory ? '…' : '✓'}</button>
                                             <button
                                                 type="button"
-                                                onClick={() => { setIsAddingCategory(false); setNewCategoryName(''); }}
+                                                onClick={() => { setIsAddingCategory(false); setNewCategoryName(''); setCategoryError(''); }}
                                                 style={{
                                                     padding: '8px 14px',
                                                     borderRadius: 'var(--radius-pill)',
@@ -509,6 +549,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     cursor: 'pointer'
                                                 }}
                                             >×</button>
+                                            </div>
+                                            {categoryError && (
+                                                <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-sm)', marginTop: '6px' }}>
+                                                    {categoryError}
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <button
@@ -843,14 +889,25 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         {initialData && (
                             <button
                                 type="button"
-                                onClick={() => {
+                                aria-label="Удалить операцию"
+                                disabled={isSubmitting}
+                                onClick={async () => {
+                                    if (isSubmitting) return;
                                     const isSplitTx = !!initialData?.splitId;
                                     const confirmMsg = isSplitTx
                                         ? 'Это часть разделенной транзакции. Удалить всю транзакцию целиком?'
                                         : 'Вы уверены, что хотите удалить эту запись?';
                                     if (window.confirm(confirmMsg)) {
-                                        onDelete(initialData.id);
-                                        onClose();
+                                        setIsSubmitting(true);
+                                        try {
+                                            const deletion = onDelete(initialData.id);
+                                            const succeeded = deletion && typeof deletion.then === 'function'
+                                                ? await deletion
+                                                : deletion;
+                                            if (succeeded !== false) onClose();
+                                        } finally {
+                                            setIsSubmitting(false);
+                                        }
                                     }
                                 }}
                                 style={{
@@ -880,7 +937,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
                             }}
                         >
-                            Сохранить
+                            {isSubmitting ? 'Сохранение...' : 'Сохранить'}
                         </button>
                     </div>
                 </form>

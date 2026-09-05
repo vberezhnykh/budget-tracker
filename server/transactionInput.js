@@ -9,7 +9,7 @@
 // схему НЕ применяет (runValidators выключен). POST создаёт документ через
 // new Transaction(...).save() и потому защищён enum'ом из модели, а вот
 // через PUT до сих пор можно было записать type, которого в enum нет,
-// нулевую или отрицательную сумму и нечитаемую дату. Такая операция потом
+// недопустимую сумму и нечитаемую дату. Такая операция потом
 // ломала подсчёты на фронте: transformTransactions выводит знак суммы
 // из типа (income/initial - плюс, всё остальное - минус), и тип вне
 // перечисления молча попадает в «минус».
@@ -24,15 +24,22 @@
 
 const TRANSACTION_TYPES = ['income', 'expense', 'initial', 'transfer'];
 
-// Суммы хранятся положительными - знак операции задаётся её типом
-// (см. transformTransactions в src/utils/finance.js). Поэтому ноль и
-// отрицательное значение здесь не «другая сторона операции», а мусор.
+// Суммы движений хранятся положительными - знак операции задаётся её типом
+// (см. transformTransactions в src/utils/finance.js). Исключение - initial:
+// его отрицательное значение означает долг на момент начала учёта.
+// Ноль не несёт движения или начального остатка и всегда отклоняется.
 // Number.isFinite отсекает заодно NaN и Infinity: JSON вида 1e999
 // разбирается именно в Infinity, а не в ошибку разбора.
-function parseAmount(raw) {
-    if (typeof raw === 'boolean' || raw === null || raw === '') return null;
+function parseAmount(raw, type) {
+    if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+    if (typeof raw === 'string' && raw.trim() === '') return null;
     const amount = Number(raw);
-    if (!Number.isFinite(amount) || amount <= 0) return null;
+    if (!Number.isFinite(amount) || amount === 0) return null;
+
+    // Начальный остаток может быть отрицательным: так хранится долг на
+    // счёте в момент начала учёта. Для всех движений после этой точки знак
+    // по-прежнему задаётся типом операции, поэтому их суммы положительные.
+    if (amount < 0 && type !== 'initial') return null;
     return amount;
 }
 
@@ -48,7 +55,51 @@ function nonEmptyString(raw) {
 
 // Возвращает либо { error } с сообщением для пользователя, либо { update } -
 // готовый объект для findByIdAndUpdate, содержащий только проверенные поля.
-function validateTransactionUpdate(body) {
+function validateTransactionState(state) {
+    if (!TRANSACTION_TYPES.includes(state.type)) {
+        return `Недопустимый тип операции. Допустимые: ${TRANSACTION_TYPES.join(', ')}`;
+    }
+
+    if (parseAmount(state.amount, state.type) === null) {
+        return state.type === 'initial'
+            ? 'Сумма начального остатка должна быть ненулевым числом'
+            : 'Сумма должна быть положительным числом';
+    }
+
+    if (nonEmptyString(state.title) === null) return 'Название обязательно';
+    if (nonEmptyString(state.account) === null) return 'Счёт обязателен';
+
+    const date = state.date instanceof Date ? state.date : new Date(state.date);
+    if (state.date === null || state.date === '' || Number.isNaN(date.getTime())) {
+        return 'Некорректная дата';
+    }
+
+    if (state.type === 'transfer') {
+        const toAccount = nonEmptyString(state.toAccount);
+        if (toAccount === null) return 'Для перевода обязателен счёт назначения';
+        if (toAccount === nonEmptyString(state.account)) {
+            return 'Счета отправления и назначения должны различаться';
+        }
+    } else if (nonEmptyString(state.category) === null) {
+        return 'Категория обязательна';
+    }
+
+    return null;
+}
+
+function validateTransactionVersion(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return { error: 'Тело запроса должно быть объектом' };
+    }
+    if (!Object.prototype.hasOwnProperty.call(body, '__v')
+        || !Number.isInteger(body.__v)
+        || body.__v < 0) {
+        return { error: '__v обязателен и должен быть целым неотрицательным числом' };
+    }
+    return { expectedVersion: body.__v };
+}
+
+function validateTransactionUpdate(body, currentTransaction = null) {
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
         return { error: 'Тело запроса должно быть объектом' };
     }
@@ -65,14 +116,22 @@ function validateTransactionUpdate(body) {
     }
 
     if (isPresent(body, 'amount')) {
-        const amount = parseAmount(body.amount);
+        const finalType = body.type !== undefined ? body.type : currentTransaction?.type;
+        const amount = parseAmount(body.amount, finalType);
         if (amount === null) {
-            return { error: 'Сумма должна быть положительным числом' };
+            return {
+                error: finalType === 'initial'
+                    ? 'Сумма начального остатка должна быть ненулевым числом'
+                    : 'Сумма должна быть положительным числом'
+            };
         }
         update.amount = amount;
     }
 
     if (isPresent(body, 'date')) {
+        if (body.date === null || body.date === '' || typeof body.date === 'boolean' || Array.isArray(body.date)) {
+            return { error: 'Некорректная дата' };
+        }
         const date = new Date(body.date);
         if (Number.isNaN(date.getTime())) {
             return { error: 'Некорректная дата' };
@@ -145,10 +204,62 @@ function validateTransactionUpdate(body) {
     }
 
     if (isPresent(body, 'excludeFromStats')) {
-        update.excludeFromStats = Boolean(body.excludeFromStats);
+        if (typeof body.excludeFromStats !== 'boolean') {
+            return { error: 'excludeFromStats должен быть логическим значением' };
+        }
+        update.excludeFromStats = body.excludeFromStats;
+    }
+
+    // Для частичного PUT проверяем состояние, полученное из прочитанного
+    // документа и этого запроса, а не только поля из тела. Иначе expense ->
+    // transfer без toAccount или transfer -> expense без category проходили
+    // по отдельности валидный patch. Это проверка одного запроса; она не
+    // заменяет optimistic concurrency при одновременных обновлениях.
+    if (currentTransaction) {
+        const current = typeof currentTransaction.toObject === 'function'
+            ? currentTransaction.toObject()
+            : currentTransaction;
+        const finalState = { ...current, ...update };
+        for (const field of unset) delete finalState[field];
+
+        const stateError = validateTransactionState(finalState);
+        if (stateError) return { error: stateError };
     }
 
     return { update, unset };
 }
 
-module.exports = { validateTransactionUpdate, TRANSACTION_TYPES };
+// Строгая нормализация для одиночного и пакетного POST. Оба пути должны
+// принимать одинаковую форму операции; разница между ними только в splitId.
+function validateTransactionCreate(body, { allowSplitId = false } = {}) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return { error: 'Операция должна быть объектом' };
+    }
+
+    const { error, update } = validateTransactionUpdate(body);
+    if (error) return { error };
+
+    // Как и раньше, пустое название обычной операции заменяется категорией.
+    if (!isPresent(body, 'title')) {
+        const fallback = nonEmptyString(body.category);
+        if (fallback !== null) update.title = fallback;
+    }
+
+    if (allowSplitId && isPresent(body, 'splitId')) {
+        const splitId = nonEmptyString(body.splitId);
+        if (splitId === null) return { error: 'Некорректный splitId' };
+        update.splitId = splitId;
+    }
+
+    const stateError = validateTransactionState(update);
+    if (stateError) return { error: stateError };
+    return { transaction: update };
+}
+
+module.exports = {
+    validateTransactionCreate,
+    validateTransactionUpdate,
+    validateTransactionState,
+    validateTransactionVersion,
+    TRANSACTION_TYPES
+};

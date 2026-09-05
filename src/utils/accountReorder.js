@@ -52,7 +52,7 @@ export function computeAccountReorder(accounts, activeId, overId) {
 // through that wrapper so a 401 flips the UI to the login screen; using raw
 // fetch here was an oversight that left this one path inconsistent with the
 // rest of the app on session expiry.
-export async function handleAccountDragEnd({ active, over }, { accounts, setAccounts, apiUrl = '/api/accounts', apiFetch = fetch, onError }) {
+export async function handleAccountDragEnd({ active, over }, { accounts, setAccounts, apiUrl = '/api/accounts', apiFetch = fetch, onError, isCurrent = () => true, onPersisted }) {
   if (!active || !over) return;
 
   const { reordered, changed } = computeAccountReorder(accounts, active.id, over.id);
@@ -68,13 +68,17 @@ export async function handleAccountDragEnd({ active, over }, { accounts, setAcco
         body: JSON.stringify({ order: acc.order })
       })
     ));
+    if (!isCurrent()) return;
     const failedRes = responses.find(res => !res.ok);
     if (failedRes) {
       setAccounts(accounts);
       const err = await failedRes.json().catch(() => ({}));
       if (onError) onError(err.message || 'Не удалось сохранить порядок счетов');
+      return;
     }
+    if (onPersisted) await onPersisted();
   } catch (err) {
+    if (!isCurrent()) return;
     console.error('Reorder accounts error:', err);
     setAccounts(accounts);
   }

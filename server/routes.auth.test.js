@@ -43,6 +43,7 @@ describe('Гейт /api/*', () => {
             ['get', '/api/stats/balances'],
             ['get', '/api/stats/monthly'],
             ['post', '/api/transactions'],
+            ['post', '/api/client-errors'],
             ['put', '/api/settings']
         ];
 
@@ -52,8 +53,11 @@ describe('Гейт /api/*', () => {
         }
     });
 
-    it('пропускает без куки только вход и проверку здоровья', async () => {
+    it('пропускает без куки вход, liveness и readiness', async () => {
         expect((await request(app).get('/api/health')).status).toBe(200);
+        const ready = await request(app).get('/api/ready');
+        expect(ready.status).toBe(200);
+        expect(ready.body).toEqual({ ok: true });
         // Вход без пароля - это 401, а не 401 «не авторизован» от гейта:
         // важно, что запрос до роута вообще доходит.
         expect((await request(app).post('/api/login').send({})).status).toBe(401);
@@ -75,6 +79,7 @@ describe('POST /api/login', () => {
         expect(login.status).toBe(200);
         expect(login.headers['set-cookie'].join(';')).toContain('HttpOnly');
         expect((await agent.get('/api/transactions')).status).toBe(200);
+        expect((await agent.post('/api/client-errors').send({ code: 'react_render', area: 'app' })).status).toBe(202);
     });
 
     it('на неверный пароль отвечает 401 и куки не ставит', async () => {

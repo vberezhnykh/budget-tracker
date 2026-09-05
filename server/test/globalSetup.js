@@ -30,10 +30,13 @@ export default async function setup({ provide }) {
     // зависимостей, а это ~780 МБ загрузки заново.
     process.env.MONGOMS_DOWNLOAD_DIR ||= path.join(REPO_ROOT, '.cache', 'mongodb-binaries');
 
-    const { MongoMemoryServer } = await import('mongodb-memory-server');
+    const { MongoMemoryReplSet } = await import('mongodb-memory-server');
     // Дефолтные 10 секунд не покрывают ни первый запуск после скачивания,
     // ни холодный старт под нагрузкой.
-    const server = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
+    const server = await MongoMemoryReplSet.create({
+        replSet: { count: 1 },
+        instanceOpts: [{ launchTimeout: 60_000 }]
+    });
     provide('mongoUri', server.getUri());
 
     return async () => {

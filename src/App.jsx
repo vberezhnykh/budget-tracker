@@ -7,6 +7,8 @@ import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
 import SummaryCard from './components/SummaryCard'
+import PlannedPaymentsView from './components/PlannedPaymentsView'
+import TrashSheet from './components/TrashSheet'
 import IconButton from './components/ui/IconButton'
 import { formatPeriodLabel, toDativeMonth, listPeriodMonths, formatMonthName } from './utils/period'
 import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast, getMonthlyTotals } from './utils/finance'
@@ -18,15 +20,40 @@ const API_URL = '/api/transactions';
 const CATEGORIES_URL = '/api/categories';
 const ACCOUNTS_URL = '/api/accounts';
 const SETTINGS_URL = '/api/settings';
+const PLANNED_PAYMENTS_URL = '/api/planned-payments';
+const TRASH_URL = '/api/trash';
 // Used until the server's settings document has loaded (or if it 404s on an
 // older deployment) - mirrors the server's own default in server/app.js.
 const DEFAULT_MONTHLY_LIMIT = 7000;
+
+class DataLoadError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'DataLoadError';
+  }
+}
 
 function App() {
   const [showAddTransaction, setShowAddTransaction] = useState(false);
   const [transactionType, setTransactionType] = useState('expense');
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [initialLoadError, setInitialLoadError] = useState(null);
+  const [syncWarning, setSyncWarning] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastSuccessfulSync, setLastSuccessfulSync] = useState(null);
+  const [plannedPayments, setPlannedPayments] = useState([]);
+  const [trashGroups, setTrashGroups] = useState([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [trashError, setTrashError] = useState('');
+  const [showTrash, setShowTrash] = useState(false);
+  const [undoDeletion, setUndoDeletion] = useState(null);
+  const sessionGenerationRef = useRef(0);
+  const loadGenerationRef = useRef(0);
+  const trashGenerationRef = useRef(0);
+  const hasSnapshotRef = useRef(false);
+  const undoTimeoutRef = useRef(null);
+  const undoDeletionIdRef = useRef(null);
 
   // Auth: null = "don't know yet" (still checking / never asked), true =
   // logged in, false = show the login screen. Deliberately not persisted to
@@ -54,7 +81,7 @@ function App() {
   // Monthly spending limit, driving the limit progress bar in the stats
   // panel. Shared across devices via GET/PUT /api/settings rather than
   // per-browser, so it starts at the server's own default until that fetch
-  // resolves (see fetchSettings/initData below).
+  // resolves (see loadData below).
   const [monthlyLimit, setMonthlyLimit] = useState(DEFAULT_MONTHLY_LIMIT);
 
   // In-app notice banner, replacing blocking alert()s for errors raised by
@@ -74,11 +101,21 @@ function App() {
   useEffect(() => {
     return () => {
       if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
     };
   }, []);
 
   const onAccountDragEnd = (event) => {
-    handleAccountDragEnd(event, { accounts: accountsRef.current, setAccounts, apiUrl: ACCOUNTS_URL, apiFetch, onError: showNotice });
+    const session = sessionGenerationRef.current;
+    handleAccountDragEnd(event, {
+      accounts: accountsRef.current,
+      setAccounts,
+      apiUrl: ACCOUNTS_URL,
+      apiFetch,
+      onError: showNotice,
+      isCurrent: () => session === sessionGenerationRef.current,
+      onPersisted: () => loadData({ initial: false }),
+    });
   };
 
 
@@ -94,34 +131,6 @@ function App() {
   // the expanded/collapsed state since the drawer is a controlled component.
   const [historyDrawerExpanded, setHistoryDrawerExpanded] = useState(false);
 
-  // Fetch data on mount
-  useEffect(() => {
-    initData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const initData = async () => {
-    try {
-      setIsLoading(true);
-      const loadedAccounts = await fetchAccounts();
-      // fetchAccounts returns null specifically when the request came back
-      // 401 - apiFetch already flipped isAuthenticated to false in that case,
-      // so there's nothing further to load until the user logs back in. Any
-      // other failure (e.g. a 503 from unconfigured auth) already reported
-      // itself via showNotice and returns undefined, not null - initData
-      // falls through and still renders the main UI (with empty data) rather
-      // than getting stuck on the loading screen forever.
-      if (loadedAccounts === null) return;
-      setIsAuthenticated(true);
-      await fetchTransactions(loadedAccounts);
-      await fetchCategories();
-      await fetchSettings();
-    } catch (err) {
-      console.error('Initialization error:', err);
-      setIsLoading(false);
-    }
-  };
-
   // Прокрутку под раскрытой шторкой истории здесь больше не трогаем: этим
   // занимается сама шторка (useBodyScrollLock в utils/), тем же замком, что
   // и модальные листы. Владелец у стилей body должен быть один - иначе,
@@ -131,113 +140,177 @@ function App() {
   // останавливает, и палец, ведущий по размытому фону, продолжал двигать
   // страницу под шторкой.
 
+  const clearPrivateData = () => {
+    if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+    setNotice(null);
+    setAccounts([]);
+    accountsRef.current = [];
+    setTransactions([]);
+    setCategories([]);
+    setPlannedPayments([]);
+    setTrashGroups([]);
+    setTrashError('');
+    setTrashLoading(false);
+    setShowTrash(false);
+    setUndoDeletion(null);
+    undoDeletionIdRef.current = null;
+    trashGenerationRef.current += 1;
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    undoTimeoutRef.current = null;
+    setMonthlyLimit(DEFAULT_MONTHLY_LIMIT);
+    setSelectedAccount(null);
+    setSelectedCategory(null);
+    setSelectedType(null);
+    setSearchQuery('');
+    setEditingTransaction(null);
+    setShowAddTransaction(false);
+    setShowAccountsSettings(false);
+    setHistoryDrawerExpanded(false);
+    setLastSuccessfulSync(null);
+    setSyncWarning(null);
+    setInitialLoadError(null);
+    hasSnapshotRef.current = false;
+  };
+
+  const markUnauthenticated = () => {
+    sessionGenerationRef.current += 1;
+    loadGenerationRef.current += 1;
+    clearPrivateData();
+    setIsRefreshing(false);
+    setIsLoading(false);
+    setIsAuthenticated(false);
+  };
+
   // Thin fetch wrapper used for every /api/* call. A 401 means the session
   // cookie is missing/expired - flip to the login screen right away rather
   // than letting each call site duplicate that check. This is the single
   // place that drives isAuthenticated back to false mid-session.
   const apiFetch = async (url, options) => {
+    const requestSession = sessionGenerationRef.current;
     const res = await fetch(url, options);
-    if (res.status === 401) {
-      setIsAuthenticated(false);
+    if (res.status === 401 && requestSession === sessionGenerationRef.current) {
+      markUnauthenticated();
     }
     return res;
   };
 
-  // Guards against two failure shapes that used to fall straight into
-  // setState: a non-ok response (e.g. the 503 the server returns with a
-  // Russian message when its auth config is missing) whose JSON body is
-  // `{ message }` rather than the expected array, and any other response
-  // that parses but isn't actually an array. Either one used to get stored
-  // as-is, and the later `.map(...)` over it threw - tripping the error
-  // boundary and showing the generic crash screen instead of anything
-  // actionable. Reported through showNotice so there's a comprehensible
-  // message instead of a blank/crashed app; existing state is left alone
-  // rather than clobbered with the bad payload.
-  const fetchAccounts = async () => {
+  const readJson = async (url, fallbackMessage, { allowMissing = false } = {}) => {
+    const res = await apiFetch(url);
+    if (res.status === 401) throw new DataLoadError('Требуется повторный вход');
+    if (allowMissing && res.status === 404) return null;
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new DataLoadError((data && data.message) || fallbackMessage);
+    if (data === null) throw new DataLoadError(fallbackMessage);
+    return data;
+  };
+
+  // Loads one complete UI data set. Accounts stay first because both auth and
+  // transaction transformation depend on them; the remaining resources are
+  // independent and begin together. State is committed only after every
+  // critical response succeeds, so the UI never mixes partial load results.
+  const loadData = async ({ initial = !hasSnapshotRef.current } = {}) => {
+    const session = sessionGenerationRef.current;
+    const generation = ++loadGenerationRef.current;
+    const isCurrent = () => session === sessionGenerationRef.current
+      && generation === loadGenerationRef.current;
+
+    if (initial) {
+      setIsLoading(true);
+      setInitialLoadError(null);
+    } else {
+      setIsRefreshing(true);
+    }
+
     try {
-      const res = await apiFetch(ACCOUNTS_URL);
-      if (res.status === 401) {
-        setIsLoading(false);
-        return null;
+      const loadedAccounts = await readJson(ACCOUNTS_URL, 'Не удалось загрузить счета');
+      if (!Array.isArray(loadedAccounts)) throw new DataLoadError('Сервер вернул некорректный список счетов');
+      if (!isCurrent()) return false;
+
+      const [rawTransactions, loadedCategories, loadedSettings, loadedPlannedPayments] = await Promise.all([
+        readJson(API_URL, 'Не удалось загрузить операции'),
+        readJson(CATEGORIES_URL, 'Не удалось загрузить категории'),
+        // Compatibility with deployments from before shared settings: a 404
+        // means the documented default, while network/5xx failures still make
+        // the whole snapshot unsuccessful.
+        readJson(SETTINGS_URL, 'Не удалось загрузить настройки', { allowMissing: true }),
+        readJson(PLANNED_PAYMENTS_URL, 'Не удалось загрузить предстоящие платежи'),
+      ]);
+      if (!Array.isArray(rawTransactions)) throw new DataLoadError('Сервер вернул некорректный список операций');
+      if (!Array.isArray(loadedCategories)) throw new DataLoadError('Сервер вернул некорректный список категорий');
+      if (!Array.isArray(loadedPlannedPayments)) throw new DataLoadError('Сервер вернул некорректный список платежей');
+      if (loadedSettings !== null && (
+        typeof loadedSettings !== 'object'
+        || typeof loadedSettings.monthlyLimit !== 'number'
+        || !Number.isFinite(loadedSettings.monthlyLimit)
+        || loadedSettings.monthlyLimit <= 0
+      )) {
+        throw new DataLoadError('Сервер вернул некорректные настройки');
       }
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !Array.isArray(data)) {
-        showNotice((data && data.message) || 'Не удалось загрузить счета');
-        setIsLoading(false);
-        return undefined;
-      }
-      setAccounts(data);
-      return data;
+      if (!isCurrent()) return false;
+
+      const nextLimit = loadedSettings === null ? DEFAULT_MONTHLY_LIMIT : loadedSettings.monthlyLimit;
+      setAccounts(loadedAccounts);
+      accountsRef.current = loadedAccounts;
+      setTransactions(transformTransactions(rawTransactions, loadedAccounts));
+      setCategories(loadedCategories);
+      setPlannedPayments(loadedPlannedPayments);
+      setMonthlyLimit(nextLimit);
+      setLastSuccessfulSync(new Date());
+      setSyncWarning(null);
+      setInitialLoadError(null);
+      setIsAuthenticated(true);
+      hasSnapshotRef.current = true;
+      return true;
     } catch (err) {
-      console.error('Fetch accounts error:', err);
-      return [];
+      if (!isCurrent()) return false;
+      console.error('Data sync error:', err);
+      const message = err instanceof DataLoadError
+        ? err.message
+        : 'Не удалось подключиться к серверу';
+      if (hasSnapshotRef.current) {
+        setSyncWarning(message);
+      } else {
+        setInitialLoadError(message);
+      }
+      return false;
+    } finally {
+      if (isCurrent()) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
     }
   };
 
-  const fetchTransactions = async (currentAccounts) => {
-    try {
-      const res = await apiFetch(API_URL);
-      if (res.status === 401) {
-        setIsLoading(false);
-        return;
-      }
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !Array.isArray(data)) {
-        showNotice((data && data.message) || 'Не удалось загрузить операции');
-        setIsLoading(false);
-        return;
-      }
-      const accountsList = currentAccounts || accountsRef.current;
-      setTransactions(transformTransactions(data, accountsList));
-      setIsLoading(false);
-    } catch (err) {
-      console.error('Fetch error:', err);
-      setIsLoading(false);
-    }
+  const beginAuthenticatedSession = () => {
+    sessionGenerationRef.current += 1;
+    loadGenerationRef.current += 1;
+    clearPrivateData();
+    setIsAuthenticated(null);
+    loadData({ initial: true });
   };
 
-  const fetchCategories = async () => {
-    try {
-      const res = await apiFetch(CATEGORIES_URL);
-      if (res.status === 401) return;
-      const data = await res.json().catch(() => null);
-      if (!res.ok || !Array.isArray(data)) {
-        showNotice((data && data.message) || 'Не удалось загрузить категории');
-        return;
-      }
-      setCategories(data);
-    } catch (err) {
-      console.error('Fetch categories error:', err);
-    }
-  };
-
-  // Loads the shared monthlyLimit from the server. If the response is
-  // missing, not ok, or doesn't carry a usable number (e.g. an unstubbed
-  // /api/settings in a test mock), the existing default stays in place
-  // rather than throwing - this must never block the rest of initData.
-  const fetchSettings = async () => {
-    try {
-      const res = await apiFetch(SETTINGS_URL);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data && typeof data.monthlyLimit === 'number' && !Number.isNaN(data.monthlyLimit)) {
-        setMonthlyLimit(data.monthlyLimit);
-      }
-    } catch (err) {
-      console.error('Fetch settings error:', err);
-    }
-  };
+  // Fetch data on mount.
+  useEffect(() => {
+    loadData({ initial: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAddCategory = async (name, type) => {
+    const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(CATEGORIES_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, type })
       });
+      if (session !== sessionGenerationRef.current) return { error: 'Сессия завершена' };
       if (res.ok) {
         const saved = await res.json();
+        if (session !== sessionGenerationRef.current) return { error: 'Сессия завершена' };
         setCategories(prev => [...prev, saved]);
+        // Starts a newer load generation, so any GET that began before this
+        // successful write can no longer replace the category list.
+        await loadData({ initial: false });
         return saved;
       } else {
         const err = await res.json();
@@ -410,38 +483,260 @@ function App() {
   };
 
   const handleAddTransaction = async (newTx) => {
+    const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newTx)
       });
-      if (res.ok) fetchTransactions();
-      else console.error('Add failed:', await res.text());
-    } catch (err) { console.error('Add error:', err); }
+      if (session !== sessionGenerationRef.current) return false;
+      if (res.ok) {
+        // The write is already durable. If the following GET refresh fails,
+        // loadData keeps the old snapshot and exposes a retry that performs
+        // GETs only; returning true closes the form without duplicating POST.
+        await loadData({ initial: false });
+        return true;
+      }
+      const data = await res.json().catch(() => null);
+      showNotice((data && data.message) || 'Не удалось сохранить операцию');
+      return false;
+    } catch (err) {
+      console.error('Add error:', err);
+      showNotice('Не удалось сохранить операцию');
+      return false;
+    }
+  };
+
+  const mutationError = async (res, fallback) => {
+    const data = await res.json().catch(() => null);
+    return (data && data.message) || fallback;
+  };
+
+  const handleCreatePlannedPayment = async (fields) => {
+    const session = sessionGenerationRef.current;
+    try {
+      const res = await apiFetch(PLANNED_PAYMENTS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      });
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      if (!res.ok) return { ok: false, error: await mutationError(res, 'Не удалось сохранить платёж') };
+      await loadData({ initial: false });
+      return { ok: true };
+    } catch (err) {
+      console.error('Create planned payment error:', err);
+      return { ok: false, error: 'Не удалось сохранить платёж' };
+    }
+  };
+
+  const handleUpdatePlannedPayment = async (payment, fields) => {
+    const session = sessionGenerationRef.current;
+    try {
+      const res = await apiFetch(`${PLANNED_PAYMENTS_URL}/${payment._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ __v: Number.isInteger(payment.__v) ? payment.__v : 0, ...fields }),
+      });
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      if (!res.ok) {
+        const fallback = res.status === 409
+          ? 'Платёж уже изменён. Обновите данные и повторите попытку.'
+          : 'Не удалось изменить платёж';
+        return { ok: false, error: await mutationError(res, fallback) };
+      }
+      await loadData({ initial: false });
+      return { ok: true };
+    } catch (err) {
+      console.error('Update planned payment error:', err);
+      return { ok: false, error: 'Не удалось изменить платёж' };
+    }
+  };
+
+  const handlePayPlannedPayment = async (payment, fields) => {
+    const session = sessionGenerationRef.current;
+    try {
+      const res = await apiFetch(`${PLANNED_PAYMENTS_URL}/${payment._id}/pay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ __v: Number.isInteger(payment.__v) ? payment.__v : 0, ...fields }),
+      });
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      if (!res.ok) {
+        const fallback = res.status === 409
+          ? 'Платёж уже изменён. Обновите данные и повторите попытку.'
+          : 'Не удалось оплатить платёж';
+        return { ok: false, error: await mutationError(res, fallback) };
+      }
+      await loadData({ initial: false });
+      return { ok: true };
+    } catch (err) {
+      console.error('Pay planned payment error:', err);
+      return { ok: false, error: 'Не удалось оплатить платёж' };
+    }
+  };
+
+  const fetchTrash = async () => {
+    const session = sessionGenerationRef.current;
+    const generation = ++trashGenerationRef.current;
+    const isCurrent = () => session === sessionGenerationRef.current
+      && generation === trashGenerationRef.current;
+    setTrashLoading(true);
+    setTrashError('');
+    try {
+      const res = await apiFetch(TRASH_URL);
+      if (!isCurrent()) return false;
+      const data = await res.json().catch(() => null);
+      if (!isCurrent()) return false;
+      if (!res.ok || !Array.isArray(data)) {
+        throw new DataLoadError((data && data.message) || 'Не удалось загрузить корзину');
+      }
+      setTrashGroups(data);
+      return true;
+    } catch (err) {
+      if (!isCurrent()) return false;
+      console.error('Trash load error:', err);
+      setTrashError(err instanceof DataLoadError ? err.message : 'Не удалось загрузить корзину');
+      return false;
+    } finally {
+      if (isCurrent()) setTrashLoading(false);
+    }
+  };
+
+  const openTrash = () => {
+    setShowAccountsSettings(false);
+    setShowTrash(true);
+    fetchTrash();
+  };
+
+  const refreshAfterTrashMutation = async () => {
+    await Promise.all([loadData({ initial: false }), fetchTrash()]);
+  };
+
+  const handleRestoreTrash = async (id) => {
+    const session = sessionGenerationRef.current;
+    try {
+      const res = await apiFetch(`${TRASH_URL}/${id}/restore`, { method: 'POST' });
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      if (!res.ok) return { ok: false, error: await mutationError(res, 'Не удалось восстановить операции') };
+      await refreshAfterTrashMutation();
+      return { ok: true };
+    } catch (err) {
+      console.error('Restore trash error:', err);
+      return { ok: false, error: 'Не удалось восстановить операции' };
+    }
+  };
+
+  const handlePurgeTrash = async (id) => {
+    const session = sessionGenerationRef.current;
+    try {
+      const res = await apiFetch(`${TRASH_URL}/${id}`, { method: 'DELETE' });
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      if (!res.ok) return { ok: false, error: await mutationError(res, 'Не удалось удалить операции навсегда') };
+      await refreshAfterTrashMutation();
+      return { ok: true };
+    } catch (err) {
+      console.error('Purge trash error:', err);
+      return { ok: false, error: 'Не удалось удалить операции навсегда' };
+    }
+  };
+
+  const showUndoDeletion = (trashId, count) => {
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    undoDeletionIdRef.current = trashId;
+    setUndoDeletion({ trashId, count, pending: false, error: '' });
+    undoTimeoutRef.current = setTimeout(() => {
+      if (undoDeletionIdRef.current !== trashId) return;
+      undoDeletionIdRef.current = null;
+      setUndoDeletion(null);
+    }, 10000);
+  };
+
+  const handleUndoDeletion = async () => {
+    if (!undoDeletion || undoDeletion.pending) return;
+    const session = sessionGenerationRef.current;
+    const trashId = undoDeletion.trashId;
+    if (undoDeletionIdRef.current === trashId && undoTimeoutRef.current) {
+      clearTimeout(undoTimeoutRef.current);
+      undoTimeoutRef.current = null;
+    }
+    setUndoDeletion(current => current?.trashId === trashId ? { ...current, pending: true, error: '' } : current);
+    try {
+      const res = await apiFetch(`${TRASH_URL}/${trashId}/restore`, { method: 'POST' });
+      if (session !== sessionGenerationRef.current) return;
+      if (!res.ok) {
+        if (undoDeletionIdRef.current === trashId) {
+          setUndoDeletion(current => current?.trashId === trashId ? { ...current, pending: false, error: 'Не удалось восстановить. Попробуйте ещё раз.' } : current);
+        }
+        return;
+      }
+      if (undoDeletionIdRef.current === trashId) {
+        if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+        undoDeletionIdRef.current = null;
+        setUndoDeletion(null);
+      }
+      await loadData({ initial: false });
+    } catch (err) {
+      console.error('Undo delete error:', err);
+      if (session === sessionGenerationRef.current) {
+        if (undoDeletionIdRef.current === trashId) {
+          setUndoDeletion(current => current?.trashId === trashId ? { ...current, pending: false, error: 'Не удалось восстановить. Попробуйте ещё раз.' } : current);
+        }
+      }
+    }
   };
 
   const handleUpdateTransaction = async (updatedTx) => {
+    const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(`${API_URL}/${updatedTx.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedTx)
       });
-      if (res.ok) fetchTransactions();
-      else console.error('Update failed:', await res.text());
-    } catch (err) { console.error('Update error:', err); }
+      if (session !== sessionGenerationRef.current) return false;
+      if (res.status === 409) {
+        showNotice('Операция уже изменена. Обновите данные и повторите попытку.');
+        return false;
+      }
+      if (res.ok) {
+        await loadData({ initial: false });
+        return true;
+      }
+      const data = await res.json().catch(() => null);
+      showNotice((data && data.message) || 'Не удалось сохранить изменения');
+      return false;
+    } catch (err) {
+      console.error('Update error:', err);
+      showNotice('Не удалось сохранить изменения');
+      return false;
+    }
   };
 
   const handleDeleteTransaction = async (id, splitId = null) => {
+    const session = sessionGenerationRef.current;
     try {
       const url = splitId ? `${API_URL}/${id}?splitId=${splitId}` : `${API_URL}/${id}`;
       const res = await apiFetch(url, { method: 'DELETE' });
+      if (session !== sessionGenerationRef.current) return false;
       if (res.ok) {
-        fetchTransactions();
+        const data = await res.json().catch(() => null);
+        if (session !== sessionGenerationRef.current) return false;
+        if (data?.trashId) showUndoDeletion(data.trashId, Number(data.count) || 1);
+        await loadData({ initial: false });
+        if (session !== sessionGenerationRef.current) return true;
         setEditingTransaction(null);
-      } else console.error('Delete failed:', await res.text());
-    } catch (err) { console.error('Delete error:', err); }
+        return true;
+      }
+      const data = await res.json().catch(() => null);
+      showNotice((data && data.message) || 'Не удалось удалить операцию');
+      return false;
+    } catch (err) {
+      console.error('Delete error:', err);
+      showNotice('Не удалось удалить операцию');
+      return false;
+    }
   };
 
   // formName/formType/formIcon/editingAccountId are local UI state owned by
@@ -450,6 +745,7 @@ function App() {
   // accounts data and the API mutation itself. Returns whether the save
   // succeeded so the modal knows whether to reset its form.
   const handleSaveAccount = async ({ name, type, icon, excludeFromTotal, editingAccountId }) => {
+    const session = sessionGenerationRef.current;
     try {
       let res;
       if (editingAccountId) {
@@ -466,9 +762,9 @@ function App() {
         });
       }
 
+      if (session !== sessionGenerationRef.current) return false;
       if (res.ok) {
-        const freshAccounts = await fetchAccounts();
-        await fetchTransactions(freshAccounts);
+        await loadData({ initial: false });
         return true;
       } else {
         const err = await res.json();
@@ -484,11 +780,12 @@ function App() {
   const handleDeleteAccount = async (id, name) => {
     if (!confirm(`Вы уверены, что хотите удалить счёт "${name}"?`)) return;
 
+    const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(`${ACCOUNTS_URL}/${id}`, { method: 'DELETE' });
+      if (session !== sessionGenerationRef.current) return;
       if (res.ok) {
-        const freshAccounts = await fetchAccounts();
-        await fetchTransactions(freshAccounts);
+        await loadData({ initial: false });
       } else {
         const err = await res.json();
         showNotice(err.message || 'Не удалось удалить счёт');
@@ -510,6 +807,7 @@ function App() {
     }
     if (trimmed === category.name) return true;
 
+    const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(`${CATEGORIES_URL}/${category._id}`, {
         method: 'PUT',
@@ -517,16 +815,16 @@ function App() {
         body: JSON.stringify({ name: trimmed })
       });
       const data = await res.json().catch(() => null);
+      if (session !== sessionGenerationRef.current) return false;
       if (!res.ok) {
         showNotice((data && data.message) || 'Не удалось переименовать категорию');
         return false;
       }
-      // Фильтр по категории держится на названии, а не на id, - переносим
-      // его на новое имя, иначе экран остался бы отфильтрованным по строке,
-      // которой больше нет ни в одной операции.
-      setSelectedCategory(prev => prev === category.name ? trimmed : prev);
-      await fetchCategories();
-      await fetchTransactions();
+      const refreshed = await loadData({ initial: false });
+      // The filter is string-based. Move it only when the matching refreshed
+      // snapshot arrived; after a refresh failure keep the old snapshot
+      // usable by clearing this one stale filter until Retry succeeds.
+      setSelectedCategory(prev => prev === category.name ? (refreshed ? trimmed : null) : prev);
       showNotice('Категория переименована', 'success');
       return true;
     } catch (err) {
@@ -546,13 +844,15 @@ function App() {
       : '';
     if (!confirm(`Удалить категорию "${category.name}"?${warning}`)) return;
 
+    const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(`${CATEGORIES_URL}/${category._id}`, { method: 'DELETE' });
+      if (session !== sessionGenerationRef.current) return;
       if (res.ok) {
         // Фильтр мог стоять на только что удалённой категории - иначе экран
         // остался бы отфильтрованным по тому, чего больше нет в списке.
         setSelectedCategory(prev => prev === category.name ? null : prev);
-        await fetchCategories();
+        await loadData({ initial: false });
       } else {
         const err = await res.json().catch(() => null);
         showNotice((err && err.message) || 'Не удалось удалить категорию');
@@ -566,15 +866,19 @@ function App() {
   // Saves the shared monthlyLimit to the server. Returns whether it
   // succeeded so the modal knows whether to surface a success notice.
   const handleSaveSettings = async (newLimit) => {
+    const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(SETTINGS_URL, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ monthlyLimit: newLimit })
       });
+      if (session !== sessionGenerationRef.current) return false;
       if (res.ok) {
         const saved = await res.json();
+        if (session !== sessionGenerationRef.current) return false;
         setMonthlyLimit(typeof saved.monthlyLimit === 'number' ? saved.monthlyLimit : newLimit);
+        await loadData({ initial: false });
         return true;
       } else {
         const err = await res.json();
@@ -598,11 +902,12 @@ function App() {
   // the failure instead and leave the authenticated state untouched so the
   // user knows to retry.
   const handleLogout = async () => {
+    const session = sessionGenerationRef.current;
     try {
       const res = await fetch('/api/logout', { method: 'POST' });
+      if (session !== sessionGenerationRef.current) return;
       if (res.ok) {
-        setShowAccountsSettings(false);
-        setIsAuthenticated(false);
+        markUnauthenticated();
       } else {
         showNotice('Не удалось выйти. Попробуйте ещё раз.');
       }
@@ -724,12 +1029,41 @@ function App() {
   // prevMonthDayLabel is already in the genitive the day form needs, while
   // the bare month name arrives nominative and has to be declined.
   const comparisonLabel = `Изменения к ${isActualCurrentMonth ? comparisonData.prevMonthDayLabel : toDativeMonth(comparisonData.prevMonthName)}`;
+  const lastSyncLabel = lastSuccessfulSync
+    ? lastSuccessfulSync.toLocaleString('ru-RU', {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+    : null;
 
   // isAuthenticated === false is the one state that always wins: a 401 mid-
   // session (expired/cleared cookie) must return the user to the login
   // screen even if data from before is still sitting in state.
   if (isAuthenticated === false) {
-    return <LoginScreen onSuccess={() => { setIsAuthenticated(null); initData(); }} />;
+    return <LoginScreen onSuccess={beginAuthenticatedSession} />;
+  }
+
+  if (initialLoadError && !hasSnapshotRef.current) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
+        <div className="glass-panel" role="alert" style={{ padding: '28px', width: '100%', maxWidth: '380px', textAlign: 'center' }}>
+          <h1 style={{ margin: 0, fontSize: 'var(--text-3xl)', color: 'var(--color-text-main)' }}>Не удалось загрузить данные</h1>
+          <p style={{ margin: '12px 0 20px', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
+            {initialLoadError}. Проверьте подключение и попробуйте ещё раз.
+          </p>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => loadData({ initial: true })}
+            style={{ padding: '12px 20px', borderRadius: 'var(--radius-md)', fontWeight: '700' }}
+          >
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (isLoading || isAuthenticated === null) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--color-text-inverse)' }}>Загрузка...</div>;
@@ -781,11 +1115,79 @@ function App() {
           </button>
         </div>
       )}
+      {undoDeletion && (
+        <div
+          role={undoDeletion.error ? 'alert' : 'status'}
+          className="glass-panel"
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px`,
+            transform: 'translateX(-50%)',
+            zIndex: 950,
+            width: 'calc(100% - 40px)',
+            maxWidth: '420px',
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            borderLeft: `4px solid ${undoDeletion.error ? 'var(--color-negative)' : 'var(--color-primary)'}`,
+          }}
+        >
+          <span style={{ color: undoDeletion.error ? 'var(--color-negative)' : 'var(--color-text-main)', fontSize: 'var(--text-sm)', fontWeight: '600' }}>
+            {undoDeletion.error || `В корзине.${undoDeletion.count > 1 ? ` Операций: ${undoDeletion.count}.` : ''}`}
+          </span>
+          <button type="button" onClick={handleUndoDeletion} disabled={undoDeletion.pending} style={{ padding: '8px 10px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary-tint)', color: 'var(--color-primary)', fontWeight: '700', flexShrink: 0 }}>
+            {undoDeletion.pending ? 'Восстановление...' : 'Отменить'}
+          </button>
+        </div>
+      )}
+      {syncWarning && (
+        <div
+          role="alert"
+          className="glass-panel"
+          style={{
+            marginBottom: '12px',
+            padding: '12px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            borderLeft: '4px solid var(--color-negative)',
+          }}
+        >
+          <div>
+            <div style={{ color: 'var(--color-text-main)', fontWeight: '700', fontSize: 'var(--text-base)' }}>
+              Не удалось обновить данные
+            </div>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginTop: '2px' }}>
+              Показана синхронизация: {lastSyncLabel}. {syncWarning}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={isRefreshing}
+            onClick={() => loadData({ initial: false })}
+            style={{ padding: '9px 12px', borderRadius: 'var(--radius-md)', flexShrink: 0 }}
+          >
+            {isRefreshing ? 'Обновление...' : 'Повторить'}
+          </button>
+        </div>
+      )}
       {/* Premium Header */}
       <header className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
           <div style={{ width: '24px' }}></div>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
+          <div style={{ textAlign: 'center' }}>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
+            {lastSyncLabel && (
+              <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-2xs)', marginTop: '2px' }}>
+                Синхронизировано: {lastSyncLabel}
+              </div>
+            )}
+          </div>
           <IconButton
             tone="neutral"
             round
@@ -960,7 +1362,7 @@ function App() {
 
       <main style={{ paddingBottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px` }}>
         {/* Quick Actions */}
-        <section style={{ marginBottom: '32px' }}>
+        {summaryView !== 'payments' && <section style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => openAddModal('income')} className="btn-primary" style={{ flex: 1, background: 'var(--color-positive-gradient)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
               <span>+</span> Доход
@@ -972,20 +1374,31 @@ function App() {
               ⇄ Перевод
             </button>
           </div>
-        </section>
+        </section>}
 
         {/* One period control for the whole screen: the chip carries both
             the granularity (месяц/год/всё время) and the concrete month or
             year, replacing the old header arrow row plus the range toggle
             that used to live inside the stats card. It sits above the
             summary card so both bottom tabs share it. */}
-        <section style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        {summaryView !== 'payments' && <section style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <PeriodPicker timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />
-        </section>
+        </section>}
 
         {/* Summary Card with Budget Limit */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '24px' }}>
-          {summaryView === 'stats' ? (
+          {summaryView === 'payments' ? (
+            <PlannedPaymentsView
+              plannedPayments={plannedPayments}
+              accounts={accounts}
+              categories={categories}
+              transactions={transactions}
+              onCreate={handleCreatePlannedPayment}
+              onUpdate={handleUpdatePlannedPayment}
+              onPay={handlePayPlannedPayment}
+              onOpenTrash={openTrash}
+            />
+          ) : summaryView === 'stats' ? (
             timeRange === 'month' ? (
               /* Месяцы листаются так же, как счета в шапке: не «жест меняет
                  данные», а лента карточек, которая едет за пальцем. Соседние
@@ -1148,8 +1561,23 @@ function App() {
           onRenameCategory={handleRenameCategory}
           onDragEnd={onAccountDragEnd}
           onSaveSettings={handleSaveSettings}
+          onOpenTrash={openTrash}
           onLogout={handleLogout}
           showNotice={showNotice}
+        />
+      )}
+      {showTrash && (
+        <TrashSheet
+          groups={trashGroups}
+          loading={trashLoading}
+          error={trashError}
+          onRetry={fetchTrash}
+          onRestore={handleRestoreTrash}
+          onPurge={handlePurgeTrash}
+          onClose={() => {
+            trashGenerationRef.current += 1;
+            setShowTrash(false);
+          }}
         />
       )}
     </div>

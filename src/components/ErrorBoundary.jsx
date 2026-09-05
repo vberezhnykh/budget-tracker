@@ -1,4 +1,5 @@
 import { Component } from 'react';
+import { reportClientError } from '../utils/clientErrorReporter';
 
 // Catches render-time exceptions anywhere below it in the tree (the
 // carousel, the drawer, the transaction list, ...) and shows a fallback
@@ -15,12 +16,11 @@ class ErrorBoundary extends Component {
     return { hasError: true };
   }
 
-  componentDidCatch(error, info) {
-    // Still diagnosable even though the UI itself only shows a generic
-    // fallback - the stack goes wherever console output for this deployment
-    // already goes (browser devtools, or whatever error-reporting the host
-    // captures console.error into).
-    console.error('ErrorBoundary caught an error:', error, info.componentStack);
+  componentDidCatch() {
+    // The server receives a fixed event code only; error, message and both
+    // stacks remain out of the request payload.
+    reportClientError('react_render');
+    console.error('ErrorBoundary caught an error');
   }
 
   render() {

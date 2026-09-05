@@ -17,6 +17,7 @@
 // which is expected to be a read-only user.
 
 const fs = require('fs');
+const path = require('path');
 const { MongoClient } = require('mongodb');
 const { EJSON } = require('bson');
 const {
@@ -24,10 +25,9 @@ const {
     countAllCollections,
     restoreCollections,
     summarizeCounts,
-    validateBackupDocument
+    validateBackupDocument,
+    normalizeBackupDocument
 } = require('./backup-core');
-
-require('dotenv').config();
 
 function parseArgs(argv) {
     const args = { file: null, confirmed: false, replace: false };
@@ -40,6 +40,7 @@ function parseArgs(argv) {
 }
 
 async function main() {
+    require('dotenv').config({ path: path.join(__dirname, '.env') });
     const args = parseArgs(process.argv.slice(2));
     if (!args.file) {
         console.error('Использование: node server/restore.js <файл> --yes [--replace]');
@@ -55,6 +56,7 @@ async function main() {
         process.exitCode = 1;
         return;
     }
+    const normalizedDoc = normalizeBackupDocument(doc);
 
     const uri = process.env.MONGODB_URI;
     if (!uri) {
@@ -64,12 +66,13 @@ async function main() {
     }
 
     const client = new MongoClient(uri);
+    let session;
     try {
         await client.connect();
         const db = client.db();
 
-        console.log(`Бэкап от ${doc.exportedAt}`);
-        console.log(`Содержимое: ${summarizeCounts(doc.counts)}`);
+        console.log(`Бэкап от ${normalizedDoc.exportedAt}`);
+        console.log(`Содержимое: ${summarizeCounts(normalizedDoc.counts)}`);
         console.log(`Целевая база: ${db.databaseName}`);
 
         const existing = await countAllCollections(db);
@@ -88,9 +91,11 @@ async function main() {
             return;
         }
 
-        const restored = await restoreCollections(db, doc.data, { replace: args.replace });
+        session = client.startSession();
+        const restored = await restoreCollections(db, normalizedDoc.data, { replace: args.replace, session });
         console.log(`Восстановлено: ${summarizeCounts(restored)}`);
     } finally {
+        if (session) await session.endSession();
         await client.close();
     }
 }

@@ -27,6 +27,7 @@
 // листа страница фиксируется - см. utils/useBodyScrollLock, тем же
 // замком заперта страница под раскрытой шторкой истории.
 
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import useBodyScrollLock from '../../utils/useBodyScrollLock';
 
 export default function Sheet({
@@ -39,6 +40,62 @@ export default function Sheet({
     children,
 }) {
     useBodyScrollLock();
+    const dialogRef = useRef(null);
+    const onCloseRef = useRef(onClose);
+
+    useLayoutEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
+
+    useEffect(() => {
+        const previouslyFocused = document.activeElement;
+        const dialog = dialogRef.current;
+        const focusableSelector = [
+            'button:not([disabled])',
+            'input:not([disabled])',
+            'select:not([disabled])',
+            'textarea:not([disabled])',
+            '[href]',
+            '[tabindex]:not([tabindex="-1"])',
+        ].join(',');
+        const getFocusable = () => Array.from(dialog?.querySelectorAll(focusableSelector) || []);
+
+        (getFocusable()[0] || dialog)?.focus();
+
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onCloseRef.current?.();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+
+            const focusable = getFocusable();
+            if (focusable.length === 0) {
+                event.preventDefault();
+                dialog?.focus();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            } else if (!dialog?.contains(document.activeElement)) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+            if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+        };
+    }, []);
 
     return (
         <div
@@ -63,9 +120,11 @@ export default function Sheet({
             }}
         >
             <div
+                ref={dialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-label={ariaLabel}
+                tabIndex={-1}
                 onClick={(e) => e.stopPropagation()}
                 style={{
                     position: 'relative',

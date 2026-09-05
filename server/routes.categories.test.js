@@ -8,7 +8,7 @@
 // нём не падает и ничего не сообщает - она просто оставляет часть операций
 // с прежним названием, и разбивка по категориям тихо разъезжается на две.
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 import mongoose from 'mongoose';
 import { connectTestDb, disconnectTestDb, clearCollections, loginAgent, tx, DB_HOOK_TIMEOUT } from './test/harness.js';
 
@@ -16,12 +16,14 @@ let app;
 let agent;
 let Category;
 let Transaction;
+let PlannedPayment;
 
 beforeAll(async () => {
     app = await connectTestDb('routes-categories');
     agent = await loginAgent(app);
     Category = mongoose.model('Category');
     Transaction = mongoose.model('Transaction');
+    PlannedPayment = mongoose.model('PlannedPayment');
 }, DB_HOOK_TIMEOUT);
 
 afterAll(disconnectTestDb, DB_HOOK_TIMEOUT);
@@ -53,6 +55,7 @@ describe('PUT /api/categories/:id: переименование каскадом
         // Доход с тем же названием - чужая категория, его трогать нельзя.
         expect(await Transaction.countDocuments({ type: 'income', category: 'Продукты' })).toBe(1);
         expect(await Transaction.countDocuments({ type: 'expense', category: 'Транспорт' })).toBe(1);
+        expect(await Transaction.countDocuments({ type: 'expense', category: 'Еда', __v: 1 })).toBe(2);
     });
 
     it('не трогает название операции, даже если оно совпадало со старым именем категории', async () => {
@@ -107,6 +110,70 @@ describe('PUT /api/categories/:id: переименование каскадом
         // старым названием - иначе операции указывали бы в пустоту.
         expect(await Transaction.countDocuments({ category: 'Продукты' })).toBe(1);
         expect(await Transaction.countDocuments({ category: 'Транспорт' })).toBe(0);
+    });
+
+    it('откатывает имя категории, если второй шаг каскада завершился ошибкой', async () => {
+        const cat = await Category.create({ name: 'Продукты', type: 'expense', order: 1 });
+        await Transaction.create(tx({ category: 'Продукты' }));
+        const failure = vi.spyOn(Transaction, 'updateMany')
+            .mockRejectedValueOnce(new Error('forced transaction update failure'));
+
+        let res;
+        try {
+            res = await agent.put(`/api/categories/${cat._id}`).send({ name: 'Еда' });
+        } finally {
+            failure.mockRestore();
+        }
+
+        expect(res.status).toBe(500);
+        expect((await Category.findById(cat._id)).name).toBe('Продукты');
+        expect(await Transaction.countDocuments({ category: 'Продукты' })).toBe(1);
+        expect(await Transaction.countDocuments({ category: 'Еда' })).toBe(0);
+    });
+
+    it('делает открытый снимок операции устаревшим после каскадного переименования', async () => {
+        const cat = await Category.create({ name: 'Продукты', type: 'expense', order: 1 });
+        const transaction = await Transaction.create(tx({ category: 'Продукты', amount: 100 }));
+
+        expect((await agent.put(`/api/categories/${cat._id}`).send({ name: 'Еда' })).status).toBe(200);
+        const stale = await agent.put(`/api/transactions/${transaction._id}`)
+            .send({ amount: 200, __v: 0 });
+
+        expect(stale.status).toBe(409);
+        const saved = await Transaction.findById(transaction._id);
+        expect(saved.category).toBe('Еда');
+        expect(saved.amount).toBe(100);
+        expect(saved.__v).toBe(1);
+    });
+
+    it('меняет планы только вместе с одноимённой expense-категорией', async () => {
+        const [incomeCategory, expenseCategory] = await Category.create([
+            { name: 'Общее', type: 'income', order: 1 },
+            { name: 'Общее', type: 'expense', order: 1 }
+        ]);
+        const income = await Transaction.create(tx({ type: 'income', category: 'Общее' }));
+        const deleted = await Transaction.create(tx({
+            category: 'Общее', deletedAt: new Date(), deletionBatchId: 'batch-1'
+        }));
+        const plan = await PlannedPayment.create({
+            title: 'Интернет', amount: 50, dueDate: new Date('2026-04-10T00:00:00.000Z'),
+            account: 'card', category: 'Общее'
+        });
+
+        const incomeRename = await agent.put(`/api/categories/${incomeCategory._id}`).send({ name: 'Доход' });
+
+        expect(incomeRename.status).toBe(200);
+        expect((await Transaction.findById(income._id)).category).toBe('Доход');
+        expect((await Transaction.findById(deleted._id)).category).toBe('Общее');
+        expect((await PlannedPayment.findById(plan._id)).category).toBe('Общее');
+        expect((await PlannedPayment.findById(plan._id)).__v).toBe(0);
+
+        const expenseRename = await agent.put(`/api/categories/${expenseCategory._id}`).send({ name: 'Расход' });
+
+        expect(expenseRename.status).toBe(200);
+        expect((await Transaction.findById(deleted._id)).category).toBe('Расход');
+        expect((await PlannedPayment.findById(plan._id)).category).toBe('Расход');
+        expect((await PlannedPayment.findById(plan._id)).__v).toBe(1);
     });
 
     it('позволяет занять имя, свободное в своём типе, но занятое в чужом', async () => {

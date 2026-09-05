@@ -4,8 +4,8 @@
 // full user-account system is not warranted. Instead:
 //   - POST /api/login checks the submitted password against APP_PASSWORD and,
 //     on success, sets an httpOnly cookie carrying a signed, expiring token.
-//   - Every other /api/* route (except /api/login and /api/health) requires
-//     that cookie to be present and valid.
+//   - Every other /api/* route (except /api/login, /api/health and
+//     /api/ready) requires that cookie to be present and valid.
 //
 // The pure pieces (token sign/verify, password check, config detection) live
 // here rather than inside route closures so they can be unit tested directly.
@@ -173,7 +173,7 @@ function getAuthConfig() {
 // Builds the JSON body for GET /api/health. Pulled out of the route closure
 // so it can be unit tested directly without spinning up Express.
 //
-// /api/health is one of the two routes excluded from auth entirely (see
+// /api/health is one of the public operational routes (see
 // createAuthMiddleware below), so this payload is reachable by anyone,
 // unauthenticated. `missing` and `weak` (the specific env var names that are
 // absent vs. present-but-too-short) were trimmed down to a single
@@ -217,19 +217,19 @@ function cookieOptions(isProduction, maxAge) {
     return options;
 }
 
-// Loopback addresses only - the literal forms Node/Express can hand back as
-// req.ip (the ::ffff:-prefixed form shows up when a IPv4 loopback connection
-// is reported through Node's IPv6 socket API).
+// Loopback addresses only - the literal forms Node can hand back from the
+// actual TCP socket (the ::ffff:-prefixed form shows up when an IPv4
+// loopback connection is reported through Node's IPv6 socket API).
 function isLoopbackIp(ip) {
     return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 }
 
 // Express middleware factory. Mounted once, before any route definitions, so
 // it can't be bypassed by route ordering. Every /api/* request must pass
-// through it except the two explicit exceptions below.
+// through it except the three explicit exceptions below.
 //
 // Fail-closed behavior when APP_PASSWORD/SESSION_SECRET are missing or too
-// weak (see getAuthConfig): every /api/* request (other than the two
+// weak (see getAuthConfig): every /api/* request (other than the three
 // exclusions) gets a 503, in every environment, regardless of NODE_ENV.
 //
 // The only way through an unconfigured server is the explicit local-dev
@@ -237,10 +237,11 @@ function isLoopbackIp(ip) {
 // AUTH_DISABLED=true) *and* the request must come from a loopback address
 // (127.0.0.1 / ::1 / ::ffff:127.0.0.1). Both conditions are required - an
 // operator setting AUTH_DISABLED=true on a deployment that is reachable from
-// outside their own machine still gets a 503 for every non-loopback caller,
-// because req.ip only reflects the real remote peer once Express's
-// `trust proxy` setting is configured (done once in index.js) rather than
-// naively trusting a client-suppliable header.
+// outside their own machine still gets a 503 for every non-loopback caller.
+// The bypass requires both req.socket.remoteAddress and req.ip to be
+// loopback. The socket check stops a direct caller from forging loopback in
+// X-Forwarded-For; the req.ip check stops an external caller forwarded by a
+// local reverse proxy (whose own socket address really is loopback).
 //
 // Deliberately NOT keyed off NODE_ENV: "not production" used to imply
 // fail-open, which meant an unset/misspelled NODE_ENV plus unset auth vars
@@ -263,11 +264,13 @@ function createAuthMiddleware(authDisabled) {
     return function authMiddleware(req, res, next) {
         const path = req.path.toLowerCase();
         if (!path.startsWith('/api/')) return next();
-        if (path === '/api/login' || path === '/api/health') return next();
+        if (path === '/api/login' || path === '/api/health' || path === '/api/ready') return next();
 
         const { sessionSecret, appPassword, isConfigured } = getAuthConfig();
         if (!isConfigured) {
-            if (authDisabled === true && isLoopbackIp(req.ip)) {
+            if (authDisabled === true
+                && isLoopbackIp(req.socket?.remoteAddress)
+                && isLoopbackIp(req.ip)) {
                 return next();
             }
             return res.status(503).json({ message: 'Сервер не настроен: отсутствуют переменные окружения APP_PASSWORD/SESSION_SECRET.' });

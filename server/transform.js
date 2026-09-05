@@ -60,6 +60,10 @@ function transformTransactions(docs, accounts = []) {
 
         return {
             id: String(t._id),
+            // Версия нужна форме редактирования для условного PUT. Старые
+            // документы до появления OCC физически не имеют __v и считаются
+            // версией 0 тем же образом, что и в клиентском преобразовании.
+            __v: Number.isInteger(t.__v) ? t.__v : 0,
             title: t.title || t.category,
             amount,
             visualAmount,

@@ -16,7 +16,8 @@ const { EJSON } = require('bson');
 const {
     inspectBackupContents,
     summarizeCounts,
-    validateBackupDocument
+    validateBackupDocument,
+    normalizeBackupDocument
 } = require('./backup-core');
 
 function main() {
@@ -43,12 +44,13 @@ function main() {
         process.exitCode = 1;
         return;
     }
+    const normalizedDoc = normalizeBackupDocument(doc);
 
-    console.log(`Бэкап от ${doc.exportedAt}`);
-    console.log(`Заявлено: ${summarizeCounts(doc.counts)}`);
+    console.log(`Бэкап от ${normalizedDoc.exportedAt}`);
+    console.log(`Заявлено: ${summarizeCounts(normalizedDoc.counts)}`);
     console.log('');
 
-    const { ok, summary, problems } = inspectBackupContents(doc.data);
+    const { ok, summary, problems } = inspectBackupContents(normalizedDoc.data);
     for (const line of summary) console.log(`  ${line}`);
 
     if (ok) {

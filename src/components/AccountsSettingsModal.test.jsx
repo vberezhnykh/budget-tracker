@@ -94,9 +94,26 @@ describe('AccountsSettingsModal', () => {
     it('calls onClose from the close (✕) button', () => {
         const { props } = renderModal();
 
-        fireEvent.click(screen.getByText('✕'));
+        fireEvent.click(screen.getByRole('button', { name: 'Закрыть настройки' }));
 
         expect(props.onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('blocks duplicate account saves while the first request is pending', async () => {
+        let resolveSave;
+        const onSaveAccount = vi.fn(() => new Promise(resolve => { resolveSave = resolve; }));
+        renderModal({ onSaveAccount });
+
+        fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Новый счёт' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
+
+        const pendingButton = await screen.findByRole('button', { name: 'Сохранение...' });
+        expect(pendingButton).toBeDisabled();
+        fireEvent.click(pendingButton);
+        expect(onSaveAccount).toHaveBeenCalledTimes(1);
+
+        resolveSave(true);
+        await waitFor(() => expect(screen.getByPlaceholderText(/Имя счёта/)).toHaveValue(''));
     });
 
     it('calls onClose when the backdrop itself is clicked', () => {

@@ -8,12 +8,14 @@
 // look successful and restore an incomplete database, so this list is the
 // single source of truth for both directions and both scripts iterate it
 // rather than naming collections inline.
-const BACKUP_COLLECTIONS = ['transactions', 'accounts', 'categories', 'settings'];
+const LEGACY_BACKUP_COLLECTIONS = ['transactions', 'accounts', 'categories', 'settings'];
+const BACKUP_COLLECTIONS = [...LEGACY_BACKUP_COLLECTIONS, 'plannedpayments'];
 
 // Bumped only when the shape of the backup document itself changes (not
 // when the app's schemas do). restore refuses a document whose version it
 // doesn't recognise rather than guessing at an older layout.
-const BACKUP_FORMAT_VERSION = 1;
+const BACKUP_FORMAT_VERSION = 2;
+const LEGACY_BACKUP_FORMAT_VERSION = 1;
 
 // Filesystem-safe, sorts chronologically as plain text, and keeps the UTC
 // instant readable: budget-backup-2026-08-16T05-30-00Z.json
@@ -88,8 +90,9 @@ function validateBackupDocument(doc) {
         return { ok: false, errors: ['Файл не является объектом бэкапа'] };
     }
 
-    if (doc.formatVersion !== BACKUP_FORMAT_VERSION) {
-        errors.push(`Неизвестная версия формата: ${doc.formatVersion} (ожидается ${BACKUP_FORMAT_VERSION})`);
+    const isLegacy = doc.formatVersion === LEGACY_BACKUP_FORMAT_VERSION;
+    if (doc.formatVersion !== BACKUP_FORMAT_VERSION && !isLegacy) {
+        errors.push(`Неизвестная версия формата: ${doc.formatVersion} (ожидается ${LEGACY_BACKUP_FORMAT_VERSION} или ${BACKUP_FORMAT_VERSION})`);
     }
 
     if (typeof doc.exportedAt !== 'string' || Number.isNaN(Date.parse(doc.exportedAt))) {
@@ -102,7 +105,10 @@ function validateBackupDocument(doc) {
         return { ok: false, errors };
     }
 
-    for (const name of BACKUP_COLLECTIONS) {
+    // v1 did not have plannedpayments; all five collections are mandatory in
+    // v2, including their declared counts.
+    const requiredCollections = isLegacy ? LEGACY_BACKUP_COLLECTIONS : BACKUP_COLLECTIONS;
+    for (const name of requiredCollections) {
         if (!Array.isArray(data[name])) {
             errors.push(`Коллекция "${name}" отсутствует или не является массивом`);
             continue;
@@ -112,6 +118,18 @@ function validateBackupDocument(doc) {
             errors.push(`Не указано число записей для "${name}"`);
         } else if (declared !== data[name].length) {
             errors.push(`Файл повреждён: в "${name}" заявлено ${declared} записей, фактически ${data[name].length}`);
+        }
+    }
+
+    if (isLegacy && Object.prototype.hasOwnProperty.call(data, 'plannedpayments')
+        && !Array.isArray(data.plannedpayments)) {
+        errors.push('Коллекция "plannedpayments" отсутствует или не является массивом');
+    } else if (isLegacy && Array.isArray(data.plannedpayments)) {
+        const declared = doc.counts ? doc.counts.plannedpayments : undefined;
+        if (typeof declared !== 'number') {
+            errors.push('Не указано число записей для "plannedpayments"');
+        } else if (declared !== data.plannedpayments.length) {
+            errors.push(`Файл повреждён: в "plannedpayments" заявлено ${declared} записей, фактически ${data.plannedpayments.length}`);
         }
     }
 
@@ -221,27 +239,81 @@ function inspectBackupContents(data) {
     // accounts collection would restore into a database where that
     // transaction can never be attributed to anything.
     const accountIds = new Set(accounts.map(a => String(a._id)));
+    const accountIdsWithLegacy = new Set([...accountIds, 'card', 'cash']);
     const orphaned = new Set(
         transactions
-            .map(t => t.account)
-            .filter(id => id !== undefined && id !== null && !accountIds.has(String(id)))
+            .flatMap(t => [t.account, t.toAccount])
+            .filter(id => id !== undefined && id !== null && !accountIdsWithLegacy.has(String(id)))
     );
     if (orphaned.size > 0) {
         problems.push(`Транзакции ссылаются на ${orphaned.size} счёт(ов), которых нет в бэкапе: ${[...orphaned].join(', ')}`);
     }
 
+    const plannedpayments = Array.isArray(data.plannedpayments) ? data.plannedpayments : [];
+    const transactionsById = new Map(transactions.map(t => [String(t._id), t]));
+    const linkedPlanTransactions = new Set();
+    const validDate = value => value instanceof Date && !Number.isNaN(value.getTime());
+    plannedpayments.forEach((plan, index) => {
+        const label = `План ${index + 1}`;
+        if (!plan || typeof plan !== 'object' || Array.isArray(plan)) {
+            problems.push(`${label}: документ имеет некорректный тип`);
+            return;
+        }
+        if (plan._id === undefined) problems.push(`${label}: отсутствует _id`);
+        if (typeof plan.title !== 'string' || plan.title.trim() === '') problems.push(`${label}: некорректный title`);
+        if (typeof plan.amount !== 'number' || !Number.isFinite(plan.amount) || plan.amount <= 0) problems.push(`${label}: некорректная положительная сумма`);
+        if (!validDate(plan.dueDate)) problems.push(`${label}: некорректная dueDate`);
+        if (!['pending', 'paid', 'skipped'].includes(plan.status)) problems.push(`${label}: некорректный status`);
+        if (typeof plan.account !== 'string' || !accountIdsWithLegacy.has(String(plan.account))) {
+            problems.push(`${label}: отсутствует счёт ${plan.account ?? '<не указан>'}`);
+        }
+        const hasTransaction = plan.transactionId !== undefined && plan.transactionId !== null;
+        const hasPaidAt = plan.paidAt !== undefined && plan.paidAt !== null;
+        if (hasTransaction && !transactionsById.has(String(plan.transactionId))) {
+            problems.push(`${label}: отсутствует связанная транзакция ${plan.transactionId}`);
+        } else if (hasTransaction) {
+            if (linkedPlanTransactions.has(String(plan.transactionId))) problems.push(`${label}: транзакция уже связана с другим планом`);
+            linkedPlanTransactions.add(String(plan.transactionId));
+            const linked = transactionsById.get(String(plan.transactionId));
+            if (plan.status === 'paid' && linked?.type !== 'expense') problems.push(`${label}: связанная транзакция должна быть расходом`);
+        }
+        if (typeof plan.category !== 'string' || plan.category.trim() === '') problems.push(`${label}: некорректная category`);
+        if (typeof plan.description !== 'undefined' && typeof plan.description !== 'string') problems.push(`${label}: некорректное description`);
+        if (hasPaidAt && !validDate(plan.paidAt)) problems.push(`${label}: некорректная paidAt`);
+        if (plan.status === 'paid' && (!hasTransaction || !hasPaidAt)) problems.push(`${label}: paid требует transactionId и paidAt`);
+        if (plan.status !== 'paid' && (hasTransaction || hasPaidAt)) problems.push(`${label}: pending/skipped не должны иметь paid-ссылки`);
+    });
+    if (plannedpayments.length > 0) summary.push(`Разовые платежи: ${plannedpayments.length}`);
+
     return { ok: problems.length === 0, summary, problems };
 }
 
-// Reads every backed-up collection. The only database calls the backup path
-// ever makes, and all of them are reads - which is what lets the whole
-// script run under a MongoDB user holding just the `read` role.
-async function readAllCollections(db) {
+// Reads every backed-up collection through one snapshot session. The caller
+// owns the session (and starts it with { snapshot: true }); all calls remain
+// reads, so the backup path still works with a MongoDB user holding only the
+// `read` role. Sequential reads are intentional: one session is shared.
+async function readAllCollections(db, { session } = {}) {
+    if (!session) throw new Error('Для согласованного бэкапа нужна MongoDB snapshot session');
     const collections = {};
     for (const name of BACKUP_COLLECTIONS) {
-        collections[name] = await db.collection(name).find({}).toArray();
+        collections[name] = await db.collection(name).find({}, { session }).toArray();
     }
     return collections;
+}
+
+// Version 1 predates planned payments. Keep its version for reporting while
+// supplying the new collection to restore and inspection as an empty array.
+function normalizeBackupDocument(doc) {
+    if (!doc || typeof doc !== 'object' || doc.formatVersion !== LEGACY_BACKUP_FORMAT_VERSION) return doc;
+    const hasPlannedpayments = Array.isArray(doc.data?.plannedpayments);
+    const plannedpayments = hasPlannedpayments ? doc.data.plannedpayments : [];
+    const counts = { ...(doc.counts || {}) };
+    if (!hasPlannedpayments) counts.plannedpayments = 0;
+    return {
+        ...doc,
+        data: { ...doc.data, plannedpayments },
+        counts
+    };
 }
 
 // Writes a validated backup back into the database.
@@ -254,29 +326,55 @@ async function readAllCollections(db) {
 // insertMany is skipped for an empty array because the driver rejects an
 // empty batch - a collection that was legitimately empty at backup time
 // would otherwise fail the whole restore.
-async function restoreCollections(db, data, { replace = false } = {}) {
-    const restored = {};
-    for (const name of BACKUP_COLLECTIONS) {
-        const documents = data[name];
-        if (replace) await db.collection(name).deleteMany({});
-        if (documents.length > 0) await db.collection(name).insertMany(documents);
-        restored[name] = documents.length;
+async function restoreCollections(db, data, { replace = false, session } = {}) {
+    if (!session) throw new Error('Восстановление требует MongoDB transaction session');
+    if (typeof session.withTransaction !== 'function') {
+        throw new Error('Восстановление требует MongoDB session.withTransaction');
     }
+
+    const missing = BACKUP_COLLECTIONS.filter(name => !Array.isArray(data?.[name]));
+    if (missing.length > 0) throw new Error(`Восстановление требует коллекции: ${missing.join(', ')}`);
+    const normalizedData = data;
+    const restored = {};
+    await session.withTransaction(async () => {
+        // Repeat the non-empty guard inside the transaction. The CLI preflight
+        // is useful UX, but checking only there leaves a race before deleteMany.
+        if (!replace) {
+            const existing = await countAllCollections(db, { session });
+            const nonEmpty = BACKUP_COLLECTIONS.filter(name => existing[name] > 0);
+            if (nonEmpty.length > 0) {
+                throw new Error(`Целевая база не пуста: ${nonEmpty.join(', ')}`);
+            }
+        }
+
+        for (const name of BACKUP_COLLECTIONS) {
+            const documents = normalizedData[name];
+            if (replace) await db.collection(name).deleteMany({}, { session });
+            if (documents.length > 0) await db.collection(name).insertMany(documents, { session });
+            restored[name] = documents.length;
+        }
+    }, {
+        readConcern: { level: 'snapshot' },
+        writeConcern: { w: 'majority' },
+        readPreference: 'primary'
+    });
     return restored;
 }
 
 // Current per-collection document counts, used to decide whether the target
 // is safe to restore onto.
-async function countAllCollections(db) {
+async function countAllCollections(db, { session } = {}) {
     const counts = {};
     for (const name of BACKUP_COLLECTIONS) {
-        counts[name] = await db.collection(name).countDocuments();
+        counts[name] = await db.collection(name).countDocuments({}, session ? { session } : undefined);
     }
     return counts;
 }
 
 module.exports = {
     BACKUP_COLLECTIONS,
+    LEGACY_BACKUP_COLLECTIONS,
+    LEGACY_BACKUP_FORMAT_VERSION,
     BACKUP_FILENAME_PATTERN,
     DEFAULT_MONGO_DATABASE,
     inspectBackupContents,
@@ -290,5 +388,6 @@ module.exports = {
     buildBackupDocument,
     validateBackupDocument,
     summarizeCounts,
-    isEmptyBackup
+    isEmptyBackup,
+    normalizeBackupDocument
 };
