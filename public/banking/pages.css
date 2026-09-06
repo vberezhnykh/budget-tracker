@@ -1,0 +1,7 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.6; }
+body { margin: 0; }
+main { max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; }
+h1 { font-size: 1.8rem; line-height: 1.25; }
+h2 { font-size: 1.15rem; margin-top: 2rem; }
+a { color: light-dark(#254cc0, #a8c3ff); }
+button { font: inherit; padding: .65rem 1rem; border-radius: .5rem; cursor: pointer; }

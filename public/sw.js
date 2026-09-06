@@ -65,7 +65,10 @@ self.addEventListener('fetch', (event) => {
     if (url.origin !== self.location.origin) return;
 
     // Вот оно, главное правило. Ни чтения из кеша, ни записи в него.
-    if (isApiRequest(url)) return;
+    // Bank callbacks contain one-time authorization codes. Keep the whole
+    // banking flow out of caches and never replace the offline app shell
+    // with a callback or privacy page.
+    if (isApiRequest(url) || url.pathname.toLowerCase().startsWith('/banking/')) return;
 
     // Навигация - сначала сеть: страница должна обновляться сразу после
     // выката, а не через сутки. Кеш тут - страховка на случай, когда сети

@@ -175,6 +175,19 @@ describe('Service worker', () => {
         expect(event.responded).toBe(false);
     });
 
+    it('не кеширует банковские ответы и не заменяет ими офлайн-оболочку', async () => {
+        const before = new Map(cacheStore);
+        for (const url of [
+            'https://budget.example/banking/callback.html?code=one-time&state=nonce',
+            'https://budget.example/banking/privacy.html',
+            'https://budget.example/BANKING/callback.js'
+        ]) {
+            expect(dispatchFetch(url, { mode: 'navigate' }).responded).toBe(false);
+            expect(dispatchFetch(url).responded).toBe(false);
+        }
+        expect(cacheStore).toEqual(before);
+    });
+
     it('не трогает чужие домены', async () => {
         const event = dispatchFetch('https://fonts.gstatic.com/s/inter/font.woff2');
 

@@ -23,6 +23,9 @@ server/.env.backup
 server/backup_before_multiaccounts/
 server/**/*.xlsx
 
+# Local bank API keys, configuration and authorization callback files.
+server/.banking/
+
 # Misc
 .DS_Store
 .env
