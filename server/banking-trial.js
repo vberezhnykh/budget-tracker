@@ -13,13 +13,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 class TrialError extends Error {}
 const fail = message => { throw new TrialError(message); };
 const safeText = value => String(value || '').replace(/[\p{Cc}\p{Cf}]/gu, ' ').slice(0, 70);
+const accountCurrency = value => typeof value === 'string' && /^[A-Z]{3}$/.test(value) ? value : null;
 const HELP = `Enable Banking: пробное чтение без импорта и сохранения данных.
   node server/banking-trial.js --config <file.json> --check
   node server/banking-trial.js --config <file.json> --connect [--callback-file <new-file>]
 Config: applicationId, privateKeyPath, redirectUrl (HTTPS, без query/hash), country, bank.
 privateKeyPath разрешается относительно config. bank — точное имя из Enable Banking.
 --check: только приложение и доступность personal/AIS банка.
---connect: согласие до 1 часа; последние 7 дней, максимум 5 EUR-счетов и 4 страницы/счёт.
+--connect: согласие до 1 часа; последние 7 дней, максимум 5 счетов и 4 страницы/счёт.
 Callback вводится скрыто в TTY. Иначе после появления ссылки сохраните конечный URL
 в новый --callback-file (ожидание до 10 минут); файл читает CLI, удалите его после пробы.
 Сессия API закрывается после чтения. Привязка счетов в Control Panel сохраняется.
@@ -168,7 +169,8 @@ async function readTransactions(api, accountId, now) {
         for (const row of data.transactions) {
             if (++total > MAX_ROWS) { summary.truncated = true; break; }
             const amount = row?.transaction_amount;
-            const date = row?.booking_date;
+            const date = row?.booking_date ?? row?.transaction_date ?? row?.value_date;
+            const dateLabel = row?.booking_date != null ? '' : row?.transaction_date != null ? ' (дата операции)' : ' (дата валютирования)';
             const bookedAt = Date.parse(`${date}T00:00:00Z`);
             const cents = Math.round(Number(amount?.amount) * 100);
             if (row?.status !== 'BOOK' || amount?.currency !== 'EUR' || !['DBIT', 'CRDT'].includes(row.credit_debit_indicator)
@@ -181,7 +183,7 @@ async function readTransactions(api, accountId, now) {
             const debit = row.credit_debit_indicator === 'DBIT';
             if (!Number.isSafeInteger(summary[debit ? 'debitCents' : 'creditCents'] + cents)) fail('Суммы операций превышают безопасную точность.');
             summary[debit ? 'debitCents' : 'creditCents'] += cents;
-            if (summary.samples.length < 5) summary.samples.push(`${date} ${debit ? '−' : '+'}${(cents / 100).toFixed(2)} EUR ${safeText((debit ? row.creditor : row.debtor)?.name)}`.trim());
+            if (summary.samples.length < 5) summary.samples.push(`${date}${dateLabel} ${debit ? '−' : '+'}${(cents / 100).toFixed(2)} EUR ${safeText((debit ? row.creditor : row.debtor)?.name)}`.trim());
         }
         cursor = data.continuation_key;
         if (!cursor || summary.truncated) break;
@@ -212,7 +214,7 @@ async function runTrial(config, { mode = 'check', fetchImpl, output = console.lo
     const auth = await api('/auth', 'POST', { access: { valid_until: new Date(expiresAt).toISOString(), transactions: true, balances: false }, aspsp: { name: config.bank, country: config.country }, psu_type: 'personal', state, redirect_url: config.redirectUrl });
     let authUrl;
     try { authUrl = new URL(auth?.url); } catch { fail('API не вернул ссылку авторизации.'); }
-    if (authUrl.origin !== 'https://auth.enablebanking.com' || authUrl.username || authUrl.password) fail('Неожиданный адрес авторизации.');
+    if (!['https://auth.enablebanking.com', 'https://tilisy.enablebanking.com'].includes(authUrl.origin) || authUrl.username || authUrl.password) fail('Неожиданный адрес авторизации.');
     output(`Откройте ссылку в браузере и подтвердите доступ: ${authUrl.href}`);
     const code = validate(await readCallback(deadline));
     let sessionId;
@@ -221,15 +223,38 @@ async function runTrial(config, { mode = 'check', fetchImpl, output = console.lo
         if (!UUID.test(session?.session_id)) fail('API не вернул корректную сессию.');
         sessionId = session.session_id;
         if (!Array.isArray(session.accounts)) fail('API не вернул список счетов.');
-        const accounts = session.accounts.filter(account => account.currency === 'EUR' && UUID.test(account.uid));
-        output(`Доступно счетов: ${session.accounts.length}; читаемых EUR: ${accounts.length}.`);
+        // Some responses contain only UUIDs. Missing account metadata must not
+        // be mistaken for a non-EUR account; the transaction currency stays strict.
+        const normalized = session.accounts.map(account => ({
+            uid: typeof account === 'string' ? account : account?.uid,
+            currency: accountCurrency(account?.currency)
+        }));
+        const idAbsent = account => account.uid === undefined || account.uid === null || account.uid === '';
+        const missing = normalized.filter(idAbsent).length;
+        const invalid = normalized.filter(account => !idAbsent(account) && !UUID.test(account.uid)).length;
+        const otherCurrency = normalized.filter(account => UUID.test(account.uid) && account.currency && account.currency !== 'EUR').length;
+        const accounts = normalized.filter(account => UUID.test(account.uid) && (!account.currency || account.currency === 'EUR'));
+        output(`Доступно счетов: ${session.accounts.length}; без доступного ID: ${missing + invalid} (ID отсутствует: ${missing}, неверный формат ID: ${invalid}); другая валюта: ${otherCurrency}; кандидатов для чтения: ${accounts.length}.`);
         if (!session.accounts.length) output('Список пуст: проверьте, что выбранные счета привязаны к приложению в Control Panel.');
-        if (accounts.length > MAX_ACCOUNTS) output(`Проба ограничена первыми ${MAX_ACCOUNTS} EUR-счетами.`);
+        if (accounts.length > MAX_ACCOUNTS) output(`Проба ограничена первыми ${MAX_ACCOUNTS} счетами, включая запросы реквизитов.`);
+        let readAccounts = 0;
         for (const [index, account] of accounts.slice(0, MAX_ACCOUNTS).entries()) {
+            if (!account.currency) {
+                const details = await api(`/accounts/${account.uid}/details`);
+                if (!details || typeof details !== 'object' || Array.isArray(details)) fail('API не вернул корректные реквизиты счёта.');
+                account.currency = accountCurrency(details.currency);
+            }
+            if (account.currency && account.currency !== 'EUR') {
+                output(`Счёт ${index + 1}: другая валюта, чтение операций пропущено.`);
+                continue;
+            }
+            if (!account.currency) output(`Счёт ${index + 1}: валюта не указана; учитываем только операции BOOK/EUR.`);
             const result = await readTransactions(api, account.uid, now());
+            readAccounts++;
             output(`Счёт ${index + 1}: BOOK/EUR ${result.count}; исходящие ${(result.debitCents / 100).toFixed(2)} EUR, входящие ${(result.creditCents / 100).toFixed(2)} EUR; пропущено ${result.skipped}, дубли ${result.duplicates}${result.truncated ? '; показана часть данных (лимит пробы)' : ''}.`);
             result.samples.forEach(line => output(`  ${line}`));
         }
+        if (readAccounts === 0) fail('Проверка чтения не выполнена: среди выбранных счетов нет доступного ID с EUR или неизвестной валютой. Сверьте диагностику счетов выше.');
     } finally {
         if (sessionId) {
             try { await api(`/sessions/${sessionId}`, 'DELETE'); output('Пробная сессия API закрыта. Данные не импортированы и не сохранены.'); }

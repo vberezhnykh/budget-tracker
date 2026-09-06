@@ -18,7 +18,7 @@ const bank = { name: config.bank, country: config.country, psu_types: ['personal
 const row = overrides => ({ status: 'BOOK', booking_date: '2026-09-06', transaction_amount: { amount: '12.34', currency: 'EUR' }, credit_debit_indicator: 'DBIT', entry_reference: 'ref-1', creditor: { name: 'Example Shop' }, ...overrides });
 const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, text: vi.fn(async () => JSON.stringify(body)) });
 
-function scenario({ active = true, banks = [bank], pages = [{ transactions: [row()] }], failure = null, cleanupFailure = false } = {}) {
+function scenario({ active = true, banks = [bank], pages = [{ transactions: [row()] }], failure = null, cleanupFailure = false, authUrl = 'https://auth.enablebanking.com/ais/start?sessionid=auth-reference', accounts = [{ uid, currency: 'EUR', name: 'Private holder', account_id: { iban: 'PRIVATE-IBAN' } }], details = { currency: 'EUR' }, detailsFailure = false } = {}) {
     let authBody;
     let page = 0;
     const output = vi.fn();
@@ -28,9 +28,10 @@ function scenario({ active = true, banks = [bank], pages = [{ transactions: [row
         if (pathname === '/aspsps') return response({ aspsps: banks });
         if (pathname === '/auth') {
             authBody = JSON.parse(options.body);
-            return response({ url: 'https://auth.enablebanking.com/ais/start?sessionid=auth-reference' });
+            return response({ url: authUrl });
         }
-        if (pathname === '/sessions') return response({ session_id: sessionId, accounts: [{ uid, currency: 'EUR', name: 'Private holder', account_id: { iban: 'PRIVATE-IBAN' } }] });
+        if (pathname === '/sessions') return response({ session_id: sessionId, accounts });
+        if (pathname.endsWith('/details')) return response(details, detailsFailure ? 403 : 200);
         if (pathname.endsWith('/transactions')) {
             if (failure) return response({ error: failure }, 403);
             return response(pages[page++]);
@@ -133,6 +134,83 @@ describe('one-time callback validation', () => {
 });
 
 describe('standalone read-only flow', () => {
+    it.each([uid, { uid }])('resolves currency through details for a UUID string or an account without metadata: case %#', async account => {
+        const deps = scenario({ accounts: [account] });
+        await runTrial(config, { ...deps, mode: 'connect' });
+        expect(deps.fetchImpl.mock.calls.filter(([url]) => new URL(url).pathname.endsWith('/details'))).toHaveLength(1);
+        expect(deps.fetchImpl.mock.calls.some(([url]) => url === `https://api.enablebanking.com/accounts/${uid}/details`)).toBe(true);
+        expect(deps.output.mock.calls.flat().join()).toContain('BOOK/EUR 1');
+        expect(deps.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
+    });
+    it('keeps an unknown account currency explicit and counts only strict BOOK/EUR transactions', async () => {
+        const deps = scenario({ accounts: [{ uid }], details: { name: 'Private holder', account_id: { iban: 'PRIVATE-IBAN' } }, pages: [{ transactions: [row(), row({ entry_reference: 'usd', transaction_amount: { currency: 'USD', amount: '8' } }), row({ entry_reference: 'pending', status: 'PDNG' })] }] });
+        await runTrial(config, { ...deps, mode: 'connect' });
+        const printed = deps.output.mock.calls.flat().join();
+        expect(printed).toContain('валюта не указана; учитываем только операции BOOK/EUR');
+        expect(printed).toContain('BOOK/EUR 1');
+        expect(printed).toContain('пропущено 2');
+        for (const secret of [uid, 'Private holder', 'PRIVATE-IBAN']) expect(printed).not.toContain(secret);
+    });
+    it('separately reports unavailable IDs without requesting details or printing identifiers', async () => {
+        const deps = scenario({ accounts: [null, { currency: 'EUR' }, { uid: 'PRIVATE-INVALID-ID', currency: 'EUR' }] });
+        await expect(runTrial(config, { ...deps, mode: 'connect' })).rejects.toThrow('Проверка чтения не выполнена');
+        const printed = deps.output.mock.calls.flat().join();
+        expect(printed).toContain('без доступного ID: 3');
+        expect(printed).toContain('ID отсутствует: 2, неверный формат ID: 1');
+        expect(printed).not.toContain('PRIVATE-INVALID-ID');
+        expect(deps.fetchImpl.mock.calls.some(([url]) => new URL(url).pathname.startsWith('/accounts/'))).toBe(false);
+        expect(deps.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
+    });
+    it('skips known non-EUR accounts before details and non-EUR accounts discovered by details', async () => {
+        const deps = scenario({ accounts: [{ uid, currency: 'USD' }, { uid }], details: { currency: 'GBP' } });
+        await expect(runTrial(config, { ...deps, mode: 'connect' })).rejects.toThrow('Проверка чтения не выполнена');
+        expect(deps.output.mock.calls.flat().join()).toContain('другая валюта: 1');
+        expect(deps.output.mock.calls.flat().join()).toContain('другая валюта, чтение операций пропущено');
+        expect(deps.fetchImpl.mock.calls.filter(([url]) => new URL(url).pathname.endsWith('/details'))).toHaveLength(1);
+        expect(deps.fetchImpl.mock.calls.some(([url]) => new URL(url).pathname.endsWith('/transactions'))).toBe(false);
+    });
+    it('fails an empty account list but accepts a readable account with no recent transactions', async () => {
+        const emptyAccounts = scenario({ accounts: [] });
+        await expect(runTrial(config, { ...emptyAccounts, mode: 'connect' })).rejects.toThrow('Проверка чтения не выполнена');
+        expect(emptyAccounts.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
+        const noTransactions = scenario({ pages: [{ transactions: [] }] });
+        await expect(runTrial(config, { ...noTransactions, mode: 'connect' })).resolves.toBeUndefined();
+        expect(noTransactions.output.mock.calls.flat().join()).toContain('BOOK/EUR 0');
+    });
+    it('limits both details and transaction retrieval to five account candidates', async () => {
+        const accounts = Array.from({ length: 6 }, (_, index) => ({ uid: `33333333-3333-4333-8333-33333333333${index}` }));
+        const deps = scenario({ accounts, details: {}, pages: accounts.map(() => ({ transactions: [] })) });
+        await runTrial(config, { ...deps, mode: 'connect' });
+        expect(deps.fetchImpl.mock.calls.filter(([url]) => new URL(url).pathname.endsWith('/details'))).toHaveLength(5);
+        expect(deps.fetchImpl.mock.calls.filter(([url]) => new URL(url).pathname.endsWith('/transactions'))).toHaveLength(5);
+        expect(deps.fetchImpl.mock.calls.some(([url]) => url.includes(accounts[5].uid))).toBe(false);
+        expect(deps.output.mock.calls.flat().join()).toContain('первыми 5 счетами, включая запросы реквизитов');
+    });
+    it('closes the session and fails explicitly if fetching missing account metadata fails', async () => {
+        const deps = scenario({ accounts: [uid], details: { error: 'PRIVATE-UPSTREAM-ERROR' }, detailsFailure: true });
+        await expect(runTrial(config, { ...deps, mode: 'connect' })).rejects.toThrow('HTTP 403');
+        expect(deps.fetchImpl.mock.calls.some(([url]) => new URL(url).pathname.endsWith('/transactions'))).toBe(false);
+        expect(deps.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
+        expect(deps.output.mock.calls.flat().join()).not.toContain('PRIVATE-UPSTREAM-ERROR');
+    });
+    it('accepts the exact legacy tilisy HTTPS authorization origin', async () => {
+        const deps = scenario({ authUrl: 'https://tilisy.enablebanking.com/ais/start?sessionid=auth-reference' });
+        await runTrial(config, { ...deps, mode: 'connect' });
+        expect(deps.readCallback).toHaveBeenCalledOnce();
+        expect(deps.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
+    });
+    it.each([
+        'https://auth.enablebanking.com.evil.example/ais/?code=secret',
+        'https://tilisy.enablebanking.com.evil.example/ais/?code=secret',
+        'https://user:secret@tilisy.enablebanking.com/ais/',
+        'http://tilisy.enablebanking.com/ais/?code=secret'
+    ])('rejects lookalike, credential-bearing and non-HTTPS authorization URLs: case %#', async authUrl => {
+        const deps = scenario({ authUrl });
+        await expect(runTrial(config, { ...deps, mode: 'connect' })).rejects.toThrow('Неожиданный адрес авторизации.');
+        expect(deps.readCallback).not.toHaveBeenCalled();
+        expect(deps.fetchImpl).toHaveBeenCalledTimes(3);
+        expect(deps.output.mock.calls.flat().join()).not.toContain('secret');
+    });
     it('--check only reads application and exact personal/AIS bank availability', async () => {
         const deps = scenario({ active: false });
         await expect(runTrial(config, { ...deps, mode: 'check' })).resolves.toEqual({ active: false });
@@ -190,6 +268,34 @@ describe('standalone read-only flow', () => {
 });
 
 describe('bounded pagination and summaries', () => {
+    it.each([
+        [{ booking_date: undefined, transaction_date: '2026-09-05', value_date: '2026-09-04' }, '2026-09-05 (дата операции)'],
+        [{ booking_date: null, value_date: '2026-09-04' }, '2026-09-04 (дата валютирования)']
+    ])('uses the available fallback date and labels its meaning: case %#', async (dates, expected) => {
+        const result = await readTransactions(async () => ({ transactions: [row(dates)] }), uid, NOW);
+        expect(result.count).toBe(1);
+        expect(result.samples[0]).toContain(expected);
+        expect(result.debitCents).toBe(1234);
+    });
+    it('always prioritizes a supplied booking date, even when another date would pass filtering', async () => {
+        const result = await readTransactions(async () => ({ transactions: [
+            row({ booking_date: '2026-09-06', transaction_date: '2026-08-30' }),
+            row({ booking_date: '2026-08-30', transaction_date: '2026-09-06' }),
+            row({ booking_date: '2026-08-32', transaction_date: '2026-09-06' }),
+            row({ booking_date: '', transaction_date: '2026-09-06' })
+        ] }), uid, NOW);
+        expect(result).toMatchObject({ count: 1, skipped: 3, debitCents: 1234 });
+        expect(result.samples[0]).toMatch(/^2026-09-06 −12\.34 EUR/);
+    });
+    it('skips absent dates and fallback dates outside the seven-day window', async () => {
+        const result = await readTransactions(async () => ({ transactions: [
+            row({ booking_date: undefined }),
+            row({ booking_date: undefined, transaction_date: '2026-08-30', value_date: '2026-09-06' }),
+            row({ booking_date: undefined, value_date: '2026-09-07' })
+        ] }), uid, NOW);
+        expect(result).toMatchObject({ count: 0, skipped: 3, debitCents: 0 });
+        expect(result.samples).toEqual([]);
+    });
     it('stops at its page cap and explicitly marks the result incomplete', async () => {
         const api = vi.fn(async () => ({ transactions: [row({ entry_reference: `ref-${api.mock.calls.length}` })], continuation_key: `cursor-${api.mock.calls.length}` }));
         const result = await readTransactions(api, uid, NOW);
