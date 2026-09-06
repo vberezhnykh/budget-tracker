@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseArgs, loadConfig, createJwt, createApi, createCallbackValidator, readTransactions, runTrial, MAX_PAGES } from './banking-trial.js';
+import { parseArgs, loadConfig, createJwt, createApi, createCallbackValidator, parseDecimal, formatDecimal, readTransactions, runTrial, MAX_PAGES } from './banking-trial.js';
 
 const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
 const NOW = Date.parse('2026-09-06T12:00:00Z');
@@ -139,16 +139,17 @@ describe('standalone read-only flow', () => {
         await runTrial(config, { ...deps, mode: 'connect' });
         expect(deps.fetchImpl.mock.calls.filter(([url]) => new URL(url).pathname.endsWith('/details'))).toHaveLength(1);
         expect(deps.fetchImpl.mock.calls.some(([url]) => url === `https://api.enablebanking.com/accounts/${uid}/details`)).toBe(true);
-        expect(deps.output.mock.calls.flat().join()).toContain('BOOK/EUR 1');
+        expect(deps.output.mock.calls.flat().join()).toContain('EUR: операций 1');
         expect(deps.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
     });
-    it('keeps an unknown account currency explicit and counts only strict BOOK/EUR transactions', async () => {
+    it('keeps an unknown account currency explicit and reports transaction currencies separately', async () => {
         const deps = scenario({ accounts: [{ uid }], details: { name: 'Private holder', account_id: { iban: 'PRIVATE-IBAN' } }, pages: [{ transactions: [row(), row({ entry_reference: 'usd', transaction_amount: { currency: 'USD', amount: '8' } }), row({ entry_reference: 'pending', status: 'PDNG' })] }] });
         await runTrial(config, { ...deps, mode: 'connect' });
         const printed = deps.output.mock.calls.flat().join();
-        expect(printed).toContain('валюта не указана; учитываем только операции BOOK/EUR');
-        expect(printed).toContain('BOOK/EUR 1');
-        expect(printed).toContain('пропущено 2');
+        expect(printed).toContain('валюта не указана; итоги раздельно по валютам операций');
+        expect(printed).toContain('EUR: операций 1');
+        expect(printed).toContain('USD: операций 1');
+        expect(printed).toContain('пропущено 1');
         for (const secret of [uid, 'Private holder', 'PRIVATE-IBAN']) expect(printed).not.toContain(secret);
     });
     it('separately reports unavailable IDs without requesting details or printing identifiers', async () => {
@@ -161,13 +162,32 @@ describe('standalone read-only flow', () => {
         expect(deps.fetchImpl.mock.calls.some(([url]) => new URL(url).pathname.startsWith('/accounts/'))).toBe(false);
         expect(deps.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
     });
-    it('skips known non-EUR accounts before details and non-EUR accounts discovered by details', async () => {
-        const deps = scenario({ accounts: [{ uid, currency: 'USD' }, { uid }], details: { currency: 'GBP' } });
-        await expect(runTrial(config, { ...deps, mode: 'connect' })).rejects.toThrow('Проверка чтения не выполнена');
-        expect(deps.output.mock.calls.flat().join()).toContain('другая валюта: 1');
-        expect(deps.output.mock.calls.flat().join()).toContain('другая валюта, чтение операций пропущено');
+    it('reads non-EUR accounts and prints their actual safe currency code', async () => {
+        const deps = scenario({ accounts: [{ uid, currency: 'USD' }, { uid: '44444444-4444-4444-8444-444444444444' }], details: { currency: 'GBP' }, pages: [
+            { transactions: [row({ transaction_amount: { currency: 'USD', amount: '4.50' } })] },
+            { transactions: [row({ transaction_amount: { currency: 'GBP', amount: '8.125' } })] }
+        ] });
+        await runTrial(config, { ...deps, mode: 'connect' });
+        const printed = deps.output.mock.calls.flat().join();
+        expect(printed).toContain('Счёт 1: валюта USD');
+        expect(printed).toContain('Счёт 2: валюта GBP');
+        expect(printed).toContain('исходящие 4.50 USD');
+        expect(printed).toContain('исходящие 8.125 GBP');
+        expect(printed).not.toContain('EUR');
         expect(deps.fetchImpl.mock.calls.filter(([url]) => new URL(url).pathname.endsWith('/details'))).toHaveLength(1);
-        expect(deps.fetchImpl.mock.calls.some(([url]) => new URL(url).pathname.endsWith('/transactions'))).toBe(false);
+        expect(deps.fetchImpl.mock.calls.filter(([url]) => new URL(url).pathname.endsWith('/transactions'))).toHaveLength(2);
+        expect(deps.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
+    });
+    it('reads EUR transactions for an XXX account without requesting unnecessary details', async () => {
+        const deps = scenario({ accounts: [{ uid, currency: 'XXX' }], pages: [{ transactions: [row(), row({ transaction_amount: { currency: 'XXX', amount: '1' } })] }] });
+        await runTrial(config, { ...deps, mode: 'connect' });
+        const printed = deps.output.mock.calls.flat().join();
+        expect(printed).toContain('XXX — не указана/мультивалютный');
+        expect(printed).toContain('EUR: операций 1');
+        expect(printed).toContain('пропущено 1');
+        expect(printed).toContain('валюта 1');
+        expect(printed).not.toContain('XXX: операций');
+        expect(deps.fetchImpl.mock.calls.some(([url]) => new URL(url).pathname.endsWith('/details'))).toBe(false);
     });
     it('fails an empty account list but accepts a readable account with no recent transactions', async () => {
         const emptyAccounts = scenario({ accounts: [] });
@@ -175,7 +195,7 @@ describe('standalone read-only flow', () => {
         expect(emptyAccounts.fetchImpl.mock.calls.at(-1)[1].method).toBe('DELETE');
         const noTransactions = scenario({ pages: [{ transactions: [] }] });
         await expect(runTrial(config, { ...noTransactions, mode: 'connect' })).resolves.toBeUndefined();
-        expect(noTransactions.output.mock.calls.flat().join()).toContain('BOOK/EUR 0');
+        expect(noTransactions.output.mock.calls.flat().join()).toContain('проведённых операций 0');
     });
     it('limits both details and transaction retrieval to five account candidates', async () => {
         const accounts = Array.from({ length: 6 }, (_, index) => ({ uid: `33333333-3333-4333-8333-33333333333${index}` }));
@@ -238,7 +258,8 @@ describe('standalone read-only flow', () => {
         expect(new URL(reads[1][0]).searchParams.get('continuation_key')).toBe('opaque+cursor');
         expect(deps.fetchImpl.mock.calls.at(-1)).toMatchObject([`https://api.enablebanking.com/sessions/${sessionId}`, { method: 'DELETE' }]);
         const printed = deps.output.mock.calls.flat().join('\n');
-        expect(printed).toContain('BOOK/EUR 2');
+        expect(printed).toContain('EUR: операций 2');
+        expect(printed).toContain('USD: операций 1');
         expect(printed).toContain('исходящие 12.34 EUR, входящие 12.34 EUR');
         expect(printed).toContain('дубли 1');
         for (const secret of ['PRIVATE-IBAN', 'Private holder', 'secret-code', '\x1b']) expect(printed).not.toContain(secret);
@@ -268,6 +289,41 @@ describe('standalone read-only flow', () => {
 });
 
 describe('bounded pagination and summaries', () => {
+    it('uses exact decimal arithmetic and never combines different currencies', async () => {
+        const entry = (currency, amount, reference, indicator = 'DBIT') => row({ transaction_amount: { currency, amount }, entry_reference: reference, credit_debit_indicator: indicator });
+        const result = await readTransactions(async () => ({ transactions: [
+            entry('EUR', '0.10', 'eur-1'), entry('EUR', '0.20', 'eur-2'),
+            entry('USD', '9007199254740993.123456789012345678', 'usd-1'),
+            entry('KWD', '1.005', 'kwd-1'), entry('KWD', '0.006', 'kwd-2'), entry('KWD', '2.123', 'kwd-credit', 'CRDT')
+        ] }), uid, NOW);
+        expect(result).toMatchObject({ count: 6, skipped: 0, duplicates: 0 });
+        expect(Object.keys(result.byCurrency)).toEqual(['EUR', 'USD', 'KWD']);
+        expect(formatDecimal(result.byCurrency.EUR.debit)).toBe('0.30');
+        expect(formatDecimal(result.byCurrency.USD.debit)).toBe('9007199254740993.123456789012345678');
+        expect(formatDecimal(result.byCurrency.KWD.debit)).toBe('1.011');
+        expect(formatDecimal(result.byCurrency.KWD.credit)).toBe('2.123');
+        expect(result.byCurrency.KWD.count).toBe(3);
+        expect(result).not.toHaveProperty('debitCents');
+    });
+    it('parses decimal strings without float conversion or rounding', () => {
+        expect(formatDecimal(parseDecimal('0.000000000000000001'))).toBe('0.000000000000000001');
+        expect(formatDecimal(parseDecimal('00012.3400'))).toBe('12.34');
+        expect(formatDecimal(0n)).toBe('0.00');
+        for (const invalid of ['0', '-1.2', '1e3', '1.0000000000000000001', '1234567890123456789012345678901', '1.2 private', '1.', '', 0.1, null]) {
+            expect(parseDecimal(invalid)).toBeNull();
+        }
+    });
+    it('keeps entry-reference deduplication scoped to the account even if a repeated row changes currency', async () => {
+        const result = await readTransactions(async () => ({ transactions: [row(), row({ transaction_amount: { currency: 'USD', amount: '12.34' } })] }), uid, NOW);
+        expect(result).toMatchObject({ count: 1, duplicates: 1 });
+        expect(Object.keys(result.byCurrency)).toEqual(['EUR']);
+    });
+    it('counts absent, malformed and XXX transaction currencies as skipped without creating a fake currency total', async () => {
+        const transactions = [undefined, 'EUR-private', 'XXX'].map(currency => row({ transaction_amount: { currency, amount: '2.5' } }));
+        const result = await readTransactions(async () => ({ transactions }), uid, NOW);
+        expect(result).toMatchObject({ count: 0, skipped: 3, byCurrency: {}, skipReasons: { currency: 3 } });
+        expect(result.samples).toEqual([]);
+    });
     it.each([
         [{ booking_date: undefined, transaction_date: '2026-09-05', value_date: '2026-09-04' }, '2026-09-05 (дата операции)'],
         [{ booking_date: null, value_date: '2026-09-04' }, '2026-09-04 (дата валютирования)']
@@ -275,7 +331,7 @@ describe('bounded pagination and summaries', () => {
         const result = await readTransactions(async () => ({ transactions: [row(dates)] }), uid, NOW);
         expect(result.count).toBe(1);
         expect(result.samples[0]).toContain(expected);
-        expect(result.debitCents).toBe(1234);
+        expect(result.byCurrency.EUR.debit).toBe(parseDecimal('12.34'));
     });
     it('always prioritizes a supplied booking date, even when another date would pass filtering', async () => {
         const result = await readTransactions(async () => ({ transactions: [
@@ -284,7 +340,7 @@ describe('bounded pagination and summaries', () => {
             row({ booking_date: '2026-08-32', transaction_date: '2026-09-06' }),
             row({ booking_date: '', transaction_date: '2026-09-06' })
         ] }), uid, NOW);
-        expect(result).toMatchObject({ count: 1, skipped: 3, debitCents: 1234 });
+        expect(result).toMatchObject({ count: 1, skipped: 3, byCurrency: { EUR: { debit: parseDecimal('12.34') } } });
         expect(result.samples[0]).toMatch(/^2026-09-06 −12\.34 EUR/);
     });
     it('skips absent dates and fallback dates outside the seven-day window', async () => {
@@ -293,7 +349,7 @@ describe('bounded pagination and summaries', () => {
             row({ booking_date: undefined, transaction_date: '2026-08-30', value_date: '2026-09-06' }),
             row({ booking_date: undefined, value_date: '2026-09-07' })
         ] }), uid, NOW);
-        expect(result).toMatchObject({ count: 0, skipped: 3, debitCents: 0 });
+        expect(result).toMatchObject({ count: 0, skipped: 3, byCurrency: {} });
         expect(result.samples).toEqual([]);
     });
     it('stops at its page cap and explicitly marks the result incomplete', async () => {
@@ -307,11 +363,11 @@ describe('bounded pagination and summaries', () => {
         await expect(readTransactions(api, uid, NOW)).rejects.toThrow('повторяющаяся страница');
         expect(api).toHaveBeenCalledTimes(2);
     });
-    it('filters non-booked, non-EUR, dates outside the trial and invalid amounts; limits samples', async () => {
+    it('filters non-booked entries, dates outside the trial and invalid amounts; limits samples', async () => {
         const valid = Array.from({ length: 8 }, (_, i) => row({ entry_reference: `ref-${i}` }));
         const invalid = [row({ status: 'PDNG' }), row({ booking_date: '2026-08-30' }), row({ booking_date: '2026-08-32' }), row({ transaction_amount: { amount: '-4', currency: 'EUR' } }), row({ transaction_amount: { amount: '1e999', currency: 'EUR' } }), row({ credit_debit_indicator: 'UNKNOWN' })];
         const result = await readTransactions(async () => ({ transactions: [...valid, ...invalid] }), uid, NOW);
-        expect(result).toMatchObject({ count: 8, skipped: 6, debitCents: 9872 });
+        expect(result).toMatchObject({ count: 8, skipped: 6, byCurrency: { EUR: { debit: parseDecimal('98.72') } }, skipReasons: { status: 1, date: 2, currency: 0, amount: 2, indicator: 1 } });
         expect(result.samples).toHaveLength(5);
     });
 });
