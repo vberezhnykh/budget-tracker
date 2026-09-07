@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { MongoClient } from 'mongodb';
-import { EJSON } from 'bson';
+import { EJSON, ObjectId } from 'bson';
 import { describe, it, expect, vi, inject } from 'vitest';
 import {
     BACKUP_COLLECTIONS,
@@ -29,8 +29,13 @@ const fullCollections = (overrides = {}) => ({
     categories: [{ _id: 'c1' }],
     settings: [{ _id: 's1' }],
     plannedpayments: [],
+    bankconnections: [],
+    bankaccounts: [],
+    bankentries: [],
+    banklinks: [],
     ...overrides
 });
+const EMPTY_BANK_COUNTS = { bankconnections: 0, bankaccounts: 0, bankentries: 0, banklinks: 0 };
 
 describe('buildBackupDocument', () => {
     it('stores every collection with its own count', () => {
@@ -38,7 +43,7 @@ describe('buildBackupDocument', () => {
 
         expect(doc.formatVersion).toBe(BACKUP_FORMAT_VERSION);
         expect(doc.exportedAt).toBe('2026-08-16T05:30:00.000Z');
-        expect(doc.counts).toEqual({ transactions: 2, accounts: 1, categories: 1, settings: 1, plannedpayments: 0 });
+        expect(doc.counts).toEqual({ transactions: 2, accounts: 1, categories: 1, settings: 1, plannedpayments: 0, ...EMPTY_BANK_COUNTS });
         expect(Object.keys(doc.data).sort()).toEqual([...BACKUP_COLLECTIONS].sort());
     });
 
@@ -130,7 +135,32 @@ describe('validateBackupDocument', () => {
         expect(validateBackupDocument(legacy).errors.join(' ')).toMatch(/plannedpayments.*заявлено 2/);
     });
 
-    it('requires plannedpayments and its count in v2', () => {
+    it('accepts v2 without banking collections and normalizes without mutating the source', () => {
+        const old = {
+            formatVersion: 2, exportedAt: '2026-08-16T05:30:00.000Z',
+            counts: { transactions: 1, accounts: 0, categories: 0, settings: 0, plannedpayments: 1 },
+            data: { transactions: [{ _id: 'manual' }], accounts: [], categories: [], settings: [], plannedpayments: [{ _id: 'plan' }] }
+        };
+        expect(validateBackupDocument(old)).toEqual({ ok: true, errors: [] });
+        const normalized = normalizeBackupDocument(old);
+        expect(normalized.formatVersion).toBe(2);
+        expect(normalized.data).toEqual({ ...old.data, bankconnections: [], bankaccounts: [], bankentries: [], banklinks: [] });
+        expect(normalized.counts).toEqual({ ...old.counts, ...EMPTY_BANK_COUNTS });
+        expect(old.data).not.toHaveProperty('banklinks');
+    });
+
+    it('rejects missing banking data in v3 and inconsistent optional banking data in v2', () => {
+        const current = buildBackupDocument(fullCollections());
+        expect(current.formatVersion).toBe(3);
+        delete current.data.banklinks;
+        delete current.counts.banklinks;
+        expect(validateBackupDocument(current).errors.join(' ')).toMatch(/banklinks/);
+        const older = { ...buildBackupDocument(fullCollections()), formatVersion: 2 };
+        older.counts.banklinks = 1;
+        expect(validateBackupDocument(older).errors.join(' ')).toMatch(/banklinks.*заявлено 1/);
+    });
+
+    it('requires plannedpayments and its count in the current format', () => {
         const doc = buildBackupDocument(fullCollections());
         delete doc.data.plannedpayments;
         delete doc.counts.plannedpayments;
@@ -139,7 +169,7 @@ describe('validateBackupDocument', () => {
         expect(errors.join(' ')).toMatch(/plannedpayments/);
     });
 
-    it('round-trips a v2 planned payment through EJSON', () => {
+    it('round-trips a planned payment through EJSON', () => {
         const plan = {
             _id: 'p1', title: 'Аренда', amount: 1000, dueDate: new Date('2026-04-01'),
             account: 'a1', category: 'Жильё', status: 'pending', paidAt: null
@@ -411,7 +441,7 @@ describe('probeWriteAccess', () => {
 
 describe('summarizeCounts', () => {
     it('lists every collection, including ones missing from the input', () => {
-        expect(summarizeCounts({ transactions: 3 })).toBe('transactions: 3, accounts: 0, categories: 0, settings: 0, plannedpayments: 0');
+        expect(summarizeCounts({ transactions: 3 })).toBe('transactions: 3, accounts: 0, categories: 0, settings: 0, plannedpayments: 0, bankconnections: 0, bankaccounts: 0, bankentries: 0, banklinks: 0');
     });
 });
 
@@ -478,7 +508,7 @@ describe('readAllCollections', () => {
 });
 
 describe('restoreCollections', () => {
-    const data = () => ({ transactions: [{ _id: 't1' }, { _id: 't2' }], accounts: [{ _id: 'a1' }], categories: [], settings: [{ _id: 's1' }], plannedpayments: [] });
+    const data = () => fullCollections({ categories: [] });
 
     it('inserts without clearing when replace is off', async () => {
         const db = fakeDb();
@@ -486,7 +516,7 @@ describe('restoreCollections', () => {
 
         const restored = await restoreCollections(db, data(), { session });
 
-        expect(restored).toEqual({ transactions: 2, accounts: 1, categories: 0, settings: 1, plannedpayments: 0 });
+        expect(restored).toEqual({ transactions: 2, accounts: 1, categories: 0, settings: 1, plannedpayments: 0, ...EMPTY_BANK_COUNTS });
         for (const name of BACKUP_COLLECTIONS) {
             expect(db.collections[name].deleteMany).not.toHaveBeenCalled();
         }
@@ -528,8 +558,58 @@ describe('restoreCollections', () => {
 
         const restored = await restoreCollections(db, legacyData, { session });
 
-        expect(restored).toEqual({ transactions: 1, accounts: 0, categories: 0, settings: 0, plannedpayments: 0 });
+        expect(restored).toEqual({ transactions: 1, accounts: 0, categories: 0, settings: 0, plannedpayments: 0, ...EMPTY_BANK_COUNTS });
         expect(db.collections.plannedpayments.insertMany).not.toHaveBeenCalled();
+    });
+
+    it('restores older v2 ledger and plans while initializing empty banking collections', async () => {
+        const db = fakeDb();
+        const session = fakeSession();
+        const old = {
+            formatVersion: 2, exportedAt: '2026-08-16T05:30:00.000Z',
+            counts: { transactions: 1, accounts: 1, categories: 0, settings: 0, plannedpayments: 1 },
+            data: { transactions: [{ _id: 'manual' }], accounts: [{ _id: 'a1' }], categories: [], settings: [], plannedpayments: [{ _id: 'plan' }] }
+        };
+        expect(validateBackupDocument(old).ok).toBe(true);
+        const result = await restoreCollections(db, normalizeBackupDocument(old).data, { session });
+        expect(result).toEqual({ ...old.counts, ...EMPTY_BANK_COUNTS });
+        expect(db.collections.transactions.insertMany).toHaveBeenCalledWith(old.data.transactions, { session });
+        expect(db.collections.plannedpayments.insertMany).toHaveBeenCalledWith(old.data.plannedpayments, { session });
+        expect(db.collections.banklinks.insertMany).not.toHaveBeenCalled();
+    });
+
+    it('round-trips decisions and link tombstones even when the ledger row is permanently deleted', async () => {
+        const connectionId = new ObjectId();
+        const bankAccountId = new ObjectId();
+        const entryId = new ObjectId();
+        const removedTransactionId = new ObjectId();
+        const source = fullCollections({
+            transactions: [],
+            bankconnections: [{ _id: connectionId, bank: 'boc', sessionCiphertext: 'opaque-encrypted-session', consentExpiresAt: new Date('2026-12-01') }],
+            bankaccounts: [{ _id: bankAccountId, connectionId, identificationHash: 'stable-account-hash', uidCiphertext: 'opaque-encrypted-account' }],
+            bankentries: [
+                { _id: entryId, bankAccountId, key: 'posted-reference', status: 'matched', transactionIds: [removedTransactionId], version: 2 },
+                { _id: new ObjectId(), bankAccountId, key: 'ignored-reference', status: 'ignored', version: 1 },
+            ],
+            banklinks: [{ _id: `${bankAccountId}:${removedTransactionId}:expense`, entryId, transactionId: removedTransactionId }],
+            bankauthorizations: [{ _id: 'expired-browser-state', nonceHash: 'not-durable' }],
+            bankcontrols: [{ _id: 'ledger', revision: 12 }],
+        });
+        const parsed = EJSON.parse(EJSON.stringify(buildBackupDocument(source)));
+        expect(validateBackupDocument(parsed).ok).toBe(true);
+        expect(parsed.data).not.toHaveProperty('bankauthorizations');
+        expect(parsed.data).not.toHaveProperty('bankcontrols');
+        expect(parsed.data.bankconnections[0].consentExpiresAt).toBeInstanceOf(Date);
+        expect(parsed.data.banklinks[0].transactionId).toBeInstanceOf(ObjectId);
+        const db = fakeDb();
+        const session = fakeSession();
+        const restored = await restoreCollections(db, parsed.data, { session });
+        expect(restored.bankentries).toBe(2);
+        expect(restored.banklinks).toBe(1);
+        expect(restored.transactions).toBe(0);
+        expect(db.collections.banklinks.insertMany).toHaveBeenCalledWith(parsed.data.banklinks, { session });
+        expect(db.collections.bankentries.insertMany).toHaveBeenCalledWith(parsed.data.bankentries, { session });
+        expect(parsed.data.banklinks[0].transactionId.equals(removedTransactionId)).toBe(true);
     });
 
     it('aborts the transaction when a later collection fails', async () => {
@@ -600,22 +680,26 @@ describe('replica-set backup integrity', () => {
         try {
             for (const name of BACKUP_COLLECTIONS) await db.createCollection(name);
             await db.collection('transactions').insertOne({ _id: 'before' });
+            // This link intentionally outlives its deleted ledger row.
+            const tombstone = { _id: 'bank-account:removed-row:expense', entryId: 'bank-entry', transactionId: 'removed-row' };
+            await db.collection('banklinks').insertOne(tombstone);
 
             snapshotSession = client.startSession({ snapshot: true });
             await db.collection('transactions').find({}, { session: snapshotSession }).toArray();
             await db.collection('accounts').insertOne({ _id: 'after-snapshot' });
             const snapshot = await readAllCollections(db, { session: snapshotSession });
             expect(snapshot.accounts).toEqual([]);
+            expect(snapshot.banklinks).toEqual([tombstone]);
             await snapshotSession.endSession();
             snapshotSession = null;
 
-            const failedRestore = {
+            const failedRestore = fullCollections({
                 transactions: [{ _id: 'replacement' }],
                 accounts: [{ _id: 'replacement-account' }],
                 categories: [{ _id: 'same' }, { _id: 'same' }],
                 settings: [],
                 plannedpayments: []
-            };
+            });
             const restoreSession = client.startSession();
             try {
                 await expect(restoreCollections(db, failedRestore, { replace: true, session: restoreSession })).rejects.toThrow();
@@ -623,9 +707,18 @@ describe('replica-set backup integrity', () => {
                 await restoreSession.endSession();
             }
 
-            expect(await countAllCollections(db)).toEqual({ transactions: 1, accounts: 1, categories: 0, settings: 0, plannedpayments: 0 });
+            expect(await countAllCollections(db)).toEqual({ transactions: 1, accounts: 1, categories: 0, settings: 0, plannedpayments: 0, ...EMPTY_BANK_COUNTS, banklinks: 1 });
             expect(await db.collection('transactions').findOne({ _id: 'before' })).not.toBeNull();
             expect(await db.collection('transactions').findOne({ _id: 'replacement' })).toBeNull();
+            expect(await db.collection('banklinks').findOne({ _id: tombstone._id })).toEqual(tombstone);
+
+            const restoreBankSession = client.startSession();
+            try {
+                const saved = EJSON.parse(EJSON.stringify(buildBackupDocument(snapshot)));
+                await restoreCollections(db, saved.data, { replace: true, session: restoreBankSession });
+            } finally { await restoreBankSession.endSession(); }
+            expect(await db.collection('banklinks').findOne({ _id: tombstone._id })).toEqual(tombstone);
+            expect(await db.collection('transactions').findOne({ _id: tombstone.transactionId })).toBeNull();
         } finally {
             if (snapshotSession) await snapshotSession.endSession();
             await db.dropDatabase();
@@ -638,7 +731,7 @@ describe('countAllCollections', () => {
     it('reports the current size of every collection', async () => {
         const db = fakeDb({ transactions: [{}, {}, {}], settings: [{}] });
 
-        expect(await countAllCollections(db)).toEqual({ transactions: 3, accounts: 0, categories: 0, settings: 1, plannedpayments: 0 });
+        expect(await countAllCollections(db)).toEqual({ transactions: 3, accounts: 0, categories: 0, settings: 1, plannedpayments: 0, ...EMPTY_BANK_COUNTS });
     });
 });
 

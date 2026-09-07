@@ -74,6 +74,8 @@ export default function AccountsSettingsModal({
   onDragEnd,
   onSaveSettings,
   onOpenTrash,
+  onOpenBanking,
+  pendingBankingCount = 0,
   onLogout,
   showNotice,
 }) {
@@ -328,6 +330,12 @@ export default function AccountsSettingsModal({
             </DndContext>
           </div>
         </div>
+
+        {onOpenBanking && (
+          <button type="button" onClick={onOpenBanking} style={{ padding: '12px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-inset)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-main)', fontSize: 'var(--text-base)', fontWeight: '700' }}>
+            Банки{pendingBankingCount > 0 ? ` · предложений: ${pendingBankingCount}` : ''}
+          </button>
+        )}
 
         {/* Monthly spending limit - shared across devices via the server
             (see GET/PUT /api/settings in server/app.js), so it's edited

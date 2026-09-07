@@ -21,6 +21,7 @@ let dbOptions;
 let configLoaded = false;
 let httpServer = null;
 let selfPingTimer = null;
+let bankingTimer = null;
 let shuttingDown = false;
 
 function loadConfig() {
@@ -76,7 +77,12 @@ async function startServer() {
             await mongoose.connect(process.env.MONGODB_URI, dbOptions);
             console.log(`MongoDB Connected (${isProduction ? 'Production' : 'Development: budget-tracker-dev'})`);
         },
-        seed: seedDefaults,
+        seed: async () => {
+            await seedDefaults();
+            // Durable bank identifiers must be unique before the first
+            // consent callback or scheduled fetch can write proposals.
+            await Promise.all(Object.values(require('./banking/models')).map(model => model.init()));
+        },
         listen,
         isCancelled: () => shuttingDown,
         onCancelled: () => mongoose.disconnect()
@@ -84,6 +90,9 @@ async function startServer() {
 
     console.log(`Server running on port ${PORT}`);
     startSelfPing();
+    app.locals.bankingService.kickDueSyncs();
+    bankingTimer = setInterval(() => app.locals.bankingService.kickDueSyncs(), 60_000);
+    bankingTimer.unref?.();
     return httpServer;
 }
 
@@ -91,6 +100,7 @@ async function shutdown(signal = null) {
     if (shuttingDown) return;
     shuttingDown = true;
     if (selfPingTimer) clearInterval(selfPingTimer);
+    if (bankingTimer) clearInterval(bankingTimer);
 
     try {
         await closeHttpServer(httpServer);

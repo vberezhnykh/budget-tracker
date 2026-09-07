@@ -9,6 +9,7 @@ import PeriodPicker from './components/PeriodPicker'
 import SummaryCard from './components/SummaryCard'
 import PlannedPaymentsView from './components/PlannedPaymentsView'
 import TrashSheet from './components/TrashSheet'
+import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
 import { formatPeriodLabel, toDativeMonth, listPeriodMonths, formatMonthName } from './utils/period'
 import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast, getMonthlyTotals } from './utils/finance'
@@ -22,6 +23,7 @@ const ACCOUNTS_URL = '/api/accounts';
 const SETTINGS_URL = '/api/settings';
 const PLANNED_PAYMENTS_URL = '/api/planned-payments';
 const TRASH_URL = '/api/trash';
+const BANKING_URL = '/api/banking';
 // Used until the server's settings document has loaded (or if it 404s on an
 // older deployment) - mirrors the server's own default in server/app.js.
 const DEFAULT_MONTHLY_LIMIT = 7000;
@@ -47,6 +49,14 @@ function App() {
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashError, setTrashError] = useState('');
   const [showTrash, setShowTrash] = useState(false);
+  const [showBanking, setShowBanking] = useState(false);
+  const [banking, setBanking] = useState(null);
+  const [bankingReview, setBankingReview] = useState({ items: [], total: 0 });
+  const [bankingLoading, setBankingLoading] = useState(false);
+  const [bankingError, setBankingError] = useState('');
+  const bankingGenerationRef = useRef(0);
+  const bankingReadInFlightRef = useRef(null);
+  const bankingCallbackRef = useRef(null);
   const [undoDeletion, setUndoDeletion] = useState(null);
   const sessionGenerationRef = useRef(0);
   const loadGenerationRef = useRef(0);
@@ -152,6 +162,13 @@ function App() {
     setTrashError('');
     setTrashLoading(false);
     setShowTrash(false);
+    setShowBanking(false);
+    setBanking(null);
+    setBankingReview({ items: [], total: 0 });
+    setBankingLoading(false);
+    setBankingError('');
+    bankingGenerationRef.current += 1;
+    bankingReadInFlightRef.current = null;
     setUndoDeletion(null);
     undoDeletionIdRef.current = null;
     trashGenerationRef.current += 1;
@@ -294,6 +311,115 @@ function App() {
     loadData({ initial: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Bank snapshots are independent of the budget snapshot: a bank outage must
+  // not prevent using manually entered expenses. Pending entries never enter
+  // the transactions state or the statistics derived from it.
+  const fetchBanking = async ({ includeReview = showBanking, background = false } = {}) => {
+    if (background && bankingReadInFlightRef.current !== null) return false;
+    const session = sessionGenerationRef.current;
+    const generation = ++bankingGenerationRef.current;
+    bankingReadInFlightRef.current = generation;
+    const isCurrent = () => session === sessionGenerationRef.current && generation === bankingGenerationRef.current;
+    setBankingLoading(true);
+    setBankingError('');
+    try {
+      const data = await readJson(BANKING_URL, 'Не удалось загрузить подключения банков');
+      if (!data || typeof data.configured !== 'boolean' || !Array.isArray(data.connections)) throw new DataLoadError('Не удалось прочитать подключения банков');
+      if (!isCurrent()) return false;
+      const review = includeReview && data.configured
+        ? await readJson(`${BANKING_URL}/review`, 'Не удалось загрузить операции для проверки')
+        : null;
+      if (review && (!Array.isArray(review.items) || !Number.isInteger(review.total))) throw new DataLoadError('Не удалось прочитать операции для проверки');
+      if (!isCurrent()) return false;
+      setBanking(data);
+      if (review) setBankingReview(review);
+      if (!data.configured) setBankingReview({ items: [], total: 0 });
+      return true;
+    } catch (error) {
+      if (isCurrent()) setBankingError(error instanceof DataLoadError ? error.message : 'Не удалось подключиться к серверу');
+      return false;
+    } finally {
+      if (bankingReadInFlightRef.current === generation) bankingReadInFlightRef.current = null;
+      if (isCurrent()) setBankingLoading(false);
+    }
+  };
+
+  const openBanking = () => {
+    setShowAccountsSettings(false);
+    setShowBanking(true);
+  };
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get('banking');
+    if (!['connected', 'error'].includes(result)) return;
+    bankingCallbackRef.current = result;
+    url.searchParams.delete('banking');
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !bankingCallbackRef.current) return;
+    const result = bankingCallbackRef.current;
+    bankingCallbackRef.current = null;
+    openBanking();
+    showNotice(result === 'connected' ? 'Банк подключён. Проверьте привязку счетов и новые операции.' : 'Подключение банка не завершено. Попробуйте ещё раз.', result === 'connected' ? 'success' : 'error');
+    // The callback is consumed once, after the app session has been loaded.
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || (!showBanking && !showAccountsSettings)) return;
+    fetchBanking({ includeReview: showBanking });
+    // Poll only our server's status while the bank sheet is visible. The
+    // server, not a browser timer, owns the bank synchronization schedule.
+    const timer = showBanking ? setInterval(() => fetchBanking({ includeReview: true, background: true }), 15_000) : null;
+    return () => { if (timer) clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, showBanking, showAccountsSettings]);
+
+  const mutateBanking = async (path, method, body, { refreshBudget = false, resolvedEntryId } = {}) => {
+    const session = sessionGenerationRef.current;
+    try {
+      const res = await apiFetch(`${BANKING_URL}${path}`, {
+        method,
+        ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      });
+      const data = await res.json().catch(() => null);
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      if (!res.ok) {
+        if (res.status === 409 || res.status === 429) await fetchBanking({ includeReview: true });
+        return { ok: false, error: data?.message || 'Не удалось выполнить действие. Обновите банковские данные и повторите.' };
+      }
+      if (resolvedEntryId) {
+        // The decision is durable even if the following GET fails. Remove
+        // that proposal locally so a failed refresh cannot invite another POST.
+        setBankingReview(current => ({ ...current, items: current.items.filter(entry => entry.id !== resolvedEntryId), total: Math.max(0, current.total - 1) }));
+        setBanking(current => current ? { ...current, pendingReviewCount: Math.max(0, (current.pendingReviewCount || 0) - 1) } : current);
+      }
+      if (refreshBudget) await Promise.all([loadData({ initial: false }), fetchBanking({ includeReview: true })]);
+      else await fetchBanking({ includeReview: true });
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'Не удалось подключиться к серверу' };
+    }
+  };
+
+  const handleConnectBank = async (fields) => {
+    const session = sessionGenerationRef.current;
+    try {
+      const res = await apiFetch(`${BANKING_URL}/connect`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+      const data = await res.json().catch(() => null);
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      if (!res.ok) return { ok: false, error: data?.message || 'Не удалось начать подключение банка' };
+      const url = new URL(data?.authorizationUrl);
+      if (!['https://auth.enablebanking.com', 'https://tilisy.enablebanking.com'].includes(url.origin) || url.username || url.password) return { ok: false, error: 'Сервер вернул неожиданный адрес подключения банка' };
+      window.location.assign(url.href);
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'Не удалось начать подключение банка' };
+    }
+  };
 
   const handleAddCategory = async (name, type) => {
     const session = sessionGenerationRef.current;
@@ -485,12 +611,35 @@ function App() {
   const handleAddTransaction = async (newTx) => {
     const session = sessionGenerationRef.current;
     try {
-      const res = await apiFetch(API_URL, {
+      const post = payload => apiFetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTx)
+        body: JSON.stringify(payload)
       });
+      let res = await post(newTx);
       if (session !== sessionGenerationRef.current) return false;
+      let data = res.ok ? null : await res.json().catch(() => null);
+      if (session !== sessionGenerationRef.current) return false;
+      if (res.status === 409 && data?.code === 'BANK_DUPLICATE') {
+        const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+        let extra;
+        if (candidates.length === 1) {
+          const candidate = candidates[0];
+          const description = `${candidate.title || 'Операция'} · ${candidate.amount} EUR · ${String(candidate.date || '').slice(0, 10)}`;
+          if (window.confirm(`Похожая операция уже загружена из банка: ${description}. Объединить с ней, сохранив введённые данные?`)) {
+            extra = { bankMatchEntryId: candidate.entryId, bankTransactionVersion: candidate.version };
+          }
+        }
+        if (!extra && window.confirm('В банке уже есть похожие записи. Добавить отдельную операцию?')) extra = { bankDuplicateAction: 'separate' };
+        if (!extra || session !== sessionGenerationRef.current) return false;
+        // A split purchase is one candidate by its total. Only the first row
+        // carries the user's resolution; the server validates the whole group.
+        const payload = Array.isArray(newTx) ? newTx.map((tx, index) => index === 0 ? { ...tx, ...extra } : tx) : { ...newTx, ...extra };
+        res = await post(payload);
+        if (session !== sessionGenerationRef.current) return false;
+        data = res.ok ? null : await res.json().catch(() => null);
+        if (session !== sessionGenerationRef.current) return false;
+      }
       if (res.ok) {
         // The write is already durable. If the following GET refresh fails,
         // loadData keeps the old snapshot and exposes a retry that performs
@@ -498,7 +647,6 @@ function App() {
         await loadData({ initial: false });
         return true;
       }
-      const data = await res.json().catch(() => null);
       showNotice((data && data.message) || 'Не удалось сохранить операцию');
       return false;
     } catch (err) {
@@ -1562,8 +1710,32 @@ function App() {
           onDragEnd={onAccountDragEnd}
           onSaveSettings={handleSaveSettings}
           onOpenTrash={openTrash}
+          onOpenBanking={openBanking}
+          pendingBankingCount={banking?.pendingReviewCount || 0}
           onLogout={handleLogout}
           showNotice={showNotice}
+        />
+      )}
+      {showBanking && (
+        <BankingSheet
+          data={banking}
+          review={bankingReview}
+          accounts={accounts}
+          categories={categories}
+          loading={bankingLoading}
+          error={bankingError}
+          onClose={() => {
+            bankingGenerationRef.current += 1;
+            bankingReadInFlightRef.current = null;
+            setShowBanking(false);
+            setBankingLoading(false);
+          }}
+          onRetry={() => fetchBanking({ includeReview: true })}
+          onConnect={handleConnectBank}
+          onMapAccount={(id, accountId) => mutateBanking(`/accounts/${encodeURIComponent(id)}/mapping`, 'PUT', { accountId }, { refreshBudget: true })}
+          onSync={id => mutateBanking(`/connections/${encodeURIComponent(id)}/sync`, 'POST', null, { refreshBudget: true })}
+          onDisconnect={id => mutateBanking(`/connections/${encodeURIComponent(id)}`, 'DELETE')}
+          onResolve={(id, fields) => mutateBanking(`/review/${encodeURIComponent(id)}/resolve`, 'POST', fields, { refreshBudget: true, resolvedEntryId: id })}
         />
       )}
       {showTrash && (

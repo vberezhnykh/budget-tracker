@@ -16,11 +16,12 @@ const Transaction = require('./models/Transaction');
 const PlannedPayment = require('./models/PlannedPayment');
 const Category = require('./models/Category');
 const Account = require('./models/Account');
-const {
-    validateTransactionCreate,
-    validateTransactionUpdate,
-    validateTransactionVersion
-} = require('./transactionInput');
+const { BankAccount } = require('./banking/models');
+const { createBankingService } = require('./banking/service');
+const { createBankingRouter } = require('./banking/router');
+const { saveManualTransactions } = require('./banking/reconciliation');
+const { saveManualTransactionUpdate } = require('./banking/manualEdit');
+const { validateTransactionCreate } = require('./transactionInput');
 const { getCanonicalSettings, saveCanonicalSettings } = require('./settingsSingleton');
 const { createOperationalRouter } = require('./operational');
 const { activeTransactionFilter } = require('./ledgerState');
@@ -174,6 +175,13 @@ app.use(cors(corsOptionsDelegate));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 
+const bankingService = createBankingService();
+const bankingRouters = createBankingRouter({ service: bankingService });
+app.locals.bankingService = bankingService;
+// This router exposes only the single-use consent callback and the job
+// endpoint protected by its own secret. Banking data stays behind app auth.
+app.use('/banking', bankingRouters.publicRouter);
+
 // Auth gate for the API. Mounted before any route definitions (not after),
 // so it can't be bypassed by route ordering. Excludes /api/login (you need
 // to be able to reach it while unauthenticated), /api/health (liveness) and
@@ -181,6 +189,7 @@ app.use(cookieParser());
 // APP_PASSWORD/SESSION_SECRET are missing or too weak, and for the
 // AUTH_DISABLED/loopback-only bypass.
 app.use(createAuthMiddleware(authDisabled));
+app.use('/api/banking', bankingRouters.apiRouter);
 
 // Readiness is public so an orchestrator can decide whether to route traffic;
 // client error reports pass through the auth gate above like business APIs.
@@ -313,12 +322,17 @@ app.delete('/api/accounts/:id', async (req, res) => {
                 ]
             }).session(session);
             const planCount = await PlannedPayment.countDocuments({ account: req.params.id }).session(session);
+            const bankCount = await BankAccount.countDocuments({ accountId: req.params.id }).session(session);
             if (txCount > 0) {
                 outcome = { status: 400, message: 'Нельзя удалить счёт, по которому есть транзакции' };
                 return;
             }
             if (planCount > 0) {
                 outcome = { status: 400, message: 'Нельзя удалить счёт, на который ссылаются предстоящие платежи' };
+                return;
+            }
+            if (bankCount > 0) {
+                outcome = { status: 400, message: 'К этому счёту привязан банковский счёт' };
                 return;
             }
             await Account.deleteOne({ _id: account._id }, { session });
@@ -738,7 +752,7 @@ app.post('/api/transactions', async (req, res) => {
             );
             if (accountCheck.error) return res.status(400).json({ message: accountCheck.error });
 
-            const savedTransactions = await Transaction.insertMany(sanitizedTransactions);
+            const savedTransactions = await saveManualTransactions(sanitizedTransactions, req.body[0]);
             return res.json(savedTransactions);
         }
 
@@ -747,13 +761,11 @@ app.post('/api/transactions', async (req, res) => {
         const accountCheck = await validateAccountReferences([transaction.account, transaction.toAccount]);
         if (accountCheck.error) return res.status(400).json({ message: accountCheck.error });
 
-        const newTransaction = new Transaction(transaction);
-
-        const savedTransaction = await newTransaction.save();
+        const [savedTransaction] = await saveManualTransactions([transaction], req.body);
         res.json(savedTransaction);
     } catch (err) {
-        console.error('POST Error:', err.message);
-        res.status(400).json({ message: err.message });
+        res.status(err.status || 400).json({ message: err.message, ...(err.code ? { code: err.code } : {}),
+            ...(err.candidates ? { candidates: err.candidates } : {}) });
     }
 });
 
@@ -769,84 +781,9 @@ app.post('/api/transactions', async (req, res) => {
 // отсекал (он создаёт документ через save(), а тот валидацию выполняет).
 app.put('/api/transactions/:id', async (req, res) => {
     try {
-        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({ message: 'Invalid transaction ID' });
-        }
-
-        const currentTransaction = await Transaction.findById(req.params.id);
-        if (!currentTransaction) {
-            return res.status(404).json({ message: 'Transaction not found' });
-        }
-        if (currentTransaction.deletedAt) {
-            return res.status(409).json({ message: 'Операция находится в корзине и не может быть изменена' });
-        }
-
-        const { error: versionError, expectedVersion } = validateTransactionVersion(req.body);
-        if (versionError) {
-            return res.status(400).json({ message: versionError });
-        }
-
-        const currentVersion = Number.isInteger(currentTransaction.__v) ? currentTransaction.__v : 0;
-        if (expectedVersion !== currentVersion) {
-            return res.status(409).json({ message: 'Операция уже была изменена. Обновите данные и повторите попытку.' });
-        }
-
-        const { error, update, unset } = validateTransactionUpdate(req.body, currentTransaction);
-        if (error) {
-            return res.status(400).json({ message: error });
-        }
-        if (update.account !== undefined || update.toAccount !== undefined) {
-            const accountCheck = await validateAccountReferences([
-                update.account !== undefined ? update.account : currentTransaction.account,
-                update.toAccount !== undefined ? update.toAccount : currentTransaction.toAccount
-            ]);
-            if (accountCheck.error) return res.status(400).json({ message: accountCheck.error });
-        }
-
-        if (update.type !== undefined && update.type !== 'expense') {
-            const linked = await PlannedPayment.exists({ transactionId: currentTransaction._id, status: 'paid' });
-            if (linked) {
-                return res.status(409).json({ message: 'Связанный с платежом расход нельзя изменить на другой тип' });
-            }
-        }
-
-        // $set и $unset собираются явно, а не отдаются на автоматическое
-        // оборачивание mongoose: оно надёжно только пока в документе
-        // обновления нет ни одного оператора. Пустой $set при этом не
-        // отправляется вовсе - MongoDB такой документ отвергает.
-        const mongoUpdate = {};
-        if (Object.keys(update).length > 0) {
-            mongoUpdate.$set = update;
-        }
-        if (unset.length > 0) {
-            mongoUpdate.$unset = Object.fromEntries(unset.map(field => [field, '']));
-        }
-        mongoUpdate.$inc = { __v: 1 };
-
-        const versionFilter = expectedVersion === 0
-            ? {
-                _id: req.params.id,
-                deletedAt: null,
-                $or: [{ __v: 0 }, { __v: { $exists: false } }]
-            }
-            : { _id: req.params.id, __v: expectedVersion, deletedAt: null };
-
-        const updatedTransaction = await Transaction.findOneAndUpdate(
-            versionFilter,
-            mongoUpdate,
-            { new: true, runValidators: true }
-        );
-        if (!updatedTransaction) {
-            const stillExists = await Transaction.exists({ _id: req.params.id });
-            if (!stillExists) {
-                return res.status(404).json({ message: 'Transaction not found' });
-            }
-            return res.status(409).json({ message: 'Операция уже была изменена. Обновите данные и повторите попытку.' });
-        }
-        res.json(updatedTransaction);
+        res.json(await saveManualTransactionUpdate(req.params.id, req.body));
     } catch (err) {
-        console.error('PUT Error:', err.message);
-        res.status(400).json({ message: err.message });
+        res.status(err.status || 400).json({ message: err.message, ...(err.code ? { code: err.code } : {}) });
     }
 });
 

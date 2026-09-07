@@ -4,18 +4,27 @@
 // restoreCollections - is unit testable against a fake `db`, and the
 // scripts themselves stay thin wrappers around these.
 
-// Every collection the app owns. A backup that silently skipped one would
+// Every durable collection the app owns. A backup that silently skipped one would
 // look successful and restore an incomplete database, so this list is the
 // single source of truth for both directions and both scripts iterate it
 // rather than naming collections inline.
 const LEGACY_BACKUP_COLLECTIONS = ['transactions', 'accounts', 'categories', 'settings'];
-const BACKUP_COLLECTIONS = [...LEGACY_BACKUP_COLLECTIONS, 'plannedpayments'];
+const V2_BACKUP_COLLECTIONS = [...LEGACY_BACKUP_COLLECTIONS, 'plannedpayments'];
+// Pending browser authorizations expire and must not be resurrected. The
+// BankControl document is a concurrency primitive recreated by the service.
+// Decisions/links are durable, including tombstones for deleted ledger rows.
+const BACKUP_COLLECTIONS = [...V2_BACKUP_COLLECTIONS, 'bankconnections', 'bankaccounts', 'bankentries', 'banklinks'];
 
 // Bumped only when the shape of the backup document itself changes (not
 // when the app's schemas do). restore refuses a document whose version it
 // doesn't recognise rather than guessing at an older layout.
-const BACKUP_FORMAT_VERSION = 2;
+const BACKUP_FORMAT_VERSION = 3;
 const LEGACY_BACKUP_FORMAT_VERSION = 1;
+const COLLECTIONS_BY_VERSION = {
+    [LEGACY_BACKUP_FORMAT_VERSION]: LEGACY_BACKUP_COLLECTIONS,
+    2: V2_BACKUP_COLLECTIONS,
+    [BACKUP_FORMAT_VERSION]: BACKUP_COLLECTIONS
+};
 
 // Filesystem-safe, sorts chronologically as plain text, and keeps the UTC
 // instant readable: budget-backup-2026-08-16T05-30-00Z.json
@@ -90,9 +99,9 @@ function validateBackupDocument(doc) {
         return { ok: false, errors: ['Файл не является объектом бэкапа'] };
     }
 
-    const isLegacy = doc.formatVersion === LEGACY_BACKUP_FORMAT_VERSION;
-    if (doc.formatVersion !== BACKUP_FORMAT_VERSION && !isLegacy) {
-        errors.push(`Неизвестная версия формата: ${doc.formatVersion} (ожидается ${LEGACY_BACKUP_FORMAT_VERSION} или ${BACKUP_FORMAT_VERSION})`);
+    const requiredCollections = Number.isInteger(doc.formatVersion) ? COLLECTIONS_BY_VERSION[doc.formatVersion] : undefined;
+    if (!requiredCollections) {
+        errors.push(`Неизвестная версия формата: ${doc.formatVersion} (ожидается 1, 2 или ${BACKUP_FORMAT_VERSION})`);
     }
 
     if (typeof doc.exportedAt !== 'string' || Number.isNaN(Date.parse(doc.exportedAt))) {
@@ -105,10 +114,12 @@ function validateBackupDocument(doc) {
         return { ok: false, errors };
     }
 
-    // v1 did not have plannedpayments; all five collections are mandatory in
-    // v2, including their declared counts.
-    const requiredCollections = isLegacy ? LEGACY_BACKUP_COLLECTIONS : BACKUP_COLLECTIONS;
-    for (const name of requiredCollections) {
+    // Later collections are optional in old formats, but validate them and
+    // their counts whenever present. A partial bank collection is never silently
+    // normalized to empty and then treated as a successful restore.
+    for (const name of BACKUP_COLLECTIONS) {
+        const required = (requiredCollections || BACKUP_COLLECTIONS).includes(name);
+        if (!required && !Object.hasOwn(data, name) && !Object.hasOwn(doc.counts || {}, name)) continue;
         if (!Array.isArray(data[name])) {
             errors.push(`Коллекция "${name}" отсутствует или не является массивом`);
             continue;
@@ -118,18 +129,6 @@ function validateBackupDocument(doc) {
             errors.push(`Не указано число записей для "${name}"`);
         } else if (declared !== data[name].length) {
             errors.push(`Файл повреждён: в "${name}" заявлено ${declared} записей, фактически ${data[name].length}`);
-        }
-    }
-
-    if (isLegacy && Object.prototype.hasOwnProperty.call(data, 'plannedpayments')
-        && !Array.isArray(data.plannedpayments)) {
-        errors.push('Коллекция "plannedpayments" отсутствует или не является массивом');
-    } else if (isLegacy && Array.isArray(data.plannedpayments)) {
-        const declared = doc.counts ? doc.counts.plannedpayments : undefined;
-        if (typeof declared !== 'number') {
-            errors.push('Не указано число записей для "plannedpayments"');
-        } else if (declared !== data.plannedpayments.length) {
-            errors.push(`Файл повреждён: в "plannedpayments" заявлено ${declared} записей, фактически ${data.plannedpayments.length}`);
         }
     }
 
@@ -301,17 +300,23 @@ async function readAllCollections(db, { session } = {}) {
     return collections;
 }
 
-// Version 1 predates planned payments. Keep its version for reporting while
-// supplying the new collection to restore and inspection as an empty array.
+// v1 predates planned payments; v2 predates banking. Keep the original version
+// for reporting while supplying absent newer collections as empty arrays.
+// Call only after validateBackupDocument: malformed existing arrays/counts
+// must be refused before normalization.
 function normalizeBackupDocument(doc) {
-    if (!doc || typeof doc !== 'object' || doc.formatVersion !== LEGACY_BACKUP_FORMAT_VERSION) return doc;
-    const hasPlannedpayments = Array.isArray(doc.data?.plannedpayments);
-    const plannedpayments = hasPlannedpayments ? doc.data.plannedpayments : [];
+    if (!doc || typeof doc !== 'object' || ![LEGACY_BACKUP_FORMAT_VERSION, 2].includes(doc.formatVersion)) return doc;
+    const data = { ...doc.data };
     const counts = { ...(doc.counts || {}) };
-    if (!hasPlannedpayments) counts.plannedpayments = 0;
+    for (const name of BACKUP_COLLECTIONS) {
+        if (!Object.hasOwn(data, name)) {
+            data[name] = [];
+            counts[name] = 0;
+        }
+    }
     return {
         ...doc,
-        data: { ...doc.data, plannedpayments },
+        data,
         counts
     };
 }
