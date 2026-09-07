@@ -1,0 +1,13 @@
+[Unit]
+Description=Request banking proposals at 08:00, 14:00 and 20:00 Bucharest time
+
+[Timer]
+OnCalendar=*-*-* 08,14,20:00:00 Europe/Bucharest
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+WakeSystem=false
+Unit=budget-tracker-banking.service
+
+[Install]
+WantedBy=timers.target

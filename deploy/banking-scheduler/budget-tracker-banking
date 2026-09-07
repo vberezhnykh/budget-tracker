@@ -1,0 +1,40 @@
+#!/bin/sh
+set -eu
+
+# OnCalendar can fire late after suspend. Never send an overnight catch-up.
+hour=$(TZ=Europe/Bucharest /usr/bin/date +%H)
+case "$hour" in
+    08|14|20) ;;
+    *) printf '%s\n' 'Skipped: outside the scheduled Bucharest hours.'; exit 0 ;;
+esac
+
+config=/etc/budget-tracker-banking/curl.conf
+if /usr/bin/grep -q 'REPLACE_' "$config"; then
+    printf '%s\n' 'Scheduler configuration still contains placeholders.' >&2
+    exit 1
+fi
+
+# -q must come first: do not read root's default .curlrc.
+# Only a config path appears in argv; credentials stay in the root-only file.
+# One attempt, HTTPS only, explicit HTTP/1.1, no redirect following.
+if http_status=$(/usr/bin/curl -q \
+    --config "$config" \
+    --http1.1 \
+    --proto '=https' \
+    --connect-timeout 30 \
+    --max-time 90 \
+    --retry 0 \
+    --silent --show-error \
+    --output /dev/null \
+    --write-out '%{http_code}'); then
+    if [ "$http_status" = 202 ]; then
+        printf '%s\n' 'Accepted: HTTP 202; bank completion is reported in the app.'
+    else
+        printf 'Unexpected HTTP status: %s\n' "$http_status" >&2
+        exit 1
+    fi
+else
+    result=$?
+    printf 'Wake request failed: curl exit %s.\n' "$result" >&2
+    exit "$result"
+fi
