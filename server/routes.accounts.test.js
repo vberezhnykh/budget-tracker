@@ -2,8 +2,10 @@
 //
 // Роуты счетов и настроек на настоящей базе.
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import mongoose from 'mongoose';
+import express from 'express';
+import { fileURLToPath } from 'node:url';
 import { connectTestDb, disconnectTestDb, clearCollections, loginAgent, tx, DB_HOOK_TIMEOUT } from './test/harness.js';
 
 let app;
@@ -22,6 +24,7 @@ beforeAll(async () => {
 
 afterAll(disconnectTestDb, DB_HOOK_TIMEOUT);
 beforeEach(clearCollections);
+afterEach(() => vi.unstubAllEnvs());
 
 describe('DELETE /api/accounts/:id', () => {
     it('удаляет счёт, по которому не было операций', async () => {
@@ -175,6 +178,42 @@ describe('GET /api/accounts', () => {
 });
 
 describe('Настройки', () => {
+    it('blocks encoded callback paths before static fallback while banking is disabled', async () => {
+        // Match production static serving without loading production secrets.
+        app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
+        const callback = vi.spyOn(app.locals.bankingService, 'completeAuthorization');
+        try {
+            vi.stubEnv('BANKING_ENABLED', 'true');
+            expect((await agent.get('/%62anking/callback.html')).status).toBe(200);
+            vi.stubEnv('BANKING_ENABLED', 'false');
+            for (const url of ['/%62anking/callback.html', '/banking%2fcallback.html']) {
+                const response = await agent.get(url);
+                expect(response.status).toBe(404);
+                expect(response.body.code).toBe('BANKING_DISABLED');
+                expect(response.headers['cache-control']).toBe('no-store');
+            }
+            expect(callback).not.toHaveBeenCalled();
+        } finally { callback.mockRestore(); }
+    });
+
+    it('reports the default-off runtime feature without creating a settings document', async () => {
+        vi.stubEnv('BANKING_ENABLED', undefined);
+        const response = await agent.get('/api/settings');
+        expect(response.body).toEqual({ monthlyLimit: 7000, features: { banking: false } });
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(await Settings.countDocuments()).toBe(0);
+    });
+
+    it('only the server environment enables banking; settings writes cannot persist or switch it', async () => {
+        vi.stubEnv('BANKING_ENABLED', 'false');
+        const saved = await agent.put('/api/settings').send({ monthlyLimit: 4321, features: { banking: true } });
+        expect(saved.status).toBe(200);
+        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: false } });
+        vi.stubEnv('BANKING_ENABLED', 'true');
+        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: true } });
+        expect(await Settings.findOne().lean()).not.toHaveProperty('features');
+    });
+
     it('до первого сохранения отдаёт значение по умолчанию, не создавая документ', async () => {
         const res = await agent.get('/api/settings');
 

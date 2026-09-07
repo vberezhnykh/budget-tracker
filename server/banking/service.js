@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const mongoose = require('mongoose');
 const { getConfig, createProvider, encrypt, decrypt } = require('./provider');
+const { isBankingEnabled } = require('./feature');
 const { BankConnection, BankAccount, BankEntry, BankAuthorization } = require('./models');
 const { cents, problem, candidatesFor, candidateToken, resolveEntry, withLedgerTransaction } = require('./reconciliation');
 const { lockAccountReferences } = require('../accountRefs');
@@ -15,13 +16,18 @@ const safeErrorCode = error => /^[A-Z_]{1,60}$/.test(error?.code || '') ? error.
 
 function createBankingService({ configFactory = getConfig, providerFactory = createProvider, now = () => new Date() } = {}) {
     let running = null;
+    function requireEnabled() {
+        if (!isBankingEnabled()) throw problem(404, 'BANKING_DISABLED', 'Банковская интеграция выключена.');
+    }
     function configured() {
+        requireEnabled();
         const config = configFactory();
         if (!config) throw problem(503, 'NOT_CONFIGURED', 'Подключение банков ещё не настроено на сервере.');
         return { config, provider: providerFactory(config) };
     }
 
     async function status() {
+        requireEnabled();
         let isConfigured = false;
         try { isConfigured = Boolean(configFactory()); } catch { /* Return safe setup state, never the key. */ }
         const connections = await BankConnection.find().lean();
@@ -123,6 +129,7 @@ function createBankingService({ configFactory = getConfig, providerFactory = cre
     }
 
     async function mapAccount(id, accountId) {
+        requireEnabled();
         if (!objectId(id) || !objectId(accountId)) throw problem(400, 'INVALID_ACCOUNT', 'Выберите существующий счёт приложения.');
         await withLedgerTransaction(async session => {
             const account = await BankAccount.findById(id).session(session).lean();
@@ -229,6 +236,7 @@ function createBankingService({ configFactory = getConfig, providerFactory = cre
     }
 
     async function runDueSyncs() {
+        if (!isBankingEnabled()) return { checked: 0 };
         if (!inSyncWindow(now())) return { checked: 0 };
         let config;
         try { config = configFactory(); } catch { return { checked: 0 }; }
@@ -241,6 +249,7 @@ function createBankingService({ configFactory = getConfig, providerFactory = cre
     }
 
     function kickDueSyncs() {
+        if (!isBankingEnabled()) return { status: 'disabled' };
         if (!running) running = runDueSyncs().catch(() => {}).finally(() => { running = null; });
         return { status: 'scheduled' };
     }
@@ -268,6 +277,7 @@ function createBankingService({ configFactory = getConfig, providerFactory = cre
     }
 
     async function listReview() {
+        requireEnabled();
         const filter = { status: { $in: ['new', 'pending'] } };
         const entries = await BankEntry.find(filter).sort({ date: -1, _id: -1 }).limit(100).lean();
         const items = [];
@@ -292,6 +302,7 @@ function createBankingService({ configFactory = getConfig, providerFactory = cre
     }
 
     async function resolveReview(id, body) {
+        requireEnabled();
         if (!objectId(id)) throw problem(400, 'INVALID_ENTRY', 'Операция не найдена.');
         return resolveEntry(id, body);
     }

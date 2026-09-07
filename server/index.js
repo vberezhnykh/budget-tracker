@@ -3,6 +3,7 @@
 // server/app.js, засев - в server/seed.js; импорт этого файла ничего не запускает.
 
 const dotenv = require('dotenv');
+const { isBankingEnabled } = require('./banking/feature');
 const {
     closeHttpServer,
     loadServerEnv,
@@ -81,7 +82,7 @@ async function startServer() {
             await seedDefaults();
             // Durable bank identifiers must be unique before the first
             // consent callback or scheduled fetch can write proposals.
-            await Promise.all(Object.values(require('./banking/models')).map(model => model.init()));
+            if (isBankingEnabled()) await Promise.all(Object.values(require('./banking/models')).map(model => model.init()));
         },
         listen,
         isCancelled: () => shuttingDown,
@@ -90,9 +91,11 @@ async function startServer() {
 
     console.log(`Server running on port ${PORT}`);
     startSelfPing();
-    app.locals.bankingService.kickDueSyncs();
-    bankingTimer = setInterval(() => app.locals.bankingService.kickDueSyncs(), 60_000);
-    bankingTimer.unref?.();
+    if (isBankingEnabled()) {
+        app.locals.bankingService.kickDueSyncs();
+        bankingTimer = setInterval(() => app.locals.bankingService.kickDueSyncs(), 60_000);
+        bankingTimer.unref?.();
+    }
     return httpServer;
 }
 

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeAll, afterAll, beforeEach, describe, it, expect, vi } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { createRequire } from 'node:module';
 import { connectTestDb, disconnectTestDb, clearCollections, loginAgent, DB_HOOK_TIMEOUT } from '../test/harness.js';
@@ -24,7 +24,9 @@ beforeAll(async () => {
     Category = mongoose.model('Category');
 }, DB_HOOK_TIMEOUT);
 afterAll(disconnectTestDb, DB_HOOK_TIMEOUT);
+afterEach(() => vi.unstubAllEnvs());
 beforeEach(async () => {
+    vi.stubEnv('BANKING_ENABLED', 'true');
     await clearCollections();
     clock = new Date('2026-09-07T05:00:00.000Z'); // 08:00 local
     provider = {

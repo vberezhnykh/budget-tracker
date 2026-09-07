@@ -19,6 +19,7 @@ const Account = require('./models/Account');
 const { BankAccount } = require('./banking/models');
 const { createBankingService } = require('./banking/service');
 const { createBankingRouter } = require('./banking/router');
+const { isBankingEnabled } = require('./banking/feature');
 const { saveManualTransactions } = require('./banking/reconciliation');
 const { saveManualTransactionUpdate } = require('./banking/manualEdit');
 const { validateTransactionCreate } = require('./transactionInput');
@@ -178,6 +179,19 @@ app.use(cookieParser());
 const bankingService = createBankingService();
 const bankingRouters = createBankingRouter({ service: bankingService });
 app.locals.bankingService = bankingService;
+// Static serving decodes paths after Express routing. Block encoded banking
+// paths too, so the old standalone callback cannot appear while disabled.
+app.use((req, res, next) => {
+    if (!isBankingEnabled()) {
+        let decoded = req.path;
+        try { decoded = decodeURIComponent(decoded).replace(/\\/g, '/'); } catch { /* Static handles malformed URLs. */ }
+        if (/^\/banking(?:\/|$)/i.test(path.posix.normalize(decoded))) {
+            return res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }).status(404)
+                .json({ code: 'BANKING_DISABLED', message: 'Банковская интеграция выключена.' });
+        }
+    }
+    next();
+});
 // This router exposes only the single-use consent callback and the job
 // endpoint protected by its own secret. Banking data stays behind app auth.
 app.use('/banking', bankingRouters.publicRouter);
@@ -487,7 +501,9 @@ const DEFAULT_MONTHLY_LIMIT = 7000;
 app.get('/api/settings', async (req, res) => {
     try {
         const settings = await getCanonicalSettings();
-        res.json({ monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT });
+        res.set('Cache-Control', 'no-store');
+        res.json({ monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT,
+            features: { banking: isBankingEnabled() } });
     } catch (err) {
         if (err.code === 'SETTINGS_INTEGRITY') {
             return res.status(409).json({ message: err.message });

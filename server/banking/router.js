@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const express = require('express');
+const { isBankingEnabled } = require('./feature');
 
 const NONCE_COOKIE = 'banking_auth_nonce';
 const NONCE_TTL_MS = 10 * 60 * 1000;
@@ -106,6 +107,12 @@ function createBankingRouter({ service }) {
     const publicRouter = express.Router();
     apiRouter.use(noStore);
     publicRouter.use(noStore);
+    const requireEnabled = (req, res, next) => {
+        if (!isBankingEnabled()) return res.status(404).json({ code: 'BANKING_DISABLED', message: 'Банковская интеграция выключена.' });
+        next();
+    };
+    apiRouter.use(requireEnabled);
+    publicRouter.use(requireEnabled);
     apiRouter.use(wrap((req, res, next) => {
         if (MUTATIONS.has(req.method)) requireSameOrigin(req);
         next();

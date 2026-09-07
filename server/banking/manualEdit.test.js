@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeAll, afterAll, beforeEach, describe, it, expect } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, describe, it, expect, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { createRequire } from 'node:module';
 import { connectTestDb, disconnectTestDb, clearCollections, loginAgent, DB_HOOK_TIMEOUT } from '../test/harness.js';
@@ -20,7 +20,9 @@ beforeAll(async () => {
     Transaction = mongoose.model('Transaction');
 }, DB_HOOK_TIMEOUT);
 afterAll(disconnectTestDb, DB_HOOK_TIMEOUT);
+afterEach(() => vi.unstubAllEnvs());
 beforeEach(async () => {
+    vi.stubEnv('BANKING_ENABLED', 'true');
     await clearCollections();
     account = await Account.create({ name: 'BoC', type: 'card' });
     bankAccount = await BankAccount.create({ connectionId: new mongoose.Types.ObjectId(), identificationHash: 'boc:stable',

@@ -50,6 +50,7 @@ function App() {
   const [trashError, setTrashError] = useState('');
   const [showTrash, setShowTrash] = useState(false);
   const [showBanking, setShowBanking] = useState(false);
+  const [bankingEnabled, setBankingEnabled] = useState(false);
   const [banking, setBanking] = useState(null);
   const [bankingReview, setBankingReview] = useState({ items: [], total: 0 });
   const [bankingLoading, setBankingLoading] = useState(false);
@@ -163,6 +164,7 @@ function App() {
     setTrashLoading(false);
     setShowTrash(false);
     setShowBanking(false);
+    setBankingEnabled(false);
     setBanking(null);
     setBankingReview({ items: [], total: 0 });
     setBankingLoading(false);
@@ -272,6 +274,8 @@ function App() {
       setCategories(loadedCategories);
       setPlannedPayments(loadedPlannedPayments);
       setMonthlyLimit(nextLimit);
+      // This optional module stays hidden unless the server explicitly enables it.
+      setBankingEnabled(loadedSettings?.features?.banking === true);
       setLastSuccessfulSync(new Date());
       setSyncWarning(null);
       setInitialLoadError(null);
@@ -316,6 +320,7 @@ function App() {
   // not prevent using manually entered expenses. Pending entries never enter
   // the transactions state or the statistics derived from it.
   const fetchBanking = async ({ includeReview = showBanking, background = false } = {}) => {
+    if (!bankingEnabled) return false;
     if (background && bankingReadInFlightRef.current !== null) return false;
     const session = sessionGenerationRef.current;
     const generation = ++bankingGenerationRef.current;
@@ -346,6 +351,7 @@ function App() {
   };
 
   const openBanking = () => {
+    if (!bankingEnabled) return;
     setShowAccountsSettings(false);
     setShowBanking(true);
   };
@@ -363,22 +369,25 @@ function App() {
     if (!isAuthenticated || !bankingCallbackRef.current) return;
     const result = bankingCallbackRef.current;
     bankingCallbackRef.current = null;
-    openBanking();
+    if (!bankingEnabled) return;
+    setShowAccountsSettings(false);
+    setShowBanking(true);
     showNotice(result === 'connected' ? 'Банк подключён. Проверьте привязку счетов и новые операции.' : 'Подключение банка не завершено. Попробуйте ещё раз.', result === 'connected' ? 'success' : 'error');
     // The callback is consumed once, after the app session has been loaded.
-  }, [isAuthenticated]);
+  }, [isAuthenticated, bankingEnabled]);
 
   useEffect(() => {
-    if (!isAuthenticated || (!showBanking && !showAccountsSettings)) return;
+    if (!bankingEnabled || !isAuthenticated || (!showBanking && !showAccountsSettings)) return;
     fetchBanking({ includeReview: showBanking });
     // Poll only our server's status while the bank sheet is visible. The
     // server, not a browser timer, owns the bank synchronization schedule.
     const timer = showBanking ? setInterval(() => fetchBanking({ includeReview: true, background: true }), 15_000) : null;
     return () => { if (timer) clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, showBanking, showAccountsSettings]);
+  }, [isAuthenticated, bankingEnabled, showBanking, showAccountsSettings]);
 
   const mutateBanking = async (path, method, body, { refreshBudget = false, resolvedEntryId } = {}) => {
+    if (!bankingEnabled) return { ok: false, error: 'Банковский импорт отключён' };
     const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(`${BANKING_URL}${path}`, {
@@ -406,6 +415,7 @@ function App() {
   };
 
   const handleConnectBank = async (fields) => {
+    if (!bankingEnabled) return { ok: false, error: 'Банковский импорт отключён' };
     const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(`${BANKING_URL}/connect`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
@@ -1710,13 +1720,13 @@ function App() {
           onDragEnd={onAccountDragEnd}
           onSaveSettings={handleSaveSettings}
           onOpenTrash={openTrash}
-          onOpenBanking={openBanking}
+          onOpenBanking={bankingEnabled ? openBanking : undefined}
           pendingBankingCount={banking?.pendingReviewCount || 0}
           onLogout={handleLogout}
           showNotice={showNotice}
         />
       )}
-      {showBanking && (
+      {bankingEnabled && showBanking && (
         <BankingSheet
           data={banking}
           review={bankingReview}

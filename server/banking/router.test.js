@@ -18,6 +18,7 @@ let service;
 let callbackWarning;
 
 beforeEach(() => {
+    vi.stubEnv('BANKING_ENABLED', 'true');
     callbackWarning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('ENABLE_BANKING_REDIRECT_URL', `${ORIGIN}/banking/callback.html`);
@@ -48,6 +49,32 @@ afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); vi.restoreAllMocks(); 
 function api(method, path) {
     return request(app)[method](`/api/banking${path}`).set('Origin', ORIGIN);
 }
+
+describe('disabled banking routes', () => {
+    it.each([undefined, 'false'])('blocks every entry point without touching the service: %s', async enabled => {
+        vi.stubEnv('BANKING_ENABLED', enabled);
+        const paths = [
+            ['get', '/api/banking'], ['get', '/api/banking/review'], ['post', '/api/banking/connect'],
+            ['put', `/api/banking/accounts/${ACCOUNT_ID}/mapping`], ['post', `/api/banking/connections/${ID}/sync`],
+            ['delete', `/api/banking/connections/${ID}`], ['post', `/api/banking/review/${ID}/resolve`],
+            ['get', '/banking/callback.html'], ['get', '/banking/callback.html?code=private-code&state=private-state'],
+            ['post', '/banking/jobs/sync']
+        ];
+        for (const [method, path] of paths) {
+            const result = await request(app)[method](path).set('Origin', ORIGIN).set('Authorization', `Bearer ${SECRET}`)
+                .set('Cookie', `banking_auth_nonce=${NONCE}`);
+            expect(result.status).toBe(404);
+            expect(result.body.code).toBe('BANKING_DISABLED');
+            expect(result.headers['cache-control']).toBe('no-store');
+            expect(result.headers['referrer-policy']).toBe('no-referrer');
+            expect(result.headers.location).toBeUndefined();
+            expect(result.headers['set-cookie']).toBeUndefined();
+            expect(result.text).not.toMatch(/private-code|private-state|legacy trial callback/);
+        }
+        for (const method of Object.values(service)) expect(method).not.toHaveBeenCalled();
+        expect(callbackWarning).not.toHaveBeenCalled();
+    });
+});
 
 describe('banking browser API', () => {
     it('serves status and review with no-store', async () => {
