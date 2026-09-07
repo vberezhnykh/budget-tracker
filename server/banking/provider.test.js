@@ -160,6 +160,35 @@ describe('banking provider API boundary and consent', () => {
 });
 
 describe('banking provider session and balance normalization', () => {
+    it.each([
+        ['2099-01-01T12:34:56.123456+00:00', '2099-01-01T12:34:56.123Z'],
+        ['2099-01-01T12:34:56.123456+02:30', '2099-01-01T10:04:56.123Z'],
+        ['2099-01-01T12:34:56.123456-03:45', '2099-01-01T16:19:56.123Z'],
+        ['2099-01-01T12:34:56.123456789Z', '2099-01-01T12:34:56.123Z'],
+        ['2099-01-01t12:34:56.123456z', '2099-01-01T12:34:56.123Z']
+    ])('accepts RFC3339 session expiry precision and offsets: %s', async (source, expected) => {
+        const { provider, fetchImpl } = setup({ session_id: sessionId, access: { valid_until: source }, accounts: [account] });
+        expect((await provider.exchangeCode('PRIVATE')).validUntil).toBe(expected);
+        expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        '2099-02-29T12:34:56.123456Z', '2099-02-30T12:34:56.123456+02:00',
+        '2099-01-01T24:00:00.000000Z', '2099-01-01T23:60:00.123456Z', '2099-01-01T23:59:61.123456Z',
+        '2099-01-01T12:34:56.123456+24:00', '2099-01-01T12:34:56.123456+02:60',
+        '2099-01-01T12:34:56.Z', '2099-01-01T12:34:56.123456', '2099-01-01T12:34:56.123456+0200'
+    ])('still rejects an impossible or malformed session expiry: %s', async source => {
+        const { provider, fetchImpl } = setup({ session_id: sessionId, access: { valid_until: source }, accounts: [account] }, response({}, 204));
+        await expect(provider.exchangeCode('PRIVATE')).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+        expect(fetchImpl.mock.calls[1]).toEqual([`https://api.enablebanking.com/sessions/${sessionId}`, expect.objectContaining({ method: 'DELETE' })]);
+    });
+
+    it('accepts microsecond balance timestamps through the same validator', async () => {
+        const { provider } = setup({ balances: [{ balance_amount: { amount: '12.34', currency: 'EUR' }, balance_type: 'CLBD',
+            last_change_date_time: '2026-09-07T12:34:56.123456+03:00' }] });
+        expect(await provider.getBalances(uid)).toEqual([{ amount: '12.34', currency: 'EUR', type: 'CLBD', asOf: '2026-09-07T09:34:56.123Z' }]);
+    });
+
     it('normalizes the current session schema, masks account numbers and skips unavailable accounts', async () => {
         const { provider, fetchImpl } = setup({ session_id: sessionId, access: { valid_until: validUntil }, accounts: [account, { identification_hash: 'blocked' }] });
         expect(await provider.exchangeCode('PRIVATE-CODE')).toEqual({ sessionId, validUntil: '2099-01-01T00:00:00.000Z', accounts: [{ uid,

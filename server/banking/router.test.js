@@ -15,8 +15,10 @@ const SECRET = 's'.repeat(48);
 
 let app;
 let service;
+let callbackWarning;
 
 beforeEach(() => {
+    callbackWarning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('ENABLE_BANKING_REDIRECT_URL', `${ORIGIN}/banking/callback.html`);
     vi.stubEnv('BANK_SYNC_CRON_SECRET', SECRET);
@@ -41,7 +43,7 @@ beforeEach(() => {
     app.get('/banking/callback.html', (req, res) => res.send('legacy trial callback'));
 });
 
-afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
+afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 function api(method, path) {
     return request(app)[method](`/api/banking${path}`).set('Origin', ORIGIN);
@@ -221,6 +223,15 @@ describe('public banking callback', () => {
             .set('Cookie', `banking_auth_nonce=${NONCE}`);
         expect(res.headers.location).toBe('/?banking=error');
         expect(res.text).not.toMatch(/wrong|secret|internal-state/);
+        expect(callbackWarning).toHaveBeenCalledWith('Banking authorization failed:', 'BANKING_ERROR');
+    });
+
+    it('logs only an allowlisted callback failure code for diagnosis', async () => {
+        service.completeAuthorization.mockRejectedValue({ code: 'INVALID_RESPONSE', message: 'private-account-details', session_id: 'private-session' });
+        const res = await request(app).get('/banking/callback.html?code=private-code&state=private-state')
+            .set('Cookie', `banking_auth_nonce=${NONCE}`);
+        expect(res.headers.location).toBe('/?banking=error');
+        expect(callbackWarning.mock.calls).toEqual([['Banking authorization failed:', 'INVALID_RESPONSE']]);
     });
 });
 

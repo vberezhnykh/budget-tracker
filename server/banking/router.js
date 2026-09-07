@@ -6,6 +6,9 @@ const NONCE_TTL_MS = 10 * 60 * 1000;
 const OBJECT_ID = /^[a-f\d]{24}$/i;
 const NONCE = /^[A-Za-z0-9_-]{43}$/;
 const MUTATIONS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CALLBACK_ERROR_CODES = new Set(['BANKING_CALLBACK', 'INVALID_STATE', 'NO_ACCOUNTS', 'BUSY',
+    'NOT_CONFIGURED', 'CONFIGURATION', 'INVALID_RESPONSE', 'NETWORK', 'AUTH_REQUIRED',
+    'RATE_LIMITED', 'SESSION_EXPIRED', 'API_ERROR', 'ENCRYPTION', 'DECRYPTION']);
 
 function fail(status, code, message) {
     throw Object.assign(new Error(message), { status, code });
@@ -173,7 +176,11 @@ function createBankingRouter({ service }) {
             }
             await service.completeAuthorization({ code, state, browserNonce });
             completed = true;
-        } catch { /* Never reflect callback parameters or provider errors. */ }
+        } catch (error) {
+            // Keep callback failures diagnosable without codes, cookies, banking
+            // data, provider response bodies, or arbitrary exception messages.
+            console.warn('Banking authorization failed:', CALLBACK_ERROR_CODES.has(error?.code) ? error.code : 'BANKING_ERROR');
+        }
         res.redirect(303, `/?banking=${completed ? 'connected' : 'error'}`);
     });
 

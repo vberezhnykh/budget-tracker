@@ -25,8 +25,14 @@ const iban = value => typeof value === 'string' && /^[A-Z]{2}\d{2}[A-Z0-9]{11,30
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
     && Number.isFinite(Date.parse(`${value}T00:00:00.000Z`)) && new Date(`${value}T00:00:00.000Z`).toISOString().slice(0, 10) === value;
-const validInstant = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
-    && validDate(value.slice(0, 10)) && Number.isFinite(Date.parse(value));
+function validInstant(value) {
+    if (typeof value !== 'string') return false;
+    // RFC3339 permits arbitrary fractional-second precision. Enable Banking
+    // documents microseconds; Date preserves the corresponding milliseconds.
+    const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:Z|[+-](\d{2}):(\d{2}))$/i.exec(value);
+    return Boolean(match && validDate(match[1]) && Number(match[2]) < 24 && Number(match[3]) < 60 && Number(match[4]) < 60
+        && (match[5] === undefined || (Number(match[5]) < 24 && Number(match[6]) < 60)) && Number.isFinite(Date.parse(value)));
+}
 
 function getConfig(env = process.env) {
     const values = ['ENABLE_BANKING_APPLICATION_ID', 'ENABLE_BANKING_PRIVATE_KEY', 'ENABLE_BANKING_REDIRECT_URL', 'BANKING_ENCRYPTION_KEY'].map(key => env[key]);
