@@ -57,10 +57,10 @@ async function main() {
         }
         
         // Резервное копирование для dev-базы
-        const docsDev = await runBackupForDb('budget-tracker-dev');
+        await runBackupForDb('budget-tracker-dev');
         
         // Резервное копирование для prod/default-базы
-        const docsProd = await runBackupForDb(null);
+        await runBackupForDb(null);
         
         console.log(`🎉 Резервное копирование успешно завершено!`);
         console.log(`Файлы бэкапа сохранены в папке: ${BACKUP_DIR}`);
