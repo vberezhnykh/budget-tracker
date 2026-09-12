@@ -7,7 +7,7 @@ import { getTransactionLogoUrl } from '../utils/logoDev';
 import { normalizeMerchantDomain } from '../utils/merchantDomain';
 import './TransactionLogoPicker.css';
 
-export default function TransactionLogoPicker({ item, onChange, apiFetch }) {
+export default function TransactionLogoPicker({ item, onChange, apiFetch, fromHistory = false }) {
   const panelId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -71,8 +71,8 @@ export default function TransactionLogoPicker({ item, onChange, apiFetch }) {
     : previewStatus === 'error'
       ? 'Логотип не найден или недоступен — показана категория'
       : mode === 'category' || !desiredUrl
-        ? 'Иконка категории'
-        : mode === 'domain' ? `Выбрано: ${item.merchantDomain}` : 'Автоподбор по названию — проверьте совпадение';
+        ? fromHistory && mode === 'category' ? 'Иконка категории из истории' : 'Иконка категории'
+        : mode === 'domain' ? `${fromHistory ? 'Из истории' : 'Выбрано'}: ${item.merchantDomain}` : 'Автоподбор по названию — проверьте совпадение';
   const currentSearch = search.query === query.trim();
 
   return (

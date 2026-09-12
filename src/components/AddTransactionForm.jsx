@@ -7,6 +7,7 @@ import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
 import IconButton from './ui/IconButton'
 import { getDescriptionSuggestions, splitCategoriesByUsage } from '../utils/finance';
+import { getHistoricalLogoChoice } from '../utils/transactionLogoHistory';
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], apiFetch }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
@@ -48,6 +49,17 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         excludeFromStats: false
     });
 
+    // Only new expenses inherit a past choice. Once the user chooses a mode
+    // in this form, that explicit choice wins. Deriving instead of copying
+    // it into state also drops an inherited logo when the shop name changes.
+    const historicalLogoChoice = useMemo(
+        () => !initialData && formData.type === 'expense' && formData.logoMode === undefined
+            ? getHistoricalLogoChoice(transactions, formData.description)
+            : null,
+        [initialData, transactions, formData.type, formData.logoMode, formData.description]
+    );
+    const logoFormData = historicalLogoChoice ? { ...formData, ...historicalLogoChoice } : formData;
+
     const isTransfer = formData.type === 'transfer';
     const today = new Date().toISOString().split('T')[0];
 
@@ -85,7 +97,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     amount: parseFloat(split.amount),
                     category: split.category,
                     description: (formData.description + (split.description ? ` (${split.description})` : '')).trim(),
-                    ...(formData.type === 'expense' ? { logoMode: formData.logoMode || 'auto', merchantDomain: formData.merchantDomain || '' } : {}),
+                    ...(formData.type === 'expense' ? { logoMode: logoFormData.logoMode || 'auto', merchantDomain: logoFormData.merchantDomain || '' } : {}),
                     date: formData.date,
                     type: formData.type,
                     account: formData.account,
@@ -96,7 +108,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 submission = onSubmit(splitTransactions);
             } else {
                 const submitData = {
-                    ...formData,
+                    ...logoFormData,
                     amount: parseFloat(formData.amount),
                     category: isTransfer ? 'Перевод' : formData.category,
                     id: initialData ? initialData.id : Date.now()
@@ -908,7 +920,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     </div>
 
                     {formData.type === 'expense' && !isSplit && !initialData?.splitId && (
-                        <TransactionLogoPicker item={formData} apiFetch={apiFetch} onChange={choice => setFormData(prev => ({ ...prev, ...choice }))} />
+                        <TransactionLogoPicker item={logoFormData} fromHistory={Boolean(historicalLogoChoice)} apiFetch={apiFetch} onChange={choice => setFormData(prev => ({ ...prev, ...choice }))} />
                     )}
 
                     <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
