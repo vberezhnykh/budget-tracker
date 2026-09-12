@@ -80,6 +80,32 @@
   --color-success: #22c55e;
   --color-warning: #fbbf24;
 
+  /* Category avatars and the bundled merchant marks in transaction rows. */
+  --color-icon-green: #15803d;
+  --color-icon-green-bg: #e8f6ec;
+  --color-icon-orange: #c25816;
+  --color-icon-orange-bg: #fff0e3;
+  --color-icon-amber: #a16207;
+  --color-icon-amber-bg: #fef5d6;
+  --color-icon-purple: #7c3aed;
+  --color-icon-purple-bg: #f1eafe;
+  --color-icon-pink: #be357e;
+  --color-icon-pink-bg: #fceaf4;
+  --color-icon-teal: #0f8686;
+  --color-icon-teal-bg: #e2f6f3;
+  --color-icon-rose-bg: #ffe9ef;
+  --color-brand-ink: #111111;
+  --color-brand-wolt: #009de0;
+  --color-brand-mcdonalds: #db0007;
+  --color-brand-mcdonalds-mark: #ffbc0d;
+  --color-brand-google: #4285f4;
+  --color-brand-lidl: #0050aa;
+  --color-brand-lidl-mark: #fff000;
+  --color-brand-ikea: #0058a3;
+  --color-brand-ikea-mark: #ffdb00;
+  --color-brand-netflix: #e50914;
+  --color-brand-spotify: #1ed760;
+
   /* ---- Текст ---- */
   --color-text-main: #1e293b;
   /* Slate 800 */

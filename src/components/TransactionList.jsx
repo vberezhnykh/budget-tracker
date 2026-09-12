@@ -1,4 +1,5 @@
-import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, EyeOff, Flag, Layers2 } from 'lucide-react';
+import { ArrowRight, EyeOff } from 'lucide-react';
+import TransactionIcon from './TransactionIcon';
 
 // Список операций, сгруппированный по дням. Один и тот же список нужен в
 // трёх местах - в шторке истории (результаты поиска и обычная история) и
@@ -126,12 +127,10 @@ export default function TransactionList({
                 if (item.type === 'split_group') {
                     return (
                         <div key={item.id} style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: rowPadding, background: 'var(--color-surface-muted)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                    <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
-                                        <Layers2 size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-primary)' }} />
-                                    </div>
-                                    <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: rowPadding, background: 'var(--color-surface-muted)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                                    <TransactionIcon item={item} />
+                                    <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                                         <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
                                         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                                             {getAccountDisplay(item.account)} • {item.items.length} катег.
@@ -178,22 +177,14 @@ export default function TransactionList({
                 return (
                     <div
                         key={item.id}
-                        style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: rowPadding, borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}
+                        style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: rowPadding, borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}
                     >
                         {isEditable && (
                             <RowOverlayButton label={rowLabel(item)} onClick={() => openEditModal(item)} />
                         )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: item.type === 'initial' ? 'var(--color-primary-tint)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
-                                {item.type === 'initial'
-                                    ? <Flag size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-primary)' }} />
-                                    : item.type === 'transfer'
-                                        ? <ArrowLeftRight size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-primary)' }} />
-                                        : item.visualAmount > 0
-                                            ? <ArrowDownLeft size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-positive-strong)' }} />
-                                            : <ArrowUpRight size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-expense-strong)' }} />}
-                            </div>
-                            <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                            <TransactionIcon item={item} />
+                            <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                                 <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
                                     {item.description || item.title}
                                     {item.excludeFromStats && (

@@ -1,0 +1,64 @@
+.transaction-icon {
+  position: relative;
+  --transaction-icon-color: var(--color-text-muted);
+  --transaction-icon-bg: var(--color-surface-inset);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: var(--radius-pill);
+  color: var(--transaction-icon-color);
+  background: var(--transaction-icon-bg);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.transaction-icon--remote {
+  --transaction-icon-bg: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+}
+
+.transaction-icon__remote-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+}
+
+.transaction-icon--remote .transaction-icon__remote-image { opacity: 1; }
+
+.transaction-icon[data-tone="green"] { --transaction-icon-color: var(--color-icon-green); --transaction-icon-bg: var(--color-icon-green-bg); }
+.transaction-icon[data-tone="orange"] { --transaction-icon-color: var(--color-icon-orange); --transaction-icon-bg: var(--color-icon-orange-bg); }
+.transaction-icon[data-tone="amber"] { --transaction-icon-color: var(--color-icon-amber); --transaction-icon-bg: var(--color-icon-amber-bg); }
+.transaction-icon[data-tone="blue"] { --transaction-icon-color: var(--color-primary); --transaction-icon-bg: var(--color-primary-tint); }
+.transaction-icon[data-tone="purple"] { --transaction-icon-color: var(--color-icon-purple); --transaction-icon-bg: var(--color-icon-purple-bg); }
+.transaction-icon[data-tone="pink"] { --transaction-icon-color: var(--color-icon-pink); --transaction-icon-bg: var(--color-icon-pink-bg); }
+.transaction-icon[data-tone="teal"] { --transaction-icon-color: var(--color-icon-teal); --transaction-icon-bg: var(--color-icon-teal-bg); }
+.transaction-icon[data-tone="rose"] { --transaction-icon-color: var(--color-expense-strong); --transaction-icon-bg: var(--color-icon-rose-bg); }
+
+.transaction-icon--merchant { --transaction-icon-color: var(--color-brand-ink); --transaction-icon-bg: var(--color-surface); box-shadow: inset 0 0 0 1px var(--color-border-subtle); }
+.transaction-icon[data-transaction-icon="wolt"] { --transaction-icon-color: var(--color-text-inverse); --transaction-icon-bg: var(--color-brand-wolt); }
+.transaction-icon[data-transaction-icon="mcdonalds"] { --transaction-icon-color: var(--color-brand-mcdonalds-mark); --transaction-icon-bg: var(--color-brand-mcdonalds); }
+.transaction-icon[data-transaction-icon="google"],
+.transaction-icon[data-transaction-icon="googleone"] { --transaction-icon-color: var(--color-brand-google); }
+.transaction-icon[data-transaction-icon="lidl"] { --transaction-icon-color: var(--color-brand-lidl-mark); --transaction-icon-bg: var(--color-brand-lidl); }
+.transaction-icon[data-transaction-icon="ikea"] { --transaction-icon-color: var(--color-brand-ikea-mark); --transaction-icon-bg: var(--color-brand-ikea); }
+.transaction-icon[data-transaction-icon="netflix"] { --transaction-icon-color: var(--color-brand-netflix); --transaction-icon-bg: var(--color-brand-ink); }
+.transaction-icon[data-transaction-icon="spotify"] { --transaction-icon-color: var(--color-brand-ink); --transaction-icon-bg: var(--color-brand-spotify); }
+
+.transaction-icon__logo {
+  width: 26px;
+  height: 26px;
+  background: currentColor;
+  -webkit-mask: var(--transaction-logo) center / contain no-repeat;
+  mask: var(--transaction-logo) center / contain no-repeat;
+}
+
+.transaction-icon__image { display: block; width: 26px; height: 26px; object-fit: contain; }
+
+.transaction-icon[data-transaction-icon="zara"] .transaction-icon__logo,
+.transaction-icon[data-transaction-icon="wolt"] .transaction-icon__logo { width: 30px; height: 30px; }
