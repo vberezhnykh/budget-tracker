@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { X } from 'lucide-react';
 import Field from './ui/Field';
 import IconButton from './ui/IconButton';
 import Sheet from './ui/Sheet';
@@ -88,7 +89,7 @@ function PaymentFormSheet({ payment, accounts, categories, onSave, onClose }) {
     <Sheet ariaLabel={payment ? 'Изменить предстоящий платёж' : 'Добавить предстоящий платёж'} onClose={requestClose}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)' }}>{payment ? 'Изменить платёж' : 'Новый платёж'}</h2>
-        <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть форму платежа">✕</IconButton>
+        <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть форму платежа"><X size={20} /></IconButton>
       </div>
       <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <FormRow label="Название">
@@ -187,7 +188,7 @@ function PaySheet({ payment, accounts, categories, transactions, onPay, onClose 
           <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)', overflowWrap: 'anywhere' }}>Оплатить «{payment.title}»</h2>
           <div style={{ marginTop: '4px', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>План: {money(payment.amount)} · {displayDate(payment.dueDate)}</div>
         </div>
-        <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть форму оплаты">✕</IconButton>
+        <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть форму оплаты"><X size={20} /></IconButton>
       </div>
       <div role="group" aria-label="Способ учёта платежа" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
         {[

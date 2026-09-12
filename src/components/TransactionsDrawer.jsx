@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { ChevronDown, Download, Search, X } from 'lucide-react';
 import TransactionList from './TransactionList'
 import useBodyScrollLock from '../utils/useBodyScrollLock'
 import Field from './ui/Field'
@@ -247,17 +248,15 @@ export default function TransactionsDrawer({
           </span>
           {/* Purely visual close/open affordance - the handle's role="button",
               aria-expanded and aria-label already carry the accessible state,
-              so this is hidden from the accessibility tree. A CSS triangle
+              so this is hidden from the accessibility tree. A chevron
               pointing down at rest (expanded) and rotated to point up when
               collapsed, matching the direction the sheet will travel. */}
-          <span
+          <ChevronDown
+            size={16}
+            strokeWidth={1.8}
             aria-hidden="true"
             style={{
-              width: 0,
-              height: 0,
-              borderLeft: '5px solid transparent',
-              borderRight: '5px solid transparent',
-              borderTop: '5px solid var(--color-text-muted)',
+              color: 'var(--color-text-muted)',
               transform: expanded ? 'rotate(0deg)' : 'rotate(180deg)',
               transition: 'transform 0.2s ease',
             }}
@@ -290,7 +289,7 @@ export default function TransactionsDrawer({
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
                 <button onClick={exportToCSV} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>💾</span> Экспорт
+                  <Download size={16} strokeWidth={1.8} aria-hidden="true" /> Экспорт
                 </button>
               </div>
 
@@ -309,13 +308,15 @@ export default function TransactionsDrawer({
                     fontSize: 'var(--text-md)',
                   }}
                 />
-                <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}>🔍</span>
+                <Search size={18} strokeWidth={1.8} aria-hidden="true" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)', pointerEvents: 'none' }} />
                 {searchQuery && (
                   <button
+                    type="button"
+                    aria-label="Очистить поиск"
                     onClick={() => setSearchQuery('')}
                     style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 'var(--text-3xl)', cursor: 'pointer' }}
                   >
-                    ×
+                    <X size={18} strokeWidth={1.8} aria-hidden="true" />
                   </button>
                 )}
               </div>
@@ -353,7 +354,7 @@ export default function TransactionsDrawer({
                       Счет: <strong>{getAccountFilterLabel(selectedAccount)}</strong>
                     </span>
                     <button onClick={() => setSelectedAccount(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
-                      Сбросить ×
+                      Сбросить <X size={14} strokeWidth={1.8} aria-hidden="true" />
                     </button>
                   </div>
                 )}
@@ -364,7 +365,7 @@ export default function TransactionsDrawer({
                       Тип: <strong>{selectedType === 'income' ? 'Доходы' : 'Расходы'}</strong>
                     </span>
                     <button onClick={() => setSelectedType(null)} style={{ background: 'none', border: 'none', color: selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-negative)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
-                      Сбросить ×
+                      Сбросить <X size={14} strokeWidth={1.8} aria-hidden="true" />
                     </button>
                   </div>
                 )}
@@ -375,7 +376,7 @@ export default function TransactionsDrawer({
                       Категория: <strong>{selectedCategory}</strong>
                     </span>
                     <button onClick={() => setSelectedCategory(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
-                      Сбросить ×
+                      Сбросить <X size={14} strokeWidth={1.8} aria-hidden="true" />
                     </button>
                   </div>
                 )}

@@ -1,3 +1,5 @@
+import { ArrowDownLeft, ArrowLeftRight, ArrowRight, ArrowUpRight, EyeOff, Flag, Layers2 } from 'lucide-react';
+
 // Список операций, сгруппированный по дням. Один и тот же список нужен в
 // трёх местах - в шторке истории (результаты поиска и обычная история) и
 // блоком «Последние операции» на главной, - а до этого он был написан в
@@ -93,6 +95,12 @@ export default function TransactionList({
             : getAccountDisplay(item.account)
     );
 
+    const visibleAccounts = (item) => (
+        item.type === 'transfer' && item.toAccount
+            ? <>{getAccountDisplay(item.account)} <ArrowRight size={13} strokeWidth={1.8} aria-hidden="true" /> {getAccountDisplay(item.toAccount)}</>
+            : getAccountDisplay(item.account)
+    );
+
     // Доступное имя строки повторяет то, что и так видно глазами:
     // название, счета, категория, сумма со знаком.
     const rowLabel = (item) => {
@@ -121,7 +129,7 @@ export default function TransactionList({
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: rowPadding, background: 'var(--color-surface-muted)' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                                     <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
-                                        🗂️
+                                        <Layers2 size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-primary)' }} />
                                     </div>
                                     <div>
                                         <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
@@ -177,17 +185,23 @@ export default function TransactionList({
                         )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                             <div style={{ width: '38px', height: '38px', borderRadius: 'var(--radius-md)', background: item.type === 'initial' ? 'var(--color-primary-tint)' : (item.visualAmount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.05)'), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-2xl)' }}>
-                                {item.type === 'initial' ? '🚀' : (item.visualAmount > 0 ? '↓' : '↑')}
+                                {item.type === 'initial'
+                                    ? <Flag size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-primary)' }} />
+                                    : item.type === 'transfer'
+                                        ? <ArrowLeftRight size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-primary)' }} />
+                                        : item.visualAmount > 0
+                                            ? <ArrowDownLeft size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-positive-strong)' }} />
+                                            : <ArrowUpRight size={20} strokeWidth={1.8} aria-hidden="true" style={{ color: 'var(--color-expense-strong)' }} />}
                             </div>
                             <div>
                                 <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
                                     {item.description || item.title}
                                     {item.excludeFromStats && (
-                                        <span style={{ marginLeft: '6px', fontSize: 'var(--text-2xs)', color: '#94a3b8', fontWeight: '500' }}>🚫</span>
+                                        <span role="img" aria-label="Исключено из статистики" title="Исключено из статистики" style={{ marginLeft: '6px', color: 'var(--color-text-muted)' }}><EyeOff size={14} strokeWidth={1.8} aria-hidden="true" /></span>
                                     )}
                                 </div>
                                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                                    {rowAccounts(item)}
+                                    {visibleAccounts(item)}
                                     {item.category && (
                                         <>
                                             {' • '}

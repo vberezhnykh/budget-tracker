@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { ChevronDown, X } from 'lucide-react';
 import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
 import {
@@ -85,7 +86,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
         }}
       >
         {formatPeriodLabel(timeRange, selectedMonth)}
-        <span aria-hidden="true" style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>▼</span>
+        <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />
       </button>
 
       {isOpen && (
@@ -106,7 +107,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
                   padding: '4px 8px',
                 }}
               >
-                ×
+                <X size={20} />
               </button>
             </div>
 

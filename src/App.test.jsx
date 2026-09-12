@@ -290,12 +290,12 @@ describe('App Integration Tests', () => {
 
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        const incomeBtn = screen.getByRole('button', { name: /\+ Доход/i });
+        const incomeBtn = screen.getByRole('button', { name: 'Добавить доход' });
         fireEvent.click(incomeBtn);
 
         expect(screen.getByText(/Новый доход/)).toBeInTheDocument();
 
-        const closeBtn = screen.getByText('×');
+        const closeBtn = screen.getByRole('button', { name: 'Закрыть', exact: true });
         fireEvent.click(closeBtn);
 
         await waitFor(() => {
@@ -319,10 +319,10 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
-        fireEvent.click(screen.getByRole('button', { name: /- Расход/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить расход' }));
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
         fireEvent.click(screen.getByText('Продукты'));
-        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
         fireEvent.click(screen.getByText('Сохранить'));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('База временно недоступна');
@@ -382,10 +382,10 @@ describe('App Integration Tests', () => {
         await waitFor(() => screen.getByTestId('balance-carousel'));
         const firstSyncLabel = screen.getByText(/Синхронизировано:/).textContent;
 
-        fireEvent.click(screen.getByRole('button', { name: /- Расход/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить расход' }));
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
         fireEvent.click(screen.getByText('Продукты'));
-        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
         fireEvent.click(screen.getByText('Сохранить'));
 
         expect(await screen.findByText('Не удалось обновить данные')).toBeInTheDocument();
@@ -453,7 +453,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(rentTx);
 
         // Find delete button and click it
-        const deleteBtn = await screen.findByText('🗑');
+        const deleteBtn = await screen.findByRole('button', { name: 'Удалить операцию' });
         const callsBeforeDelete = fetchMock.mock.calls.length;
         fireEvent.click(deleteBtn);
 
@@ -500,7 +500,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(screen.getByRole('button', { name: /Grouped \(Разделено\)/ }));
 
         // Wait for modal to open (find delete button)
-        const deleteBtn = await screen.findByText('🗑');
+        const deleteBtn = await screen.findByRole('button', { name: 'Удалить операцию' });
         const callsBeforeDelete = fetchMock.mock.calls.length;
         fireEvent.click(deleteBtn);
 
@@ -673,7 +673,7 @@ describe('App Integration Tests', () => {
         });
 
         // Clear search
-        const clearBtn = screen.getByText('×');
+        const clearBtn = screen.getByRole('button', { name: 'Очистить поиск' });
         fireEvent.click(clearBtn);
 
         // Should show both again.
@@ -813,7 +813,7 @@ describe('App Integration Tests', () => {
         // Сброс фильтра живёт в содержимом шторки - чтобы до него добраться,
         // её надо раскрыть, как это делает и пользователь.
         openDrawer();
-        const resetBtn = screen.getByText('Сбросить ×');
+        const resetBtn = screen.getByRole('button', { name: 'Сбросить', exact: true });
         fireEvent.click(resetBtn);
 
         await waitFor(() => {

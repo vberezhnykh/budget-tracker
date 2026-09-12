@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 import IconButton from './ui/IconButton';
 import Sheet from './ui/Sheet';
 
@@ -43,7 +44,7 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
           <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)' }}>Корзина</h2>
           <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Удалённые операции сохраняются после перезагрузки.</p>
         </div>
-        <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть корзину">✕</IconButton>
+        <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть корзину"><X size={20} /></IconButton>
       </div>
 
       {(error || actionError) && (

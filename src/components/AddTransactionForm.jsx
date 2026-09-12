@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+import { ArrowDownLeft, ArrowDownUp, ArrowUpRight, Check, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
+import AccountIcon from './AccountIcon';
 import Field from './ui/Field'
 import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
@@ -130,7 +132,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         setFormData({ ...formData, account: formData.toAccount, toAccount: formData.account });
     };
 
-    const getAccountLabel = (acc) => `${acc.icon || (acc.type === 'cash' ? '💵' : '💳')} ${acc.name}`;
+    const getAccountLabel = (acc) => acc.name;
 
     const categories = (allCategories || []).filter(c => c.type === formData.type);
 
@@ -236,6 +238,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     <h3 style={{ margin: 0 }}>{getTitle()}</h3>
                     <button
                         type="button"
+                        aria-label="Закрыть"
                         onClick={requestClose}
                         style={{
                             background: 'transparent',
@@ -243,7 +246,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             fontSize: '1.5rem',
                             lineHeight: 1
                         }}
-                    >×</button>
+                    ><X size={22} strokeWidth={1.8} aria-hidden="true" /></button>
                 </div>
 
                 {/* Type Toggle - Hide if splitting or editing */}
@@ -401,6 +404,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     onClick={() => setFormData({ ...formData, account: acc._id })}
                                                     style={{
                                                         flex: accounts.length > 3 ? '0 0 auto' : 1,
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'center',
+                                                        gap: '8px',
                                                         minWidth: accounts.length > 3 ? '120px' : 'auto',
                                                         padding: '12px',
                                                         fontWeight: '600',
@@ -409,7 +416,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                         textOverflow: 'ellipsis'
                                                     }}
                                                 >
-                                                    {acc.icon || (acc.type === 'cash' ? '💵' : '💳')} {acc.name}
+                                                    <AccountIcon icon={acc.icon} type={acc.type} size={18} />
+                                                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.name}</span>
                                                 </Chip>
                                             ))}
                                         </div>
@@ -523,6 +531,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                               />
                                             <button
                                                 type="button"
+                                                aria-label="Сохранить категорию"
+                                                aria-busy={isCreatingCategory}
                                                 onClick={handleCreateCategory}
                                                 disabled={!newCategoryName.trim() || isCreatingCategory}
                                                 style={{
@@ -535,9 +545,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     fontWeight: '600',
                                                     cursor: newCategoryName.trim() ? 'pointer' : 'default'
                                                 }}
-                                            >{isCreatingCategory ? '…' : '✓'}</button>
+                                            >{isCreatingCategory ? <LoaderCircle size={18} strokeWidth={1.8} aria-hidden="true" /> : <Check size={18} strokeWidth={1.8} aria-hidden="true" />}</button>
                                             <button
                                                 type="button"
+                                                aria-label="Отменить создание категории"
                                                 onClick={() => { setIsAddingCategory(false); setNewCategoryName(''); setCategoryError(''); }}
                                                 style={{
                                                     padding: '8px 14px',
@@ -548,7 +559,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     fontSize: 'var(--text-base)',
                                                     cursor: 'pointer'
                                                 }}
-                                            >×</button>
+                                            ><X size={18} strokeWidth={1.8} aria-hidden="true" /></button>
                                             </div>
                                             {categoryError && (
                                                 <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-sm)', marginTop: '6px' }}>
@@ -572,7 +583,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 transition: 'all 0.2s'
                                             }}
                                         >
-                                            + Новая
+                                            <Plus size={16} strokeWidth={1.8} aria-hidden="true" /> Новая
                                         </button>
                                     )}
                                 </>
@@ -591,7 +602,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <span style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>Категория {index + 1}</span>
                                                 {splits.length > 2 && (
-                                                    <button type="button" onClick={() => removeSplit(split.id)} style={{ color: 'var(--color-negative)', background: 'transparent', fontSize: 'var(--text-2xl)' }}>×</button>
+                                                    <button type="button" aria-label={`Удалить часть ${index + 1}`} onClick={() => removeSplit(split.id)} style={{ color: 'var(--color-negative)', background: 'transparent', fontSize: 'var(--text-2xl)' }}><X size={20} strokeWidth={1.8} aria-hidden="true" /></button>
                                                 )}
                                             </div>
 
@@ -646,7 +657,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         onClick={addSplit}
                                         style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px dashed var(--color-border-strong)', fontWeight: '500' }}
                                     >
-                                        + Добавить категорию
+                                        <Plus size={18} strokeWidth={1.8} aria-hidden="true" /> Добавить категорию
                                     </button>
                                 </div>
                             )}
@@ -669,8 +680,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 borderRadius: 'var(--radius-lg)'
                             }}>
                                 {[
-                                    { side: 'account', label: 'Откуда', value: formData.account, accent: 'var(--color-negative)', badge: '↑' },
-                                    { side: 'toAccount', label: 'Куда', value: formData.toAccount, accent: 'var(--color-positive)', badge: '↓' }
+                                    { side: 'account', label: 'Откуда', value: formData.account, accent: 'var(--color-negative)', icon: ArrowUpRight },
+                                    { side: 'toAccount', label: 'Куда', value: formData.toAccount, accent: 'var(--color-positive)', icon: ArrowDownLeft }
                                 ].map((row, index) => (
                                     <div
                                         key={row.side}
@@ -698,7 +709,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             fontWeight: '700',
                                             fontSize: 'var(--text-xl)'
                                         }}>
-                                            {row.badge}
+                                            <row.icon size={20} strokeWidth={1.8} aria-hidden="true" />
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
                                             <label
@@ -762,7 +773,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         boxShadow: '0 1px 4px rgba(0,0,0,0.08)'
                                     }}
                                 >
-                                    ⇅
+                                    <ArrowDownUp size={20} strokeWidth={1.8} aria-hidden="true" />
                                 </IconButton>
                             </div>
                             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', textAlign: 'center', margin: 0 }}>
@@ -791,6 +802,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                          onClick={() => setFormData({ ...formData, account: acc._id })}
                                          style={{
                                              flex: accounts.length > 3 ? '0 0 auto' : 1,
+                                             display: 'flex',
+                                             alignItems: 'center',
+                                             justifyContent: 'center',
+                                             gap: '8px',
                                              minWidth: accounts.length > 3 ? '120px' : 'auto',
                                              padding: '12px',
                                              fontWeight: '600',
@@ -799,7 +814,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                              textOverflow: 'ellipsis'
                                          }}
                                      >
-                                         {acc.icon || (acc.type === 'cash' ? '💵' : '💳')} {acc.name}
+                                         <AccountIcon icon={acc.icon} type={acc.type} size={18} />
+                                         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.name}</span>
                                      </Chip>
                                  ))}
                              </div>
@@ -922,7 +938,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     boxShadow: '0 2px 4px rgba(239, 68, 68, 0.05)'
                                 }}
                             >
-                                🗑
+                                <Trash2 size={22} strokeWidth={1.8} aria-hidden="true" />
                             </button>
                         )}
                         <button

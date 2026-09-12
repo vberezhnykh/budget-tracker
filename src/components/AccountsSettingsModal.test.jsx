@@ -46,7 +46,7 @@ describe('AccountsSettingsModal', () => {
             expect(props.onSaveAccount).toHaveBeenCalledWith({
                 name: 'Новый счёт',
                 type: 'card',
-                icon: '💳',
+                icon: 'credit-card',
                 excludeFromTotal: false,
                 editingAccountId: null,
             });
@@ -64,6 +64,26 @@ describe('AccountsSettingsModal', () => {
 
         await waitFor(() => expect(props.onSaveAccount).toHaveBeenCalled());
         expect(screen.getByPlaceholderText(/Имя счёта/)).toHaveValue('Плохой счёт');
+    });
+
+    it('saves the icon chosen in the picker without submitting the form on selection', async () => {
+        const { props } = renderModal();
+        fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'На отпуск' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Иконка: Копилка' }));
+        expect(screen.getByRole('button', { name: 'Иконка: Копилка' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.getByRole('button', { name: 'Иконка: Карта' })).toHaveAttribute('aria-pressed', 'false');
+        expect(props.onSaveAccount).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
+        await waitFor(() => expect(props.onSaveAccount).toHaveBeenCalledWith(expect.objectContaining({ icon: 'piggy-bank' })));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Иконка: Карта' })).toHaveAttribute('aria-pressed', 'true'));
+    });
+
+    it('normalizes the legacy account icon when editing and saving', async () => {
+        const { props } = renderModal({ accounts: [{ _id: 'deposit', name: 'Залог', type: 'card', icon: '🏠' }] });
+        fireEvent.click(screen.getByRole('button', { name: 'Изменить' }));
+        expect(screen.getByRole('button', { name: 'Иконка: Дом' })).toHaveAttribute('aria-pressed', 'true');
+        fireEvent.click(screen.getByRole('button', { name: 'Сохранить изменения' }));
+        await waitFor(() => expect(props.onSaveAccount).toHaveBeenCalledWith(expect.objectContaining({ editingAccountId: 'deposit', icon: 'house' })));
     });
 
     it('populates the form for editing and switches back to "add" mode on cancel', () => {

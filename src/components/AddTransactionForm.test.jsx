@@ -58,7 +58,7 @@ describe('AddTransactionForm Component', () => {
         expect(saveButton).toBeDisabled(); // Still need an account - no preset was passed
 
         // Select account
-        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
         expect(saveButton).not.toBeDisabled();
     });
@@ -88,8 +88,8 @@ describe('AddTransactionForm Component', () => {
         // живёт в src/index.css, и тест не должен ломаться от смены палитры.
         // (toHaveStyle тут не годится: он сверяет вычисленный стиль, а
         // var() в jsdom никто не раскрывает - смотрим на сам инлайн-стиль.)
-        expect(screen.getByText('💳 Карта').style.borderColor).toBe('var(--color-border)');
-        expect(screen.getByText('💵 Наличные').style.borderColor).toBe('var(--color-border)');
+        expect(screen.getByRole('button', { name: 'Карта', exact: true }).style.borderColor).toBe('var(--color-border)');
+        expect(screen.getByRole('button', { name: 'Наличные', exact: true }).style.borderColor).toBe('var(--color-border)');
         // ...and saving is blocked until one is picked.
         expect(screen.getByText('Сохранить')).toBeDisabled();
     });
@@ -101,7 +101,7 @@ describe('AddTransactionForm Component', () => {
         fireEvent.click(screen.getByText('Продукты'));
         expect(screen.getByText('Сохранить')).toBeDisabled();
 
-        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
         expect(screen.getByText('Сохранить')).not.toBeDisabled();
     });
@@ -124,7 +124,7 @@ describe('AddTransactionForm Component', () => {
 
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50.5' } });
         fireEvent.click(screen.getByText('Транспорт'));
-        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
         fireEvent.click(screen.getByText('Сохранить'));
 
@@ -144,7 +144,7 @@ describe('AddTransactionForm Component', () => {
 
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50.5' } });
         fireEvent.click(screen.getByText('Транспорт'));
-        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
         fireEvent.click(screen.getByText('Сохранить'));
 
         await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
@@ -161,7 +161,7 @@ describe('AddTransactionForm Component', () => {
 
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '20' } });
         fireEvent.click(screen.getByText('Продукты'));
-        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
         fireEvent.click(screen.getByText('Сохранить'));
 
         const pendingButton = await screen.findByText('Сохранение...');
@@ -245,7 +245,7 @@ describe('AddTransactionForm Component', () => {
 
         render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onDelete={mockOnDelete} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        const deleteButton = screen.getByText('🗑');
+        const deleteButton = screen.getByRole('button', { name: 'Удалить операцию' });
         fireEvent.click(deleteButton);
 
         expect(window.confirm).toHaveBeenCalled();
@@ -265,7 +265,7 @@ describe('AddTransactionForm Component', () => {
         expect(screen.getByText('Осталось распределить:')).toBeInTheDocument();
         expect(screen.getByText('Категория 1')).toBeInTheDocument();
         expect(screen.getByText('Категория 2')).toBeInTheDocument();
-        expect(screen.getByText('+ Добавить категорию')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Добавить категорию' })).toBeInTheDocument();
     });
 
     it('validates splits sum and submits array of transactions', async () => {
@@ -291,7 +291,7 @@ describe('AddTransactionForm Component', () => {
         // Split mode still has its own "Списать с" account picker, and no
         // presetAccountId was passed here - an account must be picked before
         // saving is allowed.
-        fireEvent.click(screen.getByText('💳 Карта'));
+        fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
         // Submit
         fireEvent.click(screen.getByText('Сохранить'));
@@ -401,9 +401,9 @@ describe('AddTransactionForm Component', () => {
 
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onAddCategory={onAddCategory} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-            fireEvent.click(screen.getByText('+ Новая'));
+            fireEvent.click(screen.getByRole('button', { name: 'Новая', exact: true }));
             fireEvent.change(screen.getByPlaceholderText('Название...'), { target: { value: 'Кофе' } });
-            fireEvent.click(screen.getByText('✓'));
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить категорию' }));
 
             await screen.findByText('Отпуск');
         });
@@ -413,9 +413,9 @@ describe('AddTransactionForm Component', () => {
 
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onAddCategory={onAddCategory} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-            fireEvent.click(screen.getByText('+ Новая'));
+            fireEvent.click(screen.getByRole('button', { name: 'Новая', exact: true }));
             fireEvent.change(screen.getByPlaceholderText('Название...'), { target: { value: 'Кофе' } });
-            fireEvent.click(screen.getByText('✓'));
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить категорию' }));
 
             expect(await screen.findByRole('alert')).toHaveTextContent('Категория уже существует');
             expect(screen.getByPlaceholderText('Название...')).toHaveValue('Кофе');

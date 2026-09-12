@@ -1,4 +1,5 @@
 import { PEEK_HEIGHT } from './TransactionsDrawer';
+import { CalendarDays, ChartNoAxesCombined, House } from 'lucide-react';
 
 // Height of the bar itself, exported so App can reserve the matching amount
 // of bottom padding on <main> - the bar is fixed, so it doesn't take part in
@@ -11,9 +12,9 @@ const GAP_ABOVE_DRAWER = 10;
 export const TAB_BAR_RESERVED_HEIGHT = TAB_BAR_HEIGHT + GAP_ABOVE_DRAWER;
 
 const TABS = [
-  { id: 'stats', icon: '🏠', label: 'Главная' },
-  { id: 'analytics', icon: '📊', label: 'Аналитика' },
-  { id: 'payments', icon: '🗓️', label: 'Платежи' },
+  { id: 'stats', icon: House, label: 'Главная' },
+  { id: 'analytics', icon: ChartNoAxesCombined, label: 'Аналитика' },
+  { id: 'payments', icon: CalendarDays, label: 'Платежи' },
 ];
 
 // Main-screen navigation, sitting directly above the transactions drawer's
@@ -49,6 +50,7 @@ export default function BottomTabs({ active, onChange }) {
     >
       {TABS.map(tab => {
         const isActive = active === tab.id;
+        const TabIcon = tab.icon;
         return (
           <button
             key={tab.id}
@@ -60,7 +62,9 @@ export default function BottomTabs({ active, onChange }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '3px',
+              gap: '4px',
+              padding: '0 3px',
+              minWidth: 0,
               border: 'none',
               // На ступень меньше внешнего --radius-lg: кнопка лежит внутри
               // контейнера с отступом 5px, и вложенный угол должен быть
@@ -75,7 +79,7 @@ export default function BottomTabs({ active, onChange }) {
               transition: 'all 0.2s ease',
             }}
           >
-            <span aria-hidden="true" style={{ fontSize: 'var(--text-2xl)', lineHeight: 1 }}>{tab.icon}</span>
+            <TabIcon size={19} />
             {tab.label}
           </button>
         );

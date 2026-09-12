@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import Sheet from './ui/Sheet';
 import IconButton from './ui/IconButton';
 
@@ -174,7 +175,7 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
           <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)' }}>Банки</h2>
           <p style={{ ...smallStyle, marginTop: '5px' }}>Обновление: {data?.scheduleLabel || '08:00, 14:00 и 20:00'} · {data?.timeZone || 'Europe/Bucharest'}.</p>
         </div>
-        <IconButton round tone="neutral" onClick={requestClose} disabled={busy} aria-label="Закрыть банки">✕</IconButton>
+        <IconButton round tone="neutral" onClick={requestClose} disabled={busy} aria-label="Закрыть банки"><X size={20} /></IconButton>
       </div>
 
       <button type="button" onClick={onRetry} disabled={loading || busy} style={buttonStyle}>Обновить список предложений</button>

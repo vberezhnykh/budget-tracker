@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { Check, GripVertical, Pencil, Trash2, X } from 'lucide-react'
 import { categoryUsageKey } from '../utils/finance'
+import { ACCOUNT_ICON_OPTIONS, resolveAccountIcon } from '../utils/accountIcons'
+import AccountIcon from './AccountIcon'
 import Field from './ui/Field'
 import Sheet from './ui/Sheet'
 import IconButton from './ui/IconButton'
@@ -32,9 +35,9 @@ function AccountListItem({ account, onDelete, onEdit }) {
           aria-label={`Изменить порядок: ${account.name}`}
           style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: 'var(--text-2xl)', lineHeight: 1, padding: '4px 2px', flexShrink: 0 }}
         >
-          ⠿
+          <GripVertical size={18} strokeWidth={1.8} aria-hidden="true" />
         </span>
-        <span style={{ fontSize: 'var(--text-3xl)', flexShrink: 0 }}>{account.icon || (account.type === 'cash' ? '💵' : '💳')}</span>
+        <span className="account-settings-symbol"><AccountIcon icon={account.icon} type={account.type} /></span>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 'var(--text-md)', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -44,10 +47,10 @@ function AccountListItem({ account, onDelete, onEdit }) {
       </div>
       <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
         <IconButton tone="primary" onClick={onEdit} aria-label="Изменить">
-          ✏️
+          <Pencil size={18} strokeWidth={1.8} aria-hidden="true" />
         </IconButton>
         <IconButton tone="danger" onClick={onDelete} aria-label="Удалить">
-          🗑️
+          <Trash2 size={18} strokeWidth={1.8} aria-hidden="true" />
         </IconButton>
       </div>
     </div>
@@ -81,7 +84,7 @@ export default function AccountsSettingsModal({
 }) {
   const [formName, setFormName] = useState('');
   const [formType, setFormType] = useState('card');
-  const [formIcon, setFormIcon] = useState('💳');
+  const [formIcon, setFormIcon] = useState('credit-card');
   const [formExcludeFromTotal, setFormExcludeFromTotal] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState(null);
   const [limitInput, setLimitInput] = useState(String(monthlyLimit));
@@ -106,7 +109,7 @@ export default function AccountsSettingsModal({
   const resetForm = () => {
     setFormName('');
     setFormType('card');
-    setFormIcon('💳');
+    setFormIcon('credit-card');
     setFormExcludeFromTotal(false);
     setEditingAccountId(null);
   };
@@ -195,7 +198,7 @@ export default function AccountsSettingsModal({
             aria-label="Закрыть настройки"
             style={{ fontWeight: 'bold' }}
           >
-            ✕
+            <X size={18} strokeWidth={1.8} aria-hidden="true" />
           </IconButton>
         </div>
 
@@ -215,15 +218,26 @@ export default function AccountsSettingsModal({
               style={{ flex: 1 }}
             />
 
-            <Field
-              type="text"
-              placeholder="Иконка/Эмодзи"
-              value={formIcon}
-              onChange={(e) => setFormIcon(e.target.value)}
-              style={{ width: '60px', padding: '10px 0', textAlign: 'center', fontSize: 'var(--text-xl)' }}
-              title="Эмодзи для счёта"
-            />
           </div>
+
+          <fieldset className="account-icon-picker">
+            <legend>Иконка счёта · {ACCOUNT_ICON_OPTIONS.find(option => option.id === formIcon)?.label}</legend>
+            <div className="account-icon-picker__options">
+              {ACCOUNT_ICON_OPTIONS.map(option => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className="account-icon-picker__option"
+                  aria-label={`Иконка: ${option.label}`}
+                  title={option.label}
+                  aria-pressed={formIcon === option.id}
+                  onClick={() => setFormIcon(option.id)}
+                >
+                  <AccountIcon icon={option.id} />
+                </button>
+              ))}
+            </div>
+          </fieldset>
 
           {!editingAccountId && (
             <div style={{ display: 'flex', gap: '16px', fontSize: 'var(--text-base)' }}>
@@ -235,10 +249,10 @@ export default function AccountsSettingsModal({
                   checked={formType === 'card'}
                   onChange={() => {
                     setFormType('card');
-                    setFormIcon('💳');
+                    setFormIcon('credit-card');
                   }}
                 />
-                Карта 💳
+                <AccountIcon icon="credit-card" size={16} /> Карта
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                 <input
@@ -248,10 +262,10 @@ export default function AccountsSettingsModal({
                   checked={formType === 'cash'}
                   onChange={() => {
                     setFormType('cash');
-                    setFormIcon('💵');
+                    setFormIcon('banknote');
                   }}
                 />
-                Наличные 💵
+                <AccountIcon icon="banknote" size={16} /> Наличные
               </label>
             </div>
           )}
@@ -319,7 +333,7 @@ export default function AccountsSettingsModal({
                     onEdit={() => {
                       setFormName(acc.name);
                       setFormType(acc.type);
-                      setFormIcon(acc.icon || (acc.type === 'cash' ? '💵' : '💳'));
+                      setFormIcon(resolveAccountIcon(acc.icon, acc.type));
                       setFormExcludeFromTotal(Boolean(acc.excludeFromTotal));
                       setEditingAccountId(acc._id);
                     }}
@@ -396,14 +410,14 @@ export default function AccountsSettingsModal({
                             opacity: savingCategory ? 0.6 : 1,
                           }}
                         >
-                          ✓
+                          <Check size={18} strokeWidth={1.8} aria-hidden="true" />
                         </IconButton>
                         <IconButton
                           tone="neutral"
                           onClick={cancelCategoryEdit}
                           aria-label={`Отменить переименование: ${cat.name}`}
                         >
-                          ✕
+                          <X size={18} strokeWidth={1.8} aria-hidden="true" />
                         </IconButton>
                       </form>
                     ) : (
@@ -420,13 +434,13 @@ export default function AccountsSettingsModal({
                           onClick={() => startCategoryEdit(cat)}
                           aria-label={`Переименовать категорию: ${cat.name}`}
                         >
-                          ✏️
+                          <Pencil size={18} strokeWidth={1.8} aria-hidden="true" />
                         </IconButton>
                         <IconButton
                           onClick={() => onDeleteCategory(cat, used)}
                           aria-label={`Удалить категорию: ${cat.name}`}
                         >
-                          🗑️
+                          <Trash2 size={18} strokeWidth={1.8} aria-hidden="true" />
                         </IconButton>
                       </>
                     )}
@@ -478,9 +492,13 @@ export default function AccountsSettingsModal({
             fontSize: 'var(--text-base)',
             fontWeight: '700',
             padding: '11px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
           }}
         >
-          🗑️ Корзина операций
+          <Trash2 size={18} strokeWidth={1.8} aria-hidden="true" /> Корзина операций
         </button>
 
         {/* Session: the only place a logout control lives - deliberately

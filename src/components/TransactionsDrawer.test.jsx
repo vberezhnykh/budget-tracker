@@ -56,7 +56,7 @@ const baseProps = {
     setSelectedCategory: () => { },
     exportToCSV: () => { },
     openEditModal: () => { },
-    getAccountDisplay: (id) => (id === 'card' ? '💳 Карта' : '💵 Наличные'),
+    getAccountDisplay: (id) => (id === 'card' ? 'Карта' : 'Наличные'),
     formatDate: (d) => d,
     getAccountFilterLabel: (filter) => (filter === 'type:card' ? 'Все карты' : filter === 'type:cash' ? 'Все наличные' : filter)
 };
@@ -319,10 +319,10 @@ describe('TransactionsDrawer Component', () => {
         render(<Wrapper initialExpanded periodData={transferPeriodData} />);
 
         expect(screen.getByText(
-            (_, el) => el?.textContent === '💵 Наличные → 💳 Карта • Перевод',
+            (_, el) => el?.textContent.replace(/\s+/g, ' ') === 'Наличные Карта • Перевод',
             { selector: 'div' }
         )).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /💵 Наличные → 💳 Карта/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Наличные → Карта/ })).toBeInTheDocument();
     });
 
     // Палец, ведущий по размытому фону раскрытой шторки, прокручивал главный

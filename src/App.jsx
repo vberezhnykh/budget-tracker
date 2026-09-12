@@ -1,4 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
+import { ArrowRightLeft, Check, Minus, Plus, Settings, X } from 'lucide-react'
+import AccountIcon from './components/AccountIcon'
 import AddTransactionForm from './components/AddTransactionForm'
 import AnalyticsView from './components/AnalyticsView'
 import LoginScreen from './components/LoginScreen'
@@ -476,7 +478,7 @@ function App() {
       {
         key: 'total',
         theme: 'total',
-        icon: '💰',
+        icon: 'wallet',
         name: 'Общий капитал',
         amount: balances.total,
         filter: null,
@@ -488,7 +490,8 @@ function App() {
     const toSlide = (acc) => ({
       key: acc._id,
       theme: accountThemes.get(String(acc._id)),
-      icon: acc.icon || (acc.type === 'cash' ? '💵' : '💳'),
+      icon: acc.icon,
+      type: acc.type,
       name: acc.name,
       amount: balances.byAccount[acc._id] || 0,
       filter: acc._id,
@@ -1111,11 +1114,11 @@ function App() {
   const getAccountDisplay = (accountId) => {
     const acc = accounts.find(a => a._id === accountId);
     if (acc) {
-      return `${acc.icon || '💳'} ${acc.name}`;
+      return acc.name;
     }
-    if (accountId === 'card') return '💳 Карта';
-    if (accountId === 'cash') return '💵 Наличные';
-    return '❓ Неизвестно';
+    if (accountId === 'card') return 'Карта';
+    if (accountId === 'cash') return 'Наличные';
+    return 'Неизвестно';
   };
 
   // Single source of truth for the "Счет" account-filter label, shared by
@@ -1280,7 +1283,7 @@ function App() {
               padding: 0,
             }}
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
       )}
@@ -1365,7 +1368,7 @@ function App() {
             title="Настройки"
             style={{ fontSize: 'var(--text-3xl)', transition: 'all 0.2s ease', outline: 'none' }}
           >
-            ⚙️
+            <Settings size={21} />
           </IconButton>
         </div>
 
@@ -1431,9 +1434,9 @@ function App() {
                   aria-hidden="true"
                   className="account-card__symbol"
                 >
-                  {slide.icon}
+                  <AccountIcon icon={slide.icon} type={slide.type} size={22} />
                 </div>
-                {isActive && <span aria-hidden="true" className="account-card__selection">✓</span>}
+                {isActive && <span aria-hidden="true" className="account-card__selection"><Check size={13} /></span>}
                 <div className="account-card__name">
                   {slide.name}
                 </div>
@@ -1520,14 +1523,14 @@ function App() {
         {/* Quick Actions */}
         {summaryView !== 'payments' && <section style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => openAddModal('income')} className="btn-primary" style={{ flex: 1, background: 'var(--color-positive-gradient)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
-              <span>+</span> Доход
+            <button onClick={() => openAddModal('income')} aria-label="Добавить доход" className="btn-primary quick-action" style={{ flex: 1, background: 'var(--color-positive-gradient)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
+              <Plus size={18} /> Доход
             </button>
-            <button onClick={() => openAddModal('expense')} className="btn-primary" style={{ flex: 1, background: 'var(--color-expense-gradient)', boxShadow: '0 4px 15px rgba(244, 63, 94, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
-              <span>-</span> Расход
+            <button onClick={() => openAddModal('expense')} aria-label="Добавить расход" className="btn-primary quick-action" style={{ flex: 1, background: 'var(--color-expense-gradient)', boxShadow: '0 4px 15px rgba(244, 63, 94, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
+              <Minus size={18} /> Расход
             </button>
-            <button onClick={() => openAddModal('transfer')} className="glass-panel" style={{ flex: 1, border: '1px solid rgba(129, 140, 248, 0.2)', color: '#818cf8', padding: '12px 8px', borderRadius: 'var(--radius-lg)', fontWeight: '600', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
-              ⇄ Перевод
+            <button onClick={() => openAddModal('transfer')} aria-label="Добавить перевод" className="glass-panel quick-action" style={{ flex: 1, border: '1px solid rgba(129, 140, 248, 0.2)', color: '#818cf8', padding: '12px 8px', borderRadius: 'var(--radius-lg)', fontWeight: '600', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
+              <ArrowRightLeft size={18} /> Перевод
             </button>
           </div>
         </section>}

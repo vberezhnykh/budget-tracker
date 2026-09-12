@@ -144,6 +144,19 @@ button {
   font-family: inherit;
 }
 
+.lucide {
+  flex-shrink: 0;
+  vertical-align: middle;
+  stroke-width: 1.8;
+}
+
+.quick-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
 /* Utilities */
 .glass-panel {
   background: var(--color-surface-glass);

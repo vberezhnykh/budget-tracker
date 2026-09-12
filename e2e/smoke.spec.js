@@ -290,12 +290,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(count).toBe(manyAccounts.length + 1);
 
     const viewport = page.viewportSize();
-    const boxes = [];
-    for (let i = 0; i < count; i++) {
-      const box = await dots.nth(i).boundingBox();
-      expect(box).not.toBeNull();
-      boxes.push(box);
-    }
+    // Measure the row in one frame: font loading or a page scroll between
+    // separate boundingBox calls must not look like wrapped indicators.
+    const boxes = await dots.evaluateAll(buttons => buttons.map(button => {
+      const box = button.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }));
 
     // One row: every dot shares the first one's vertical position, and the
     // whole row fits inside the viewport.
@@ -333,9 +333,9 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
 
-    const income = page.getByRole('button', { name: /\+ Доход/i });
-    const expense = page.getByRole('button', { name: /- Расход/i });
-    const transfer = page.getByRole('button', { name: /⇄ Перевод/i });
+    const income = page.getByRole('button', { name: 'Добавить доход' });
+    const expense = page.getByRole('button', { name: 'Добавить расход' });
+    const transfer = page.getByRole('button', { name: 'Добавить перевод' });
 
     const buttons = [income, expense, transfer];
     const boxes = [];
@@ -459,7 +459,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     for (const open of [
       () => page.getByTitle('Настройки').click(),
       () => page.getByRole('button', { name: /^Период:/ }).click(),
-      () => page.getByRole('button', { name: /- Расход/ }).click(),
+      () => page.getByRole('button', { name: 'Добавить расход' }).click(),
     ]) {
       await open();
       await expect(page.getByRole('dialog').first()).toBeVisible();
@@ -575,7 +575,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(count).toBeGreaterThan(1);
 
     const chip = page.getByRole('button', { name: /^Период:/ });
-    const startLabel = (await chip.textContent()).replace('▼', '').trim();
+    const startLabel = (await chip.textContent()).trim();
 
     // Лента открывается на выбранном месяце, а не на первом слайде: он
     // самый старый, и увидеть при запуске ноябрь позапрошлого года вместо
@@ -596,7 +596,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       el.scrollBy({ left: -(slide.offsetWidth + 12), behavior: 'instant' });
     });
     await page.waitForTimeout(500);
-    const afterLabel = (await chip.textContent()).replace('▼', '').trim();
+    const afterLabel = (await chip.textContent()).trim();
     expect(afterLabel).not.toBe(startLabel);
 
     // Соседняя карточка подписана своим месяцем - иначе во время свайпа не

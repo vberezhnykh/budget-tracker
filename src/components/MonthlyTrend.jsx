@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatMonthName, formatPeriodLabel, getCurrentMonth } from '../utils/period';
 import './MonthlyTrend.css';
 
@@ -76,8 +77,8 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
                     <p>Доходы и расходы, €</p>
                 </div>
                 <div className="monthly-trend__navigation">
-                    <button type="button" aria-label="Предыдущий месяц" disabled={selectedIndex <= 0} onClick={() => selectRelativeMonth(-1)}>‹</button>
-                    <button type="button" aria-label="Следующий месяц" disabled={selectedIndex < 0 || selectedIndex >= series.length - 1} onClick={() => selectRelativeMonth(1)}>›</button>
+                    <button type="button" aria-label="Предыдущий месяц" disabled={selectedIndex <= 0} onClick={() => selectRelativeMonth(-1)}><ChevronLeft size={20} /></button>
+                    <button type="button" aria-label="Следующий месяц" disabled={selectedIndex < 0 || selectedIndex >= series.length - 1} onClick={() => selectRelativeMonth(1)}><ChevronRight size={20} /></button>
                 </div>
             </div>
 

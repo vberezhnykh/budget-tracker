@@ -245,10 +245,10 @@ async function openBankSheetInApp() {
 
 async function submitManualExpense() {
   await screen.findByText('BudgetTracker');
-  fireEvent.click(screen.getByRole('button', { name: /- Расход/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить расход' }));
   fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '12.34' } });
   fireEvent.click(screen.getByText('Продукты'));
-  fireEvent.click(screen.getByText('💳 Карта'));
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
   fireEvent.click(screen.getByText('Сохранить'));
 }
 
@@ -411,7 +411,7 @@ describe('App banking integration', () => {
     });
     render(<App />);
     await screen.findByText('BudgetTracker');
-    fireEvent.click(screen.getByRole('button', { name: /- Расход/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить расход' }));
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
     fireEvent.click(screen.getByText('Разделить на несколько категорий'));
     const amounts = screen.getAllByPlaceholderText('Сумма');
@@ -419,7 +419,7 @@ describe('App banking integration', () => {
     fireEvent.change(amounts[1], { target: { value: '20' } });
     fireEvent.click(screen.getAllByText('Продукты')[0]);
     fireEvent.click(screen.getAllByText('Транспорт')[1]);
-    fireEvent.click(screen.getByText('💳 Карта'));
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
     fireEvent.click(screen.getByText('Сохранить'));
     await waitFor(() => expect(payloads).toHaveLength(2));
     expect(payloads[1]).toHaveLength(2);
