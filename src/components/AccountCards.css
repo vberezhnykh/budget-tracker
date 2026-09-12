@@ -1,0 +1,184 @@
+/* Account identity colors are independent of income/expense semantics. */
+[data-account-theme="teal"] {
+  --account-accent: #0f766e;
+  --account-tint: #e1f5f0;
+  --account-border: #b1dacf;
+}
+
+[data-account-theme="violet"] {
+  --account-accent: #6d43b0;
+  --account-tint: #eee7fa;
+  --account-border: #d5c3ef;
+}
+
+[data-account-theme="amber"] {
+  --account-accent: #966011;
+  --account-tint: #fff1ce;
+  --account-border: #e8d094;
+}
+
+[data-account-theme="blue"] {
+  --account-accent: #245fa6;
+  --account-tint: #e3efff;
+  --account-border: #b8d0ee;
+}
+
+[data-account-theme="rose"] {
+  --account-accent: #a13f59;
+  --account-tint: #fbe5ec;
+  --account-border: #e8bac8;
+}
+
+[data-account-theme="cyan"] {
+  --account-accent: #086d85;
+  --account-tint: #def4f9;
+  --account-border: #a9d8e2;
+}
+
+[data-account-theme="olive"] {
+  --account-accent: #5b6d25;
+  --account-tint: #eef2d8;
+  --account-border: #cdd7a5;
+}
+
+[data-account-theme="orange"] {
+  --account-accent: #a25525;
+  --account-tint: #ffead9;
+  --account-border: #edc6a5;
+}
+
+[data-account-theme="pink"] {
+  --account-accent: #974e88;
+  --account-tint: #f6e7f3;
+  --account-border: #dfbdd8;
+}
+
+[data-account-theme="slate"] {
+  --account-accent: #516376;
+  --account-tint: #e8edf4;
+  --account-border: #c5cedb;
+}
+
+[data-account-theme="total"] {
+  --account-accent: #253c60;
+  --account-tint: #e1e9f5;
+  --account-border: #3e577a;
+  --account-background: linear-gradient(120deg, #253c60, #405b80);
+}
+
+.account-card {
+  position: relative;
+  flex: 0 0 88%;
+  scroll-snap-align: center;
+  scroll-snap-stop: always;
+  box-sizing: border-box;
+  text-align: center;
+  background: var(--account-background, linear-gradient(120deg, var(--account-tint), var(--color-surface)));
+  border-radius: var(--radius-xl);
+  border: 2px solid var(--account-border);
+  padding: 18px 16px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.account-card[aria-current="true"] {
+  border-color: var(--account-accent);
+  box-shadow: inset 0 0 0 1px var(--account-accent);
+}
+
+.account-card:focus-visible {
+  outline: 3px solid var(--account-accent);
+  outline-offset: -6px;
+}
+
+.account-card__symbol {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: var(--text-3xl);
+  line-height: 1;
+  pointer-events: none;
+}
+
+.account-card__selection {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  display: grid;
+  place-items: center;
+  width: 19px;
+  height: 19px;
+  border-radius: var(--radius-pill);
+  background: var(--account-accent);
+  color: var(--color-text-inverse);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.account-card__name {
+  font-size: var(--text-md);
+  color: var(--account-accent);
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+  padding: 0 28px;
+  overflow-wrap: anywhere;
+}
+
+.account-card .balance-amount {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: var(--color-text-main);
+}
+
+.account-card__note {
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.account-card[data-account-theme="total"][aria-current="true"] {
+  border-color: var(--account-tint);
+  box-shadow: inset 0 0 0 1px var(--account-tint);
+}
+
+.account-card[data-account-theme="total"] .account-card__name,
+.account-card[data-account-theme="total"] .account-card__note {
+  color: var(--account-tint);
+}
+
+.account-card[data-account-theme="total"] .balance-amount {
+  color: var(--color-text-inverse);
+}
+
+.account-card[data-account-theme="total"] .account-card__selection {
+  background: var(--account-tint);
+  color: var(--account-accent);
+}
+
+.account-card[data-account-theme="total"]:focus-visible {
+  outline-color: var(--account-tint);
+}
+
+.account-carousel-dot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--account-accent);
+  opacity: 0.45;
+  transition: width 0.2s ease, opacity 0.2s ease;
+}
+
+[aria-current="true"] > .account-carousel-dot {
+  width: 18px;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-card,
+  .account-carousel-dot {
+    transition: none;
+  }
+}

@@ -20,7 +20,7 @@ const pluralDays = (count) => {
 
 // The whole "Аналитика" tab, pulled out of App.jsx so that file stops
 // growing: a period summary, the spending-pace card (month view only), the
-// monthly bar trend, and the category donut with month-over-month deltas.
+// monthly timeline, and the category donut with month-over-month deltas.
 export default function AnalyticsView({
     periodStats,
     periodLabel,
@@ -46,7 +46,7 @@ export default function AnalyticsView({
     const showCategoryComparison = timeRange === 'month' && !!categoryComparison;
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
             <div className="glass-panel" style={{ padding: '20px' }}>
                 <h3 style={{ margin: '0 0 16px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                     Сводка

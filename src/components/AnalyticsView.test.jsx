@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import AnalyticsView from './AnalyticsView';
 
@@ -33,7 +33,8 @@ describe('AnalyticsView Component', () => {
         render(<AnalyticsView {...baseProps} />);
 
         expect(screen.getByText('Сводка')).toBeInTheDocument();
-        expect(screen.getByText('Январь 2026')).toBeInTheDocument();
+        const summary = screen.getByText('Сводка').parentElement;
+        expect(within(summary).getByText('Январь 2026')).toBeInTheDocument();
         expect(screen.getByText('Аналитика трат')).toBeInTheDocument();
         expect(screen.getByText('Food')).toBeInTheDocument();
     });

@@ -12,9 +12,11 @@ import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
 import { formatPeriodLabel, toDativeMonth, listPeriodMonths, formatMonthName } from './utils/period'
-import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getMonthlySeries, getCategoryComparison, getPaceForecast, getMonthlyTotals } from './utils/finance'
+import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getCategoryComparison, getPaceForecast, getMonthlyTotals } from './utils/finance'
 import { handleAccountDragEnd } from './utils/accountReorder'
+import { getAccountThemes } from './utils/accountThemes'
 import useSnapCarousel from './utils/useSnapCarousel'
+import './components/AccountCards.css'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -469,9 +471,11 @@ function App() {
   // and the filtering utilities in utils/finance.js), simply unreachable
   // from here.
   const slides = useMemo(() => {
+    const accountThemes = getAccountThemes(accounts);
     const base = [
       {
         key: 'total',
+        theme: 'total',
         icon: '💰',
         name: 'Общий капитал',
         amount: balances.total,
@@ -483,6 +487,7 @@ function App() {
     ];
     const toSlide = (acc) => ({
       key: acc._id,
+      theme: accountThemes.get(String(acc._id)),
       icon: acc.icon || (acc.type === 'cash' ? '💵' : '💳'),
       name: acc.name,
       amount: balances.byAccount[acc._id] || 0,
@@ -523,11 +528,22 @@ function App() {
   // Comparison data for indicators
   const comparisonData = useMemo(() => getComparisonData(transactions, selectedMonth), [transactions, selectedMonth]);
 
-  // Bar-chart series for the Аналитика tab: 6 trailing months in the
-  // month view, a full year's worth when looking at a year/lifetime total.
+  // The timeline and summary carousel share a continuous, fixed history.
+  // Selecting an earlier month must never remove the months after it.
+  const carouselMonths = useMemo(() => listPeriodMonths(), []);
+  const monthlyTotals = useMemo(
+    () => getMonthlyTotals(transactions, selectedAccount, selectedCategory),
+    [transactions, selectedAccount, selectedCategory]
+  );
   const monthlySeries = useMemo(
-    () => getMonthlySeries(transactions, selectedMonth, timeRange === 'month' ? 6 : 12, selectedAccount, selectedCategory),
-    [transactions, selectedMonth, timeRange, selectedAccount, selectedCategory]
+    () => carouselMonths.map(month => ({
+      month,
+      year: Number(month.slice(0, 4)),
+      label: new Date(`${month}-01T12:00:00`).toLocaleDateString('ru-RU', { month: 'short' }).replace(/\.$/, ''),
+      income: monthlyTotals[month]?.income || 0,
+      expense: Math.abs(monthlyTotals[month]?.expense || 0),
+    })),
+    [carouselMonths, monthlyTotals]
   );
 
   // Per-category month-over-month deltas, shown next to the donut legend.
@@ -1131,11 +1147,6 @@ function App() {
   // Месяцы, по которым листается карточка сводки, и итоги по каждому. Список
   // тот же, что предлагает чип периода, - иначе свайп уводил бы туда, куда
   // через чип не попасть.
-  const carouselMonths = useMemo(() => listPeriodMonths(), []);
-  const monthlyTotals = useMemo(
-    () => getMonthlyTotals(transactions, selectedAccount, selectedCategory),
-    [transactions, selectedAccount, selectedCategory]
-  );
   const selectedMonthIndex = carouselMonths.indexOf(selectedMonth);
 
   // Карусель месяцев на той же механике, что и карусель счетов: осевшая
@@ -1397,30 +1408,19 @@ function App() {
               <div
                 key={slide.key}
                 data-carousel-slide
+                className="account-card"
+                data-account-theme={slide.theme}
                 role="button"
                 tabIndex={0}
                 aria-label={slide.note ? `${slide.name}: ${balanceText}, ${slide.note}` : `${slide.name}: ${balanceText}`}
                 aria-current={isActive}
+                aria-pressed={isActive}
                 onClick={() => handleSlideClick(slide, index)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     handleSlideClick(slide, index);
                   }
-                }}
-                style={{
-                  position: 'relative',
-                  flex: '0 0 88%',
-                  scrollSnapAlign: 'center',
-                  scrollSnapStop: 'always',
-                  boxSizing: 'border-box',
-                  textAlign: 'center',
-                  background: isActive ? 'var(--color-primary-soft)' : 'var(--color-surface-muted)',
-                  borderRadius: 'var(--radius-xl)',
-                  border: isActive ? '1.5px solid var(--color-primary)' : '1px solid var(--color-border-subtle)',
-                  transition: 'all 0.2s ease',
-                  padding: '18px 16px',
-                  cursor: 'pointer'
                 }}
               >
                 {/* The account symbol sits in the card's top-right corner instead of
@@ -1429,18 +1429,19 @@ function App() {
                     below keeps the card's height, and centred text is unaffected. */}
                 <div
                   aria-hidden="true"
-                  style={{ position: 'absolute', top: '12px', right: '14px', fontSize: 'var(--text-3xl)', lineHeight: 1, pointerEvents: 'none' }}
+                  className="account-card__symbol"
                 >
                   {slide.icon}
                 </div>
-                <div style={{ fontSize: 'var(--text-md)', color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)', fontWeight: '700', marginBottom: '8px', letterSpacing: '0.5px', padding: '0 28px' }}>
+                {isActive && <span aria-hidden="true" className="account-card__selection">✓</span>}
+                <div className="account-card__name">
                   {slide.name}
                 </div>
-                <div className="balance-amount" style={{ fontSize: '2.2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
+                <div className="balance-amount">
                   {balanceText}
                 </div>
                 {slide.note && (
-                  <div style={{ marginTop: '4px', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                  <div className="account-card__note">
                     {slide.note}
                   </div>
                 )}
@@ -1471,6 +1472,7 @@ function App() {
                 onClick={() => handleSlideClick(slide, index)}
                 aria-label={`Показать ${slide.name}`}
                 aria-current={isActive}
+                data-account-theme={slide.theme}
                 style={{
                   // Hit target wants to be 40x40 for touch, but with many
                   // accounts a row of fixed 40px boxes no longer fits the
@@ -1501,16 +1503,7 @@ function App() {
                   cursor: 'pointer'
                 }}
               >
-                <span
-                  style={{
-                    display: 'block',
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: isActive ? 'var(--color-primary)' : 'var(--color-control-off)',
-                    transition: 'background 0.2s ease'
-                  }}
-                />
+                <span className="account-carousel-dot" />
               </button>
             );
           })}
@@ -1544,7 +1537,7 @@ function App() {
         </section>}
 
         {/* Summary Card with Budget Limit */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', marginBottom: '24px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '24px', marginBottom: '24px' }}>
           {summaryView === 'payments' ? (
             <PlannedPaymentsView
               plannedPayments={plannedPayments}
