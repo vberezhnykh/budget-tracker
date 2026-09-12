@@ -43,6 +43,24 @@ describe('transformTransactions на сервере совпадает с кли
     it('на пустой истории', () => {
         expect(transformOnServer([], accounts)).toEqual(transformOnClient([], accounts));
     });
+
+    it('preserves the same logo choice for API history, period results and client-side rows', () => {
+        const fixture = { ...transactions[2], title: 'Chop Chop' };
+        const variants = [
+            { ...fixture, _id: 'chosen-company', logoMode: 'domain', merchantDomain: 'chopchop.me' },
+            { ...fixture, _id: 'chosen-category', logoMode: 'category' },
+            { ...fixture, _id: 'automatic', logoMode: 'auto' },
+            { ...fixture, _id: 'legacy' }
+        ];
+        const serverRows = transformOnServer(variants, accounts);
+        expect(serverRows).toEqual(transformOnClient(variants, accounts));
+        expect(serverRows.map(({ id, logoMode, merchantDomain }) => ({ id, logoMode, merchantDomain }))).toEqual([
+            { id: 'chosen-company', logoMode: 'domain', merchantDomain: 'chopchop.me' },
+            { id: 'chosen-category', logoMode: 'category', merchantDomain: undefined },
+            { id: 'automatic', logoMode: 'auto', merchantDomain: undefined },
+            { id: 'legacy', logoMode: 'auto', merchantDomain: undefined }
+        ]);
+    });
 });
 
 describe('transformTransactions: правила, которые легко потерять', () => {

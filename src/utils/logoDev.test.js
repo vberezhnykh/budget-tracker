@@ -31,4 +31,18 @@ describe('Logo.dev transaction lookup', () => {
     expect(getTransactionLogoUrl(expense('Wolt'), '')).toBeNull();
     expect(getTransactionLogoUrl(expense('Wolt'), 'sk_private_key')).toBeNull();
   });
+
+  it('keeps a chosen company even when its name is ambiguous or changes', () => {
+    const selected = { ...expense('Chop Chop', 'Красота'), logoMode: 'domain', merchantDomain: 'chophairdressing.com' };
+    const url = getTransactionLogoUrl(selected, key);
+    expect(new URL(url).pathname).toBe('/chophairdressing.com');
+    expect(getTransactionLogoUrl({ ...selected, description: 'Стрижка' }, key)).toBe(url);
+    expect(getTransactionLogoUrl({ ...selected, description: '' }, key)).toBe(url);
+  });
+
+  it('respects category-only mode and does not silently guess after an invalid selection', () => {
+    expect(getTransactionLogoUrl({ ...expense('Wolt'), logoMode: 'category' }, key)).toBeNull();
+    expect(getTransactionLogoUrl({ ...expense('Wolt'), logoMode: 'domain', merchantDomain: 'localhost' }, key)).toBeNull();
+    expect(new URL(getTransactionLogoUrl({ ...expense('Wolt'), logoMode: 'auto', merchantDomain: 'zara.com' }, key)).pathname).toBe('/wolt.com');
+  });
 });

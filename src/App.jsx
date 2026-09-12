@@ -1666,6 +1666,7 @@ function App() {
 
       {showAddTransaction && (
         <AddTransactionForm
+          apiFetch={apiFetch}
           type={transactionType}
           categories={categories}
           onAddCategory={handleAddCategory}
@@ -1679,7 +1680,7 @@ function App() {
           presetAccountId={accounts.some(a => a._id === selectedAccount) ? selectedAccount : undefined}
         />
       )}
-      {editingTransaction && <AddTransactionForm initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} transactions={transactions} />}
+      {editingTransaction && <AddTransactionForm apiFetch={apiFetch} initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} transactions={transactions} />}
 
       {/* Bottom drawer: transaction history, always mounted (collapsed =
           transformed off-screen, not unmounted) so filters applied elsewhere

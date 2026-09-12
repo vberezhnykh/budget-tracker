@@ -202,7 +202,9 @@ async function saveManualTransactions(transactions, options = {}) {
             // The user explicitly chose to replace the bank-generated row
             // with their own fields (or split). Keep the first ledger id.
             const updated = await Transaction.findByIdAndUpdate(duplicate.tx._id,
-                { $set: first, $inc: { __v: 1 } }, { new: true, runValidators: true, session });
+                { $set: first, $inc: { __v: 1 },
+                    ...(first.logoMode !== 'domain' ? { $unset: { merchantDomain: '' } } : {}) },
+                { new: true, runValidators: true, session });
             const extra = transactions.length > 1 ? await Transaction.create(transactions.slice(1), { session, ordered: true }) : [];
             const saved = [updated, ...extra];
             await BankLink.deleteMany({ entryId: duplicate.entry._id }, { session });

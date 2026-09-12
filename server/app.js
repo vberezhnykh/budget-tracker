@@ -25,6 +25,7 @@ const { saveManualTransactionUpdate } = require('./banking/manualEdit');
 const { validateTransactionCreate } = require('./transactionInput');
 const { getCanonicalSettings, saveCanonicalSettings } = require('./settingsSingleton');
 const { createOperationalRouter } = require('./operational');
+const { createMerchantSearchRouter } = require('./merchantSearch');
 const { activeTransactionFilter } = require('./ledgerState');
 const { validateAccountReferences } = require('./accountRefs');
 const { createTrashRouter, softDeleteTransaction } = require('./trash');
@@ -211,6 +212,7 @@ app.use('/api/banking', bankingRouters.apiRouter);
 app.use('/api', createOperationalRouter({ mongoose }));
 app.use('/api/trash', createTrashRouter());
 app.use('/api/planned-payments', createPlannedPaymentsRouter());
+app.use('/api/merchants', createMerchantSearchRouter());
 
 // ---- Auth ----
 

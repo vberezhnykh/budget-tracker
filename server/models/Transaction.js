@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { normalizeMerchantDomain } = require('../merchantDomain');
 
 const TransactionSchema = new mongoose.Schema({
     title: {
@@ -41,6 +42,23 @@ const TransactionSchema = new mongoose.Schema({
     description: {
         type: String,
         trim: true
+    },
+    logoMode: {
+        type: String,
+        enum: ['auto', 'domain', 'category'],
+        default: 'auto'
+    },
+    merchantDomain: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        required: function() {
+            return this.type === 'expense' && this.logoMode === 'domain';
+        },
+        validate: {
+            validator: value => value === undefined || normalizeMerchantDomain(value) !== null,
+            message: 'merchantDomain must be a public hostname'
+        }
     },
     account: {
         type: String,
@@ -85,6 +103,11 @@ const TransactionSchema = new mongoose.Schema({
         type: String,
         trim: true
     }
+});
+
+TransactionSchema.pre('validate', function normalizeLogoChoice() {
+    if (this.type !== 'expense') this.logoMode = 'auto';
+    if (this.logoMode !== 'domain') this.merchantDomain = undefined;
 });
 
 // Индексы заведены под те запросы, которые сервер действительно выполняет,

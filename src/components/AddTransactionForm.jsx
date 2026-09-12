@@ -1,13 +1,14 @@
 import { useState, useMemo } from 'react';
 import { ArrowDownLeft, ArrowDownUp, ArrowUpRight, Check, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
 import AccountIcon from './AccountIcon';
+import TransactionLogoPicker from './TransactionLogoPicker';
 import Field from './ui/Field'
 import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
 import IconButton from './ui/IconButton'
 import { getDescriptionSuggestions, splitCategoriesByUsage } from '../utils/finance';
 
-export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [] }) {
+export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], apiFetch }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
     const defaultToAccount = accounts.find(a => a.type === 'card' && a._id !== defaultAccount)?._id || accounts.find(a => a._id !== defaultAccount)?._id || 'card';
 
@@ -84,6 +85,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     amount: parseFloat(split.amount),
                     category: split.category,
                     description: (formData.description + (split.description ? ` (${split.description})` : '')).trim(),
+                    ...(formData.type === 'expense' ? { logoMode: formData.logoMode || 'auto', merchantDomain: formData.merchantDomain || '' } : {}),
                     date: formData.date,
                     type: formData.type,
                     account: formData.account,
@@ -102,6 +104,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 // Only include toAccount for transfers to avoid polluting the data
                 if (!isTransfer) {
                     delete submitData.toAccount;
+                }
+                if (formData.type !== 'expense') {
+                    delete submitData.logoMode;
+                    delete submitData.merchantDomain;
                 }
                 submission = onSubmit(submitData);
             }
@@ -900,6 +906,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             </div>
                         )}
                     </div>
+
+                    {formData.type === 'expense' && !isSplit && !initialData?.splitId && (
+                        <TransactionLogoPicker item={formData} apiFetch={apiFetch} onChange={choice => setFormData(prev => ({ ...prev, ...choice }))} />
+                    )}
 
                     <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
                         {initialData && (

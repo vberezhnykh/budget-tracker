@@ -1,0 +1,20 @@
+.transaction-logo-picker { border: 1px solid var(--color-border); border-radius: var(--radius-lg); background: var(--color-surface); }
+.transaction-logo-picker__preview { display: flex; align-items: center; gap: 12px; padding: 14px; }
+.transaction-logo-picker__copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; text-align: left; overflow-wrap: anywhere; }
+.transaction-logo-picker__copy strong { font-size: var(--text-base); color: var(--color-text-main); font-weight: 600; }
+.transaction-logo-picker__copy > span { font-size: var(--text-xs); color: var(--color-text-muted); line-height: 1.4; }
+.transaction-logo-picker__action { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; padding: 10px 8px; min-height: 40px; border-radius: var(--radius-sm); background: var(--color-primary-tint); color: var(--color-primary); font-size: var(--text-sm); font-weight: 600; }
+.transaction-logo-picker__panel { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-top: 1px solid var(--color-border-subtle); }
+.transaction-logo-picker__modes { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.transaction-logo-picker__modes > button { min-height: 40px; padding: 8px 12px; }
+.transaction-logo-picker__label { color: var(--color-text-muted); font-size: var(--text-sm); }
+.transaction-logo-picker__search { position: relative; }
+.transaction-logo-picker__search > svg { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); color: var(--color-text-muted); }
+.transaction-logo-picker__hint { color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.5; }
+.transaction-logo-picker__results { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
+.transaction-logo-picker__results li + li { border-top: 1px solid var(--color-border-subtle); }
+.transaction-logo-picker__results button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 4px; background: var(--color-surface); color: var(--color-primary); border-radius: var(--radius-sm); }
+.transaction-logo-picker__results button:hover { background: var(--color-primary-soft); }
+.transaction-logo-picker button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+.transaction-logo-picker__website { display: flex; gap: 8px; }
+.transaction-logo-picker__error { font-size: var(--text-xs); color: var(--color-danger); }

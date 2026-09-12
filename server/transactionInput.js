@@ -18,11 +18,12 @@
 // поля, которые реально пришли в запросе. Ключ, которого в теле нет,
 // в объект обновления не попадает и потому сохранённое значение не трогает.
 //
-// Ровно одно исключение из этого правила - toAccount, см. ниже: у операции,
-// переставшей быть переводом, поле «куда» не может остаться от прежней
-// жизни, а частичное обновление само его не снимет.
+// Зависимые поля снимаются при явной смене режима: toAccount у бывшего
+// перевода и merchantDomain при отказе от выбранного логотипа компании.
 
 const TRANSACTION_TYPES = ['income', 'expense', 'initial', 'transfer'];
+const LOGO_MODES = ['auto', 'domain', 'category'];
+const { normalizeMerchantDomain } = require('./merchantDomain');
 
 // Суммы движений хранятся положительными - знак операции задаётся её типом
 // (см. transformTransactions в src/utils/finance.js). Исключение - initial:
@@ -82,6 +83,14 @@ function validateTransactionState(state) {
         }
     } else if (nonEmptyString(state.category) === null) {
         return 'Категория обязательна';
+    }
+
+    if (state.type === 'expense') {
+        const logoMode = state.logoMode === undefined ? 'auto' : state.logoMode;
+        if (!LOGO_MODES.includes(logoMode)) return 'Недопустимый способ выбора иконки';
+        if (logoMode === 'domain' && normalizeMerchantDomain(state.merchantDomain) === null) {
+            return 'Укажите домен компании без протокола, пути и порта';
+        }
     }
 
     return null;
@@ -210,6 +219,31 @@ function validateTransactionUpdate(body, currentTransaction = null) {
         update.excludeFromStats = body.excludeFromStats;
     }
 
+    const finalType = update.type ?? currentTransaction?.type;
+    const hasLogoMode = isPresent(body, 'logoMode');
+    const hasMerchantDomain = isPresent(body, 'merchantDomain');
+    if (finalType !== undefined && finalType !== 'expense') {
+        // Income and transfers have their own icons. Drop a previous expense
+        // choice and ignore logo fields supplied for these operation types.
+        if (currentTransaction?.logoMode && currentTransaction.logoMode !== 'auto') update.logoMode = 'auto';
+        if (currentTransaction?.merchantDomain !== undefined) unset.push('merchantDomain');
+    } else if (hasLogoMode || hasMerchantDomain) {
+        const logoMode = hasLogoMode ? body.logoMode : (currentTransaction?.logoMode ?? 'auto');
+        if (!LOGO_MODES.includes(logoMode)) return { error: 'Недопустимый способ выбора иконки' };
+        if (hasLogoMode) update.logoMode = logoMode;
+
+        if (logoMode === 'domain') {
+            const merchantDomain = normalizeMerchantDomain(hasMerchantDomain
+                ? body.merchantDomain : currentTransaction?.merchantDomain);
+            if (merchantDomain === null) return { error: 'Укажите домен компании без протокола, пути и порта' };
+            if (hasMerchantDomain) update.merchantDomain = merchantDomain;
+        } else {
+            // Switching away from a chosen company must remove its old domain,
+            // including when the form omits that field from its next request.
+            unset.push('merchantDomain');
+        }
+    }
+
     // Для частичного PUT проверяем состояние, полученное из прочитанного
     // документа и этого запроса, а не только поля из тела. Иначе expense ->
     // transfer без toAccount или transfer -> expense без category проходили
@@ -238,6 +272,10 @@ function validateTransactionCreate(body, { allowSplitId = false } = {}) {
 
     const { error, update } = validateTransactionUpdate(body);
     if (error) return { error };
+
+    // Also explicit for the bank-match replacement path, which updates an
+    // existing document and therefore does not receive Mongoose defaults.
+    update.logoMode ??= 'auto';
 
     // Как и раньше, пустое название обычной операции заменяется категорией.
     if (!isPresent(body, 'title')) {

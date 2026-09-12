@@ -53,6 +53,18 @@ describe('Finance Utilities', () => {
         expect(transformed[1].__v).toBe(0);
     });
 
+    it('preserves the saved logo selection when transactions are reloaded', () => {
+        const common = { amount: 10, type: 'expense', account: 'card', date: '2026-09-12' };
+        const [selected, category, legacy] = transformTransactions([
+            { ...common, _id: 'selected', logoMode: 'domain', merchantDomain: 'chophairdressing.com' },
+            { ...common, _id: 'category', logoMode: 'category' },
+            { ...common, _id: 'legacy' },
+        ]);
+        expect(selected).toMatchObject({ logoMode: 'domain', merchantDomain: 'chophairdressing.com' });
+        expect(category.logoMode).toBe('category');
+        expect(legacy.logoMode).toBe('auto');
+    });
+
     it('renames the legacy "Обмен" transfer category to "Перевод"', () => {
         const transformed = transformTransactions([
             { _id: 't1', amount: '100', type: 'transfer', account: 'card', toAccount: 'cash', category: 'Обмен', date: '2026-01-15T00:00:00Z' },

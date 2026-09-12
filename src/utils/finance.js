@@ -44,6 +44,8 @@ export const transformTransactions = (data, accounts = []) => {
             // transfers speaking the same word without touching stored data.
             category: isTransfer && t.category === 'Обмен' ? 'Перевод' : t.category,
             description: t.description,
+            logoMode: t.logoMode || 'auto',
+            merchantDomain: t.merchantDomain,
             account: account,
             toAccount: toAccount,
             accountType: accountTypeMap[account] || (account === 'cash' ? 'cash' : 'card'),

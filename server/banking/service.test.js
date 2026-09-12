@@ -230,6 +230,28 @@ describe('User decisions and manual duplicate matching', () => {
         expect((await Transaction.findOne()).description).toBe('Мой комментарий');
     });
 
+    it.each(['auto', 'category'])('clears an old company choice when replacing a bank row with %s', async logoMode => {
+        const [item] = await download();
+        await approve(item);
+        const original = await Transaction.findOne();
+        original.logoMode = 'domain';
+        original.merchantDomain = 'chopchop.me';
+        await original.save();
+
+        const newPurchase = manual(logoMode === 'auto' ? {} : { logoMode });
+        const conflict = await agent.post('/api/transactions').send(newPurchase);
+        expect(conflict.status).toBe(409);
+        const candidate = conflict.body.candidates[0];
+        const replacement = await agent.post('/api/transactions').send({
+            ...newPurchase, bankMatchEntryId: candidate.entryId, bankTransactionVersion: candidate.version
+        });
+        expect(replacement.status).toBe(200);
+        expect(replacement.body.logoMode).toBe(logoMode);
+        const saved = await Transaction.collection.findOne({ _id: original._id });
+        expect(saved).not.toHaveProperty('merchantDomain');
+        expect(await Transaction.countDocuments()).toBe(1);
+    });
+
     it('rejects deletion of a mapped ledger account even before any transaction is approved', async () => {
         const response = await agent.delete(`/api/accounts/${budgetAccount._id}`);
         expect(response.status).toBe(400);

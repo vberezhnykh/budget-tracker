@@ -254,3 +254,85 @@ describe('validateTransactionVersion', () => {
         (body) => expect(validateTransactionVersion(body).error).toMatch(/__v/)
     );
 });
+
+describe('transaction logo choice', () => {
+    const chosenExpense = () => ({ ...validBody(), logoMode: 'domain', merchantDomain: 'chopchop.me' });
+
+    it('normalizes a chosen company domain and ignores names and image URLs', () => {
+        const { error, transaction } = validateTransactionCreate({
+            ...validBody(), logoMode: 'domain', merchantDomain: ' CHOPCHOP.ME ',
+            merchantName: 'Chop Chop', logoUrl: 'https://untrusted.example/logo.png'
+        });
+        expect(error).toBeUndefined();
+        expect(transaction).toMatchObject({ logoMode: 'domain', merchantDomain: 'chopchop.me' });
+        expect(transaction).not.toHaveProperty('merchantName');
+        expect(transaction).not.toHaveProperty('logoUrl');
+    });
+
+    it.each([
+        undefined, null, '', 42, ['chopchop.me'], 'https://chopchop.me', 'chopchop.me/path',
+        'chopchop.me:443', 'user@chopchop.me', 'chopchop.me?size=100', '127.0.0.1',
+        '[::1]', 'localhost', 'shop.localhost', 'shop.local', 'shop.internal',
+        'shop.test', 'shop.invalid', 'shop.example', '-shop.com', 'shop-.com',
+        'shop..com', 'shop.com.', `${'a'.repeat(64)}.com`, 'парикмахерская.рф'
+    ])('rejects an invalid chosen hostname: %j', (merchantDomain) => {
+        const result = validateTransactionCreate({ ...validBody(), logoMode: 'domain', merchantDomain });
+        expect(result.error).toMatch(/домен/i);
+    });
+
+    it('accepts an international company domain in ASCII IDN form', () => {
+        const { transaction, error } = validateTransactionCreate({
+            ...validBody(), logoMode: 'domain', merchantDomain: 'xn--e1afmkfd.xn--p1ai'
+        });
+        expect(error).toBeUndefined();
+        expect(transaction.merchantDomain).toBe('xn--e1afmkfd.xn--p1ai');
+    });
+
+    it.each([null, 'url', true, ['auto']])('rejects an invalid expense logo mode: %j', (logoMode) => {
+        expect(validateTransactionCreate({ ...validBody(), logoMode }).error).toMatch(/иконки/i);
+    });
+
+    it('preserves the chosen company when unrelated fields or the same type change', () => {
+        const { error, update, unset } = validateTransactionUpdate({ amount: 25, type: 'expense' }, chosenExpense());
+        expect(error).toBeUndefined();
+        expect(update).toEqual({ amount: 25, type: 'expense' });
+        expect(unset).not.toContain('merchantDomain');
+    });
+
+    it('allows changing only the hostname of an existing company choice', () => {
+        const { error, update, unset } = validateTransactionUpdate({ merchantDomain: ' BARBER.COM ' }, chosenExpense());
+        expect(error).toBeUndefined();
+        expect(update).toEqual({ merchantDomain: 'barber.com' });
+        expect(unset).toEqual([]);
+    });
+
+    it.each(['auto', 'category'])('clears a saved domain when switching to %s', (logoMode) => {
+        const { error, update, unset } = validateTransactionUpdate({ logoMode }, chosenExpense());
+        expect(error).toBeUndefined();
+        expect(update).toEqual({ logoMode });
+        expect(unset).toContain('merchantDomain');
+    });
+
+    it('remains compatible with transactions created before logo choices existed', () => {
+        const { error, update, unset } = validateTransactionUpdate({ description: 'Новая запись' }, validBody());
+        expect(error).toBeUndefined();
+        expect(update).toEqual({ description: 'Новая запись' });
+        expect(unset).toEqual([]);
+    });
+
+    it('clears the company choice when an expense becomes income', () => {
+        const { error, update, unset } = validateTransactionUpdate({ type: 'income' }, chosenExpense());
+        expect(error).toBeUndefined();
+        expect(update).toMatchObject({ type: 'income', logoMode: 'auto' });
+        expect(unset).toContain('merchantDomain');
+    });
+
+    it('ignores logo selection fields for income', () => {
+        const { error, transaction } = validateTransactionCreate({
+            ...validBody(), type: 'income', logoMode: 'domain', merchantDomain: 'https://invalid.local'
+        });
+        expect(error).toBeUndefined();
+        expect(transaction.logoMode).toBe('auto');
+        expect(transaction).not.toHaveProperty('merchantDomain');
+    });
+});

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowDownLeft, ArrowLeftRight, BookOpen, BusFront, CarFront, Clapperboard,
   Dumbbell, Flag, Gift, HeartPulse, House, Layers2, PawPrint, Plane,
@@ -29,17 +29,19 @@ const TYPE_ICONS = {
   income: [ArrowDownLeft, 'green'], split_group: [Layers2, 'blue'],
 };
 
-function RemoteTransactionIcon({ logoUrl, kind, id }) {
+function RemoteTransactionIcon({ logoUrl, kind, id, loading, onLogoStateChange }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [Icon, tone] = (kind === 'type' ? TYPE_ICONS[id] : CATEGORY_ICONS[id]) || CATEGORY_ICONS.other;
+  const status = loaded ? 'loaded' : failed ? 'error' : logoUrl ? 'loading' : 'disabled';
+  useEffect(() => { onLogoStateChange?.(status); }, [status, onLogoStateChange]);
 
   return (
     <span
       className={`transaction-icon${loaded ? ' transaction-icon--remote' : ''}`}
       data-transaction-icon={id}
       data-tone={loaded ? undefined : tone}
-      data-logo-state={loaded ? 'loaded' : failed ? 'error' : logoUrl ? 'loading' : 'disabled'}
+      data-logo-state={status}
       aria-hidden="true"
     >
       {!loaded && <Icon size={20} strokeWidth={1.8} focusable="false" />}
@@ -50,7 +52,7 @@ function RemoteTransactionIcon({ logoUrl, kind, id }) {
           alt=""
           width={40}
           height={40}
-          loading="lazy"
+          loading={loading}
           decoding="async"
           referrerPolicy="origin"
           onLoad={() => setLoaded(true)}
@@ -61,10 +63,10 @@ function RemoteTransactionIcon({ logoUrl, kind, id }) {
   );
 }
 
-export default function TransactionIcon({ item }) {
+export default function TransactionIcon({ item, loading = 'lazy', onLogoStateChange }) {
   const { kind, id } = resolveTransactionFallbackIcon(item);
   const logoUrl = getTransactionLogoUrl(item);
   // Changing the merchant/key remounts only the avatar, so an old response
   // cannot reveal a stale logo after editing or reusing a transaction row.
-  return <RemoteTransactionIcon key={logoUrl || 'category'} logoUrl={logoUrl} kind={kind} id={id} />;
+  return <RemoteTransactionIcon key={logoUrl || 'category'} logoUrl={logoUrl} kind={kind} id={id} loading={loading} onLogoStateChange={onLogoStateChange} />;
 }

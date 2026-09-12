@@ -74,6 +74,8 @@ function transformTransactions(docs, accounts = []) {
             // избавляет от правки уже сохранённых данных.
             category: isTransfer && t.category === 'Обмен' ? 'Перевод' : t.category,
             description: t.description,
+            logoMode: t.logoMode || 'auto',
+            merchantDomain: t.merchantDomain,
             account,
             toAccount,
             accountType: accountTypeOf(account, accountTypeMap),

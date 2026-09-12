@@ -423,3 +423,55 @@ describe('AddTransactionForm Component', () => {
         });
     });
 });
+
+describe('transaction logo selection in the expense form', () => {
+    it('previews the logo before saving and submits the selected company domain', async () => {
+        vi.stubEnv('VITE_LOGO_DEV_PUBLISHABLE_KEY', 'pk_test_expense_form');
+        try {
+            const onSubmit = vi.fn().mockResolvedValue(true);
+            const onClose = vi.fn();
+            const apiFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ merchants: [{ name: 'Chop Chop Barber Shop', domain: 'chopchop.com' }] }) });
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
+            fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
+            fireEvent.click(screen.getByText('Красота'));
+            fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value: 'Chop Chop' } });
+
+            const preview = screen.getByRole('region', { name: 'Иконка операции' });
+            await waitFor(() => expect(preview.querySelector('img')).not.toBeNull());
+            expect(preview.querySelector('img')).toHaveAttribute('loading', 'eager');
+            fireEvent.load(preview.querySelector('img'));
+            expect(preview).toHaveTextContent('Автоподбор по названию — проверьте совпадение');
+            expect(onSubmit).not.toHaveBeenCalled();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
+            fireEvent.click(await screen.findByRole('button', { name: /Chop Chop Barber Shop.*chopchop\.com/ }));
+            await waitFor(() => expect(preview.querySelector('img')).not.toBeNull());
+            expect(new URL(preview.querySelector('img').src).pathname).toBe('/chopchop.com');
+            fireEvent.load(preview.querySelector('img'));
+            expect(preview).toHaveTextContent('Выбрано: chopchop.com');
+            expect(onSubmit).not.toHaveBeenCalled();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));
+            expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ description: 'Chop Chop', amount: 34, category: 'Красота', logoMode: 'domain', merchantDomain: 'chopchop.com' }));
+            await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        } finally { vi.unstubAllEnvs(); }
+    });
+
+    it('saves category mode and clears the former domain when editing a transaction', async () => {
+        vi.stubEnv('VITE_LOGO_DEV_PUBLISHABLE_KEY', 'pk_test_expense_form');
+        try {
+            const onSubmit = vi.fn().mockResolvedValue(true);
+            const onClose = vi.fn();
+            const initialData = { id: 'edit-logo', type: 'expense', description: 'Wolt', amount: 12, account: 'card', category: 'Продукты', logoMode: 'domain', merchantDomain: 'wolt.com' };
+            render(<AddTransactionForm initialData={initialData} categories={mockCategories} accounts={mockAccounts} apiFetch={vi.fn()} onClose={onClose} onSubmit={onSubmit} />);
+            fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Иконка категории', exact: true }));
+            expect(screen.getByRole('region', { name: 'Иконка операции' }).querySelector('img')).toBeNull();
+            expect(onSubmit).not.toHaveBeenCalled();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));
+            expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ id: 'edit-logo', logoMode: 'category', merchantDomain: '' }));
+            await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        } finally { vi.unstubAllEnvs(); }
+    });
+});

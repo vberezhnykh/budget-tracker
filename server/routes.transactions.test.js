@@ -24,6 +24,109 @@ beforeAll(async () => {
 afterAll(disconnectTestDb, DB_HOOK_TIMEOUT);
 beforeEach(clearCollections);
 
+describe('transaction logo persistence', () => {
+    it('returns the selected company after POST and a fresh history GET', async () => {
+        const created = await agent.post('/api/transactions').send(tx({
+            title: 'Chop Chop', account: 'card', logoMode: 'domain', merchantDomain: ' CHOPCHOP.ME ',
+            merchantName: 'Do not store', logoUrl: 'https://untrusted.example/logo.png'
+        }));
+        expect(created.status).toBe(200);
+        expect(created.body).toMatchObject({ logoMode: 'domain', merchantDomain: 'chopchop.me' });
+
+        const history = await agent.get('/api/transactions');
+        expect(history.status).toBe(200);
+        expect(history.body.find(item => item._id === created.body._id)).toMatchObject({
+            logoMode: 'domain', merchantDomain: 'chopchop.me'
+        });
+        const raw = await Transaction.collection.findOne({ _id: new mongoose.Types.ObjectId(created.body._id) });
+        expect(raw).not.toHaveProperty('logoUrl');
+        expect(raw).not.toHaveProperty('merchantName');
+    });
+
+    it('persists each split member choice and rejects a batch with an invalid domain atomically', async () => {
+        const split = [
+            tx({ account: 'card', amount: 15, splitId: 'logo-split', logoMode: 'domain', merchantDomain: 'chopchop.me' }),
+            tx({ account: 'card', amount: 20, splitId: 'logo-split', logoMode: 'domain', merchantDomain: 'chopchop.me' })
+        ];
+        const invalid = await agent.post('/api/transactions').send([
+            split[0], { ...split[1], merchantDomain: 'https://chopchop.me/logo.png' }
+        ]);
+        expect(invalid.status).toBe(400);
+        expect(await Transaction.countDocuments()).toBe(0);
+
+        const created = await agent.post('/api/transactions').send(split);
+        expect(created.status).toBe(200);
+        expect(created.body).toHaveLength(2);
+        expect(await Transaction.countDocuments({ logoMode: 'domain', merchantDomain: 'chopchop.me' })).toBe(2);
+    });
+
+    it('keeps the saved choice through edits and removes the old domain for category and auto modes', async () => {
+        const created = await Transaction.create(tx({ logoMode: 'domain', merchantDomain: 'chopchop.me' }));
+        const amountEdit = await agent.put(`/api/transactions/${created._id}`).send({ amount: 25, __v: 0 });
+        expect(amountEdit.status).toBe(200);
+        expect(amountEdit.body).toMatchObject({ logoMode: 'domain', merchantDomain: 'chopchop.me' });
+
+        const categoryChoice = await agent.put(`/api/transactions/${created._id}`)
+            .send({ logoMode: 'category', __v: amountEdit.body.__v });
+        expect(categoryChoice.status).toBe(200);
+        expect(categoryChoice.body.logoMode).toBe('category');
+        expect(await Transaction.collection.findOne({ _id: created._id })).not.toHaveProperty('merchantDomain');
+
+        const companyChoice = await agent.put(`/api/transactions/${created._id}`)
+            .send({ logoMode: 'domain', merchantDomain: 'barber.com', __v: categoryChoice.body.__v });
+        expect(companyChoice.status).toBe(200);
+        const autoChoice = await agent.put(`/api/transactions/${created._id}`)
+            .send({ logoMode: 'auto', __v: companyChoice.body.__v });
+        expect(autoChoice.status).toBe(200);
+        expect(autoChoice.body.logoMode).toBe('auto');
+        expect(await Transaction.collection.findOne({ _id: created._id })).not.toHaveProperty('merchantDomain');
+    });
+
+    it('rejects an invalid edit without replacing the existing company', async () => {
+        const created = await Transaction.create(tx({ logoMode: 'domain', merchantDomain: 'chopchop.me' }));
+        const invalid = await agent.put(`/api/transactions/${created._id}`)
+            .send({ merchantDomain: '127.0.0.1', __v: 0 });
+        expect(invalid.status).toBe(400);
+        expect(await Transaction.findById(created._id).lean()).toMatchObject({
+            logoMode: 'domain', merchantDomain: 'chopchop.me', __v: 0
+        });
+    });
+
+    it('clears an expense choice when changing to income and ignores it on income creation', async () => {
+        const expense = await Transaction.create(tx({ logoMode: 'domain', merchantDomain: 'chopchop.me' }));
+        const changed = await agent.put(`/api/transactions/${expense._id}`).send({ type: 'income', __v: 0 });
+        expect(changed.status).toBe(200);
+        expect(changed.body.logoMode).toBe('auto');
+        expect(await Transaction.collection.findOne({ _id: expense._id })).not.toHaveProperty('merchantDomain');
+
+        const income = await agent.post('/api/transactions').send(tx({
+            type: 'income', account: 'card', logoMode: 'domain', merchantDomain: 'chopchop.me'
+        }));
+        expect(income.status).toBe(200);
+        expect(income.body.logoMode).toBe('auto');
+        expect(income.body).not.toHaveProperty('merchantDomain');
+    });
+
+    it('edits old documents without logo fields and provides the auto default on reload', async () => {
+        const { insertedId } = await Transaction.collection.insertOne({
+            ...tx(), date: new Date('2026-03-15T00:00:00.000Z')
+        });
+        const changed = await agent.put(`/api/transactions/${insertedId}`).send({ title: 'Новое название', __v: 0 });
+        expect(changed.status).toBe(200);
+        expect(changed.body.logoMode).toBe('auto');
+        const history = await agent.get('/api/transactions');
+        const oldTransaction = history.body.find(item => item._id === String(insertedId));
+        expect(oldTransaction.logoMode ?? 'auto').toBe('auto');
+        expect(oldTransaction).not.toHaveProperty('merchantDomain');
+    });
+
+    it('enforces company hostname requirements for writes outside HTTP routes', async () => {
+        await expect(Transaction.create(tx({ logoMode: 'domain' }))).rejects.toThrow();
+        await expect(Transaction.create(tx({ logoMode: 'domain', merchantDomain: 'https://chopchop.me' }))).rejects.toThrow();
+        await expect(Transaction.create(tx({ logoMode: 'unknown' }))).rejects.toThrow();
+    });
+});
+
 describe('Transaction schema: базовые инварианты', () => {
     it('дублирует критичные проверки для записей вне HTTP route', async () => {
         await expect(Transaction.create(tx({ type: 'expense', amount: -1 }))).rejects.toThrow();
