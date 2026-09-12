@@ -1472,6 +1472,7 @@ function App() {
                 onClick={() => handleSlideClick(slide, index)}
                 aria-label={`Показать ${slide.name}`}
                 aria-current={isActive}
+                className="account-carousel-button"
                 data-account-theme={slide.theme}
                 style={{
                   // Hit target wants to be 40x40 for touch, but with many
@@ -1503,7 +1504,11 @@ function App() {
                   cursor: 'pointer'
                 }}
               >
-                <span className="account-carousel-dot" />
+                <span className="account-carousel-dot" aria-hidden="true">
+                  <svg width="18" height="8" viewBox="0 0 18 8" focusable="false">
+                    <rect x={isActive ? 0 : 5} y="0" width={isActive ? 18 : 8} height="8" rx="4" fill="currentColor" />
+                  </svg>
+                </span>
               </button>
             );
           })}

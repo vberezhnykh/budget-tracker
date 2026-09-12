@@ -161,24 +161,32 @@
   outline-color: var(--account-tint);
 }
 
+.account-carousel-button {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Keep one opaque drawing surface at a fixed size. Animating a translucent
+   rounded box inside the blurred header can leave stale dot edges in Safari. */
 .account-carousel-dot {
   display: block;
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-pill);
-  background: var(--account-accent);
-  opacity: 0.45;
-  transition: width 0.2s ease, opacity 0.2s ease;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 8px;
+  color: var(--account-border);
+  pointer-events: none;
+}
+
+.account-carousel-dot svg {
+  display: block;
 }
 
 [aria-current="true"] > .account-carousel-dot {
-  width: 18px;
-  opacity: 1;
+  color: var(--account-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .account-card,
-  .account-carousel-dot {
+  .account-card {
     transition: none;
   }
 }
