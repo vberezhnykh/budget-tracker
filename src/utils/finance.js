@@ -44,6 +44,8 @@ export const transformTransactions = (data, accounts = []) => {
             // transfers speaking the same word without touching stored data.
             category: isTransfer && t.category === 'Обмен' ? 'Перевод' : t.category,
             description: t.description,
+            ...(typeof t.companyName === 'string' ? { companyName: t.companyName } : {}),
+            ...(t.companyId ? { companyId: t.companyId } : {}),
             logoMode: t.logoMode || 'auto',
             merchantDomain: t.merchantDomain,
             account: account,
@@ -192,7 +194,22 @@ export const getPeriodData = (transactions, periodPrefix, accountFilter = null, 
 
     // Convert itemsById to items array for each date and sort them
     Object.keys(grouped).forEach(date => {
-        grouped[date].items = Object.values(grouped[date].itemsById).sort((a, b) => {
+        const items = Object.values(grouped[date].itemsById);
+        items.forEach(group => {
+            if (group.type !== 'split_group' || !group.items.some(t => typeof t.companyName === 'string')) return;
+            const first = group.items[0];
+            group.companyName = group.items.every(t => typeof t.companyName === 'string' && t.companyName === first.companyName)
+                ? first.companyName : '';
+            group.description = group.items.every(t => (t.description || '') === (first.description || ''))
+                ? first.description || '' : '';
+            if (group.companyName) {
+                const sameLogo = group.items.every(t => (t.logoMode || 'auto') === (first.logoMode || 'auto')
+                    && (t.merchantDomain || '') === (first.merchantDomain || ''));
+                group.logoMode = sameLogo ? first.logoMode || 'auto' : 'category';
+                if (sameLogo && first.merchantDomain) group.merchantDomain = first.merchantDomain;
+            }
+        });
+        grouped[date].items = items.sort((a, b) => {
             return b.id > a.id ? 1 : -1;
         });
         delete grouped[date].itemsById;
@@ -492,6 +509,7 @@ export const getSearchResults = (transactions, query, accountFilter = null, cate
     const searchLower = query.toLowerCase();
     let filtered = transactions.filter(t => {
         const textMatch = (t.description || '').toLowerCase().includes(searchLower) ||
+            (t.companyName || '').toLowerCase().includes(searchLower) ||
             (t.category || '').toLowerCase().includes(searchLower) ||
             (t.title || '').toLowerCase().includes(searchLower);
         const amountMatch = t.amount.toString().includes(query) ||

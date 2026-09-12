@@ -33,9 +33,10 @@ const fullCollections = (overrides = {}) => ({
     bankaccounts: [],
     bankentries: [],
     banklinks: [],
+    companies: [],
     ...overrides
 });
-const EMPTY_BANK_COUNTS = { bankconnections: 0, bankaccounts: 0, bankentries: 0, banklinks: 0 };
+const EMPTY_NEWER_COUNTS = { bankconnections: 0, bankaccounts: 0, bankentries: 0, banklinks: 0, companies: 0 };
 
 describe('buildBackupDocument', () => {
     it('stores every collection with its own count', () => {
@@ -43,7 +44,7 @@ describe('buildBackupDocument', () => {
 
         expect(doc.formatVersion).toBe(BACKUP_FORMAT_VERSION);
         expect(doc.exportedAt).toBe('2026-08-16T05:30:00.000Z');
-        expect(doc.counts).toEqual({ transactions: 2, accounts: 1, categories: 1, settings: 1, plannedpayments: 0, ...EMPTY_BANK_COUNTS });
+        expect(doc.counts).toEqual({ transactions: 2, accounts: 1, categories: 1, settings: 1, plannedpayments: 0, ...EMPTY_NEWER_COUNTS });
         expect(Object.keys(doc.data).sort()).toEqual([...BACKUP_COLLECTIONS].sort());
     });
 
@@ -144,13 +145,13 @@ describe('validateBackupDocument', () => {
         expect(validateBackupDocument(old)).toEqual({ ok: true, errors: [] });
         const normalized = normalizeBackupDocument(old);
         expect(normalized.formatVersion).toBe(2);
-        expect(normalized.data).toEqual({ ...old.data, bankconnections: [], bankaccounts: [], bankentries: [], banklinks: [] });
-        expect(normalized.counts).toEqual({ ...old.counts, ...EMPTY_BANK_COUNTS });
+        expect(normalized.data).toEqual({ ...old.data, bankconnections: [], bankaccounts: [], bankentries: [], banklinks: [], companies: [] });
+        expect(normalized.counts).toEqual({ ...old.counts, ...EMPTY_NEWER_COUNTS });
         expect(old.data).not.toHaveProperty('banklinks');
     });
 
     it('rejects missing banking data in v3 and inconsistent optional banking data in v2', () => {
-        const current = buildBackupDocument(fullCollections());
+        const current = { ...buildBackupDocument(fullCollections()), formatVersion: 3 };
         expect(current.formatVersion).toBe(3);
         delete current.data.banklinks;
         delete current.counts.banklinks;
@@ -361,6 +362,87 @@ describe('inspectBackupContents', () => {
     });
 });
 
+describe('company backup compatibility', () => {
+    const registryCompany = (overrides = {}) => ({
+        _id: new ObjectId(), name: 'Chop Chop New', normalizedName: 'chop chop new',
+        logoMode: 'domain', merchantDomain: 'barber.com', __v: 3, ...overrides
+    });
+
+    it.each([1, 2, 3])('accepts v%s and adds an empty company registry without changing legacy transactions', formatVersion => {
+        const source = buildBackupDocument(fullCollections({ transactions: [{ _id: 'legacy', title: 'Chop Chop', logoMode: 'auto' }] }));
+        source.formatVersion = formatVersion;
+        delete source.data.companies;
+        delete source.counts.companies;
+        expect(validateBackupDocument(source)).toEqual({ ok: true, errors: [] });
+        const normalized = normalizeBackupDocument(source);
+        expect(normalized.data.companies).toEqual([]);
+        expect(normalized.counts.companies).toBe(0);
+        expect(normalized.data.transactions).toBe(source.data.transactions);
+        expect(normalized.data.transactions[0]).not.toHaveProperty('companyName');
+        expect(source.data).not.toHaveProperty('companies');
+    });
+
+    it('requires companies and its count in v4 and validates optional companies in old formats', () => {
+        const missing = buildBackupDocument(fullCollections());
+        expect(missing.formatVersion).toBe(4);
+        delete missing.data.companies;
+        delete missing.counts.companies;
+        expect(validateBackupDocument(missing).errors.join(' ')).toMatch(/companies/);
+        const mismatch = buildBackupDocument(fullCollections());
+        mismatch.formatVersion = 3;
+        mismatch.counts.companies = 1;
+        expect(validateBackupDocument(mismatch).errors.join(' ')).toMatch(/companies.*заявлено 1/);
+    });
+
+    it('round-trips references and historical snapshots without refreshing them from the registry', async () => {
+        const company = registryCompany();
+        const transaction = { _id: new ObjectId(), companyId: company._id, companyName: 'Chop Chop Old', logoMode: 'domain', merchantDomain: 'chopchop.me' };
+        const raw = fullCollections({ companies: [company], transactions: [transaction, { _id: new ObjectId(), companyName: '', logoMode: 'category' }, { _id: new ObjectId(), title: 'Legacy' }] });
+        const parsed = EJSON.parse(EJSON.stringify(buildBackupDocument(raw)));
+        expect(validateBackupDocument(parsed)).toEqual({ ok: true, errors: [] });
+        expect(parsed.data.transactions[0].companyId).toBeInstanceOf(ObjectId);
+        expect(parsed.data.transactions[0].companyName).toBe('Chop Chop Old');
+        expect(parsed.data.transactions[0].merchantDomain).toBe('chopchop.me');
+        expect(parsed.data.transactions[1].companyName).toBe('');
+        expect(parsed.data.transactions[2]).not.toHaveProperty('companyName');
+
+        const db = fakeDb();
+        const session = fakeSession();
+        const restored = await restoreCollections(db, parsed.data, { session });
+        expect(restored.companies).toBe(1);
+        expect(db.collections.companies.insertMany).toHaveBeenCalledWith(parsed.data.companies, { session });
+        expect(db.collections.transactions.insertMany).toHaveBeenCalledWith(parsed.data.transactions, { session });
+    });
+
+    it.each([
+        [{ name: '' }, /имя/],
+        [{ normalizedName: 'wrong key' }, /normalizedName/],
+        [{ logoMode: 'invalid' }, /logoMode/],
+        [{ merchantDomain: 'https://barber.com' }, /merchantDomain/],
+        [{ _id: new ObjectId().toHexString() }, /ObjectId/]
+    ])('rejects malformed company data before restoration: %j', async (override, expected) => {
+        const data = fullCollections({ companies: [registryCompany(override)] });
+        expect(validateBackupDocument(buildBackupDocument(data)).errors.join(' ')).toMatch(expected);
+        const db = fakeDb();
+        await expect(restoreCollections(db, data, { replace: true, session: fakeSession() })).rejects.toThrow(expected);
+        expect(db.calls).toEqual([]);
+    });
+
+    it('rejects duplicate normalized names and missing or wrongly typed company references', () => {
+        const company = registryCompany();
+        const duplicate = buildBackupDocument(fullCollections({ companies: [company, registryCompany()] }));
+        expect(validateBackupDocument(duplicate).errors.join(' ')).toMatch(/повторяющееся normalizedName/);
+        const orphan = buildBackupDocument(fullCollections({ transactions: [{ _id: 't1', companyId: new ObjectId() }] }));
+        expect(validateBackupDocument(orphan).errors.join(' ')).toMatch(/компания отсутствует/);
+        const lostType = buildBackupDocument(fullCollections({ companies: [company], transactions: [{ _id: 't1', companyId: company._id.toHexString() }] }));
+        expect(validateBackupDocument(lostType).errors.join(' ')).toMatch(/companyId.*ObjectId/);
+    });
+
+    it('treats a registry-only backup as nonempty', () => {
+        expect(isEmptyBackup({ companies: 1 })).toBe(false);
+    });
+});
+
 describe('interpretAccessCheck', () => {
     const healthy = { databaseName: 'budgettracker', counts: { transactions: 12, accounts: 2, categories: 5, settings: 1 }, writeRejected: true };
 
@@ -441,7 +523,7 @@ describe('probeWriteAccess', () => {
 
 describe('summarizeCounts', () => {
     it('lists every collection, including ones missing from the input', () => {
-        expect(summarizeCounts({ transactions: 3 })).toBe('transactions: 3, accounts: 0, categories: 0, settings: 0, plannedpayments: 0, bankconnections: 0, bankaccounts: 0, bankentries: 0, banklinks: 0');
+        expect(summarizeCounts({ transactions: 3 })).toBe('transactions: 3, accounts: 0, categories: 0, settings: 0, plannedpayments: 0, bankconnections: 0, bankaccounts: 0, bankentries: 0, banklinks: 0, companies: 0');
     });
 });
 
@@ -516,7 +598,7 @@ describe('restoreCollections', () => {
 
         const restored = await restoreCollections(db, data(), { session });
 
-        expect(restored).toEqual({ transactions: 2, accounts: 1, categories: 0, settings: 1, plannedpayments: 0, ...EMPTY_BANK_COUNTS });
+        expect(restored).toEqual({ transactions: 2, accounts: 1, categories: 0, settings: 1, plannedpayments: 0, ...EMPTY_NEWER_COUNTS });
         for (const name of BACKUP_COLLECTIONS) {
             expect(db.collections[name].deleteMany).not.toHaveBeenCalled();
         }
@@ -558,7 +640,7 @@ describe('restoreCollections', () => {
 
         const restored = await restoreCollections(db, legacyData, { session });
 
-        expect(restored).toEqual({ transactions: 1, accounts: 0, categories: 0, settings: 0, plannedpayments: 0, ...EMPTY_BANK_COUNTS });
+        expect(restored).toEqual({ transactions: 1, accounts: 0, categories: 0, settings: 0, plannedpayments: 0, ...EMPTY_NEWER_COUNTS });
         expect(db.collections.plannedpayments.insertMany).not.toHaveBeenCalled();
     });
 
@@ -572,7 +654,7 @@ describe('restoreCollections', () => {
         };
         expect(validateBackupDocument(old).ok).toBe(true);
         const result = await restoreCollections(db, normalizeBackupDocument(old).data, { session });
-        expect(result).toEqual({ ...old.counts, ...EMPTY_BANK_COUNTS });
+        expect(result).toEqual({ ...old.counts, ...EMPTY_NEWER_COUNTS });
         expect(db.collections.transactions.insertMany).toHaveBeenCalledWith(old.data.transactions, { session });
         expect(db.collections.plannedpayments.insertMany).toHaveBeenCalledWith(old.data.plannedpayments, { session });
         expect(db.collections.banklinks.insertMany).not.toHaveBeenCalled();
@@ -671,6 +753,41 @@ describe('atomic backup files', () => {
 });
 
 describe('replica-set backup integrity', () => {
+    it('restores company registry and snapshot fields unchanged into a temporary database', async () => {
+        const client = new MongoClient(inject('mongoUri'));
+        const dbName = `backup-companies-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        await client.connect();
+        const db = client.db(dbName);
+        const companyId = new ObjectId();
+        const source = fullCollections({
+            companies: [{ _id: companyId, name: 'Current Company', normalizedName: 'current company', logoMode: 'category', __v: 2 }],
+            transactions: [
+                { _id: new ObjectId(), companyId, companyName: 'Historical Company', logoMode: 'domain', merchantDomain: 'chopchop.me', date: new Date('2026-09-12') },
+                { _id: new ObjectId(), companyName: '', logoMode: 'category' },
+                { _id: new ObjectId(), title: 'Legacy row' }
+            ]
+        });
+        let session;
+        try {
+            for (const name of BACKUP_COLLECTIONS) await db.createCollection(name);
+            await db.collection('companies').createIndex({ normalizedName: 1 }, { unique: true });
+            const backup = EJSON.parse(EJSON.stringify(buildBackupDocument(source)));
+            expect(validateBackupDocument(backup).ok).toBe(true);
+            session = client.startSession();
+            const restored = await restoreCollections(db, backup.data, { session });
+            expect(restored.companies).toBe(1);
+            expect(await db.collection('companies').findOne({ _id: companyId })).toEqual(source.companies[0]);
+            const rows = await db.collection('transactions').find().toArray();
+            expect(rows).toEqual(source.transactions);
+            expect(rows[0].companyId.equals(companyId)).toBe(true);
+            expect(rows[2]).not.toHaveProperty('companyName');
+        } finally {
+            if (session) await session.endSession();
+            await db.dropDatabase();
+            await client.close();
+        }
+    });
+
     it('keeps one snapshot and rolls back a failed restore', async () => {
         const client = new MongoClient(inject('mongoUri'));
         const dbName = `backup-integrity-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -707,7 +824,7 @@ describe('replica-set backup integrity', () => {
                 await restoreSession.endSession();
             }
 
-            expect(await countAllCollections(db)).toEqual({ transactions: 1, accounts: 1, categories: 0, settings: 0, plannedpayments: 0, ...EMPTY_BANK_COUNTS, banklinks: 1 });
+            expect(await countAllCollections(db)).toEqual({ transactions: 1, accounts: 1, categories: 0, settings: 0, plannedpayments: 0, ...EMPTY_NEWER_COUNTS, banklinks: 1 });
             expect(await db.collection('transactions').findOne({ _id: 'before' })).not.toBeNull();
             expect(await db.collection('transactions').findOne({ _id: 'replacement' })).toBeNull();
             expect(await db.collection('banklinks').findOne({ _id: tombstone._id })).toEqual(tombstone);
@@ -731,7 +848,7 @@ describe('countAllCollections', () => {
     it('reports the current size of every collection', async () => {
         const db = fakeDb({ transactions: [{}, {}, {}], settings: [{}] });
 
-        expect(await countAllCollections(db)).toEqual({ transactions: 3, accounts: 0, categories: 0, settings: 1, plannedpayments: 0, ...EMPTY_BANK_COUNTS });
+        expect(await countAllCollections(db)).toEqual({ transactions: 3, accounts: 0, categories: 0, settings: 1, plannedpayments: 0, ...EMPTY_NEWER_COUNTS });
     });
 });
 

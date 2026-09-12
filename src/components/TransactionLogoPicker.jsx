@@ -7,7 +7,7 @@ import { getTransactionLogoUrl } from '../utils/logoDev';
 import { normalizeMerchantDomain } from '../utils/merchantDomain';
 import './TransactionLogoPicker.css';
 
-export default function TransactionLogoPicker({ item, onChange, apiFetch, fromHistory = false }) {
+export default function TransactionLogoPicker({ item, onChange, onMerchantSelect, apiFetch, fromHistory = false, canChoose = true }) {
   const panelId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -55,7 +55,7 @@ export default function TransactionLogoPicker({ item, onChange, apiFetch, fromHi
     setOpen(false);
   };
   const openPicker = () => {
-    setQuery((item.description || item.title || '').slice(0, 120));
+    setQuery((item.companyName ?? (item.description || item.title || '')).slice(0, 120));
     setWebsite(mode === 'domain' ? item.merchantDomain || '' : '');
     setWebsiteError('');
     setSearch({ status: 'idle', merchants: [], query: '' });
@@ -87,12 +87,12 @@ export default function TransactionLogoPicker({ item, onChange, apiFetch, fromHi
           <strong>Иконка в истории</strong>
           <span role="status">{statusText}</span>
         </div>
-        <button type="button" className="transaction-logo-picker__action" aria-label={open ? 'Закрыть выбор иконки' : 'Выбрать иконку'} aria-expanded={open} aria-controls={panelId} onClick={() => open ? setOpen(false) : openPicker()}>
+        {canChoose && <button type="button" className="transaction-logo-picker__action" aria-label={open ? 'Закрыть выбор иконки' : 'Выбрать иконку'} aria-expanded={open} aria-controls={panelId} onClick={() => open ? setOpen(false) : openPicker()}>
           {open ? <X size={18} aria-label="Закрыть выбор" /> : 'Выбрать'}
-        </button>
+        </button>}
       </div>
 
-      {open && (
+      {open && canChoose && (
         <div id={panelId} className="transaction-logo-picker__panel">
           <div className="transaction-logo-picker__modes">
             <Chip selected={mode === 'auto'} onClick={() => choose('auto')}>Автоподбор</Chip>
@@ -115,7 +115,7 @@ export default function TransactionLogoPicker({ item, onChange, apiFetch, fromHi
             <ul className="transaction-logo-picker__results" aria-label="Найденные компании">
               {search.merchants.map(merchant => (
                 <li key={merchant.domain}>
-                  <button type="button" onClick={() => choose('domain', merchant.domain)}>
+                  <button type="button" onClick={() => { if (onMerchantSelect) { onMerchantSelect(merchant); setOpen(false); } else choose('domain', merchant.domain); }}>
                     <TransactionIcon item={{ ...item, logoMode: 'domain', merchantDomain: merchant.domain }} />
                     <span className="transaction-logo-picker__copy"><strong>{merchant.name}</strong><span>{merchant.domain}</span></span>
                     {mode === 'domain' && item.merchantDomain === merchant.domain && <Check size={18} aria-hidden="true" />}

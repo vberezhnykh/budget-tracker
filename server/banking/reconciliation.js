@@ -72,7 +72,7 @@ async function candidatesFor(entry, account, session) {
         result.push({
             transactionId: String(first._id), version: first.__v || 0,
             amount: Number(entry.amount), date: first.date,
-            title: group.length > 1 ? `Разделённая операция (${group.length})` : first.title,
+            title: group.length > 1 ? `Разделённая операция (${group.length})` : first.companyName || first.title,
             category: [...new Set(group.map(tx => tx.category).filter(Boolean))].join(', '),
             deleted: Boolean(first.deletedAt), groupCount: group.length,
             transactions: group
@@ -188,7 +188,7 @@ async function saveManualTransactions(transactions, options = {}) {
                     if (cents(entry.amount) !== amount || entry.transactionIds.length !== 1) continue;
                     const tx = await Transaction.findOne({ _id: entry.transactionIds[0], deletedAt: null }).session(session).lean();
                     if (tx && tx.type === first.type && tx.account === first.account && cents(tx.amount) === amount) {
-                        duplicates.push({ entry, account, tx, entryId: String(entry._id), transactionId: String(tx._id), version: tx.__v || 0, title: tx.title, amount: tx.amount, date: tx.date });
+                        duplicates.push({ entry, account, tx, entryId: String(entry._id), transactionId: String(tx._id), version: tx.__v || 0, title: tx.companyName || tx.title, amount: tx.amount, date: tx.date });
                     }
                 }
             }
@@ -201,9 +201,14 @@ async function saveManualTransactions(transactions, options = {}) {
             }
             // The user explicitly chose to replace the bank-generated row
             // with their own fields (or split). Keep the first ledger id.
+            const replacementUnset = {};
+            if (first.logoMode !== 'domain') replacementUnset.merchantDomain = '';
+            for (const field of ['companyId', 'companyName']) {
+                if (first[field] === undefined) replacementUnset[field] = '';
+            }
             const updated = await Transaction.findByIdAndUpdate(duplicate.tx._id,
                 { $set: first, $inc: { __v: 1 },
-                    ...(first.logoMode !== 'domain' ? { $unset: { merchantDomain: '' } } : {}) },
+                    ...(Object.keys(replacementUnset).length ? { $unset: replacementUnset } : {}) },
                 { new: true, runValidators: true, session });
             const extra = transactions.length > 1 ? await Transaction.create(transactions.slice(1), { session, ordered: true }) : [];
             const saved = [updated, ...extra];

@@ -13,16 +13,20 @@ const V2_BACKUP_COLLECTIONS = [...LEGACY_BACKUP_COLLECTIONS, 'plannedpayments'];
 // Pending browser authorizations expire and must not be resurrected. The
 // BankControl document is a concurrency primitive recreated by the service.
 // Decisions/links are durable, including tombstones for deleted ledger rows.
-const BACKUP_COLLECTIONS = [...V2_BACKUP_COLLECTIONS, 'bankconnections', 'bankaccounts', 'bankentries', 'banklinks'];
+const V3_BACKUP_COLLECTIONS = [...V2_BACKUP_COLLECTIONS, 'bankconnections', 'bankaccounts', 'bankentries', 'banklinks'];
+const BACKUP_COLLECTIONS = [...V3_BACKUP_COLLECTIONS, 'companies'];
+const { normalizeCompanyName, COMPANY_LOGO_MODES } = require('./companies');
+const { normalizeMerchantDomain } = require('./merchantDomain');
 
 // Bumped only when the shape of the backup document itself changes (not
 // when the app's schemas do). restore refuses a document whose version it
 // doesn't recognise rather than guessing at an older layout.
-const BACKUP_FORMAT_VERSION = 3;
+const BACKUP_FORMAT_VERSION = 4;
 const LEGACY_BACKUP_FORMAT_VERSION = 1;
 const COLLECTIONS_BY_VERSION = {
     [LEGACY_BACKUP_FORMAT_VERSION]: LEGACY_BACKUP_COLLECTIONS,
     2: V2_BACKUP_COLLECTIONS,
+    3: V3_BACKUP_COLLECTIONS,
     [BACKUP_FORMAT_VERSION]: BACKUP_COLLECTIONS
 };
 
@@ -101,7 +105,7 @@ function validateBackupDocument(doc) {
 
     const requiredCollections = Number.isInteger(doc.formatVersion) ? COLLECTIONS_BY_VERSION[doc.formatVersion] : undefined;
     if (!requiredCollections) {
-        errors.push(`Неизвестная версия формата: ${doc.formatVersion} (ожидается 1, 2 или ${BACKUP_FORMAT_VERSION})`);
+        errors.push(`Неизвестная версия формата: ${doc.formatVersion} (ожидается 1, 2, 3 или ${BACKUP_FORMAT_VERSION})`);
     }
 
     if (typeof doc.exportedAt !== 'string' || Number.isNaN(Date.parse(doc.exportedAt))) {
@@ -132,7 +136,54 @@ function validateBackupDocument(doc) {
         }
     }
 
+    if (Array.isArray(data.companies)) errors.push(...inspectCompanyBackup(data));
     return { ok: errors.length === 0, errors };
+}
+
+// Validate the new registry without rebuilding its documents or refreshing
+// historical transaction snapshots from it. BSON ids must remain BSON ids:
+// a plain JSON string would no longer match Mongoose ObjectId lookups.
+function inspectCompanyBackup(data) {
+    const problems = [];
+    const companyIds = new Set();
+    const companyNames = new Set();
+    const isObjectId = value => value?._bsontype === 'ObjectId' && typeof value.toHexString === 'function';
+    for (const [index, company] of (Array.isArray(data.companies) ? data.companies : []).entries()) {
+        const label = `Компания ${index + 1}`;
+        if (!company || typeof company !== 'object' || Array.isArray(company)) {
+            problems.push(`${label}: некорректный документ`);
+            continue;
+        }
+        if (!isObjectId(company._id)) problems.push(`${label}: _id должен сохранять тип ObjectId`);
+        const id = String(company._id);
+        if (companyIds.has(id)) problems.push(`${label}: повторяющийся _id`);
+        companyIds.add(id);
+        const normalized = normalizeCompanyName(company.name);
+        if (!normalized || normalized.name !== company.name || normalized.normalizedName !== company.normalizedName) {
+            problems.push(`${label}: некорректное имя или normalizedName`);
+        } else if (companyNames.has(company.normalizedName)) {
+            problems.push(`${label}: повторяющееся normalizedName`);
+        }
+        companyNames.add(company.normalizedName);
+        if (!COMPANY_LOGO_MODES.includes(company.logoMode)) problems.push(`${label}: некорректный logoMode`);
+        if (company.logoMode === 'domain') {
+            if (!company.merchantDomain || normalizeMerchantDomain(company.merchantDomain) !== company.merchantDomain) {
+                problems.push(`${label}: некорректный merchantDomain`);
+            }
+        } else if (company.merchantDomain !== undefined) problems.push(`${label}: лишний merchantDomain`);
+        if (company.__v !== undefined && (!Number.isInteger(company.__v) || company.__v < 0)) problems.push(`${label}: некорректная версия`);
+    }
+    for (const [index, transaction] of (Array.isArray(data.transactions) ? data.transactions : []).entries()) {
+        if (!transaction || typeof transaction !== 'object') continue;
+        if (transaction.companyId !== undefined && transaction.companyId !== null) {
+            if (!isObjectId(transaction.companyId)) problems.push(`Транзакция ${index + 1}: companyId должен сохранять тип ObjectId`);
+            if (!companyIds.has(String(transaction.companyId))) problems.push(`Транзакция ${index + 1}: компания отсутствует в бэкапе`);
+        }
+        if (transaction.companyName !== undefined && (typeof transaction.companyName !== 'string' || transaction.companyName.length > 120)) {
+            problems.push(`Транзакция ${index + 1}: некорректный снимок companyName`);
+        }
+    }
+    return problems;
 }
 
 // One-line human summary used by both scripts' output, e.g.
@@ -233,6 +284,8 @@ function inspectBackupContents(data) {
     }
 
     summary.push(`Категории: ${(data.categories || []).length}`);
+    summary.push(`Компании: ${(data.companies || []).length}`);
+    problems.push(...inspectCompanyBackup(data));
 
     // An account id referenced by a transaction but absent from the
     // accounts collection would restore into a database where that
@@ -300,12 +353,12 @@ async function readAllCollections(db, { session } = {}) {
     return collections;
 }
 
-// v1 predates planned payments; v2 predates banking. Keep the original version
+// v1 predates planned payments; v2 predates banking; v3 predates companies. Keep the original version
 // for reporting while supplying absent newer collections as empty arrays.
 // Call only after validateBackupDocument: malformed existing arrays/counts
 // must be refused before normalization.
 function normalizeBackupDocument(doc) {
-    if (!doc || typeof doc !== 'object' || ![LEGACY_BACKUP_FORMAT_VERSION, 2].includes(doc.formatVersion)) return doc;
+    if (!doc || typeof doc !== 'object' || ![LEGACY_BACKUP_FORMAT_VERSION, 2, 3].includes(doc.formatVersion)) return doc;
     const data = { ...doc.data };
     const counts = { ...(doc.counts || {}) };
     for (const name of BACKUP_COLLECTIONS) {
@@ -339,6 +392,8 @@ async function restoreCollections(db, data, { replace = false, session } = {}) {
 
     const missing = BACKUP_COLLECTIONS.filter(name => !Array.isArray(data?.[name]));
     if (missing.length > 0) throw new Error(`Восстановление требует коллекции: ${missing.join(', ')}`);
+    const companyProblems = inspectCompanyBackup(data);
+    if (companyProblems.length > 0) throw new Error(`Бэкап компаний повреждён: ${companyProblems.join('; ')}`);
     const normalizedData = data;
     const restored = {};
     await session.withTransaction(async () => {

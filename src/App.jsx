@@ -610,7 +610,7 @@ function App() {
   };
 
   const exportToCSV = () => {
-    const headers = ['Дата', 'Название', 'Тип', 'Категория', 'Счет', 'Сумма', 'Описание'];
+    const headers = ['Дата', 'Название', 'Тип', 'Категория', 'Счет', 'Сумма', 'Описание', 'Компания'];
     const escapeCsv = (val) => {
       if (!val) return '""';
       let str = String(val);
@@ -624,7 +624,8 @@ function App() {
       t.category,
       accountsRef.current.find(a => a._id === t.account)?.name || 'Неизвестно',
       t.amount.toFixed(2),
-      t.description || ''
+      t.description || '',
+      t.companyName || ''
     ]);
 
     const csvContent = [headers.join(','), ...rows.map(row => row.map(escapeCsv).join(','))].join('\n');

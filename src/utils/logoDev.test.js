@@ -45,4 +45,23 @@ describe('Logo.dev transaction lookup', () => {
     expect(getTransactionLogoUrl({ ...expense('Wolt'), logoMode: 'domain', merchantDomain: 'localhost' }, key)).toBeNull();
     expect(new URL(getTransactionLogoUrl({ ...expense('Wolt'), logoMode: 'auto', merchantDomain: 'zara.com' }, key)).pathname).toBe('/wolt.com');
   });
+
+  it('only sends the company snapshot to name lookup, never its separate comment or registry id', () => {
+    const item = { ...expense('Секретный подарок из Zara'), companyId: 'private-company-id', companyName: 'Nomad Bread & Coffee' };
+    const url = getTransactionLogoUrl(item, key);
+    expect(decodeURIComponent(new URL(url).pathname)).toBe('/name/nomad bread coffee');
+    expect(decodeURIComponent(url)).not.toMatch(/Секретный|Zara|private-company-id/);
+    expect(getTransactionLogoUrl({ ...item, description: 'Другой комментарий' }, key)).toBe(url);
+    expect(getTransactionLogoUrl({ ...item, companyName: '' }, key)).toBeNull();
+    expect(getTransactionLogoUrl({ ...item, companyName: '', logoMode: 'domain', merchantDomain: 'zara.com' }, key)).toBeNull();
+  });
+
+  it('looks up a common split company without guessing from legacy or mixed group comments', () => {
+    const group = { type: 'split_group', companyName: 'Wolt', logoMode: 'domain', merchantDomain: 'wolt.com', description: 'Покупки на выходные' };
+    expect(new URL(getTransactionLogoUrl(group, key)).pathname).toBe('/wolt.com');
+    expect(new URL(getTransactionLogoUrl({ ...group, logoMode: 'auto' }, key)).pathname).toBe('/wolt.com');
+    expect(getTransactionLogoUrl({ ...group, companyName: '' }, key)).toBeNull();
+    expect(getTransactionLogoUrl({ ...group, logoMode: 'category' }, key)).toBeNull();
+    expect(getTransactionLogoUrl({ type: 'split_group', description: 'Wolt' }, key)).toBeNull();
+  });
 });

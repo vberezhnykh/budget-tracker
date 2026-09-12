@@ -92,6 +92,20 @@ function computePeriodData(transactions, periodPrefix, options = {}) {
     }, {});
 
     Object.keys(grouped).forEach(date => {
+        for (const group of Object.values(grouped[date].itemsById)) {
+            if (group.type !== 'split_group' || !group.items.some(item => typeof item.companyName === 'string')) continue;
+            const first = group.items[0];
+            const sameCompany = group.items.every(item => typeof item.companyName === 'string' && item.companyName === first.companyName);
+            group.companyName = sameCompany ? first.companyName : '';
+            group.description = group.items.every(item => (item.description || '') === (first.description || ''))
+                ? (first.description || '') : '';
+            if (group.companyName) {
+                const sameLogo = group.items.every(item => (item.logoMode || 'auto') === (first.logoMode || 'auto')
+                    && (item.merchantDomain || '') === (first.merchantDomain || ''));
+                group.logoMode = sameLogo ? (first.logoMode || 'auto') : 'category';
+                if (sameLogo && first.merchantDomain) group.merchantDomain = first.merchantDomain;
+            }
+        }
         grouped[date].items = Object.values(grouped[date].itemsById).sort((a, b) => {
             return b.id > a.id ? 1 : -1;
         });

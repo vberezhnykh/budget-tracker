@@ -336,3 +336,40 @@ describe('transaction logo choice', () => {
         expect(transaction).not.toHaveProperty('merchantDomain');
     });
 });
+
+describe('transaction company input', () => {
+    it.each([42, {}, ['507f1f77bcf86cd799439011'], 'missing', '507f1f77bcf86cd79943901z'])(
+        'rejects malformed company ids: %j', companyId => {
+            expect(validateTransactionCreate({ ...validBody(), companyId }).error).toMatch(/компании/i);
+        }
+    );
+
+    it.each([null, 42, {}, [], 'a'.repeat(121)])('rejects malformed snapshot names: %j', companyName => {
+        expect(validateTransactionCreate({ ...validBody(), companyName }).error).toMatch(/компании/i);
+    });
+
+    it('preserves the absent legacy marker on unrelated changes', () => {
+        const result = validateTransactionUpdate({ amount: 25 }, validBody());
+        expect(result.error).toBeUndefined();
+        expect(result.update).not.toHaveProperty('companyName');
+        expect(result.update).not.toHaveProperty('companyId');
+    });
+
+    it('keeps an explicit empty marker and clears company branding', () => {
+        const current = { ...validBody(), companyId: '507f1f77bcf86cd799439011', companyName: 'Chop Chop', logoMode: 'domain', merchantDomain: 'chopchop.me' };
+        const result = validateTransactionUpdate({ companyId: null, companyName: '', logoMode: 'category' }, current);
+        expect(result.error).toBeUndefined();
+        expect(result.update).toMatchObject({ companyName: '', logoMode: 'category' });
+        expect(result.unset).toEqual(expect.arrayContaining(['companyId', 'merchantDomain']));
+    });
+
+    it('strips company fields when changing to income', () => {
+        const result = validateTransactionUpdate({ type: 'income', companyName: 'ignored', companyId: 'invalid' }, {
+            ...validBody(), companyId: '507f1f77bcf86cd799439011', companyName: 'Chop Chop'
+        });
+        expect(result.error).toBeUndefined();
+        expect(result.update).not.toHaveProperty('companyName');
+        expect(result.update).not.toHaveProperty('companyId');
+        expect(result.unset).toEqual(expect.arrayContaining(['companyId', 'companyName']));
+    });
+});

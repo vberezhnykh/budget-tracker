@@ -65,6 +65,22 @@ describe('Finance Utilities', () => {
         expect(legacy.logoMode).toBe('auto');
     });
 
+    it('preserves company snapshots and distinguishes explicitly empty companies from legacy rows', () => {
+        const common = { amount: 10, type: 'expense', account: 'card', date: '2026-09-12', description: 'Подарок' };
+        const [selected, empty, legacy] = transformTransactions([
+            { ...common, _id: 'selected', companyId: 'company-1', companyName: 'Chop Chop', logoMode: 'domain', merchantDomain: 'chophairdressing.com' },
+            { ...common, _id: 'empty', companyName: '' },
+            { ...common, _id: 'legacy' },
+        ]);
+        expect(selected).toMatchObject({ companyId: 'company-1', companyName: 'Chop Chop', description: 'Подарок', logoMode: 'domain', merchantDomain: 'chophairdressing.com' });
+        expect(empty.companyName).toBe('');
+        expect(empty).not.toHaveProperty('companyId');
+        expect(legacy).not.toHaveProperty('companyName');
+        expect(legacy).not.toHaveProperty('companyId');
+        expect(getSearchResults([selected], 'chop').count).toBe(1);
+        expect(getSearchResults([selected], 'подарок').count).toBe(1);
+    });
+
     it('renames the legacy "Обмен" transfer category to "Перевод"', () => {
         const transformed = transformTransactions([
             { _id: 't1', amount: '100', type: 'transfer', account: 'card', toAccount: 'cash', category: 'Обмен', date: '2026-01-15T00:00:00Z' },
@@ -147,6 +163,27 @@ describe('Finance Utilities', () => {
         expect(group.type).toBe('split_group');
         expect(group.description).toBe('');
         expect(group.items).toHaveLength(2);
+    });
+
+    it('groups a shared company with its exact comment and saved logo, independently of categories', () => {
+        const common = { splitId: 'split-1', amount: 20, type: 'expense', account: 'card', date: '2026-01-10', companyId: 'company-1', companyName: 'Wolt', description: 'Обед (для гостей)', logoMode: 'domain', merchantDomain: 'wolt.com' };
+        const parts = transformTransactions([{ ...common, _id: '1', category: 'Food' }, { ...common, _id: '2', category: 'Gifts' }]);
+        const group = getPeriodData(parts, '2026-01').transactions['2026-01-10'].items[0];
+        expect(group).toMatchObject({ companyName: 'Wolt', description: 'Обед (для гостей)', logoMode: 'domain', merchantDomain: 'wolt.com', visualAmount: -40 });
+        expect(group.items.every(item => item.companyId === 'company-1')).toBe(true);
+        expect(group).not.toHaveProperty('companyId');
+    });
+
+    it('does not assign a company or logo from the first part of a mixed split', () => {
+        const common = { splitId: 'split-1', amount: 20, type: 'expense', account: 'card', date: '2026-01-10', category: 'Food', companyName: 'Wolt', description: 'Обед', logoMode: 'domain', merchantDomain: 'wolt.com' };
+        const groupWith = (second) => getPeriodData(transformTransactions([
+            { ...common, _id: '1' }, { ...common, ...second, _id: '2' },
+        ]), '2026-01').transactions['2026-01-10'].items[0];
+        expect(groupWith({ companyName: 'Zara', description: 'Подарок' })).toMatchObject({ companyName: '', description: '' });
+        expect(groupWith({ companyName: undefined })).toMatchObject({ companyName: '', description: 'Обед' });
+        const differentLogos = groupWith({ merchantDomain: 'zara.com' });
+        expect(differentLogos).toMatchObject({ companyName: 'Wolt', logoMode: 'category' });
+        expect(differentLogos).not.toHaveProperty('merchantDomain');
     });
 
     it('keeps account/category/type filters working outside the month view', () => {

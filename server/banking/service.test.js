@@ -234,6 +234,9 @@ describe('User decisions and manual duplicate matching', () => {
         const [item] = await download();
         await approve(item);
         const original = await Transaction.findOne();
+        const selectedCompany = await mongoose.model('Company').create({ name: 'Chop Chop', logoMode: 'domain', merchantDomain: 'chopchop.me' });
+        original.companyId = selectedCompany._id;
+        original.companyName = selectedCompany.name;
         original.logoMode = 'domain';
         original.merchantDomain = 'chopchop.me';
         await original.save();
@@ -249,6 +252,8 @@ describe('User decisions and manual duplicate matching', () => {
         expect(replacement.body.logoMode).toBe(logoMode);
         const saved = await Transaction.collection.findOne({ _id: original._id });
         expect(saved).not.toHaveProperty('merchantDomain');
+        expect(saved).not.toHaveProperty('companyId');
+        expect(saved).not.toHaveProperty('companyName');
         expect(await Transaction.countDocuments()).toBe(1);
     });
 

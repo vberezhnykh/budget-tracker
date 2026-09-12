@@ -213,7 +213,7 @@ function PaySheet({ payment, accounts, categories, transactions, onPay, onClose 
               <option value="">Выберите расход</option>
               {existingExpenses.map(transaction => (
                 <option key={transaction.id} value={transaction.id}>
-                  {displayDate(transaction.date)} · {money(transaction.amount)} · {accountName(accounts, transaction.account)} · {transaction.category || transaction.title}
+                  {displayDate(transaction.date)} · {money(transaction.amount)} · {accountName(accounts, transaction.account)} · {transaction.companyName || transaction.category || transaction.title}
                 </option>
               ))}
             </select>

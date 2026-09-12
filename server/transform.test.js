@@ -61,6 +61,20 @@ describe('transformTransactions на сервере совпадает с кли
             { id: 'legacy', logoMode: 'auto', merchantDomain: undefined }
         ]);
     });
+
+    it('preserves company snapshots and distinguishes explicit no company from legacy rows', () => {
+        const fixture = transactions[2];
+        const rows = [
+            { ...fixture, _id: 'company', companyId: '507f1f77bcf86cd799439011', companyName: 'Chop Chop' },
+            { ...fixture, _id: 'no-company', companyName: '' },
+            { ...fixture, _id: 'legacy' }
+        ];
+        const transformed = transformOnServer(rows);
+        expect(transformed).toEqual(transformOnClient(rows));
+        expect(transformed[0]).toMatchObject({ companyId: rows[0].companyId, companyName: 'Chop Chop' });
+        expect(transformed[1]).toHaveProperty('companyName', '');
+        expect(transformed[2]).not.toHaveProperty('companyName');
+    });
 });
 
 describe('transformTransactions: правила, которые легко потерять', () => {

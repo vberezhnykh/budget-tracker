@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTransactionIcon } from './transactionIcons';
+import { getTransactionBrandName, resolveTransactionIcon } from './transactionIcons';
 
 const expenseIcon = (description, category = 'Продукты') =>
   resolveTransactionIcon({ type: 'expense', description, category });
@@ -41,6 +41,15 @@ describe('transaction icon resolution', () => {
     }
     expect(resolveTransactionIcon({ description: 'Wolt' }))
       .toEqual({ kind: 'category', id: 'other' });
+  });
+
+  it('uses a saved company independently of the comment and keeps an empty company intentional', () => {
+    const item = { type: 'expense', companyId: 'company-1', companyName: 'Wolt', description: 'Подарок из Zara', category: 'Продукты' };
+    expect(resolveTransactionIcon(item)).toEqual({ kind: 'merchant', id: 'wolt' });
+    expect(getTransactionBrandName(item)).toBe('wolt');
+    expect(getTransactionBrandName({ ...item, companyName: '' })).toBeNull();
+    expect(resolveTransactionIcon({ ...item, companyName: '' })).toEqual({ kind: 'category', id: 'groceries' });
+    expect(getTransactionBrandName({ ...item, companyName: 'Nomad Bread & Coffee' })).toBe('nomad bread coffee');
   });
 
   it('normalizes category spelling and safely handles custom or missing categories', () => {

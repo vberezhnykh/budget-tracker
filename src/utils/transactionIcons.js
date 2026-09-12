@@ -43,6 +43,12 @@ const CATEGORY_ALIASES = [
 const CATEGORIES = new Map(CATEGORY_ALIASES.flatMap(([id, aliases]) =>
   aliases.map(alias => [normalize(alias), id])));
 
+// An explicit empty company means the comment is not a merchant name.
+// Missing companyName belongs to older rows whose description served both roles.
+const merchantNameOf = (item) => typeof item.companyName === 'string'
+  ? item.companyName
+  : item.description || item.title;
+
 export function resolveTransactionIcon(item = {}) {
   // A branded description must not turn a transfer or a refund into an expense.
   if (['initial', 'transfer', 'income', 'split_group'].includes(item.type)) {
@@ -50,8 +56,8 @@ export function resolveTransactionIcon(item = {}) {
   }
   if (item.type !== 'expense') return { kind: 'category', id: 'other' };
 
-  // Resolve exactly the name visible in the row, not a hidden, stale title.
-  const name = ` ${normalize(item.description || item.title)} `;
+  // Comments and stale titles must not override a saved company snapshot.
+  const name = ` ${normalize(merchantNameOf(item))} `;
   const merchant = MERCHANTS.find(([, aliases]) =>
     aliases.some(alias => name.includes(` ${alias} `)));
   if (merchant) return { kind: 'merchant', id: merchant[0] };
@@ -70,13 +76,13 @@ export function resolveTransactionFallbackIcon(item = {}) {
 // Retain the local merchant aliases for clean, consistent searches, while
 // allowing new brands without adding an entry to the bundled logo catalogue.
 export function getTransactionBrandName(item = {}) {
-  if (item.type !== 'expense') return null;
-  const name = normalize(item.description || item.title);
+  if (item.type !== 'expense' && !(item.type === 'split_group' && item.companyName)) return null;
+  const name = normalize(merchantNameOf(item));
   if (!name || name.length > 120 || !/\p{L}/u.test(name)) return null;
   if (CATEGORIES.has(name) || name === normalize(item.category)
     || ['другое', 'без категории', 'расход', 'покупка', 'оплата', 'other', 'expense'].includes(name)) return null;
 
-  const icon = resolveTransactionIcon(item);
+  const icon = resolveTransactionIcon({ ...item, type: 'expense' });
   if (icon.kind === 'merchant') return icon.id === 'googleone' ? 'google one' : icon.id;
   return name;
 }

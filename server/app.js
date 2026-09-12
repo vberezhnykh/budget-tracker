@@ -23,9 +23,11 @@ const { isBankingEnabled } = require('./banking/feature');
 const { saveManualTransactions } = require('./banking/reconciliation');
 const { saveManualTransactionUpdate } = require('./banking/manualEdit');
 const { validateTransactionCreate } = require('./transactionInput');
+const { prepareTransactionCompany } = require('./transactionCompany');
 const { getCanonicalSettings, saveCanonicalSettings } = require('./settingsSingleton');
 const { createOperationalRouter } = require('./operational');
 const { createMerchantSearchRouter } = require('./merchantSearch');
+const { createCompaniesRouter } = require('./companies');
 const { activeTransactionFilter } = require('./ledgerState');
 const { validateAccountReferences } = require('./accountRefs');
 const { createTrashRouter, softDeleteTransaction } = require('./trash');
@@ -213,6 +215,7 @@ app.use('/api', createOperationalRouter({ mongoose }));
 app.use('/api/trash', createTrashRouter());
 app.use('/api/planned-payments', createPlannedPaymentsRouter());
 app.use('/api/merchants', createMerchantSearchRouter());
+app.use('/api/companies', createCompaniesRouter());
 
 // ---- Auth ----
 
@@ -761,7 +764,8 @@ app.post('/api/transactions', async (req, res) => {
             // попасть в split только потому, что выбран другой endpoint.
             const sanitizedTransactions = [];
             for (const tx of transactions) {
-                const { error, transaction } = validateTransactionCreate(tx, { allowSplitId: true });
+                const prepared = await prepareTransactionCompany(tx);
+                const { error, transaction } = validateTransactionCreate(prepared, { allowSplitId: true });
                 if (error) return res.status(400).json({ message: error });
                 sanitizedTransactions.push(transaction);
             }
@@ -775,7 +779,8 @@ app.post('/api/transactions', async (req, res) => {
             return res.json(savedTransactions);
         }
 
-        const { error, transaction } = validateTransactionCreate(req.body);
+        const prepared = await prepareTransactionCompany(req.body);
+        const { error, transaction } = validateTransactionCreate(prepared);
         if (error) return res.status(400).json({ message: error });
         const accountCheck = await validateAccountReferences([transaction.account, transaction.toAccount]);
         if (accountCheck.error) return res.status(400).json({ message: accountCheck.error });

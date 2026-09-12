@@ -13,16 +13,111 @@ let app;
 let agent;
 let Transaction;
 let Account;
+let Company;
 
 beforeAll(async () => {
     app = await connectTestDb('routes-transactions');
     agent = await loginAgent(app);
     Transaction = mongoose.model('Transaction');
     Account = mongoose.model('Account');
+    Company = mongoose.model('Company');
 }, DB_HOOK_TIMEOUT);
 
 afterAll(disconnectTestDb, DB_HOOK_TIMEOUT);
 beforeEach(clearCollections);
+
+describe('transaction company snapshots', () => {
+    const purchase = fields => tx({ account: 'card', title: 'Стрижка', category: 'Красота', ...fields });
+    const company = () => Company.create({ name: 'Chop Chop', logoMode: 'domain', merchantDomain: 'chopchop.me' });
+
+    it('resolves referenced company snapshots and finds them by company name after reload', async () => {
+        const selected = await company();
+        const created = await agent.post('/api/transactions').send(purchase({
+            companyId: String(selected._id), companyName: 'Wrong restaurant', logoMode: 'category'
+        }));
+        expect(created.status).toBe(200);
+        expect(created.body).toMatchObject({ companyId: String(selected._id), companyName: 'Chop Chop', logoMode: 'domain', merchantDomain: 'chopchop.me' });
+
+        const history = await agent.get('/api/transactions');
+        expect(history.body[0]).toMatchObject({ companyName: 'Chop Chop', merchantDomain: 'chopchop.me' });
+        const search = await agent.get('/api/search?q=chop');
+        expect(search.status).toBe(200);
+        expect(search.body.count).toBe(1);
+        expect(Object.values(search.body.transactions)[0].items[0]).toMatchObject({ companyName: 'Chop Chop', companyId: String(selected._id) });
+    });
+
+    it('preserves historical snapshots when the registry changes and permits an explicit icon override', async () => {
+        const selected = await company();
+        const created = await agent.post('/api/transactions').send(purchase({ companyId: String(selected._id) }));
+        selected.name = 'Chop Chop New';
+        selected.merchantDomain = 'barber.com';
+        await selected.save();
+
+        const partial = await agent.put(`/api/transactions/${created.body._id}`).send({ amount: 25, companyName: selected.name, __v: 0 });
+        expect(partial.status).toBe(200);
+        expect(partial.body).toMatchObject({ companyName: 'Chop Chop', merchantDomain: 'chopchop.me' });
+        const full = await agent.put(`/api/transactions/${created.body._id}`).send({
+            ...purchase(), companyId: created.body.companyId, companyName: selected.name,
+            logoMode: created.body.logoMode, merchantDomain: created.body.merchantDomain, __v: partial.body.__v
+        });
+        expect(full.status).toBe(200);
+        expect(full.body).toMatchObject({ companyName: 'Chop Chop', merchantDomain: 'chopchop.me' });
+
+        const overridden = await agent.put(`/api/transactions/${created.body._id}`).send({ logoMode: 'category', __v: full.body.__v });
+        expect(overridden.status).toBe(200);
+        expect(overridden.body).toMatchObject({ companyId: created.body.companyId, companyName: 'Chop Chop', logoMode: 'category' });
+        expect(overridden.body).not.toHaveProperty('merchantDomain');
+        expect((await Company.findById(selected._id)).merchantDomain).toBe('barber.com');
+    });
+
+    it('reassigns snapshots, then clears the company with a durable empty marker', async () => {
+        const first = await company();
+        const second = await Company.create({ name: 'Другой салон', logoMode: 'category' });
+        const created = await agent.post('/api/transactions').send(purchase({ companyId: String(first._id) }));
+        const reassigned = await agent.put(`/api/transactions/${created.body._id}`).send({ companyId: String(second._id), __v: 0 });
+        expect(reassigned.status).toBe(200);
+        expect(reassigned.body).toMatchObject({ companyId: String(second._id), companyName: second.name, logoMode: 'category' });
+        expect(reassigned.body).not.toHaveProperty('merchantDomain');
+
+        const cleared = await agent.put(`/api/transactions/${created.body._id}`).send({ companyId: null, companyName: '', logoMode: 'category', __v: reassigned.body.__v });
+        expect(cleared.status).toBe(200);
+        expect(cleared.body).toMatchObject({ companyName: '', logoMode: 'category' });
+        const raw = await Transaction.collection.findOne({ _id: new mongoose.Types.ObjectId(created.body._id) });
+        expect(raw).not.toHaveProperty('companyId');
+        expect(raw).not.toHaveProperty('merchantDomain');
+        expect(raw.companyName).toBe('');
+    });
+
+    it('rejects unknown references on create, batch and reassignment without writing orphan references', async () => {
+        const missing = String(new mongoose.Types.ObjectId());
+        expect((await agent.post('/api/transactions').send(purchase({ companyId: missing }))).status).toBe(400);
+        const selected = await company();
+        const batch = await agent.post('/api/transactions').send([
+            purchase({ companyId: String(selected._id), splitId: 'ref-split' }), purchase({ companyId: missing, splitId: 'ref-split' })
+        ]);
+        expect(batch.status).toBe(400);
+        expect(await Transaction.countDocuments()).toBe(0);
+        const created = await agent.post('/api/transactions').send(purchase({ companyId: String(selected._id) }));
+        const update = await agent.put(`/api/transactions/${created.body._id}`).send({ companyId: missing, __v: 0 });
+        expect(update.status).toBe(400);
+        expect(await Transaction.findById(created.body._id).lean()).toMatchObject({ companyName: 'Chop Chop', __v: 0 });
+    });
+
+    it('resolves each split member, strips company fields on income and leaves old partial edits unmarked', async () => {
+        const selected = await company();
+        const batch = await agent.post('/api/transactions').send([10, 20].map(amount => purchase({ amount, companyId: String(selected._id), splitId: 'ref-split' })));
+        expect(batch.status).toBe(200);
+        expect(batch.body.every(item => item.companyName === 'Chop Chop' && item.merchantDomain === 'chopchop.me')).toBe(true);
+        const income = await agent.put(`/api/transactions/${batch.body[0]._id}`).send({ type: 'income', __v: 0 });
+        expect(income.status).toBe(200);
+        expect(income.body).not.toHaveProperty('companyId');
+        expect(income.body).not.toHaveProperty('companyName');
+        const old = await Transaction.create(purchase());
+        const edit = await agent.put(`/api/transactions/${old._id}`).send({ description: 'Комментарий', __v: 0 });
+        expect(edit.status).toBe(200);
+        expect(await Transaction.collection.findOne({ _id: old._id })).not.toHaveProperty('companyName');
+    });
+});
 
 describe('transaction logo persistence', () => {
     it('returns the selected company after POST and a fresh history GET', async () => {

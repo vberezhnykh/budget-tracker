@@ -430,11 +430,18 @@ describe('transaction logo selection in the expense form', () => {
         try {
             const onSubmit = vi.fn().mockResolvedValue(true);
             const onClose = vi.fn();
-            const apiFetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ merchants: [{ name: 'Chop Chop Barber Shop', domain: 'chopchop.com' }] }) });
+            const apiFetch = vi.fn().mockImplementation(async (url, options = {}) => {
+                if (url === '/api/companies' && options.method === 'POST') {
+                    return { ok: true, json: async () => ({ _id: 'company-chop', __v: 0, ...JSON.parse(options.body) }) };
+                }
+                if (url === '/api/companies') return { ok: true, json: async () => [] };
+                return { ok: true, json: async () => ({ merchants: [{ name: 'Chop Chop Barber Shop', domain: 'chopchop.com' }] }) };
+            });
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
             fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
             fireEvent.click(screen.getByText('Красота'));
-            fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value: 'Chop Chop' } });
+            fireEvent.change(screen.getByPlaceholderText('Название магазина или сервиса'), { target: { value: 'Chop Chop' } });
+            fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value: 'Стрижка' } });
 
             const preview = screen.getByRole('region', { name: 'Иконка операции' });
             await waitFor(() => expect(preview.querySelector('img')).not.toBeNull());
@@ -450,9 +457,11 @@ describe('transaction logo selection in the expense form', () => {
             fireEvent.load(preview.querySelector('img'));
             expect(preview).toHaveTextContent('Выбрано: chopchop.com');
             expect(onSubmit).not.toHaveBeenCalled();
+            expect(screen.getByPlaceholderText('Название магазина или сервиса')).toHaveValue('Chop Chop Barber Shop');
+            expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('Стрижка');
 
             fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));
-            expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ description: 'Chop Chop', amount: 34, category: 'Красота', logoMode: 'domain', merchantDomain: 'chopchop.com' }));
+            await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ companyId: 'company-chop', companyName: 'Chop Chop Barber Shop', description: 'Стрижка', amount: 34, category: 'Красота', logoMode: 'domain', merchantDomain: 'chopchop.com' })));
             await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
         } finally { vi.unstubAllEnvs(); }
     });
@@ -462,15 +471,23 @@ describe('transaction logo selection in the expense form', () => {
         try {
             const onSubmit = vi.fn().mockResolvedValue(true);
             const onClose = vi.fn();
-            const initialData = { id: 'edit-logo', type: 'expense', description: 'Wolt', amount: 12, account: 'card', category: 'Продукты', logoMode: 'domain', merchantDomain: 'wolt.com' };
-            render(<AddTransactionForm initialData={initialData} categories={mockCategories} accounts={mockAccounts} apiFetch={vi.fn()} onClose={onClose} onSubmit={onSubmit} />);
+            const initialData = { id: 'edit-logo', type: 'expense', companyId: 'company-wolt', companyName: 'Wolt', description: 'Ужин', amount: 12, account: 'card', category: 'Продукты', logoMode: 'domain', merchantDomain: 'wolt.com' };
+            const apiFetch = vi.fn().mockImplementation(async (url, options = {}) => {
+                if (url === '/api/companies/company-wolt' && options.method === 'PUT') {
+                    return { ok: true, json: async () => ({ _id: 'company-wolt', ...JSON.parse(options.body), __v: 1 }) };
+                }
+                return { ok: true, json: async () => [{ _id: 'company-wolt', name: 'Wolt', logoMode: 'domain', merchantDomain: 'wolt.com', __v: 0 }] };
+            });
+            render(<AddTransactionForm initialData={initialData} categories={mockCategories} accounts={mockAccounts} apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
             fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
             fireEvent.click(screen.getByRole('button', { name: 'Иконка категории', exact: true }));
             expect(screen.getByRole('region', { name: 'Иконка операции' }).querySelector('img')).toBeNull();
             expect(onSubmit).not.toHaveBeenCalled();
 
             fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));
-            expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ id: 'edit-logo', logoMode: 'category', merchantDomain: '' }));
+            await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ id: 'edit-logo', companyId: 'company-wolt', companyName: 'Wolt', description: 'Ужин', logoMode: 'category', merchantDomain: '' })));
+            const update = apiFetch.mock.calls.find(([, options]) => options?.method === 'PUT');
+            expect(JSON.parse(update[1].body)).toEqual({ name: 'Wolt', logoMode: 'category', merchantDomain: '', __v: 0 });
             await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
         } finally { vi.unstubAllEnvs(); }
     });

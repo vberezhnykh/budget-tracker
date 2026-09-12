@@ -123,6 +123,29 @@ describe('computePeriodData: правила, которые легко поте�
     });
 });
 
+describe('split company snapshots', () => {
+    const part = (id, overrides = {}) => ({
+        _id: id, amount: 10, type: 'expense', category: 'Красота', account: 'acc-card', date: '2026-08-10T00:00:00.000Z',
+        splitId: 'company-split', companyName: 'Chop Chop', description: 'Стрижка (утром)', logoMode: 'domain', merchantDomain: 'chopchop.me', ...overrides
+    });
+    it.each([
+        ['same company', {}, 'Chop Chop', 'domain'],
+        ['different company', { companyName: 'Другой салон' }, '', undefined],
+        ['legacy mixed with new', { companyName: undefined }, '', undefined],
+        ['different logo snapshot', { merchantDomain: 'barber.com' }, 'Chop Chop', 'category']
+    ])('keeps client and server grouping consistent for %s', (_label, changes, companyName, logoMode) => {
+        const docs = [part('s1'), part('s2', changes)];
+        const server = computePeriodData(transformTransactions(docs), '2026-08');
+        const client = getPeriodData(transformOnClient(docs), '2026-08');
+        expect(server).toEqual(client);
+        const group = server.transactions['2026-08-10'].items[0];
+        expect(group.companyName).toBe(companyName);
+        expect(group.logoMode).toBe(logoMode);
+        expect(group.description).toBe('Стрижка (утром)');
+        expect(server.expense).toBe(-20);
+    });
+});
+
 describe('periodPrefixOf совпадает с getPeriodPrefix', () => {
     it.each([
         ['month', '2026-08'],

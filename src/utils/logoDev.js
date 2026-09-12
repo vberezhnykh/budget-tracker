@@ -13,7 +13,9 @@ export function getTransactionLogoUrl(item, key = import.meta.env.VITE_LOGO_DEV_
   const token = typeof key === 'string' ? key.trim() : '';
   // Never send a secret key or issue failing requests before configuration.
   if (!/^pk_[a-zA-Z0-9_-]+$/.test(token)) return null;
-  if (item?.type !== 'expense' || item.logoMode === 'category') return null;
+  const isCompanySplit = item?.type === 'split_group' && typeof item.companyName === 'string' && item.companyName.trim();
+  if ((item?.type !== 'expense' && !isCompanySplit) || item.logoMode === 'category') return null;
+  if (typeof item.companyName === 'string' && !item.companyName.trim()) return null;
   const selectedDomain = item.logoMode === 'domain' ? normalizeMerchantDomain(item.merchantDomain) : null;
   if (item.logoMode === 'domain' && !selectedDomain) return null;
   const name = getTransactionBrandName(item);

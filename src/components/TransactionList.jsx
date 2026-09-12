@@ -1,6 +1,12 @@
 import { ArrowRight, EyeOff } from 'lucide-react';
 import TransactionIcon from './TransactionIcon';
 
+const hasCompanyField = (item) => typeof item.companyName === 'string';
+const displayName = (item) => hasCompanyField(item)
+    ? item.companyName || (item.type === 'split_group' ? 'Операция' : item.category || item.title || 'Расход')
+    : item.description || item.title;
+const displayComment = (item) => hasCompanyField(item) ? item.description || '' : '';
+
 // Список операций, сгруппированный по дням. Один и тот же список нужен в
 // трёх местах - в шторке истории (результаты поиска и обычная история) и
 // блоком «Последние операции» на главной, - а до этого он был написан в
@@ -106,7 +112,9 @@ export default function TransactionList({
     // название, счета, категория, сумма со знаком.
     const rowLabel = (item) => {
         const sign = item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : '';
-        const parts = [item.description || item.title, rowAccounts(item)];
+        const parts = [displayName(item)];
+        if (displayComment(item)) parts.push(displayComment(item));
+        parts.push(rowAccounts(item));
         if (item.category) parts.push(item.category);
         parts.push(`${sign}€${Math.abs(item.visualAmount).toFixed(2)}`);
         return parts.join(', ');
@@ -131,7 +139,10 @@ export default function TransactionList({
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                                     <TransactionIcon item={item} />
                                     <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                                        <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{item.description} (Разделено)</div>
+                                        <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{displayName(item)} (Разделено)</div>
+                                        {displayComment(item) && (
+                                            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>{displayComment(item)}</div>
+                                        )}
                                         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                                             {getAccountDisplay(item.account)} • {item.items.length} катег.
                                         </div>
@@ -151,14 +162,25 @@ export default function TransactionList({
                                         style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: 'var(--text-base)', cursor: 'pointer', borderLeft: '2px solid var(--color-primary-glow)', marginBottom: '4px' }}
                                     >
                                         <RowOverlayButton
-                                            label={`${item.description} (Разделено): ${rowLabel(subItem)}`}
+                                            label={`${displayName(item)} (Разделено): ${rowLabel(subItem)}`}
                                             onClick={() => openEditModal(subItem)}
                                         />
-                                        <CategoryFilterLink
-                                            category={subItem.category}
-                                            selected={selectedCategory === subItem.category}
-                                            onToggle={toggleCategoryFilter}
-                                        />
+                                        <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                                            <CategoryFilterLink
+                                                category={subItem.category}
+                                                selected={selectedCategory === subItem.category}
+                                                onToggle={toggleCategoryFilter}
+                                            />
+                                            {hasCompanyField(item) && subItem.companyName && subItem.companyName !== item.companyName && (
+                                                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{subItem.companyName}</div>
+                                            )}
+                                            {hasCompanyField(item) && !hasCompanyField(subItem) && displayName(subItem) && (
+                                                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{displayName(subItem)}</div>
+                                            )}
+                                            {displayComment(subItem) && displayComment(subItem) !== displayComment(item) && (
+                                                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{displayComment(subItem)}</div>
+                                            )}
+                                        </div>
                                         <div style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--color-text-main)' }}>
                                             €{Math.abs(subItem.visualAmount).toFixed(2)}
                                         </div>
@@ -186,11 +208,14 @@ export default function TransactionList({
                             <TransactionIcon item={item} />
                             <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                                 <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
-                                    {item.description || item.title}
+                                    {displayName(item)}
                                     {item.excludeFromStats && (
                                         <span role="img" aria-label="Исключено из статистики" title="Исключено из статистики" style={{ marginLeft: '6px', color: 'var(--color-text-muted)' }}><EyeOff size={14} strokeWidth={1.8} aria-hidden="true" /></span>
                                     )}
                                 </div>
+                                {displayComment(item) && (
+                                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>{displayComment(item)}</div>
+                                )}
                                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
                                     {visibleAccounts(item)}
                                     {item.category && (

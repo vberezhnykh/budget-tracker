@@ -43,6 +43,17 @@ const TransactionSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    companyId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Company'
+    },
+    // No default: absent means a legacy title-based row; '' explicitly means
+    // the user chose no company in the new form.
+    companyName: {
+        type: String,
+        trim: true,
+        maxlength: 120
+    },
     logoMode: {
         type: String,
         enum: ['auto', 'domain', 'category'],
@@ -106,7 +117,11 @@ const TransactionSchema = new mongoose.Schema({
 });
 
 TransactionSchema.pre('validate', function normalizeLogoChoice() {
-    if (this.type !== 'expense') this.logoMode = 'auto';
+    if (this.type !== 'expense') {
+        this.logoMode = 'auto';
+        this.companyId = undefined;
+        this.companyName = undefined;
+    }
     if (this.logoMode !== 'domain') this.merchantDomain = undefined;
 });
 

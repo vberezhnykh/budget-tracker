@@ -220,6 +220,27 @@ function validateTransactionUpdate(body, currentTransaction = null) {
     }
 
     const finalType = update.type ?? currentTransaction?.type;
+    if (finalType !== undefined && finalType !== 'expense') {
+        for (const field of ['companyId', 'companyName']) {
+            if (currentTransaction?.[field] !== undefined) unset.push(field);
+        }
+    } else {
+        if (isPresent(body, 'companyId')) {
+            if (body.companyId === null || body.companyId === '') {
+                unset.push('companyId');
+            } else if (typeof body.companyId !== 'string' || !/^[a-f\d]{24}$/i.test(body.companyId)) {
+                return { error: 'Некорректный идентификатор компании' };
+            } else {
+                update.companyId = body.companyId.toLowerCase();
+            }
+        }
+        if (isPresent(body, 'companyName')) {
+            if (typeof body.companyName !== 'string' || body.companyName.trim().length > 120) {
+                return { error: 'Название компании должно быть строкой длиной до 120 символов' };
+            }
+            update.companyName = body.companyName.trim();
+        }
+    }
     const hasLogoMode = isPresent(body, 'logoMode');
     const hasMerchantDomain = isPresent(body, 'merchantDomain');
     if (finalType !== undefined && finalType !== 'expense') {
@@ -242,6 +263,14 @@ function validateTransactionUpdate(body, currentTransaction = null) {
             // including when the form omits that field from its next request.
             unset.push('merchantDomain');
         }
+    }
+
+    if (update.companyName === '' && finalType !== 'income' && finalType !== 'initial' && finalType !== 'transfer') {
+        delete update.companyId;
+        delete update.merchantDomain;
+        update.logoMode = 'category';
+        if (!unset.includes('companyId')) unset.push('companyId');
+        if (!unset.includes('merchantDomain')) unset.push('merchantDomain');
     }
 
     // Для частичного PUT проверяем состояние, полученное из прочитанного

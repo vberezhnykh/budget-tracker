@@ -10,7 +10,7 @@ function money(value) {
 function groupTitle(group) {
   if (group.count > 1) return `Группа операций (${group.count})`;
   const transaction = group.transactions?.[0];
-  return transaction?.title || transaction?.category || 'Операция';
+  return transaction?.companyName || transaction?.title || transaction?.category || 'Операция';
 }
 
 export default function TrashSheet({ groups, loading, error, onRetry, onRestore, onPurge, onClose }) {

@@ -1,0 +1,12 @@
+.company-field { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.company-field > label { color: var(--color-text-muted); font-size: var(--text-base); }
+.company-field__input { display: flex; align-items: center; gap: 8px; }
+.company-field__input > button { min-width: 40px; min-height: 40px; border-radius: var(--radius-sm); color: var(--color-text-muted); background: var(--color-surface-muted); font-size: 24px; }
+.company-field__suggestions { margin: 0; padding: 0; list-style: none; max-height: 230px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+.company-field__suggestions li + li { border-top: 1px solid var(--color-border-subtle); }
+.company-field__suggestions button { display: flex; align-items: center; width: 100%; gap: 12px; padding: 10px; background: var(--color-surface); text-align: left; }
+.company-field__suggestions button > span:last-child { display: flex; flex-direction: column; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.company-field__suggestions strong { color: var(--color-text-main); font-size: var(--text-base); }
+.company-field__suggestions small, .company-field__hint { color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.5; }
+.company-field__hint button { color: var(--color-primary); background: transparent; text-decoration: underline; }
+.company-field button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }

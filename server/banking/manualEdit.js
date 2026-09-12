@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Transaction = require('../models/Transaction');
 const PlannedPayment = require('../models/PlannedPayment');
 const { validateTransactionUpdate, validateTransactionVersion } = require('../transactionInput');
+const { prepareTransactionCompany } = require('../transactionCompany');
 const { lockAccountReferences } = require('../accountRefs');
 const { BankLink } = require('./models');
 const { cents, problem, withLedgerTransaction } = require('./reconciliation');
@@ -59,7 +60,8 @@ async function saveManualTransactionUpdate(id, body) {
         const { error: versionError, expectedVersion } = validateTransactionVersion(body);
         if (versionError) throw problem(400, 'INVALID_VERSION', versionError);
         if ((current.__v || 0) !== expectedVersion) throw problem(409, 'STALE_TRANSACTION', 'Операция уже была изменена. Обновите данные и повторите попытку.');
-        const { error, update, unset } = validateTransactionUpdate(body, current);
+        const prepared = await prepareTransactionCompany(body, current, { session });
+        const { error, update, unset } = validateTransactionUpdate(prepared, current);
         if (error) throw problem(400, 'INVALID_TRANSACTION', error);
         const next = { ...current, ...update };
         for (const key of unset) delete next[key];

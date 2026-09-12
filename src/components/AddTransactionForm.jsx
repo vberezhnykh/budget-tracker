@@ -2,12 +2,13 @@ import { useState, useMemo } from 'react';
 import { ArrowDownLeft, ArrowDownUp, ArrowUpRight, Check, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
 import AccountIcon from './AccountIcon';
 import TransactionLogoPicker from './TransactionLogoPicker';
+import CompanyField from './CompanyField';
 import Field from './ui/Field'
 import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
 import IconButton from './ui/IconButton'
 import { getDescriptionSuggestions, splitCategoriesByUsage } from '../utils/finance';
-import { getHistoricalLogoChoice } from '../utils/transactionLogoHistory';
+import { saveCompanySelection } from '../utils/companies';
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], apiFetch }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
@@ -42,6 +43,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         amount: '',
         category: '',
         description: '',
+        ...(type === 'expense' ? { companyName: '', logoMode: 'category' } : {}),
         date: new Date().toISOString().split('T')[0],
         type: type, // 'income', 'expense', or 'transfer'
         account: initialAccount,
@@ -49,16 +51,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         excludeFromStats: false
     });
 
-    // Only new expenses inherit a past choice. Once the user chooses a mode
-    // in this form, that explicit choice wins. Deriving instead of copying
-    // it into state also drops an inherited logo when the shop name changes.
-    const historicalLogoChoice = useMemo(
-        () => !initialData && formData.type === 'expense' && formData.logoMode === undefined
-            ? getHistoricalLogoChoice(transactions, formData.description)
-            : null,
-        [initialData, transactions, formData.type, formData.logoMode, formData.description]
-    );
-    const logoFormData = historicalLogoChoice ? { ...formData, ...historicalLogoChoice } : formData;
+    const [companyLogoChanged, setCompanyLogoChanged] = useState(false);
+    const [companyError, setCompanyError] = useState('');
 
     const isTransfer = formData.type === 'transfer';
     const today = new Date().toISOString().split('T')[0];
@@ -88,7 +82,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         if (isSaveDisabled) return;
 
         setIsSubmitting(true);
+        setCompanyError('');
         try {
+            const savedForm = formData.type === 'expense' && formData.companyName?.trim() && (!formData.companyId || companyLogoChanged)
+                ? await saveCompanySelection(formData, { request: apiFetch || fetch, logoChanged: companyLogoChanged })
+                : formData;
             let submission;
             if (isSplit && splits.length > 0) {
                 const splitGroupId = `split_${Date.now()}`;
@@ -97,7 +95,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     amount: parseFloat(split.amount),
                     category: split.category,
                     description: (formData.description + (split.description ? ` (${split.description})` : '')).trim(),
-                    ...(formData.type === 'expense' ? { logoMode: logoFormData.logoMode || 'auto', merchantDomain: logoFormData.merchantDomain || '' } : {}),
+                    ...(formData.type === 'expense' ? {
+                        logoMode: savedForm.logoMode || 'auto', merchantDomain: savedForm.merchantDomain || '',
+                        ...(savedForm.companyName !== undefined ? { companyName: savedForm.companyName, companyId: savedForm.companyId || '' } : {}),
+                    } : {}),
                     date: formData.date,
                     type: formData.type,
                     account: formData.account,
@@ -108,7 +109,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 submission = onSubmit(splitTransactions);
             } else {
                 const submitData = {
-                    ...logoFormData,
+                    ...savedForm,
                     amount: parseFloat(formData.amount),
                     category: isTransfer ? 'Перевод' : formData.category,
                     id: initialData ? initialData.id : Date.now()
@@ -120,6 +121,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                 if (formData.type !== 'expense') {
                     delete submitData.logoMode;
                     delete submitData.merchantDomain;
+                    delete submitData.companyName;
+                    delete submitData.companyId;
                 }
                 submission = onSubmit(submitData);
             }
@@ -130,6 +133,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             // close-on-submit contract; App returns false on an API failure
             // so the user's entered values stay available for a retry.
             if (succeeded !== false) onClose();
+        } catch (error) {
+            setCompanyError(error.message || 'Не удалось сохранить операцию. Попробуйте ещё раз.');
         } finally {
             setIsSubmitting(false);
         }
@@ -865,6 +870,14 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         />
                     </div>
 
+                    {formData.type === 'expense' && (
+                        <CompanyField item={formData} transactions={transactions} apiFetch={apiFetch} onChange={choice => {
+                            setCompanyLogoChanged(false);
+                            setCompanyError('');
+                            setFormData(prev => ({ ...prev, ...choice }));
+                        }} />
+                    )}
+
                     {/* Description */}
                     <div>
                         <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Описание (опц.)</label>
@@ -919,9 +932,16 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         )}
                     </div>
 
-                    {formData.type === 'expense' && !isSplit && !initialData?.splitId && (
-                        <TransactionLogoPicker item={logoFormData} fromHistory={Boolean(historicalLogoChoice)} apiFetch={apiFetch} onChange={choice => setFormData(prev => ({ ...prev, ...choice }))} />
+                    {formData.type === 'expense' && (
+                        <TransactionLogoPicker
+                            item={formData}
+                            canChoose={formData.companyName === undefined || Boolean(formData.companyName.trim())}
+                            apiFetch={apiFetch}
+                            onChange={choice => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, ...choice })); }}
+                            onMerchantSelect={merchant => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, companyId: '', companyName: merchant.name, logoMode: 'domain', merchantDomain: merchant.domain })); }}
+                        />
                     )}
+                    {companyError && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--text-sm)' }}>{companyError}</p>}
 
                     <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
                         {initialData && (

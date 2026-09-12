@@ -240,6 +240,7 @@ function computeSearchResults(transactions, query, accountFilter = null, categor
     const searchLower = query.toLowerCase();
     let filtered = transactions.filter(t => {
         const textMatch = (t.description || '').toLowerCase().includes(searchLower) ||
+            (t.companyName || '').toLowerCase().includes(searchLower) ||
             (t.category || '').toLowerCase().includes(searchLower) ||
             (t.title || '').toLowerCase().includes(searchLower);
         const amountMatch = t.amount.toString().includes(query) ||
