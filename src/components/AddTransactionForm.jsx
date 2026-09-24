@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { ArrowDownLeft, ArrowDownUp, ArrowUpRight, Check, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
 import AccountIcon from './AccountIcon';
 import TransactionLogoPicker from './TransactionLogoPicker';
@@ -10,7 +10,9 @@ import IconButton from './ui/IconButton'
 import { getDescriptionSuggestions, splitCategoriesByUsage } from '../utils/finance';
 import { saveCompanySelection } from '../utils/companies';
 
-export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], apiFetch }) {
+const EMPTY_SUGGESTIONS = [];
+
+export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], categoryCounts, apiFetch }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
     const defaultToAccount = accounts.find(a => a.type === 'card' && a._id !== defaultAccount)?._id || accounts.find(a => a._id !== defaultAccount)?._id || '';
 
@@ -170,8 +172,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const { frequent: frequentCategories, rest: restCategories } = useMemo(
         () => splitCategoriesByUsage(categories, transactions, formData.type, {
             pinned: showAllCategories ? null : formData.category,
+            counts: categoryCounts?.[formData.type],
         }),
-        [categories, transactions, formData.type, formData.category, showAllCategories]
+        [categories, transactions, formData.type, formData.category, showAllCategories, categoryCounts]
     );
     const visibleCategories = showAllCategories ? [...frequentCategories, ...restCategories] : frequentCategories;
 
@@ -179,10 +182,29 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     // категории. В режиме разделения одно описание относится сразу к
     // нескольким категориям, поэтому подсказывать там нечего.
     const suggestionCategory = isSplit ? null : (isTransfer ? 'Перевод' : formData.category);
-    const descriptionSuggestions = useMemo(
+    const localDescriptionSuggestions = useMemo(
         () => getDescriptionSuggestions(transactions, suggestionCategory, formData.type),
         [transactions, suggestionCategory, formData.type]
     );
+
+    const [remoteSuggestions, setRemoteSuggestions] = useState(null);
+    const suggestionKey = `${formData.type}:${suggestionCategory}`;
+    useEffect(() => {
+        if (!apiFetch || !suggestionCategory) return;
+        let current = true;
+        const controller = new AbortController();
+        const params = new URLSearchParams({ category: suggestionCategory, type: formData.type });
+        apiFetch(`/api/suggestions/descriptions?${params}`, { signal: controller.signal })
+            .then(async response => {
+                if (!response.ok) throw new Error();
+                const values = await response.json();
+                if (current && Array.isArray(values) && values.every(value => typeof value === 'string')) setRemoteSuggestions({ key: suggestionKey, values });
+            }).catch(() => {});
+        return () => { current = false; controller.abort(); };
+    }, [apiFetch, suggestionCategory, suggestionKey, formData.type]);
+    const descriptionSuggestions = apiFetch
+        ? (remoteSuggestions?.key === suggestionKey ? remoteSuggestions.values : EMPTY_SUGGESTIONS)
+        : localDescriptionSuggestions;
 
     // Пока поле пустое - показываем весь топ; как только пользователь начал
     // печатать, подсказки сужаются до подходящих, а точное совпадение

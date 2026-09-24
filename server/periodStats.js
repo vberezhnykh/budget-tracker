@@ -49,6 +49,8 @@ function computePeriodData(transactions, periodPrefix, options = {}) {
             return acc;
         }, {});
 
+    if (options.includeTransactions === false) return { income, expense, categoryTotals };
+
     // Фильтр по типу применяется только к списку.
     if (typeFilter) {
         filtered = filtered.filter(t => t.type === typeFilter);

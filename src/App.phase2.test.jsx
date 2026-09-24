@@ -1,3 +1,4 @@
+import { readApi } from '../server/test/readApi';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
@@ -23,6 +24,8 @@ function makeApi(overrides = {}) {
 
   const fetch = vi.fn(async (url, options = {}) => {
     const method = options.method || 'GET';
+    const data = method === 'GET' ? readApi(url, state.transactions, state.accounts) : undefined;
+    if (data !== undefined) return ok(data);
     if (url === '/api/accounts' && method === 'GET') return ok(copy(state.accounts));
     if (url === '/api/categories' && method === 'GET') return ok(copy(state.categories));
     if (url === '/api/settings' && method === 'GET') return ok({ monthlyLimit: 7000 });
@@ -113,10 +116,11 @@ function makeApi(overrides = {}) {
   return { state, fetch };
 }
 
-function openDrawer() {
+async function openDrawer() {
   const handle = screen.getByRole('button', { name: 'Открыть список операций' });
   fireEvent.pointerDown(handle, { pointerId: 1, clientY: 200 });
   fireEvent.pointerUp(handle, { pointerId: 1, clientY: 200 });
+  await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
 }
 
 async function openTrash() {
@@ -157,7 +161,7 @@ describe('App phase 2 flows', () => {
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
     await screen.findByTestId('balance-carousel');
-    openDrawer();
+    await openDrawer();
     fireEvent.click(screen.getByRole('button', { name: /Кофе утром/ }));
     const dialog = screen.getByRole('dialog', { name: 'Редактировать' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Удалить операцию' }));
@@ -194,7 +198,7 @@ describe('App phase 2 flows', () => {
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
     await screen.findByTestId('balance-carousel');
-    openDrawer();
+    await openDrawer();
 
     fireEvent.click(screen.getByRole('button', { name: /Первый расход/ }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Редактировать' })).getByRole('button', { name: 'Удалить операцию' }));

@@ -1,3 +1,4 @@
+import { readApi } from '../../server/test/readApi';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BankingSheet from './BankingSheet';
@@ -222,6 +223,8 @@ function appFetch(override = () => undefined) {
   const fetchMock = vi.fn(async (url, options) => {
     const custom = override(url, options);
     if (custom !== undefined) return custom;
+    const data = !options?.method ? readApi(url, [], accounts) : undefined;
+    if (data !== undefined) return response(data);
     if (url === '/api/accounts') return response(accounts);
     if (url === '/api/categories') return response(categories);
     // These integration scenarios exercise an explicitly enabled bank module.
@@ -334,7 +337,7 @@ describe('App banking integration', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Добавить в бюджет' })).not.toBeInTheDocument());
     expect(await screen.findByRole('alert')).toHaveTextContent('Обновление временно недоступно');
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/banking/review/entry/resolve')).toHaveLength(1);
-    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/transactions')).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?'))).toHaveLength(2);
   });
 
   it('refreshes a conflicting proposal without automatically retrying the resolution', async () => {

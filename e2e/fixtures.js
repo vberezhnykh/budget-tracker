@@ -1,3 +1,4 @@
+import { readApi } from '../server/test/readApi.js';
 // Fixture data + API stubbing for the Playwright smoke suite. There is no
 // backend here on purpose (see README) - every /api/** request is answered
 // straight out of the browser via page.route(), mirroring the shapes the
@@ -62,6 +63,8 @@ export async function mockApi(page, overrides = {}) {
     const request = route.request();
     const { pathname } = new URL(request.url());
     const method = request.method();
+    const data = method === 'GET' ? readApi(request.url(), transactionsData, accountsData) : undefined;
+    if (data !== undefined) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
 
     if (method === 'GET' && pathname === '/api/accounts') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(accountsData) });
@@ -100,6 +103,8 @@ export async function mockPhase2Api(page, overrides = {}) {
     const request = route.request();
     const { pathname } = new URL(request.url());
     const method = request.method();
+    const data = method === 'GET' ? readApi(request.url(), state.transactions, state.accounts) : undefined;
+    if (data !== undefined) return fulfill(route, data);
     const input = request.postData() ? request.postDataJSON() : {};
 
     if (method === 'GET' && pathname === '/api/accounts') return fulfill(route, state.accounts);

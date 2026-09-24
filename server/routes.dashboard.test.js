@@ -233,8 +233,55 @@ describe('Гейт', () => {
     it('новые роуты закрыты без куки', async () => {
         const { default: request } = await import('supertest');
 
-        for (const path of ['/api/stats/dashboard', '/api/search?q=x', '/api/suggestions/descriptions?category=x']) {
+        for (const path of ['/api/stats/dashboard', '/api/history', '/api/companies/history?q=x', '/api/search?q=x', '/api/suggestions/descriptions?category=x']) {
             expect((await request(app).get(path)).status, path).toBe(401);
         }
+    });
+});
+
+
+describe('Lazy dashboard and history routes', () => {
+    it('leaves detailed analytics out of the initial summary', async () => {
+        const res = await dashboard('&analytics=0');
+        expect(res.status).toBe(200);
+        expect(res.body.comparison).toBeUndefined();
+        expect(res.body.categoryComparison).toBeUndefined();
+        expect(res.body.balances.total).toBe(850);
+        expect(res.body.month.expense).toBe(-350);
+    });
+
+    it('paginates the selected month and searches beyond it, excluding trash', async () => {
+        const first = await agent.get('/api/history?month=2026-08&limit=2');
+        expect(first.status).toBe(200);
+        expect(first.body.count).toBe(3);
+        expect(Object.keys(first.body.transactions)).toEqual(['2026-08-14', '2026-08-12']);
+        const second = await agent.get('/api/history').query({ month: '2026-08', limit: 2, cursor: first.body.nextCursor });
+        expect(Object.keys(second.body.transactions)).toEqual(['2026-08-03']);
+        expect(second.body.nextCursor).toBeNull();
+        const search = await agent.get('/api/history').query({ month: '2026-08', q: 'Лидл', account: card._id.toString() });
+        expect(search.body.count).toBe(2);
+        expect(search.body.transactions['2026-07-10']).toBeDefined();
+        await Transaction.updateMany({ description: 'Лидл' }, { $set: { deletedAt: new Date() } });
+        expect((await agent.get('/api/history').query({ q: 'Лидл' })).body.count).toBe(0);
+    });
+
+    it('returns a complete split group with the full daily total on a one-row page', async () => {
+        await Transaction.create([
+            tx({ account: card._id.toString(), date: '2026-08-15', splitId: 'split_page', amount: 10 }),
+            tx({ account: card._id.toString(), date: '2026-08-15', splitId: 'split_page', amount: 20 }),
+            tx({ account: card._id.toString(), date: '2026-08-15', amount: 5 }),
+        ]);
+        const res = await agent.get('/api/history?month=2026-08&limit=1');
+        expect(res.status).toBe(200);
+        expect(res.body.transactions['2026-08-15'].dailySum).toBe(-35);
+        expect(res.body.transactions['2026-08-15'].items[0].items).toHaveLength(2);
+        expect((await agent.get('/api/history?limit=101')).status).toBe(400);
+    });
+
+    it('keeps historical company choices available without downloading operations', async () => {
+        await Transaction.create(tx({ description: 'Old shop', logoMode: 'domain', merchantDomain: 'shop.com' }));
+        const res = await agent.get('/api/companies/history?q=shop');
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'domain', merchantDomain: 'shop.com' }]);
     });
 });

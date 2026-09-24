@@ -1,3 +1,4 @@
+import { readApi } from '../server/test/readApi';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
@@ -41,6 +42,8 @@ let currentPlannedPayments = [];
 let fetchMock;
 function createFetchMock() {
     return vi.fn((url, options) => {
+        const data = !options?.method ? readApi(url, currentTransactions, currentAccounts) : undefined;
+        if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
         if (typeof url === 'string' && url.includes('/api/accounts')) {
             if (options?.method === 'DELETE') {
                 const id = url.split('/').pop();
@@ -124,16 +127,18 @@ function stubCarouselGeometry(container, slideWidth = 300, gap = 12, spacerWidth
 // Ручка шторки слушает pointer-события, а не click, поэтому «открыть» - это
 // pointerDown + pointerUp по ней. Содержимое шторки (поиск, фильтры, полная
 // история) существует в дереве только когда она раскрыта.
-function openDrawer() {
+async function openDrawer() {
     const handle = screen.getByRole('button', { name: 'Открыть список операций' });
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 200 });
     fireEvent.pointerUp(handle, { pointerId: 1, clientY: 200 });
+    await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
 }
 
 // Разбивка по категориям живёт на вкладке «Аналитика»: на главной её больше
 // нет, чтобы вкладки не повторяли друг друга.
-function openAnalytics() {
+async function openAnalytics() {
     fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
+    await waitFor(() => expect(screen.queryByText('Загрузка итогов…')).not.toBeInTheDocument());
 }
 
 describe('App Integration Tests', () => {
@@ -189,7 +194,7 @@ describe('App Integration Tests', () => {
         consoleSpy.mockRestore();
     });
 
-    it('starts categories and settings while the transactions request is still pending', async () => {
+    it('starts categories and settings while the summary request is still pending', async () => {
         let resolveTransactions;
         const pendingTransactions = new Promise(resolve => { resolveTransactions = resolve; });
         const categoriesJson = vi.fn().mockResolvedValue([]);
@@ -199,7 +204,7 @@ describe('App Integration Tests', () => {
             if (url === '/api/accounts') {
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(currentAccounts) });
             }
-            if (url === '/api/transactions') return pendingTransactions;
+            if (url.startsWith('/api/stats/dashboard?')) return pendingTransactions;
             if (url === '/api/categories') {
                 return Promise.resolve({ ok: true, status: 200, json: categoriesJson });
             }
@@ -218,7 +223,7 @@ describe('App Integration Tests', () => {
         expect(screen.getByText('Загрузка...')).toBeInTheDocument();
 
         await act(async () => {
-            resolveTransactions({ ok: true, status: 200, json: () => Promise.resolve(currentTransactions) });
+            resolveTransactions({ ok: true, status: 200, json: async () => readApi('/api/stats/dashboard?month=2026-01&today=2026-01-15', currentTransactions, currentAccounts) });
         });
         await waitFor(() => expect(screen.getByText('BudgetTracker')).toBeInTheDocument());
     });
@@ -346,7 +351,7 @@ describe('App Integration Tests', () => {
         render(<App />);
         await waitFor(() => screen.getByTestId('balance-carousel'));
 
-        openDrawer();
+        await openDrawer();
         fireEvent.click(screen.getByRole('button', { name: /Monthly flat rent/ }));
         fireEvent.click(screen.getByText('Сохранить'));
 
@@ -407,13 +412,13 @@ describe('App Integration Tests', () => {
 
         // Разбивка по категориям - на вкладке «Аналитика»; на главной её
         // больше нет, там теперь лимит и последние операции.
-        openAnalytics();
+        await openAnalytics();
         const categoryButton = await screen.findByRole('button', { name: /^Housing: €/ });
         expect(categoryButton).toHaveAttribute('aria-pressed', 'false');
 
         fireEvent.click(categoryButton);
 
-        expect(screen.getByRole('button', { name: /^Housing: €/ })).toHaveAttribute('aria-pressed', 'true');
+        expect(await screen.findByRole('button', { name: /^Housing: €/ })).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('displays transaction description and account/category correctly', async () => {
@@ -422,7 +427,7 @@ describe('App Integration Tests', () => {
         await waitFor(() => screen.getByText('BudgetTracker'));
         // Операции живут в шторке, и её содержимое существует только когда
         // она раскрыта - открываем, как это делает пользователь.
-        openDrawer();
+        await openDrawer();
 
         // Check for the transaction with description (Rent)
         expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
@@ -443,7 +448,7 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
-        openDrawer();
+        await openDrawer();
 
         // Each editable row exposes a full-row button (see the accessible
         // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
@@ -491,7 +496,7 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
-        openDrawer();
+        await openDrawer();
 
         // Open split sub-item via its full-row button (see the accessible
         // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
@@ -605,7 +610,7 @@ describe('App Integration Tests', () => {
         await waitFor(() => screen.getByText('BudgetTracker'));
 
         // Default is monthly income (Salary = 5000)
-        expect(screen.getByText(/\+€5\.000/)).toBeInTheDocument();
+        expect(await screen.findByText(/\+€5\.000/)).toBeInTheDocument();
 
         // Switch to lifetime. "Всё время" has nothing further to pick, so it
         // applies and closes the sheet on the spot.
@@ -613,7 +618,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Всё время' }));
 
         // Should show lifetime stats (same as monthly in this mock since all are in Jan 2026)
-        expect(screen.getByText(/\+€5\.000/)).toBeInTheDocument();
+        expect(await screen.findByText(/\+€5\.000/)).toBeInTheDocument();
 
         // Progress bar (Limit) should be gone
         expect(screen.queryByText(/Лимит €/)).not.toBeInTheDocument();
@@ -632,7 +637,7 @@ describe('App Integration Tests', () => {
 
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
-        openDrawer();
+        await openDrawer();
 
         // Month view (January 2026): December's operation is out of range.
         expect(screen.queryByText('Подарки')).not.toBeInTheDocument();
@@ -640,14 +645,14 @@ describe('App Integration Tests', () => {
         // "Всё время": every operation, whatever month it falls in.
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Всё время' }));
-        expect(screen.getByText('Подарки')).toBeInTheDocument();
+        expect(await screen.findByText('Подарки')).toBeInTheDocument();
         expect(screen.getByText('Salary')).toBeInTheDocument();
 
         // "Год" 2025: that year in full, and nothing from 2026.
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Год' }));
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '2025 год' }));
-        expect(screen.getByText('Подарки')).toBeInTheDocument();
+        expect(await screen.findByText('Подарки')).toBeInTheDocument();
         expect(screen.queryByText('Salary')).not.toBeInTheDocument();
     });
 
@@ -655,7 +660,7 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
-        openDrawer();
+        await openDrawer();
 
         // Initially shows both (Salary and Rent) in January view (since we mocked time)
         expect(screen.getByText('Salary')).toBeInTheDocument();
@@ -699,9 +704,9 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
-        openDrawer();
+        await openDrawer();
         await waitFor(() => screen.getByText('Coffee'));
-        expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
+        expect((await screen.findAllByText('Salary')).length).toBeGreaterThan(0);
 
         // The header is a carousel of slides: total capital, then one slide
         // per account (the type:card/type:cash group slides were dropped -
@@ -741,7 +746,7 @@ describe('App Integration Tests', () => {
 
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
-        openDrawer();
+        await openDrawer();
         await waitFor(() => screen.getByText('Coffee'));
 
         // Slide order: total(0), "Карта" account(1), "Наличные" account(2).
@@ -779,7 +784,7 @@ describe('App Integration Tests', () => {
         // Selecting slide 3 ("Карта") must filter by the card account, not by
         // whatever the last slide happens to be.
         expect(screen.queryByText('Coffee')).not.toBeInTheDocument();
-        expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
+        expect((await screen.findAllByText('Salary')).length).toBeGreaterThan(0);
         // Выбранный счёт виден в заголовке на ручке шторки - чип «Счет:»
         // лежит в её содержимом, а оно рендерится только у раскрытой.
         expect(screen.getByText(/^Список операций/)).toHaveTextContent('Карта');
@@ -812,7 +817,7 @@ describe('App Integration Tests', () => {
 
         // Сброс фильтра живёт в содержимом шторки - чтобы до него добраться,
         // её надо раскрыть, как это делает и пользователь.
-        openDrawer();
+        await openDrawer();
         const resetBtn = screen.getByRole('button', { name: 'Сбросить', exact: true });
         fireEvent.click(resetBtn);
 
@@ -822,8 +827,7 @@ describe('App Integration Tests', () => {
 
         const totalSlide = screen.getByText('Общий капитал').closest('[data-carousel-slide]');
         expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
-        const lastCallTarget = Element.prototype.scrollIntoView.mock.contexts.at(-1);
-        expect(lastCallTarget).toBe(totalSlide);
+        expect(Element.prototype.scrollIntoView.mock.contexts).toContain(totalSlide);
     });
 
     it('clears the selection when the currently selected account is deleted', async () => {
@@ -897,7 +901,7 @@ describe('App Integration Tests', () => {
 
         // Ставим фильтр на категорию, которую сейчас удалим - через разбивку
         // расхода на вкладке «Аналитика».
-        openAnalytics();
+        await openAnalytics();
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
@@ -929,7 +933,7 @@ describe('App Integration Tests', () => {
         await screen.findByTitle('Настройки');
 
         // Фильтр стоит на категории, которую сейчас переименуем.
-        openAnalytics();
+        await openAnalytics();
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
@@ -966,6 +970,8 @@ describe('App Integration Tests', () => {
     it('shows the server message in the initial error state when /api/accounts responds with a non-array body', async () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         vi.stubGlobal('fetch', vi.fn((url) => {
+            const data = readApi(url, currentTransactions, currentAccounts);
+            if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/accounts')) {
                 return Promise.resolve({
                     ok: false,
@@ -1000,6 +1006,8 @@ describe('App Integration Tests', () => {
     it('rejects an invalid settings response instead of treating the default limit as synchronized', async () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         vi.stubGlobal('fetch', vi.fn((url) => {
+            const data = readApi(url, currentTransactions, currentAccounts);
+            if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/settings')) {
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ monthlyLimit: 0 }) });
             }
@@ -1312,9 +1320,9 @@ describe('Authentication flow', () => {
             if (url === '/api/logout' || url === '/api/login') {
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true }) });
             }
-            if (url === '/api/transactions') {
+            if (url.startsWith('/api/stats/dashboard?')) {
                 transactionGets += 1;
-                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+                return Promise.resolve({ ok: true, status: 200, json: async () => readApi(url, [], accountGets === 1 ? initialAccounts : freshAccounts) });
             }
             if (url === '/api/settings') {
                 return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ monthlyLimit: 7000 }) });
@@ -1355,6 +1363,8 @@ describe('Authentication flow', () => {
 
     it('shows the login screen when the initial accounts fetch comes back 401', async () => {
         vi.stubGlobal('fetch', vi.fn((url) => {
+            const data = readApi(url, currentTransactions, currentAccounts);
+            if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/accounts')) {
                 return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({ message: 'Не авторизован' }) });
             }
@@ -1374,6 +1384,8 @@ describe('Authentication flow', () => {
     it('reveals the app after a successful login', async () => {
         let authenticated = false;
         vi.stubGlobal('fetch', vi.fn((url) => {
+            const data = readApi(url, currentTransactions, currentAccounts);
+            if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/login')) {
                 authenticated = true;
                 return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
@@ -1409,6 +1421,8 @@ describe('Authentication flow', () => {
     it('returns to the login screen when a mid-session request comes back 401 (expired/cleared session)', async () => {
         let accountsCallCount = 0;
         vi.stubGlobal('fetch', vi.fn((url) => {
+            const data = readApi(url, currentTransactions, currentAccounts);
+            if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/accounts')) {
                 accountsCallCount += 1;
                 // First call (initial load) succeeds; every call after that

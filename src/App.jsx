@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { ArrowRightLeft, Check, Minus, Plus, Settings, X } from 'lucide-react'
 import AccountIcon from './components/AccountIcon'
 import AddTransactionForm from './components/AddTransactionForm'
@@ -13,7 +13,8 @@ import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
 import { formatPeriodLabel, toDativeMonth, listPeriodMonths, formatMonthName } from './utils/period'
-import { transformTransactions, calculateBalances, getMonthlyData, getPeriodData, getPeriodPrefix, getYearlyData, getLifetimeStats, getSearchResults, getCategoryUsage, getComparisonData, getCategoryComparison, getPaceForecast, getMonthlyTotals } from './utils/finance'
+import { transformTransactions, getPaceForecast } from './utils/finance'
+import usePagedHistory from './utils/usePagedHistory'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
 import useSnapCarousel from './utils/useSnapCarousel'
@@ -29,6 +30,9 @@ const BANKING_URL = '/api/banking';
 // Used until the server's settings document has loaded (or if it 404s on an
 // older deployment) - mirrors the server's own default in server/app.js.
 const DEFAULT_MONTHLY_LIMIT = 7000;
+const EMPTY_TOTALS = { income: 0, expense: 0, categoryTotals: {} };
+const EMPTY_BALANCES = { total: 0, held: 0, byAccount: {} };
+const EMPTY_COMPARISON = { expense: 0, prevMonthName: '', prevMonthDayLabel: '' };
 
 class DataLoadError extends Error {
   constructor(message) {
@@ -64,6 +68,7 @@ function App() {
   const loadGenerationRef = useRef(0);
   const trashGenerationRef = useRef(0);
   const hasSnapshotRef = useRef(false);
+  const historyRefreshNeededRef = useRef(false);
   const undoTimeoutRef = useRef(null);
   const undoDeletionIdRef = useRef(null);
 
@@ -132,7 +137,9 @@ function App() {
 
 
   // Transactions state
-  const [transactions, setTransactions] = useState([]);
+  const [dashboard, setDashboard] = useState(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
   const [categories, setCategories] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
@@ -157,7 +164,9 @@ function App() {
     setNotice(null);
     setAccounts([]);
     accountsRef.current = [];
-    setTransactions([]);
+    setDashboard(null);
+    setIsExporting(false);
+    setHistoryRevision(value => value + 1);
     setCategories([]);
     setTrashGroups([]);
     setTrashError('');
@@ -189,6 +198,7 @@ function App() {
     setSyncWarning(null);
     setInitialLoadError(null);
     hasSnapshotRef.current = false;
+    historyRefreshNeededRef.current = false;
   };
 
   const markUnauthenticated = () => {
@@ -204,14 +214,16 @@ function App() {
   // cookie is missing/expired - flip to the login screen right away rather
   // than letting each call site duplicate that check. This is the single
   // place that drives isAuthenticated back to false mid-session.
-  const apiFetch = async (url, options) => {
+  const apiFetch = useCallback(async (url, options) => {
     const requestSession = sessionGenerationRef.current;
     const res = await fetch(url, options);
     if (res.status === 401 && requestSession === sessionGenerationRef.current) {
       markUnauthenticated();
     }
     return res;
-  };
+    // All mutable auth state is read through generation refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const readJson = async (url, fallbackMessage, { allowMissing = false } = {}) => {
     const res = await apiFetch(url);
@@ -223,13 +235,31 @@ function App() {
     return data;
   };
 
-  // Loads one complete UI data set. Accounts stay first because both auth and
-  // transaction transformation depend on them; the remaining resources are
-  // independent and begin together. State is committed only after every
-  // critical response succeeds, so the UI never mixes partial load results.
-  const loadData = async ({ initial = !hasSnapshotRef.current } = {}) => {
+  const statsParams = new URLSearchParams({
+    month: selectedMonth, timeRange,
+    today: new Date().toLocaleDateString('en-CA'),
+    analytics: summaryView === 'analytics' ? '1' : '0',
+  });
+  if (selectedAccount) statsParams.set('account', selectedAccount);
+  if (selectedCategory) statsParams.set('category', selectedCategory);
+  const statsKey = statsParams.toString();
+  const summaryFilterKey = JSON.stringify([selectedAccount, selectedCategory]);
+  const historyParams = new URLSearchParams({ month: selectedMonth, timeRange, limit: '40' });
+  if (selectedAccount) historyParams.set('account', selectedAccount);
+  if (selectedCategory) historyParams.set('category', selectedCategory);
+  if (selectedType) historyParams.set('type', selectedType);
+  if (searchQuery.trim()) historyParams.set('q', searchQuery.trim());
+  const history = usePagedHistory({
+    url: `/api/history?${historyParams}`, enabled: isAuthenticated === true,
+    revision: historyRevision, request: apiFetch, searching: Boolean(searchQuery.trim()),
+  });
+
+  // Summaries contain complete totals, never calculated from a partial page.
+  // Loading the first history page does not block the dashboard.
+  const loadData = async ({ initial = !hasSnapshotRef.current, onlyStats = false } = {}) => {
     const session = sessionGenerationRef.current;
     const generation = ++loadGenerationRef.current;
+    if (!onlyStats) historyRefreshNeededRef.current = true;
     const isCurrent = () => session === sessionGenerationRef.current
       && generation === loadGenerationRef.current;
 
@@ -245,15 +275,18 @@ function App() {
       if (!Array.isArray(loadedAccounts)) throw new DataLoadError('Сервер вернул некорректный список счетов');
       if (!isCurrent()) return false;
 
-      const [rawTransactions, loadedCategories, loadedSettings] = await Promise.all([
-        readJson(API_URL, 'Не удалось загрузить операции'),
+      const [loadedDashboard, loadedCategories, loadedSettings] = await Promise.all([
+        readJson(`/api/stats/dashboard?${statsKey}`, 'Не удалось загрузить итоги'),
         readJson(CATEGORIES_URL, 'Не удалось загрузить категории'),
         // Compatibility with deployments from before shared settings: a 404
         // means the documented default, while network/5xx failures still make
         // the whole snapshot unsuccessful.
         readJson(SETTINGS_URL, 'Не удалось загрузить настройки', { allowMissing: true }),
       ]);
-      if (!Array.isArray(rawTransactions)) throw new DataLoadError('Сервер вернул некорректный список операций');
+      if (!loadedDashboard?.balances?.byAccount || !Number.isFinite(loadedDashboard.balances.total)
+        || !loadedDashboard.monthlyTotals || !loadedDashboard.month || !loadedDashboard.yearly || !loadedDashboard.lifetime) {
+        throw new DataLoadError('Сервер вернул некорректные итоги');
+      }
       if (!Array.isArray(loadedCategories)) throw new DataLoadError('Сервер вернул некорректный список категорий');
       if (loadedSettings !== null && (
         typeof loadedSettings !== 'object'
@@ -268,7 +301,11 @@ function App() {
       const nextLimit = loadedSettings === null ? DEFAULT_MONTHLY_LIMIT : loadedSettings.monthlyLimit;
       setAccounts(loadedAccounts);
       accountsRef.current = loadedAccounts;
-      setTransactions(transformTransactions(rawTransactions, loadedAccounts));
+      setDashboard({ key: statsKey, filterKey: summaryFilterKey, data: loadedDashboard });
+      if (historyRefreshNeededRef.current) {
+        setHistoryRevision(value => value + 1);
+        historyRefreshNeededRef.current = false;
+      }
       setCategories(loadedCategories);
       setMonthlyLimit(nextLimit);
       // This optional module stays hidden unless the server explicitly enables it.
@@ -310,8 +347,16 @@ function App() {
   // Fetch data on mount.
   useEffect(() => {
     loadData({ initial: true });
+    return () => { loadGenerationRef.current += 1; sessionGenerationRef.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (hasSnapshotRef.current) loadData({ initial: false, onlyStats: true });
+    // Auth changes are handled by beginAuthenticatedSession; this effect
+    // only changes the selected summary, without reloading history pages.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsKey]);
 
   // Bank snapshots are independent of the budget snapshot: a bank outage must
   // not prevent using manually entered expenses. Pending entries never enter
@@ -456,7 +501,12 @@ function App() {
   };
 
   // Calculate current balances (Total lifetime) - stays persistent
-  const balances = useMemo(() => calculateBalances(transactions, accounts), [transactions, accounts]);
+  const balances = dashboard?.data.balances || EMPTY_BALANCES;
+  const summary = dashboard?.key === statsKey ? dashboard.data : null;
+  // Month cards already have totals for every month. Keep them visible while
+  // a swipe refreshes the selected month's details in the background.
+  const matchingTotals = dashboard?.filterKey === summaryFilterKey;
+  const statsReady = Boolean(summary || (matchingTotals && summaryView === 'stats' && timeRange === 'month'));
 
   // Declarative slide list for the header balance carousel: total capital,
   // then one slide per individual account. The type-group slides
@@ -497,56 +547,21 @@ function App() {
     return [...base, ...spendable, ...held];
   }, [accounts, balances]);
 
-  // Filter transactions for the selected month and account/category/type
-  const monthlyData = useMemo(() => getMonthlyData(transactions, selectedMonth, selectedAccount, selectedCategory, selectedType), [transactions, selectedMonth, selectedAccount, selectedCategory, selectedType]);
-
-  // The history list follows the period picker, not just the month: on
-  // "Год" it covers the whole year and on "Всё время" the whole history,
-  // while monthlyData above stays monthly for the limit and pace math.
-  const periodData = useMemo(
-    () => getPeriodData(transactions, getPeriodPrefix(timeRange, selectedMonth), selectedAccount, selectedCategory, selectedType),
-    [transactions, timeRange, selectedMonth, selectedAccount, selectedCategory, selectedType]
-  );
-
-  // Yearly data with filters
-  const yearlyData = useMemo(() => getYearlyData(transactions, selectedMonth, selectedAccount, selectedCategory), [transactions, selectedMonth, selectedAccount, selectedCategory]);
-
-  // Calculate lifetime stats with filters
-  const lifetimeStats = useMemo(() => getLifetimeStats(transactions, '2025-11-09', selectedAccount, selectedCategory), [transactions, selectedAccount, selectedCategory]);
-
-  // Сколько операций ссылается на каждую категорию - показывается в
-  // настройках рядом с кнопкой удаления.
-  const categoryUsage = useMemo(() => getCategoryUsage(transactions), [transactions]);
-
-  // Search results with filters
-  const searchResults = useMemo(() => getSearchResults(transactions, searchQuery, selectedAccount, selectedCategory, selectedType), [transactions, searchQuery, selectedAccount, selectedCategory, selectedType]);
-
-  // Comparison data for indicators
-  const comparisonData = useMemo(() => getComparisonData(transactions, selectedMonth), [transactions, selectedMonth]);
-
-  // The timeline and summary carousel share a continuous, fixed history.
-  // Selecting an earlier month must never remove the months after it.
+  const monthlyData = summary?.month || EMPTY_TOTALS;
+  const yearlyData = summary?.yearly || EMPTY_TOTALS;
+  const lifetimeStats = summary?.lifetime;
+  const categoryUsage = dashboard?.data.categoryUsage || {};
+  const comparisonData = summary?.comparison || EMPTY_COMPARISON;
+  const categoryComparison = summary?.categoryComparison || {};
   const carouselMonths = useMemo(() => listPeriodMonths(), []);
-  const monthlyTotals = useMemo(
-    () => getMonthlyTotals(transactions, selectedAccount, selectedCategory),
-    [transactions, selectedAccount, selectedCategory]
-  );
-  const monthlySeries = useMemo(
-    () => carouselMonths.map(month => ({
-      month,
-      year: Number(month.slice(0, 4)),
-      label: new Date(`${month}-01T12:00:00`).toLocaleDateString('ru-RU', { month: 'short' }).replace(/\.$/, ''),
-      income: monthlyTotals[month]?.income || 0,
-      expense: Math.abs(monthlyTotals[month]?.expense || 0),
-    })),
-    [carouselMonths, monthlyTotals]
-  );
-
-  // Per-category month-over-month deltas, shown next to the donut legend.
-  const categoryComparison = useMemo(
-    () => getCategoryComparison(transactions, selectedMonth, selectedAccount),
-    [transactions, selectedMonth, selectedAccount]
-  );
+  const monthlyTotals = matchingTotals ? dashboard.data.monthlyTotals : {};
+  const monthlySeries = carouselMonths.map(month => ({
+    month,
+    year: Number(month.slice(0, 4)),
+    label: new Date(`${month}-01T12:00:00`).toLocaleDateString('ru-RU', { month: 'short' }).replace(/\.$/, ''),
+    income: monthlyTotals[month]?.income || 0,
+    expense: Math.abs(monthlyTotals[month]?.expense || 0),
+  }));
 
   const isActualCurrentMonth = useMemo(() => {
     const now = new Date();
@@ -602,33 +617,44 @@ function App() {
     setSelectedMonth(nextMonth);
   };
 
-  const exportToCSV = () => {
-    const headers = ['Дата', 'Название', 'Тип', 'Категория', 'Счет', 'Сумма', 'Описание', 'Компания'];
-    const escapeCsv = (val) => {
-      if (!val) return '""';
-      let str = String(val);
-      if (/^[=+\-@]/.test(str)) str = "'" + str;
-      return `"${str.replace(/"/g, '""')}"`;
-    };
-    const rows = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).map(t => [
-      t.date,
-      t.title,
-      t.type === 'income' ? 'Доход' : t.type === 'expense' ? 'Расход' : t.type === 'transfer' ? 'Перевод' : 'Начало',
-      t.category,
-      accountsRef.current.find(a => a._id === t.account)?.name || 'Неизвестно',
-      t.amount.toFixed(2),
-      t.description || '',
-      t.companyName || ''
-    ]);
+  const exportToCSV = async () => {
+    if (isExporting) return;
+    const session = sessionGenerationRef.current;
+    setIsExporting(true);
+    try {
+      const raw = await readJson(API_URL, 'Не удалось экспортировать операции');
+      if (session !== sessionGenerationRef.current) return;
+      if (!Array.isArray(raw)) throw new Error('Некорректный ответ');
+      const transactions = transformTransactions(raw, accountsRef.current);
+      const headers = ['Дата', 'Название', 'Тип', 'Категория', 'Счет', 'Сумма', 'Описание', 'Компания'];
+      const escapeCsv = (val) => {
+        if (!val) return '""';
+        let str = String(val);
+        if (/^[=+\-@]/.test(str)) str = "'" + str;
+        return `"${str.replace(/"/g, '""')}"`;
+      };
+      const rows = [...transactions].sort((a, b) => new Date(b.date) - new Date(a.date)).map(t => [
+        t.date,
+        t.title,
+        t.type === 'income' ? 'Доход' : t.type === 'expense' ? 'Расход' : t.type === 'transfer' ? 'Перевод' : 'Начало',
+        t.category,
+        accountsRef.current.find(a => a._id === t.account)?.name || 'Неизвестно',
+        t.amount.toFixed(2),
+        t.description || '',
+        t.companyName || ''
+      ]);
 
-    const csvContent = [headers.join(','), ...rows.map(row => row.map(escapeCsv).join(','))].join('\n');
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.download = `budget_report_${selectedMonth}.csv`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 100);
+      const csvContent = [headers.join(','), ...rows.map(row => row.map(escapeCsv).join(','))].join('\n');
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.href = url;
+      link.download = `budget_report_${selectedMonth}.csv`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+    } catch {
+      if (session === sessionGenerationRef.current) showNotice('Не удалось экспортировать операции. Повторите попытку.');
+    } finally { if (session === sessionGenerationRef.current) setIsExporting(false); }
   };
 
   const handleAddTransaction = async (newTx) => {
@@ -1475,7 +1501,8 @@ function App() {
         </section>
 
         {/* Summary Card with Budget Limit */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '24px', marginBottom: '24px' }}>
+        {!statsReady && <div role="status">{syncWarning || 'Загрузка итогов…'}</div>}
+        <div aria-busy={!statsReady} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '24px', marginBottom: '24px', visibility: statsReady ? 'visible' : 'hidden' }}>
           {summaryView === 'stats' ? (
             timeRange === 'month' ? (
               /* Месяцы листаются так же, как счета в шапке: не «жест меняет
@@ -1592,14 +1619,14 @@ function App() {
           onClose={() => setShowAddTransaction(false)}
           onSubmit={handleAddTransaction}
           accounts={accounts}
-          transactions={transactions}
+          categoryCounts={dashboard?.data.categoryCounts}
           // Only a real account id preselects - the total-capital slide
           // (null) and any residual type:* filter value must fall through
           // to no preset, forcing an explicit choice.
           presetAccountId={accounts.some(a => a._id === selectedAccount) ? selectedAccount : undefined}
         />
       )}
-      {editingTransaction && <AddTransactionForm apiFetch={apiFetch} initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} transactions={transactions} />}
+      {editingTransaction && <AddTransactionForm apiFetch={apiFetch} initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} categoryCounts={dashboard?.data.categoryCounts} />}
 
       {/* Bottom drawer: transaction history, always mounted (collapsed =
           transformed off-screen, not unmounted) so filters applied elsewhere
@@ -1610,8 +1637,14 @@ function App() {
         title={historyDrawerTitle}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
-        searchResults={searchResults}
-        periodData={periodData}
+        searchResults={history}
+        periodData={history}
+        historyLoading={history.loading}
+        historyError={history.error}
+        hasMore={history.nextCursor !== null}
+        loadMore={history.loadMore}
+        historyKey={history.key}
+        isExporting={isExporting}
         categories={categories}
         selectedCategory={selectedCategory}
         selectedType={selectedType}

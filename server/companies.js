@@ -1,6 +1,8 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { normalizeMerchantDomain } = require('./merchantDomain');
+const { companyHistory } = require('./companyHistory');
+const { activeTransactionFilter } = require('./ledgerState');
 
 const COMPANY_LOGO_MODES = ['auto', 'domain', 'category'];
 
@@ -50,6 +52,20 @@ function createCompaniesRouter() {
             return res.json(companies.map(serializeCompany));
         } catch {
             return res.status(500).json({ code: 'COMPANIES_UNAVAILABLE', message: 'Не удалось загрузить компании' });
+        }
+    });
+
+    router.get('/history', async (req, res) => {
+        try {
+            const Transaction = require('./models/Transaction');
+            const [docs, companies] = await Promise.all([
+                Transaction.find(activeTransactionFilter({ type: 'expense', logoMode: { $in: ['domain', 'category'] } }))
+                    .select('date companyName description logoMode merchantDomain type').lean(),
+                Company.find().select('name').lean()
+            ]);
+            res.json(companyHistory(docs, companies, typeof req.query.q === 'string' ? req.query.q : ''));
+        } catch {
+            res.status(500).json({ message: 'Не удалось загрузить компании из истории' });
         }
     });
 

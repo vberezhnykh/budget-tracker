@@ -10,6 +10,7 @@ export default function CompanyField({ item, transactions, onChange, apiFetch })
   const [status, setStatus] = useState('loading');
   const [focused, setFocused] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [history, setHistory] = useState(null);
   const request = apiFetch || fetch;
   useEffect(() => {
     let current = true;
@@ -23,7 +24,23 @@ export default function CompanyField({ item, transactions, onChange, apiFetch })
     return () => { current = false; controller.abort(); };
   }, [request, retry]);
 
-  const suggestions = useMemo(() => getCompanySuggestions(companies, transactions, item.companyName), [companies, transactions, item.companyName]);
+  const query = item.companyName || '';
+  useEffect(() => {
+    if (!apiFetch || !focused) return;
+    let current = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      request(`/api/companies/history?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+        .then(async response => {
+          if (!response.ok) throw new Error();
+          const values = await response.json();
+          if (current && Array.isArray(values)) setHistory({ query, values });
+        }).catch(() => {});
+    }, 250);
+    return () => { current = false; clearTimeout(timer); controller.abort(); };
+  }, [apiFetch, request, focused, query]);
+  const historyTransactions = history?.query === query ? history.values : transactions;
+  const suggestions = useMemo(() => getCompanySuggestions(companies, historyTransactions, item.companyName), [companies, historyTransactions, item.companyName]);
   const choose = company => {
     onChange({ companyId: company._id || '', companyName: company.name, logoMode: company.logoMode || 'auto', merchantDomain: company.merchantDomain || '' });
     setFocused(false);
@@ -35,7 +52,7 @@ export default function CompanyField({ item, transactions, onChange, apiFetch })
       setFocused(true);
       return;
     }
-    const historical = getCompanySuggestions([], transactions, value).find(company => companyKey(company.name) === companyKey(value));
+    const historical = getCompanySuggestions([], historyTransactions, value).find(company => companyKey(company.name) === companyKey(value));
     if (historical) {
       onChange({ companyId: '', companyName: value, logoMode: historical.logoMode, merchantDomain: historical.merchantDomain });
     } else {

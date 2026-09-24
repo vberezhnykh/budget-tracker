@@ -35,17 +35,11 @@ const { createPlannedPaymentsRouter } = require('./plannedPayments');
 const { parseTransactionQuery } = require('./transactionQuery');
 const { computeBalances, computeMonthlyTotals } = require('./stats');
 const { transformTransactions } = require('./transform');
-const { computePeriodData, periodPrefixOf } = require('./periodStats');
+const { buildDashboard } = require('./dashboard');
+const { parseHistoryQuery, buildHistoryPage } = require('./history');
 const {
-    computeComparison,
-    computeCategoryComparison,
-    computeMonthlySeries,
-    computeYearlyData,
-    computeLifetimeStats,
     computeSearchResults,
-    computeDescriptionSuggestions,
-    computeCategoryUsage,
-    computeCategoryCounts
+    computeDescriptionSuggestions
 } = require('./analytics');
 const {
     COOKIE_NAME,
@@ -615,7 +609,6 @@ app.get('/api/stats/dashboard', async (req, res) => {
         const category = str('category');
         const type = str('type');
         const today = str('today') || new Date().toISOString().slice(0, 10);
-        const seriesMonths = timeRange === 'month' ? 6 : 12;
 
         if (!/^\d{4}-\d{2}$/.test(month)) {
             return res.status(400).json({ message: 'Некорректное значение month: ожидается YYYY-MM' });
@@ -628,34 +621,10 @@ app.get('/api/stats/dashboard', async (req, res) => {
             Transaction.find(activeTransactionFilter()).lean(),
             Account.find().lean()
         ]);
-        const transactions = transformTransactions(docs, accounts);
-
-        // Итоги периода и месяца считаются одной функцией: месячный вид -
-        // это тот же период с префиксом месяца. Лимит и прогноз темпа
-        // считаются от месячных цифр, какой бы период ни был на экране,
-        // поэтому нужны оба.
-        const periodTotals = computePeriodData(transactions, periodPrefixOf(timeRange, month), { account, category, type });
-        const monthTotals = computePeriodData(transactions, month, { account, category, type });
-        const stripList = ({ income, expense, categoryTotals }) => ({ income, expense, categoryTotals });
-
-        res.json({
-            balances: computeBalances(docs, accounts),
-            monthlyTotals: computeMonthlyTotals(docs, accounts, { account, category }),
-            period: stripList(periodTotals),
-            month: stripList(monthTotals),
-            yearly: computeYearlyData(transactions, month, account, category),
-            lifetime: computeLifetimeStats(transactions, '2025-11-09', account, category),
-            comparison: computeComparison(transactions, month, today),
-            categoryComparison: computeCategoryComparison(transactions, month, today, account),
-            monthlySeries: computeMonthlySeries(transactions, month, seriesMonths, account, category),
-            categoryUsage: computeCategoryUsage(transactions),
-            // Частота считается сразу по обоим типам: форма добавления
-            // переключается между расходом и доходом без похода на сервер.
-            categoryCounts: {
-                expense: computeCategoryCounts(transactions, 'expense', today),
-                income: computeCategoryCounts(transactions, 'income', today)
-            }
-        });
+        res.json(buildDashboard(docs, accounts, {
+            month, timeRange, account, category, type, today,
+            analytics: req.query.analytics !== '0'
+        }));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -700,6 +669,23 @@ app.get('/api/suggestions/descriptions', async (req, res) => {
         const transactions = transformTransactions(docs, accounts);
 
         res.json(computeDescriptionSuggestions(transactions, category, str('type')));
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Filter and group before pagination: a split purchase stays together and
+// daily totals always cover the whole day, including rows on later pages.
+app.get('/api/history', async (req, res) => {
+    const options = parseHistoryQuery(req.query);
+    if (options.error) return res.status(400).json({ message: options.error });
+    try {
+        const [docs, accounts] = await Promise.all([
+            Transaction.find(activeTransactionFilter(options.filter)).sort({ date: -1, _id: -1 }).lean(),
+            Account.find().lean()
+        ]);
+        res.set('Cache-Control', 'no-store');
+        res.json(buildHistoryPage(docs, accounts, options));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

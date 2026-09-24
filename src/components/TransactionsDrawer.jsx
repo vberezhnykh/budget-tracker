@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { ChevronDown, Download, Search, X } from 'lucide-react';
 import TransactionList from './TransactionList'
 import useBodyScrollLock from '../utils/useBodyScrollLock'
@@ -51,9 +51,28 @@ export default function TransactionsDrawer({
   getAccountDisplay,
   formatDate,
   getAccountFilterLabel,
+  historyLoading = false,
+  historyError = '',
+  hasMore = false,
+  loadMore,
+  historyKey,
+  isExporting = false,
 }) {
   const sheetRef = useRef(null);
   const dragRef = useRef(null);
+  const scrollRef = useRef(null);
+  const moreRef = useRef(null);
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [historyKey]);
+  useEffect(() => {
+    if (!expanded || !hasMore || historyLoading || historyError || !moreRef.current || typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) loadMore?.();
+    }, { root: scrollRef.current, rootMargin: '200px' });
+    observer.observe(moreRef.current);
+    return () => observer.disconnect();
+  }, [expanded, hasMore, historyLoading, historyError, loadMore]);
 
   // Страница под раскрытой шторкой должна стоять. Затемнение поверх неё
   // жест не съедает: палец, ведущий по размытому фону, прокручивал
@@ -281,15 +300,15 @@ export default function TransactionsDrawer({
             того, как последние операции появились прямо на главной, каждая
             строка оказывалась в документе дважды. Глазами второй список не
             виден, а скринридер читал обе копии. */}
-        <div style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain' }}>
+        <div ref={scrollRef} data-testid="history-scroll" style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain' }}>
           {/* Transaction History (moved verbatim from App.jsx) */}
           {expanded && (
           <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
             <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
-                <button onClick={exportToCSV} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <Download size={16} strokeWidth={1.8} aria-hidden="true" /> Экспорт
+                <button onClick={exportToCSV} disabled={isExporting} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Download size={16} strokeWidth={1.8} aria-hidden="true" /> {isExporting ? 'Экспорт…' : 'Экспорт'}
                 </button>
               </div>
 
@@ -386,7 +405,7 @@ export default function TransactionsDrawer({
               {/* Один и тот же список в двух режимах - результаты поиска и
                   история за период; отличаются они только источником групп и
                   текстом пустого состояния (см. TransactionList). */}
-              <TransactionList
+              {((!historyLoading && !historyError) || Object.keys(periodData.transactions || {}).length > 0) && <TransactionList
                 groups={searchQuery ? searchResults.transactions : periodData.transactions}
                 emptyText={searchQuery ? 'Ничего не найдено' : 'Нет операций'}
                 selectedCategory={selectedCategory}
@@ -394,7 +413,16 @@ export default function TransactionsDrawer({
                 openEditModal={openEditModal}
                 getAccountDisplay={getAccountDisplay}
                 formatDate={formatDate}
-              />
+              />}
+              <div ref={moreRef} style={{ padding: '16px 24px', textAlign: 'center' }}>
+                {historyLoading && <div role="status">Загрузка операций…</div>}
+                {historyError && <div role="alert">{historyError}</div>}
+                {!historyLoading && (hasMore || historyError) && (
+                  <button type="button" className="btn-primary" onClick={loadMore}>
+                    {historyError ? 'Повторить загрузку' : 'Загрузить еще'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           )}

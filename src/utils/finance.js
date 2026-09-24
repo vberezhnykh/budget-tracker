@@ -645,8 +645,8 @@ export const splitCategoriesByUsage = (categories, transactions, type, options =
         return counts;
     };
 
-    let counts = countUsage(daysAgo(windowDays, now));
-    if (counts.size === 0) counts = countUsage(null);
+    let counts = options.counts ? new Map(Object.entries(options.counts)) : countUsage(daysAgo(windowDays, now));
+    if (!options.counts && counts.size === 0) counts = countUsage(null);
 
     // Стабильная сортировка: при равной частоте (в том числе у неиспользованных
     // категорий с нулём) сохраняется серверный порядок.

@@ -1,3 +1,4 @@
+import { readApi } from '../server/test/readApi';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
@@ -6,6 +7,8 @@ const ok = body => Promise.resolve({ ok: true, status: 200, json: () => Promise.
 
 function mockApi(features) {
   const fetchMock = vi.fn(url => {
+    const data = readApi(url);
+    if (data !== undefined) return ok(data);
     if (url === '/api/accounts') return ok([{ _id: 'card', name: 'Моя карта', type: 'card', icon: '💳' }]);
     if (url === '/api/settings') return ok({ monthlyLimit: 7000, ...(features === undefined ? {} : { features }) });
     if (url === '/api/banking') return ok({ configured: true, connections: [], pendingReviewCount: 0 });
