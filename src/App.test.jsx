@@ -1,4 +1,4 @@
-import { readApi } from '../server/test/readApi';
+import { readApi } from '../server/test/readApi.mjs';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';

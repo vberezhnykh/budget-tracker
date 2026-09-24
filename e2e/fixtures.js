@@ -1,4 +1,4 @@
-import { readApi } from '../server/test/readApi.js';
+import { readApi } from '../server/test/readApi.mjs';
 // Fixture data + API stubbing for the Playwright smoke suite. There is no
 // backend here on purpose (see README) - every /api/** request is answered
 // straight out of the browser via page.route(), mirroring the shapes the

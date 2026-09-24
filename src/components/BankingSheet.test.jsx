@@ -1,4 +1,4 @@
-import { readApi } from '../../server/test/readApi';
+import { readApi } from '../../server/test/readApi.mjs';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BankingSheet from './BankingSheet';

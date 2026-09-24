@@ -235,9 +235,11 @@ function App() {
     return data;
   };
 
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const statsParams = new URLSearchParams({
     month: selectedMonth, timeRange,
-    today: new Date().toLocaleDateString('en-CA'),
+    today: todayKey,
     analytics: summaryView === 'analytics' ? '1' : '0',
   });
   if (selectedAccount) statsParams.set('account', selectedAccount);

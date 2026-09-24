@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import { readApi } from '../server/test/readApi';
+import { readApi } from '../server/test/readApi.mjs';
 import App from './App';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }];
