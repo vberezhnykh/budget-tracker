@@ -41,20 +41,22 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await expect(startup).toHaveCount(0);
     const carousel = page.getByTestId('month-carousel');
     const original = await carousel.elementHandle();
-    const before = await carousel.boundingBox();
+    // Clicking an offscreen account may scroll the page as well as its rail.
+    // Compare document positions so that scroll is not mistaken for layout shift.
+    const documentTop = locator => locator.evaluate(el => el.getBoundingClientRect().top + window.scrollY);
+    const before = await documentTop(carousel);
 
     gate = new Promise(resolve => { release = resolve; });
     await page.getByRole('button', { name: /^Тинькофф:/ }).click();
     const summary = page.getByRole('status', { name: 'Загрузка итогов…' });
     await expect(summary).toBeVisible();
     await expect(carousel).toBeHidden();
-    const placeholder = await summary.boundingBox();
-    expect(Math.abs(placeholder.y - before.y)).toBeLessThan(2);
+    expect(Math.abs(await documentTop(summary) - before)).toBeLessThan(2);
     expect(await original.evaluate(el => el === document.querySelector('[data-testid="month-carousel"]'))).toBe(true);
     release();
     await expect(summary).toHaveCount(0);
     await expect(carousel).toBeVisible();
-    expect(Math.abs((await carousel.boundingBox()).y - before.y)).toBeLessThan(2);
+    expect(Math.abs(await documentTop(carousel) - before)).toBeLessThan(2);
   });
 
   test('renders the app: header and total-capital slide are visible', async ({ page }) => {
