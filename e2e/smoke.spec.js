@@ -23,6 +23,40 @@ import { mockApi, accounts, manyAccounts } from './fixtures.js';
 // is required.
 
 test.describe('Budget Tracker smoke (mobile, real browser)', () => {
+  test('slow reads show skeletons without resetting the month carousel', async ({ page }) => {
+    await mockApi(page);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    let release;
+    let gate = new Promise(resolve => { release = resolve; });
+    await page.route('**/api/stats/dashboard?*', async route => {
+      await gate;
+      await route.fallback();
+    });
+    await page.goto('/');
+    const startup = page.getByRole('status', { name: 'Загрузка приложения…' });
+    await expect(startup).toBeVisible();
+    await expect(startup.locator(':scope > [aria-hidden="true"]')).toHaveCSS('animation-name', 'none');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    release();
+    await expect(startup).toHaveCount(0);
+    const carousel = page.getByTestId('month-carousel');
+    const original = await carousel.elementHandle();
+    const before = await carousel.boundingBox();
+
+    gate = new Promise(resolve => { release = resolve; });
+    await page.getByRole('button', { name: /^Тинькофф:/ }).click();
+    const summary = page.getByRole('status', { name: 'Загрузка итогов…' });
+    await expect(summary).toBeVisible();
+    await expect(carousel).toBeHidden();
+    const placeholder = await summary.boundingBox();
+    expect(Math.abs(placeholder.y - before.y)).toBeLessThan(2);
+    expect(await original.evaluate(el => el === document.querySelector('[data-testid="month-carousel"]'))).toBe(true);
+    release();
+    await expect(summary).toHaveCount(0);
+    await expect(carousel).toBeVisible();
+    expect(Math.abs((await carousel.boundingBox()).y - before.y)).toBeLessThan(2);
+  });
+
   test('renders the app: header and total-capital slide are visible', async ({ page }) => {
     await mockApi(page);
     await page.goto('/');

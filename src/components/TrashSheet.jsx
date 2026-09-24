@@ -1,3 +1,4 @@
+import { ListSkeleton } from './ui/Skeleton';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import IconButton from './ui/IconButton';
@@ -55,8 +56,8 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
       )}
 
       {loading ? (
-        <div style={{ padding: '24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>Загрузка корзины...</div>
-      ) : groups.length === 0 ? (
+        <ListSkeleton label="Загрузка корзины…" />
+      ) : groups.length === 0 && !error ? (
         <div style={{ padding: '24px', textAlign: 'center', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }}>Корзина пуста.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

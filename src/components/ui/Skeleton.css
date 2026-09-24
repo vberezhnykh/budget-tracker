@@ -1,0 +1,44 @@
+.skeleton {
+  background: var(--color-border);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+/* One opacity animation per group; no animated gradients or layout work. */
+.loading-skeleton > [aria-hidden="true"] {
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+}
+
+.skeleton-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skeleton-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; }
+.skeleton-avatar { border-radius: var(--radius-lg); }
+.skeleton-row-copy { flex: 1; min-width: 0; display: grid; gap: 9px; }
+.skeleton-columns { display: flex; gap: 12px; width: 100%; }
+.skeleton-columns > .skeleton { flex: 1; min-width: 0; }
+.skeleton-summary { padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
+.skeleton-month { width: 88%; margin: 0 auto; }
+.skeleton-ring { width: 188px; height: 188px; box-sizing: border-box; border: 14px solid var(--color-border-subtle); border-radius: 50%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; }
+.skeleton-chart { margin-top: 16px; align-items: flex-start; }
+.skeleton-bars { height: 160px; display: flex; align-items: flex-end; gap: 12px; width: 100%; }
+.skeleton-bars > .skeleton { flex: 1; min-width: 0; }
+.skeleton-header { padding: 24px; margin-bottom: 24px; }
+.skeleton-brand { display: grid; justify-items: center; gap: 6px; margin-bottom: 28px; }
+.skeleton-account { width: 88%; margin: auto; padding: 22px 16px; box-sizing: border-box; display: grid; justify-items: center; gap: 12px; background: var(--color-surface-inset); border-radius: var(--radius-xl); }
+.skeleton-dots { display: flex; justify-content: center; gap: 18px; margin-top: 20px; }
+.skeleton-actions { margin-bottom: 32px; }
+.skeleton-period { margin-bottom: 16px; }
+
+@keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) {
+  .loading-skeleton > [aria-hidden="true"] { animation: none; }
+}

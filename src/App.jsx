@@ -9,6 +9,7 @@ import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
 import SummaryCard from './components/SummaryCard'
+import { AppSkeleton, SummarySkeleton } from './components/ui/Skeleton'
 import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
@@ -1196,7 +1197,7 @@ function App() {
     );
   }
 
-  if (isLoading || isAuthenticated === null) return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: 'var(--color-text-inverse)' }}>Загрузка...</div>;
+  if (isLoading || isAuthenticated === null) return <AppSkeleton />;
 
   return (
     <div className="layout-container">
@@ -1503,8 +1504,14 @@ function App() {
         </section>
 
         {/* Summary Card with Budget Limit */}
-        {!statsReady && <div role="status">{syncWarning || 'Загрузка итогов…'}</div>}
-        <div aria-busy={!statsReady} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '24px', marginBottom: '24px', visibility: statsReady ? 'visible' : 'hidden' }}>
+        <div aria-busy={!statsReady && (!syncWarning || isRefreshing)} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: '24px' }}>
+          {!statsReady && <div style={{ gridArea: '1 / 1', minWidth: 0 }}>
+            {syncWarning && !isRefreshing
+              ? <div className="glass-panel" style={{ padding: '24px', color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</div>
+              : <SummarySkeleton monthly={timeRange === 'month'} ring={Number.isFinite(monthlyLimit) && monthlyLimit > 0} analytics={summaryView === 'analytics'} />}
+          </div>}
+          {/* Keep the carousel mounted so loading never resets its scroll position. */}
+          <div aria-hidden={!statsReady || undefined} style={{ gridArea: '1 / 1', minWidth: 0, visibility: statsReady ? 'visible' : 'hidden' }}>
           {summaryView === 'stats' ? (
             timeRange === 'month' ? (
               /* Месяцы листаются так же, как счета в шапке: не «жест меняет
@@ -1605,8 +1612,7 @@ function App() {
             />
           )}
 
-          {/* AI Analytics Removed */}
-
+          </div>
         </div>
       </main>
 

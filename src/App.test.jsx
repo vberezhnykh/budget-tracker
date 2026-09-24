@@ -220,7 +220,8 @@ describe('App Integration Tests', () => {
             expect(categoriesJson).toHaveBeenCalledTimes(1);
             expect(settingsJson).toHaveBeenCalledTimes(1);
         });
-        expect(screen.getByText('Загрузка...')).toBeInTheDocument();
+        expect(screen.getByRole('status', { name: 'Загрузка приложения…' })).toBeInTheDocument();
+        expect(screen.queryByText('Загрузка...')).not.toBeInTheDocument();
 
         await act(async () => {
             resolveTransactions({ ok: true, status: 200, json: async () => readApi('/api/stats/dashboard?month=2026-01&today=2026-01-15', currentTransactions, currentAccounts) });

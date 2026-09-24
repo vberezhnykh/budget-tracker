@@ -1,3 +1,4 @@
+import { ListSkeleton } from './ui/Skeleton';
 import { useEffect, useId, useState } from 'react';
 import { Check, Search, X } from 'lucide-react';
 import TransactionIcon from './TransactionIcon';
@@ -106,7 +107,7 @@ export default function TransactionLogoPicker({ item, onChange, onMerchantSelect
           <p className="transaction-logo-picker__hint">Сверьте название и сайт: у компаний бывают одинаковые имена.</p>
           <div aria-live="polite" className="transaction-logo-picker__hint">
             {query.trim().length < 2 ? 'Введите хотя бы 2 символа'
-              : !currentSearch || search.status === 'loading' ? 'Ищем компании…'
+              : !currentSearch || search.status === 'idle' || search.status === 'loading' ? <ListSkeleton label="Ищем компании…" rows={2} amounts={false} />
                 : search.status === 'error' ? 'Каталог сейчас недоступен. Можно указать сайт вручную.'
                   : search.status === 'rate-limit' ? 'Много запросов. Попробуйте через минуту или укажите сайт.'
                     : search.status === 'ready' && search.merchants.length === 0 ? 'Ничего не найдено. Попробуйте другое написание или укажите сайт.' : null}

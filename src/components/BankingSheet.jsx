@@ -1,3 +1,4 @@
+import { ListSkeleton } from './ui/Skeleton';
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import Sheet from './ui/Sheet';
@@ -184,7 +185,7 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
         <span>{actionError || error}</span>
         {error && <button type="button" onClick={onRetry} disabled={loading || busy} style={buttonStyle}>Повторить загрузку</button>}
       </div>}
-      {loading && <p role="status" style={smallStyle}>Загрузка банковских данных…</p>}
+      {loading && !data && <ListSkeleton label="Загрузка банковских данных…" />}
       {data?.configured === false && <p style={smallStyle}>Подключение банков пока не настроено. Оно появится после настройки приложения.</p>}
 
       {data?.configured && <>
@@ -228,7 +229,8 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
         <section aria-label="Предложения из банков" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <h3 style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Предложения из банков ({review.total || 0})</h3>
           <p style={smallStyle}>Ни одна операция не попадёт в бюджет без вашего подтверждения. Можно изменить категорию и описание перед добавлением, а затем отредактировать запись в истории.</p>
-          {(review.items || []).length === 0 && !loading && <p style={smallStyle}>Предложений пока нет.</p>}
+          {loading && (review.items || []).length === 0 && <ListSkeleton label="Загрузка предложений…" />}
+          {(review.items || []).length === 0 && !loading && !error && <p style={smallStyle}>Предложений пока нет.</p>}
           {(review.items || []).map(entry => <ReviewEntry key={`${entry.id}:${entry.version}`} entry={entry} accounts={accounts} categories={categories} disabled={busy} onResolve={(id, fields) => run(`resolve:${id}`, () => onResolve(id, fields))} />)}
           {review.total > (review.items || []).length && <p style={smallStyle}>Показаны первые {review.items.length}. После проверки появятся следующие.</p>}
         </section>

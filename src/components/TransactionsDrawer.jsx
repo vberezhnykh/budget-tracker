@@ -1,3 +1,4 @@
+import { ListSkeleton } from './ui/Skeleton';
 import { useEffect, useRef } from 'react';
 import { ChevronDown, Download, Search, X } from 'lucide-react';
 import TransactionList from './TransactionList'
@@ -415,7 +416,7 @@ export default function TransactionsDrawer({
                 formatDate={formatDate}
               />}
               <div ref={moreRef} style={{ padding: '16px 24px', textAlign: 'center' }}>
-                {historyLoading && <div role="status">Загрузка операций…</div>}
+                {historyLoading && <ListSkeleton label="Загрузка операций…" rows={Object.keys(periodData.transactions || {}).length > 0 ? 2 : 5} />}
                 {historyError && <div role="alert">{historyError}</div>}
                 {!historyLoading && (hasMore || historyError) && (
                   <button type="button" className="btn-primary" onClick={loadMore}>

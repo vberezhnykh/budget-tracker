@@ -26,7 +26,7 @@ const SETTLE_DELAY_MS = 120;
 export default function useSnapCarousel({ onSettle }) {
     const containerRef = useRef(null);
     // Индекс, к которому нас просили прокрутиться, пока прокручивать было
-    // нечего: на первом рендере экран занят «Загрузка...», карусели в дереве
+    // нечего: на первом рендере экран занят стартовым скелетоном, карусели в дереве
     // ещё нет, а эффект синхронизации уже отработал.
     const pendingIndexRef = useRef(null);
     const rafRef = useRef(null);
