@@ -9,7 +9,6 @@ import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
 import PeriodPicker from './components/PeriodPicker'
 import SummaryCard from './components/SummaryCard'
-import PlannedPaymentsView from './components/PlannedPaymentsView'
 import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
@@ -25,7 +24,6 @@ const API_URL = '/api/transactions';
 const CATEGORIES_URL = '/api/categories';
 const ACCOUNTS_URL = '/api/accounts';
 const SETTINGS_URL = '/api/settings';
-const PLANNED_PAYMENTS_URL = '/api/planned-payments';
 const TRASH_URL = '/api/trash';
 const BANKING_URL = '/api/banking';
 // Used until the server's settings document has loaded (or if it 404s on an
@@ -48,7 +46,6 @@ function App() {
   const [syncWarning, setSyncWarning] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSuccessfulSync, setLastSuccessfulSync] = useState(null);
-  const [plannedPayments, setPlannedPayments] = useState([]);
   const [trashGroups, setTrashGroups] = useState([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashError, setTrashError] = useState('');
@@ -162,7 +159,6 @@ function App() {
     accountsRef.current = [];
     setTransactions([]);
     setCategories([]);
-    setPlannedPayments([]);
     setTrashGroups([]);
     setTrashError('');
     setTrashLoading(false);
@@ -249,18 +245,16 @@ function App() {
       if (!Array.isArray(loadedAccounts)) throw new DataLoadError('Сервер вернул некорректный список счетов');
       if (!isCurrent()) return false;
 
-      const [rawTransactions, loadedCategories, loadedSettings, loadedPlannedPayments] = await Promise.all([
+      const [rawTransactions, loadedCategories, loadedSettings] = await Promise.all([
         readJson(API_URL, 'Не удалось загрузить операции'),
         readJson(CATEGORIES_URL, 'Не удалось загрузить категории'),
         // Compatibility with deployments from before shared settings: a 404
         // means the documented default, while network/5xx failures still make
         // the whole snapshot unsuccessful.
         readJson(SETTINGS_URL, 'Не удалось загрузить настройки', { allowMissing: true }),
-        readJson(PLANNED_PAYMENTS_URL, 'Не удалось загрузить предстоящие платежи'),
       ]);
       if (!Array.isArray(rawTransactions)) throw new DataLoadError('Сервер вернул некорректный список операций');
       if (!Array.isArray(loadedCategories)) throw new DataLoadError('Сервер вернул некорректный список категорий');
-      if (!Array.isArray(loadedPlannedPayments)) throw new DataLoadError('Сервер вернул некорректный список платежей');
       if (loadedSettings !== null && (
         typeof loadedSettings !== 'object'
         || typeof loadedSettings.monthlyLimit !== 'number'
@@ -276,7 +270,6 @@ function App() {
       accountsRef.current = loadedAccounts;
       setTransactions(transformTransactions(rawTransactions, loadedAccounts));
       setCategories(loadedCategories);
-      setPlannedPayments(loadedPlannedPayments);
       setMonthlyLimit(nextLimit);
       // This optional module stays hidden unless the server explicitly enables it.
       setBankingEnabled(loadedSettings?.features?.banking === true);
@@ -689,70 +682,6 @@ function App() {
   const mutationError = async (res, fallback) => {
     const data = await res.json().catch(() => null);
     return (data && data.message) || fallback;
-  };
-
-  const handleCreatePlannedPayment = async (fields) => {
-    const session = sessionGenerationRef.current;
-    try {
-      const res = await apiFetch(PLANNED_PAYMENTS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(fields),
-      });
-      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
-      if (!res.ok) return { ok: false, error: await mutationError(res, 'Не удалось сохранить платёж') };
-      await loadData({ initial: false });
-      return { ok: true };
-    } catch (err) {
-      console.error('Create planned payment error:', err);
-      return { ok: false, error: 'Не удалось сохранить платёж' };
-    }
-  };
-
-  const handleUpdatePlannedPayment = async (payment, fields) => {
-    const session = sessionGenerationRef.current;
-    try {
-      const res = await apiFetch(`${PLANNED_PAYMENTS_URL}/${payment._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ __v: Number.isInteger(payment.__v) ? payment.__v : 0, ...fields }),
-      });
-      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
-      if (!res.ok) {
-        const fallback = res.status === 409
-          ? 'Платёж уже изменён. Обновите данные и повторите попытку.'
-          : 'Не удалось изменить платёж';
-        return { ok: false, error: await mutationError(res, fallback) };
-      }
-      await loadData({ initial: false });
-      return { ok: true };
-    } catch (err) {
-      console.error('Update planned payment error:', err);
-      return { ok: false, error: 'Не удалось изменить платёж' };
-    }
-  };
-
-  const handlePayPlannedPayment = async (payment, fields) => {
-    const session = sessionGenerationRef.current;
-    try {
-      const res = await apiFetch(`${PLANNED_PAYMENTS_URL}/${payment._id}/pay`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ __v: Number.isInteger(payment.__v) ? payment.__v : 0, ...fields }),
-      });
-      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
-      if (!res.ok) {
-        const fallback = res.status === 409
-          ? 'Платёж уже изменён. Обновите данные и повторите попытку.'
-          : 'Не удалось оплатить платёж';
-        return { ok: false, error: await mutationError(res, fallback) };
-      }
-      await loadData({ initial: false });
-      return { ok: true };
-    } catch (err) {
-      console.error('Pay planned payment error:', err);
-      return { ok: false, error: 'Не удалось оплатить платёж' };
-    }
   };
 
   const fetchTrash = async () => {
@@ -1522,7 +1451,7 @@ function App() {
 
       <main style={{ paddingBottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px` }}>
         {/* Quick Actions */}
-        {summaryView !== 'payments' && <section style={{ marginBottom: '32px' }}>
+        <section style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button onClick={() => openAddModal('income')} aria-label="Добавить доход" className="btn-primary quick-action" style={{ flex: 1, background: 'var(--color-positive-gradient)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
               <Plus size={18} /> Доход
@@ -1534,31 +1463,20 @@ function App() {
               <ArrowRightLeft size={18} /> Перевод
             </button>
           </div>
-        </section>}
+        </section>
 
         {/* One period control for the whole screen: the chip carries both
             the granularity (месяц/год/всё время) and the concrete month or
             year, replacing the old header arrow row plus the range toggle
             that used to live inside the stats card. It sits above the
             summary card so both bottom tabs share it. */}
-        {summaryView !== 'payments' && <section style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <section style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
           <PeriodPicker timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />
-        </section>}
+        </section>
 
         {/* Summary Card with Budget Limit */}
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '24px', marginBottom: '24px' }}>
-          {summaryView === 'payments' ? (
-            <PlannedPaymentsView
-              plannedPayments={plannedPayments}
-              accounts={accounts}
-              categories={categories}
-              transactions={transactions}
-              onCreate={handleCreatePlannedPayment}
-              onUpdate={handleUpdatePlannedPayment}
-              onPay={handlePayPlannedPayment}
-              onOpenTrash={openTrash}
-            />
-          ) : summaryView === 'stats' ? (
+          {summaryView === 'stats' ? (
             timeRange === 'month' ? (
               /* Месяцы листаются так же, как счета в шапке: не «жест меняет
                  данные», а лента карточек, которая едет за пальцем. Соседние

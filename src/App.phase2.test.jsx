@@ -137,55 +137,19 @@ describe('App phase 2 flows', () => {
     vi.unstubAllGlobals();
   });
 
-  it('creates a plan without changing the balance, then paying it creates one expense', async () => {
+  it('shows only home and analytics and does not load planned payments', async () => {
     const api = makeApi();
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
     await screen.findByTestId('balance-carousel');
-    expect(screen.getAllByText(/950,00/)[0]).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Платежи/ }));
-    fireEvent.click(screen.getByRole('button', { name: '+ Добавить' }));
-    const createDialog = screen.getByRole('dialog', { name: 'Добавить предстоящий платёж' });
-    fireEvent.change(within(createDialog).getByPlaceholderText('Например, аренда'), { target: { value: 'Страховка' } });
-    fireEvent.change(within(createDialog).getByLabelText('Плановая сумма, €'), { target: { value: '100' } });
-    fireEvent.change(within(createDialog).getByLabelText('Дата платежа'), { target: { value: '2026-09-25' } });
-    fireEvent.click(within(createDialog).getByRole('button', { name: 'Сохранить' }));
-
-    await waitFor(() => expect(api.fetch).toHaveBeenCalledWith('/api/planned-payments', expect.objectContaining({ method: 'POST' })));
-    expect(api.state.planned.map(payment => payment.title)).toContain('Страховка');
-    expect(await screen.findByText('Страховка')).toBeInTheDocument();
-    expect(api.state.transactions).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /Главная/ }));
-    expect(screen.getAllByText(/950,00/)[0]).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Платежи/ }));
-    const insurance = screen.getByText('Страховка').closest('article');
-    fireEvent.click(within(insurance).getByRole('button', { name: 'Оплатить' }));
-    const payDialog = screen.getByRole('dialog', { name: 'Оплатить: Страховка' });
-    fireEvent.click(within(payDialog).getByRole('button', { name: 'Создать расход и оплатить' }));
-
-    await waitFor(() => expect(api.state.transactions).toHaveLength(3));
-    expect(api.state.planned.find(payment => payment.title === 'Страховка').status).toBe('paid');
-    fireEvent.click(screen.getByRole('button', { name: /Главная/ }));
-    expect(screen.getAllByText(/850,00/)[0]).toBeInTheDocument();
-  });
-
-  it('links an existing expense without creating a duplicate transaction', async () => {
-    const api = makeApi();
-    vi.stubGlobal('fetch', api.fetch);
-    render(<App />);
-    await screen.findByTestId('balance-carousel');
-    fireEvent.click(screen.getByRole('button', { name: /Платежи/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Оплатить' }));
-    const dialog = screen.getByRole('dialog', { name: 'Оплатить: Интернет' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Уже учтён' }));
-    fireEvent.change(within(dialog).getByLabelText('Уже учтённый расход'), { target: { value: 'expense' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Связать с расходом' }));
-
-    await waitFor(() => expect(api.state.planned[0].status).toBe('paid'));
-    expect(api.state.transactions).toHaveLength(2);
-    expect(api.state.planned[0].transactionId).toBe('expense');
+    const nav = screen.getByRole('navigation', { name: 'Основная навигация' });
+    expect(within(nav).getAllByRole('button')).toHaveLength(2);
+    expect(within(nav).queryByRole('button', { name: /Платежи/ })).not.toBeInTheDocument();
+    fireEvent.click(within(nav).getByRole('button', { name: /Аналитика/ }));
+    expect(within(nav).getByRole('button', { name: /Аналитика/ })).toHaveAttribute('aria-current', 'page');
+    fireEvent.click(within(nav).getByRole('button', { name: /Главная/ }));
+    expect(screen.getByRole('button', { name: 'Добавить перевод' })).toBeInTheDocument();
+    expect(api.fetch.mock.calls.some(([url]) => url.startsWith('/api/planned-payments'))).toBe(false);
   });
 
   it('soft-deletes an expense and restores it from the Undo toast', async () => {

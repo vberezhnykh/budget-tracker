@@ -1,5 +1,5 @@
 import { PEEK_HEIGHT } from './TransactionsDrawer';
-import { CalendarDays, ChartNoAxesCombined, House } from 'lucide-react';
+import { ChartNoAxesCombined, House } from 'lucide-react';
 
 // Height of the bar itself, exported so App can reserve the matching amount
 // of bottom padding on <main> - the bar is fixed, so it doesn't take part in
@@ -14,7 +14,6 @@ export const TAB_BAR_RESERVED_HEIGHT = TAB_BAR_HEIGHT + GAP_ABOVE_DRAWER;
 const TABS = [
   { id: 'stats', icon: House, label: 'Главная' },
   { id: 'analytics', icon: ChartNoAxesCombined, label: 'Аналитика' },
-  { id: 'payments', icon: CalendarDays, label: 'Платежи' },
 ];
 
 // Main-screen navigation, sitting directly above the transactions drawer's

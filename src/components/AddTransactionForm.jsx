@@ -12,7 +12,7 @@ import { saveCompanySelection } from '../utils/companies';
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], apiFetch }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
-    const defaultToAccount = accounts.find(a => a.type === 'card' && a._id !== defaultAccount)?._id || accounts.find(a => a._id !== defaultAccount)?._id || 'card';
+    const defaultToAccount = accounts.find(a => a.type === 'card' && a._id !== defaultAccount)?._id || accounts.find(a => a._id !== defaultAccount)?._id || '';
 
     // For a brand-new income/expense transaction, the account must be an
     // explicit user choice - unless a specific account was already active
@@ -26,19 +26,20 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         ? (initialData.account || defaultAccount)
         : (type === 'transfer' ? (presetAccountId || defaultAccount) : (presetAccountId || ''));
 
-    // The two transfer sides can never point at the same account (see
-    // setTransferAccount below), so a preset "from" that happens to be the
-    // usual destination pushes "to" onto the first other account.
-    const initialToAccount = defaultToAccount !== initialAccount
-        ? defaultToAccount
-        : (accounts.find(a => a._id !== initialAccount)?._id || defaultToAccount);
+    // Keep the current destination when possible, including when returning
+    // from income/expense mode after its account has changed.
+    const getTransferDestination = (account, destination) =>
+        accounts.some(a => a._id === destination && a._id !== account)
+            ? destination
+            : (accounts.find(a => a._id !== account)?._id || '');
+    const initialToAccount = getTransferDestination(initialAccount, initialData?.toAccount || defaultToAccount);
 
     const [formData, setFormData] = useState(initialData ? {
         ...initialData,
         __v: Number.isInteger(initialData.__v) ? initialData.__v : 0,
         date: initialData.date || new Date().toISOString().split('T')[0],
         account: initialAccount,
-        toAccount: initialData.toAccount || (initialData.account === defaultToAccount ? defaultAccount : defaultToAccount)
+        toAccount: initialToAccount
     } : {
         amount: '',
         category: '',
@@ -70,11 +71,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     // Shared save-gate for both the submit button (disabled state) and the
     // submit handler (so the gate can't be bypassed some other way, e.g. an
-    // Enter keypress). An account must be chosen unless transferring - that
-    // flow has its own from/to selects and always starts pre-filled.
+    // Enter keypress). Transfers require two distinct existing accounts.
     const isSaveDisabled = isSubmitting
         || !(parseFloat(formData.amount) > 0)
         || (!isTransfer && !formData.account)
+        || (isTransfer && (formData.account === formData.toAccount
+            || !accounts.some(a => a._id === formData.account)
+            || !accounts.some(a => a._id === formData.toAccount)))
         || (isSplit ? !isSplitValid : (!isTransfer && !formData.category));
 
     const handleSubmit = async (e) => {
@@ -140,15 +143,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         }
     };
 
-    // Both transfer selects go through here so the two sides can never point
-    // at the same account: picking an account that is already on the other
-    // side pushes that side to the first different account available.
+    // Each select excludes the account chosen on the opposite side.
     const setTransferAccount = (side, id) => {
-        const otherSide = side === 'account' ? 'toAccount' : 'account';
-        const other = formData[otherSide] === id
-            ? (accounts.find(a => a._id !== id)?._id || '')
-            : formData[otherSide];
-        setFormData({ ...formData, [side]: id, [otherSide]: other });
+        setFormData(prev => {
+            const otherSide = side === 'account' ? 'toAccount' : 'account';
+            if (id === prev[otherSide] || !accounts.some(a => a._id === id)) return prev;
+            return { ...prev, [side]: id };
+        });
     };
 
     const swapTransferAccounts = () => {
@@ -287,24 +288,14 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         ].map(t => (
                             <button
                                 key={t.id}
-                                // Switching into a transfer while no account has
-                                // been chosen yet (a new expense/income opened
-                                // from the "Общий капитал" slide starts with an
-                                // empty account) would leave "Откуда" pointing at
-                                // nothing while the select displays its first
-                                // option - and the save gate doesn't require an
-                                // account on transfers. Fall back to the default
-                                // pairing so both sides are always real.
                                 onClick={() => setFormData(prev => {
-                                    if (t.id !== 'transfer' || prev.account) return { ...prev, type: t.id };
-                                    const account = defaultAccount;
+                                    if (t.id !== 'transfer') return { ...prev, type: t.id };
+                                    const account = prev.account || defaultAccount;
                                     return {
                                         ...prev,
                                         type: t.id,
                                         account,
-                                        toAccount: prev.toAccount !== account
-                                            ? prev.toAccount
-                                            : (accounts.find(a => a._id !== account)?._id || prev.toAccount)
+                                        toAccount: getTransferDestination(account, prev.toAccount)
                                     };
                                 })}
                                 style={{
@@ -766,7 +757,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     outline: 'none'
                                                 }}
                                             >
-                                                {accounts.map(acc => (
+                                                {!row.value && <option value="">Выберите счет</option>}
+                                                {accounts.filter(acc => acc._id !== formData[row.side === 'account' ? 'toAccount' : 'account']).map(acc => (
                                                     <option key={acc._id} value={acc._id}>
                                                         {getAccountLabel(acc)}
                                                     </option>

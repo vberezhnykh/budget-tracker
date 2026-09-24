@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import AddTransactionForm from './AddTransactionForm';
 
@@ -230,6 +230,56 @@ describe('AddTransactionForm Component', () => {
         expect(from.value).toBeTruthy();
         expect(to.value).toBeTruthy();
         expect(from.value).not.toBe(to.value);
+    });
+
+    it('excludes the opposite account in both selects and updates options after changes and swaps', () => {
+        const accounts = [...mockAccounts, { _id: 'savings', name: 'Сбережения', type: 'card' }];
+        render(<AddTransactionForm type="transfer" accounts={accounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        const from = screen.getByLabelText('Откуда');
+        const to = screen.getByLabelText('Куда');
+        const values = select => within(select).getAllByRole('option').map(option => option.value);
+        expect(values(from)).toEqual(['cash', 'savings']);
+        expect(values(to)).toEqual(['card', 'savings']);
+
+        fireEvent.change(from, { target: { value: 'savings' } });
+        expect(to).toHaveValue('card');
+        expect(values(to)).toEqual(['card', 'cash']);
+        fireEvent.change(to, { target: { value: 'cash' } });
+        expect(from).toHaveValue('savings');
+        expect(values(from)).toEqual(['card', 'savings']);
+        fireEvent.click(screen.getByRole('button', { name: 'Поменять счета местами' }));
+        expect(from).toHaveValue('cash');
+        expect(to).toHaveValue('savings');
+        expect(values(from)).toEqual(['card', 'cash']);
+        expect(values(to)).toEqual(['card', 'savings']);
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
+        fireEvent.click(screen.getByText('Сохранить'));
+        expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash', toAccount: 'savings', amount: 25 }));
+    });
+
+    it('keeps transfer accounts distinct after selecting the previous destination in expense mode', () => {
+        render(<AddTransactionForm type="transfer" accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        fireEvent.click(screen.getByText('Расход'));
+        fireEvent.click(screen.getByRole('button', { name: /Карта/ }));
+        fireEvent.click(screen.getByText('Перевод'));
+        expect(screen.getByLabelText('Откуда')).toHaveValue('card');
+        expect(screen.getByLabelText('Куда')).toHaveValue('cash');
+    });
+
+    it('filters the opposite account when editing an existing transfer', () => {
+        const initialData = { id: 'transfer-id', type: 'transfer', amount: 20, account: 'card', toAccount: 'cash' };
+        render(<AddTransactionForm initialData={initialData} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        expect(within(screen.getByLabelText('Откуда')).queryByRole('option', { name: 'Наличные' })).not.toBeInTheDocument();
+        expect(within(screen.getByLabelText('Куда')).queryByRole('option', { name: 'Карта' })).not.toBeInTheDocument();
+    });
+
+    it('does not submit a transfer when only one account exists', () => {
+        mockOnSubmit.mockClear();
+        render(<AddTransactionForm type="transfer" accounts={[mockAccounts[0]]} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
+        expect(screen.getByText('Сохранить')).toBeDisabled();
+        fireEvent.submit(screen.getByText('Сохранить').closest('form'));
+        expect(mockOnSubmit).not.toHaveBeenCalled();
     });
 
     it('calls onClose when background is clicked', () => {

@@ -1,50 +1,26 @@
 import { test, expect } from '@playwright/test';
-import { accounts, categories, mockPhase2Api, transactions } from './fixtures.js';
+import { accounts, categories, mockPhase2Api } from './fixtures.js';
 
-test.describe('Upcoming payments and trash (mobile)', () => {
-  test('a plan leaves the balance unchanged until payment and renders the payment flow', async ({ page }, testInfo) => {
-    await page.setViewportSize({ width: 390, height: 1000 });
-    await page.clock.setFixedTime(new Date(2026, 8, 5, 12));
-    const state = await mockPhase2Api(page);
+test.describe('Navigation, transfers and trash (mobile)', () => {
+  test('transfer account options exclude the opposite side and still allow swapping', async ({ page }) => {
+    await mockPhase2Api(page);
     await page.goto('/');
-    const totalSlide = page.getByRole('button', { name: /^Общий капитал:/ });
-    await expect(totalSlide).toBeVisible();
-    const balanceBefore = await totalSlide.getAttribute('aria-label');
-
-    await page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: /Платежи/ }).click();
-    await expect(page.getByTestId('planned-payments-view')).toBeVisible();
-    const paymentsScreenshot = testInfo.outputPath('planned-payments-390.png');
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: paymentsScreenshot, animations: 'disabled' });
-    await testInfo.attach('planned-payments-390', { path: paymentsScreenshot, contentType: 'image/png' });
-
-    await page.getByRole('button', { name: '+ Добавить' }).click();
-    const createDialog = page.getByRole('dialog', { name: 'Добавить предстоящий платёж' });
-    await createDialog.getByPlaceholder('Например, аренда').fill('Страховка');
-    await createDialog.getByLabel('Плановая сумма, €').fill('100');
-    await createDialog.getByLabel('Дата платежа').fill('2026-09-25');
-    await createDialog.getByRole('button', { name: 'Сохранить' }).click();
-    await expect(page.getByText('Страховка', { exact: true })).toBeVisible();
-    expect(state.transactions).toHaveLength(transactions.length);
-    expect(await totalSlide.getAttribute('aria-label')).toBe(balanceBefore);
-
-    const insuranceCard = page.getByText('Страховка', { exact: true }).locator('xpath=ancestor::article');
-    await insuranceCard.getByRole('button', { name: 'Оплатить' }).click();
-    const payDialog = page.getByRole('dialog', { name: 'Оплатить: Страховка' });
-    await expect(payDialog.getByLabel('Дата факта')).toHaveValue('2026-09-05');
-    const payScreenshot = testInfo.outputPath('planned-payment-pay-form-390.png');
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: payScreenshot, animations: 'disabled' });
-    await testInfo.attach('planned-payment-pay-form-390', { path: payScreenshot, contentType: 'image/png' });
-    await payDialog.getByRole('button', { name: 'Создать расход и оплатить' }).click();
-
-    await expect(page.getByRole('button', { name: /Завершённые/ })).toBeVisible();
-    expect(state.transactions).toHaveLength(transactions.length + 1);
-    expect(state.plannedPayments.find(payment => payment.title === 'Страховка').status).toBe('paid');
-    await expect(totalSlide).not.toHaveAttribute('aria-label', balanceBefore);
+    await page.getByRole('button', { name: 'Добавить перевод' }).click();
+    const from = page.getByLabel('Откуда', { exact: true });
+    const to = page.getByLabel('Куда', { exact: true });
+    const fromId = await from.inputValue();
+    const toId = await to.inputValue();
+    expect(fromId).not.toBe(toId);
+    await expect(from.locator(`option[value="${toId}"]`)).toHaveCount(0);
+    await expect(to.locator(`option[value="${fromId}"]`)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Поменять счета местами' }).click();
+    await expect(from).toHaveValue(toId);
+    await expect(to).toHaveValue(fromId);
+    await expect(from.locator(`option[value="${fromId}"]`)).toHaveCount(0);
+    await expect(to.locator(`option[value="${toId}"]`)).toHaveCount(0);
   });
 
-  test('three navigation tabs fit at 320px and persisted trash restores after reload', async ({ page }, testInfo) => {
+  test('two navigation tabs fit at 320px and persisted trash restores after reload', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 320, height: 700 });
     await page.clock.setFixedTime(new Date(2026, 8, 5, 12));
     const deleted = { _id: 'deleted-expense', __v: 0, title: 'Удалённый расход', amount: 45, type: 'expense', account: accounts[0]._id, category: categories[0].name, date: '2026-09-02T00:00:00.000Z' };
@@ -57,6 +33,8 @@ test.describe('Upcoming payments and trash (mobile)', () => {
     await expect(page.getByText('BudgetTracker')).toBeVisible();
 
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
+    await expect(nav.getByRole('button')).toHaveCount(2);
+    await expect(nav.getByRole('button', { name: /Платежи/ })).toHaveCount(0);
     const geometry = await nav.evaluate((element) => ({
       left: element.getBoundingClientRect().left,
       right: element.getBoundingClientRect().right,
