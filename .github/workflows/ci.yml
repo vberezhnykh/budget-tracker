@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Запустить MongoDB replica set
         run: docker run --detach --name budget-tracker-test-mongo --publish 127.0.0.1:27017:27017 mongo:7 --replSet rs0 --bind_ip_all
@@ -59,7 +59,7 @@ jobs:
           echo 'MongoDB replica set did not become primary' >&2
           exit 1
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # Та же мажорная версия, что и локально; Vite 7 требует минимум
           # Node 20.19/22.12.
@@ -93,9 +93,9 @@ jobs:
     name: Смоук в браузере
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -109,7 +109,7 @@ jobs:
       # обновится зависимость - сменится ключ, и Chromium скачается заново.
       - name: Кеш браузера Playwright
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -130,7 +130,7 @@ jobs:
 
       # Скриншоты и контекст падений: без них красный прогон геометрического
       # теста невозможно разобрать, не воспроизведя его руками.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: failure()
         with:
           name: playwright-test-results
