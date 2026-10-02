@@ -82,6 +82,7 @@ function App() {
 
   // State for selected. Defaults to current month YYYY-MM
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [historyMonth, setHistoryMonth] = useState(selectedMonth);
   // Which of the two bottom tabs is showing. 'stats' is the default screen
   // (spending ring, income/saldo, top categories); 'analytics' is the
   // category breakdown donut.
@@ -247,7 +248,7 @@ function App() {
   if (selectedCategory) statsParams.set('category', selectedCategory);
   const statsKey = statsParams.toString();
   const summaryFilterKey = JSON.stringify([selectedAccount, selectedCategory]);
-  const historyParams = new URLSearchParams({ month: selectedMonth, timeRange, limit: '40' });
+  const historyParams = new URLSearchParams({ month: historyMonth, continuous: '1', limit: '40' });
   if (selectedAccount) historyParams.set('account', selectedAccount);
   if (selectedCategory) historyParams.set('category', selectedCategory);
   if (selectedType) historyParams.set('type', selectedType);
@@ -618,6 +619,7 @@ function App() {
   const handlePeriodChange = ({ timeRange: nextRange, selectedMonth: nextMonth }) => {
     setTimeRange(nextRange);
     setSelectedMonth(nextMonth);
+    setHistoryMonth(nextMonth);
   };
 
   const exportToCSV = async () => {
@@ -1652,6 +1654,12 @@ function App() {
         hasMore={history.nextCursor !== null}
         loadMore={history.loadMore}
         historyKey={history.key}
+        initialMonth={historyMonth}
+        positionKey={selectedMonth}
+        onSelectMonth={setHistoryMonth}
+        hasNewer={history.previousCursor !== null}
+        loadNewer={history.loadNewer}
+        historyDirection={history.direction}
         isExporting={isExporting}
         categories={categories}
         selectedCategory={selectedCategory}

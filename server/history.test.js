@@ -11,6 +11,44 @@ const tx = (id, changes = {}) => ({ _id: String(id).padStart(3, '0'), amount: 10
 const rows = page => Object.values(page.transactions).flatMap(day => day.items);
 
 describe('paged history', () => {
+    it('crosses month/year boundaries and pages back toward newer operations without gaps', () => {
+        const docs = [tx(1, { date: '2025-12-31' }), tx(2, { date: '2026-01-01' }),
+            tx(3, { date: '2026-09-30' }), tx(4, { date: '2026-10-01' }), tx(5, { date: '2026-10-02' })];
+        const options = parseHistoryQuery({ month: '2026-09', continuous: '1', limit: '2' });
+        expect(options.filter).toEqual({});
+        const first = buildHistoryPage(docs, accounts, options);
+        expect(rows(first).map(t => t.id)).toEqual(['003', '002']);
+        expect(first.count).toBe(5);
+        const older = buildHistoryPage(docs, accounts, { ...options, cursor: JSON.parse(first.nextCursor) });
+        expect(rows(older).map(t => t.id)).toEqual(['001']);
+        const newer = buildHistoryPage(docs, accounts, { ...options, cursor: JSON.parse(first.previousCursor), direction: 'newer' });
+        expect(rows(newer).map(t => t.id)).toEqual(['005', '004']);
+        expect(newer.previousCursor).toBeNull();
+        const back = buildHistoryPage(docs, accounts, { ...options, cursor: JSON.parse(newer.nextCursor) });
+        expect(rows(back).map(t => t.id)).toEqual(['003', '002']);
+    });
+
+    it('takes the nearest newer page and can leave an empty anchor month', () => {
+        const docs = [tx(1, { date: '2026-09-01' }), tx(2, { date: '2026-10-01' }), tx(3, { date: '2026-10-02' })];
+        const options = parseHistoryQuery({ month: '2026-08', continuous: '1', limit: '1' });
+        const first = buildHistoryPage(docs, accounts, options);
+        expect(rows(first)).toEqual([]);
+        expect(first.nextCursor).toBeNull();
+        const second = buildHistoryPage(docs, accounts, { ...options, cursor: JSON.parse(first.previousCursor), direction: 'newer' });
+        expect(rows(second).map(t => t.id)).toEqual(['001']);
+        expect(second.previousCursor).not.toBeNull();
+    });
+
+    it('applies every filter across months and searches newer than the anchor', () => {
+        const docs = [tx(1, { date: '2026-09-30', description: 'Кофе' }),
+            tx(2, { date: '2026-10-01', description: 'Кофе' }),
+            tx(3, { account: 'cash' }), tx(4, { type: 'income' }), tx(5, { category: 'Дом' })];
+        const options = parseHistoryQuery({ month: '2026-10', continuous: '1', account: 'card', category: 'Еда', type: 'expense' });
+        expect(rows(buildHistoryPage(docs, accounts, options)).map(t => t.id)).toEqual(['002', '001']);
+        const search = buildHistoryPage(docs, accounts, { ...options, month: '2026-08', q: 'Кофе' });
+        expect(rows(search).map(t => t.id)).toEqual(['002', '001']);
+    });
+
     it('returns 40 rows and full daily totals; later pages have no duplicates', () => {
         const docs = Array.from({ length: 91 }, (_, i) => tx(i));
         const options = parseHistoryQuery({ month: '2026-09' });

@@ -77,6 +77,19 @@ function stubSheetHeight(container, height = 800) {
 }
 
 describe('TransactionsDrawer Component', () => {
+    it('restores the list position after closing, but resets for a new dashboard month', () => {
+        const { rerender } = render(<TransactionsDrawer {...baseProps} expanded historyKey="history" positionKey="2026-01" />);
+        const scroll = screen.getByTestId('history-scroll');
+        scroll.scrollTop = 450;
+        fireEvent.scroll(scroll);
+        rerender(<TransactionsDrawer {...baseProps} expanded={false} historyKey="history" positionKey="2026-01" />);
+        scroll.scrollTop = 0; // browsers clamp after the list is unmounted
+        rerender(<TransactionsDrawer {...baseProps} expanded historyKey="history" positionKey="2026-01" />);
+        expect(scroll.scrollTop).toBe(450);
+        rerender(<TransactionsDrawer {...baseProps} expanded historyKey="history" positionKey="2026-02" />);
+        expect(scroll.scrollTop).toBe(0);
+    });
+
     afterEach(() => {
         vi.restoreAllMocks();
     });

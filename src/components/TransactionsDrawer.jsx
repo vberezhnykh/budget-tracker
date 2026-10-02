@@ -1,7 +1,7 @@
 import { ListSkeleton } from './ui/Skeleton';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { ChevronDown, Download, Search, X } from 'lucide-react';
-import TransactionList from './TransactionList'
+import HistoryTimeline from './HistoryTimeline'
 import useBodyScrollLock from '../utils/useBodyScrollLock'
 import Field from './ui/Field'
 import Chip from './ui/Chip'
@@ -57,15 +57,93 @@ export default function TransactionsDrawer({
   hasMore = false,
   loadMore,
   historyKey,
+  initialMonth,
+  positionKey,
+  onSelectMonth,
+  hasNewer = false,
+  loadNewer,
+  historyDirection = 'older',
   isExporting = false,
 }) {
   const sheetRef = useRef(null);
   const dragRef = useRef(null);
   const scrollRef = useRef(null);
   const moreRef = useRef(null);
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-  }, [historyKey]);
+  const positionRef = useRef({ key: null, top: 0, expanded: false, pending: true });
+  const prependRef = useRef(null);
+  const groups = searchQuery.trim() ? searchResults.transactions : periodData.transactions;
+  const scrollKey = `${historyKey}:${positionKey}`;
+  const monthElement = month => scrollRef.current?.querySelector(`[data-history-month="${month}"]`);
+  const scrollToMonth = month => {
+    const element = monthElement(month);
+    const scroll = scrollRef.current;
+    if (!element || !scroll) return false;
+    scroll.scrollTop += element.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+    positionRef.current.top = scroll.scrollTop;
+    return true;
+  };
+  const selectMonth = month => {
+    // A loaded destination is a scroll, not a new query: all adjacent rows stay.
+    const firstMonth = Object.keys(groups || {}).sort().reverse()[0]?.slice(0, 7);
+    if ((month !== firstMonth || !hasNewer) && scrollToMonth(month)) return;
+    onSelectMonth?.(month);
+    // The URL may already point here after scrolling into newer months.
+    if (month === initialMonth) scrollToMonth(month);
+  };
+  const captureAnchor = () => {
+    const scroll = scrollRef.current;
+    const top = scroll.getBoundingClientRect().top;
+    const items = [...scroll.querySelectorAll('[data-history-item]')];
+    const item = items.find(row => row.getBoundingClientRect().bottom > top) || items[0];
+    const anchor = item || monthElement(initialMonth);
+    const attribute = item ? 'data-history-item' : 'data-history-month';
+    return anchor ? { attribute, value: anchor.getAttribute(attribute), offset: anchor.getBoundingClientRect().top - top } : null;
+  };
+  const requestNewer = () => {
+    if (!hasNewer || historyLoading) return;
+    prependRef.current = captureAnchor();
+    loadNewer?.();
+  };
+  const handleScroll = () => {
+    if (!expanded) return;
+    const scroll = scrollRef.current;
+    const previousTop = positionRef.current.top;
+    positionRef.current.top = scroll.scrollTop;
+    if (prependRef.current) prependRef.current = captureAnchor();
+    const firstSection = scroll.querySelector('[data-history-month]');
+    if (!historyError && scroll.scrollTop < previousTop && firstSection
+      && firstSection.getBoundingClientRect().top >= scroll.getBoundingClientRect().top - 100) requestNewer();
+  };
+  useLayoutEffect(() => {
+    const saved = positionRef.current;
+    const scroll = scrollRef.current;
+    if (saved.key !== scrollKey) {
+      saved.key = scrollKey;
+      saved.top = 0;
+      saved.pending = true;
+      prependRef.current = null;
+    }
+    if (expanded && scroll) {
+      if (saved.pending && !historyLoading && !historyError) {
+        scroll.scrollTop = 0;
+        if (!searchQuery.trim()) scrollToMonth(initialMonth);
+        saved.top = scroll.scrollTop;
+        saved.pending = false;
+      } else if (!saved.expanded) {
+        scroll.scrollTop = saved.top;
+      }
+      if (prependRef.current && !historyLoading) {
+        const { attribute, value, offset } = prependRef.current;
+        const anchor = [...scroll.querySelectorAll(`[${attribute}]`)].find(element => element.getAttribute(attribute) === value);
+        if (anchor) scroll.scrollTop += anchor.getBoundingClientRect().top - scroll.getBoundingClientRect().top - offset;
+        saved.top = scroll.scrollTop;
+        prependRef.current = null;
+      }
+    }
+    saved.expanded = expanded;
+    // Geometry is restored after DOM updates, before the browser paints.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, scrollKey, groups, historyLoading, historyError, initialMonth, searchQuery]);
   useEffect(() => {
     if (!expanded || !hasMore || historyLoading || historyError || !moreRef.current || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(entries => {
@@ -301,10 +379,10 @@ export default function TransactionsDrawer({
             того, как последние операции появились прямо на главной, каждая
             строка оказывалась в документе дважды. Глазами второй список не
             виден, а скринридер читал обе копии. */}
-        <div ref={scrollRef} data-testid="history-scroll" style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain' }}>
+        <div ref={scrollRef} onScroll={handleScroll} data-testid="history-scroll" style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', overflowAnchor: 'none' }}>
           {/* Transaction History (moved verbatim from App.jsx) */}
           {expanded && (
-          <div className="glass-panel" style={{ padding: '0', overflow: 'hidden' }}>
+          <div className="glass-panel" style={{ padding: '0', overflow: 'visible' }}>
             <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
@@ -403,11 +481,17 @@ export default function TransactionsDrawer({
               </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {/* Один и тот же список в двух режимах - результаты поиска и
-                  история за период; отличаются они только источником групп и
-                  текстом пустого состояния (см. TransactionList). */}
-              {((!historyLoading && !historyError) || Object.keys(periodData.transactions || {}).length > 0) && <TransactionList
-                groups={searchQuery ? searchResults.transactions : periodData.transactions}
+              {hasNewer && <div style={{ padding: '16px 24px', textAlign: 'center' }}>
+                <button type="button" className="btn-primary" disabled={historyLoading} onClick={requestNewer}>
+                  {historyLoading && historyDirection === 'newer' ? 'Загрузка…' : 'Загрузить более новые'}
+                </button>
+                {historyError && historyDirection === 'newer' && <div role="alert">{historyError}</div>}
+              </div>}
+              {((!historyLoading && !historyError) || Object.keys(groups || {}).length > 0) && <HistoryTimeline
+                groups={groups}
+                initialMonth={initialMonth}
+                onSelectMonth={selectMonth}
+                searching={Boolean(searchQuery.trim())}
                 emptyText={searchQuery ? 'Ничего не найдено' : 'Нет операций'}
                 selectedCategory={selectedCategory}
                 toggleCategoryFilter={toggleCategoryFilter}
@@ -416,9 +500,9 @@ export default function TransactionsDrawer({
                 formatDate={formatDate}
               />}
               <div ref={moreRef} style={{ padding: '16px 24px', textAlign: 'center' }}>
-                {historyLoading && <ListSkeleton label="Загрузка операций…" rows={Object.keys(periodData.transactions || {}).length > 0 ? 2 : 5} />}
-                {historyError && <div role="alert">{historyError}</div>}
-                {!historyLoading && (hasMore || historyError) && (
+                {historyLoading && historyDirection !== 'newer' && <ListSkeleton label="Загрузка операций…" rows={Object.keys(groups || {}).length > 0 ? 2 : 5} />}
+                {historyError && historyDirection !== 'newer' && <div role="alert">{historyError}</div>}
+                {!historyLoading && (hasMore || (historyError && historyDirection !== 'newer')) && (
                   <button type="button" className="btn-primary" onClick={loadMore}>
                     {historyError ? 'Повторить загрузку' : 'Загрузить еще'}
                   </button>

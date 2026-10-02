@@ -625,7 +625,7 @@ describe('App Integration Tests', () => {
         expect(screen.queryByText(/Лимит €/)).not.toBeInTheDocument();
     });
 
-    it('lists the whole year and the whole history in the drawer, not only the selected month', async () => {
+    it('keeps history continuous while dashboard periods only change its starting month', async () => {
         currentTransactions = [...mockTransactions, {
             _id: '3',
             title: 'Подарки',
@@ -640,8 +640,8 @@ describe('App Integration Tests', () => {
         await waitFor(() => screen.getByText('BudgetTracker'));
         await openDrawer();
 
-        // Month view (January 2026): December's operation is out of range.
-        expect(screen.queryByText('Подарки')).not.toBeInTheDocument();
+        // December follows January even when the dashboard shows one month.
+        expect(await screen.findByText('Подарки')).toBeInTheDocument();
 
         // "Всё время": every operation, whatever month it falls in.
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
@@ -649,12 +649,15 @@ describe('App Integration Tests', () => {
         expect(await screen.findByText('Подарки')).toBeInTheDocument();
         expect(screen.getByText('Salary')).toBeInTheDocument();
 
-        // "Год" 2025: that year in full, and nothing from 2026.
+        // "Год" 2025 anchors history in December; January is available above.
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Год' }));
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '2025 год' }));
         expect(await screen.findByText('Подарки')).toBeInTheDocument();
         expect(screen.queryByText('Salary')).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Загрузить более новые' }));
+        expect(await screen.findByText('Salary')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Период: 2025 год' })).toBeInTheDocument();
     });
 
     it('filters transactions by search query', async () => {

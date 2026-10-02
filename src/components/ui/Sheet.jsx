@@ -93,7 +93,7 @@ export default function Sheet({
         document.addEventListener('keydown', handleKeyDown);
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
-            if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+            if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus({ preventScroll: true });
         };
     }, []);
 

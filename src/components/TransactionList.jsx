@@ -121,7 +121,7 @@ export default function TransactionList({
     };
 
     return dates.map(date => (
-        <div key={date}>
+        <div key={date} data-history-date={date}>
             <div style={{ padding: '10px 24px', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>{formatDate(date)}</span>
                 {groups[date].dailySum !== 0 && (
@@ -134,7 +134,7 @@ export default function TransactionList({
             {groups[date].items.map(item => {
                 if (item.type === 'split_group') {
                     return (
-                        <div key={item.id} style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)' }}>
+                        <div key={item.id} data-history-item={item.id} style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: rowPadding, background: 'var(--color-surface-muted)' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                                     <TransactionIcon item={item} />
@@ -199,6 +199,7 @@ export default function TransactionList({
                 return (
                     <div
                         key={item.id}
+                        data-history-item={item.id}
                         style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: rowPadding, borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}
                     >
                         {isEditable && (

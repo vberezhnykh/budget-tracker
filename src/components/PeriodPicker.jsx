@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
@@ -16,13 +17,16 @@ import {
 // Tapping it opens a sheet that picks both the granularity and the concrete
 // month/year, so the whole notion of "which period am I looking at" lives in
 // one place and the header stays free of it.
-export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
+export default function PeriodPicker({ timeRange, selectedMonth, onChange, monthsOnly = false }) {
   const [isOpen, setIsOpen] = useState(false);
   // The granularity being previewed inside the open sheet. It only becomes
   // the app's timeRange once a concrete choice is made (or immediately, for
   // "Всё время", which has nothing further to pick).
   const [draftRange, setDraftRange] = useState(timeRange);
   const chipRef = useRef(null);
+  // The history drawer transforms and scrolls its contents. A nested fixed
+  // sheet must escape that containing/stacking context.
+  const renderSheet = node => monthsOnly ? createPortal(node, document.body) : node;
 
   const maxMonth = getCurrentMonth();
   const months = listPeriodMonths(maxMonth);
@@ -38,7 +42,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
     setIsOpen(false);
     // Return focus to the control that opened the sheet, so keyboard and
     // screen-reader users don't get dropped back at the top of the page.
-    chipRef.current?.focus();
+    chipRef.current?.focus({ preventScroll: true });
   };
 
   const chooseMonth = (month) => {
@@ -68,7 +72,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
         onClick={open}
         aria-haspopup="dialog"
         aria-expanded={isOpen}
-        aria-label={`Период: ${formatPeriodLabel(timeRange, selectedMonth)}`}
+        aria-label={`${monthsOnly ? 'Месяц истории' : 'Период'}: ${formatPeriodLabel(timeRange, selectedMonth)}`}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -89,10 +93,10 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
         <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />
       </button>
 
-      {isOpen && (
-        <Sheet ariaLabel="Выбор периода" onClose={close} maxHeight="80vh">
+      {isOpen && renderSheet(
+        <Sheet ariaLabel={monthsOnly ? 'Переход к месяцу' : 'Выбор периода'} onClose={close} maxHeight="80vh">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: '700' }}>Период</h3>
+              <h3 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: '700' }}>{monthsOnly ? 'Переход к месяцу' : 'Период'}</h3>
               <button
                 type="button"
                 onClick={close}
@@ -111,7 +115,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '4px', background: 'var(--color-surface-sunken)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
+            {!monthsOnly && <div style={{ display: 'flex', gap: '4px', background: 'var(--color-surface-sunken)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
               {[
                 { id: 'month', label: 'Месяц' },
                 { id: 'year', label: 'Год' },
@@ -144,7 +148,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange }) {
                   </button>
                 );
               })}
-            </div>
+            </div>}
 
             {draftRange === 'month' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
