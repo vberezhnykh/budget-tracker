@@ -241,18 +241,17 @@ button {
 
 /* Mask the previous account's figures from the first scroll until selection
    settles and the selected account's summary is ready. Reveal gently only. */
-.account-summary {
+.account-summary [data-account-value] {
   filter: blur(0);
   transition: filter 160ms ease;
 }
 
-.account-summary--pending {
+.account-summary--pending [data-account-value] {
   filter: blur(8px);
   transition: none;
-  pointer-events: none;
   user-select: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .account-summary { transition: none; }
+  .account-summary [data-account-value] { transition: none; }
 }

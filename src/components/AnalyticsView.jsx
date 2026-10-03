@@ -64,7 +64,7 @@ export default function AnalyticsView({
                     ].map(box => (
                         <div key={box.label} style={{ flex: 1, minWidth: 0, background: 'var(--color-surface-muted)', border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-lg)', padding: '12px 10px' }}>
                             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>{box.label}</div>
-                            <div style={{
+                            <div data-account-value style={{
                                 fontSize: 'var(--text-lg)',
                                 fontWeight: '700',
                                 color: box.color,
@@ -87,7 +87,7 @@ export default function AnalyticsView({
                     ради которого туда заходят. Сравнивать с «прошлым месяцем»
                     имеет смысл только когда период - месяц. */}
                 {timeRange === 'month' && expenseComparison && (
-                    <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <div data-account-value style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--color-border-subtle)' }}>
                         {expenseComparison.percent === null ? (
                             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
                                 В прошлом месяце трат не было
@@ -114,7 +114,7 @@ export default function AnalyticsView({
                     <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                         Темп трат
                     </h3>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 'var(--text-base)', color: 'var(--color-text-main)' }}>
+                    <div data-account-value style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 'var(--text-base)', color: 'var(--color-text-main)' }}>
                         <div>В среднем €{formatEuro(pace.perDay)} в день</div>
                         <div>Прогноз до конца месяца ~€{formatEuro(pace.forecast)}</div>
                         {/* On the last day of the month there is no "per day
@@ -161,7 +161,7 @@ export default function AnalyticsView({
                 </div>
             ) : (
                 <div className="glass-panel" style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
-                    За выбранный период трат нет
+                    <span data-account-value>За выбранный период трат нет</span>
                 </div>
             )}
         </div>

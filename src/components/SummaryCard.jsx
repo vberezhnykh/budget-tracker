@@ -92,6 +92,7 @@ export default function SummaryCard({
                         <svg width="188" height="188" viewBox="0 0 188 188" aria-hidden="true" style={{ transform: 'rotate(-90deg)' }}>
                             <circle cx="94" cy="94" r="82" fill="none" stroke="var(--color-border-subtle)" strokeWidth="14" />
                             <circle
+                                data-account-value
                                 cx="94"
                                 cy="94"
                                 r="82"
@@ -114,16 +115,16 @@ export default function SummaryCard({
                             gap: '2px'
                         }}>
                             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600' }}>Расход</div>
-                            <div style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-main)', lineHeight: 1.1 }}>
+                            <div data-account-value style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-main)', lineHeight: 1.1 }}>
                                 €{formatEuro(expenseAbs)}
                             </div>
-                            <div style={{ fontSize: 'var(--text-xs)', color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: '600' }}>
+                            <div data-account-value style={{ fontSize: 'var(--text-xs)', color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: '600' }}>
                                 {isOverLimit
                                     ? `сверх лимита €${formatEuro(Math.abs(limitRemaining))}`
                                     : `осталось €${formatEuro(limitRemaining)}`}
                             </div>
                             <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>
-                                {limitPercentDisplay}% от €{monthlyLimit.toLocaleString('de-DE')}
+                                <span data-account-value>{limitPercentDisplay}%</span> от €{monthlyLimit.toLocaleString('de-DE')}
                             </div>
                         </div>
                     </div>
@@ -132,7 +133,7 @@ export default function SummaryCard({
                         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600', marginBottom: '4px' }}>
                             {headlineLabel}
                         </div>
-                        <div style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
+                        <div data-account-value style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
                             €{formatEuro(expenseAbs)}
                         </div>
                     </div>
@@ -163,7 +164,7 @@ export default function SummaryCard({
                     }}
                 >
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Доход</div>
-                    <div style={{ ...amountStyle(incomeText), color: 'var(--color-positive)' }}>
+                    <div data-account-value style={{ ...amountStyle(incomeText), color: 'var(--color-positive)' }}>
                         {incomeText}
                     </div>
                 </Pressable>
@@ -175,7 +176,7 @@ export default function SummaryCard({
                     padding: '12px 14px'
                 }}>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Сальдо</div>
-                    <div style={{ ...amountStyle(saldoText), color: saldo >= 0 ? 'var(--color-text-main)' : 'var(--color-negative)' }}>
+                    <div data-account-value style={{ ...amountStyle(saldoText), color: saldo >= 0 ? 'var(--color-text-main)' : 'var(--color-negative)' }}>
                         {saldoText}
                     </div>
                 </div>

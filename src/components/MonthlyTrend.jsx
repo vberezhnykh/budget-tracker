@@ -88,12 +88,12 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
             </div>
 
             <div className="monthly-trend__plot">
-                <div className="monthly-trend__axis" aria-hidden="true" style={{ height: HEIGHT }}>
+                <div data-account-value className="monthly-trend__axis" aria-hidden="true" style={{ height: HEIGHT }}>
                     {ticks.map(tick => <span key={tick} style={{ top: y(tick) }}>{formatTick(tick)}</span>)}
                 </div>
                 <div ref={scrollRef} className="monthly-trend__scroll" data-testid="monthly-trend-scroll">
                     <div className="monthly-trend__track" style={{ minWidth: width }}>
-                        <svg width="100%" height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} preserveAspectRatio="none" aria-hidden="true" className="monthly-trend__chart">
+                        <svg data-account-value width="100%" height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} preserveAspectRatio="none" aria-hidden="true" className="monthly-trend__chart">
                             {ticks.map(tick => <line key={tick} x1="0" x2={width} y1={y(tick)} y2={y(tick)} className="monthly-trend__grid" />)}
                             <polygon points={`${x(0)},${y(0)} ${points('expense')} ${x(series.length - 1)},${y(0)}`} className="monthly-trend__area" />
                             <polyline points={points('income')} className="monthly-trend__line monthly-trend__line--income" />
@@ -135,9 +135,9 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
                         {selectedMonth === currentMonth && <span>Месяц ещё идёт</span>}
                     </div>
                     <dl className="monthly-trend__totals">
-                        <div><dt>Доход</dt><dd className="monthly-trend__income">€{formatEuro(selected.income)}</dd></div>
-                        <div><dt>Расход</dt><dd>€{formatEuro(selected.expense)}</dd></div>
-                        <div><dt>Сальдо</dt><dd className={net < 0 ? 'monthly-trend__negative' : 'monthly-trend__income'}>{net < 0 ? '−' : net > 0 ? '+' : ''}€{formatEuro(Math.abs(net))}</dd></div>
+                        <div><dt>Доход</dt><dd data-account-value className="monthly-trend__income">€{formatEuro(selected.income)}</dd></div>
+                        <div><dt>Расход</dt><dd data-account-value>€{formatEuro(selected.expense)}</dd></div>
+                        <div><dt>Сальдо</dt><dd data-account-value className={net < 0 ? 'monthly-trend__negative' : 'monthly-trend__income'}>{net < 0 ? '−' : net > 0 ? '+' : ''}€{formatEuro(Math.abs(net))}</dd></div>
                     </dl>
                     {selected.income === 0 && selected.expense === 0 && <p className="monthly-trend__empty">Нет доходов и расходов за этот месяц</p>}
                 </div>

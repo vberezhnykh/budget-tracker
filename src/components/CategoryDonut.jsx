@@ -50,7 +50,7 @@ function LegendRow({ name, count, value, percent, color, comparison, isSelected,
                     </span>
                 )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+            <div data-account-value style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                 <span style={{ fontSize: indent ? 'var(--text-xs)' : 'var(--text-sm)', fontWeight: '500', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)' }}>
                     €{value.toFixed(0)}
                 </span>
@@ -199,7 +199,7 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
                 {/* SVG Donut */}
                 <div style={{ position: 'relative', width: '150px', height: '150px' }}>
-                    <svg viewBox="-1 -1 2 2" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
+                    <svg data-account-value viewBox="-1 -1 2 2" style={{ transform: 'rotate(-90deg)', width: '100%', height: '100%' }}>
                         {segments.map((s, i) => {
                             if (s.percent === 1) {
                                 return (
@@ -250,7 +250,7 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
                     }}>
                         <div style={{ width: '100%' }}>
                             <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>Всего</div>
-                            <div style={{ fontWeight: '700', fontSize: 'var(--text-xl)', color: 'var(--color-text-main)' }}>€{total.toFixed(0)}</div>
+                            <div data-account-value style={{ fontWeight: '700', fontSize: 'var(--text-xl)', color: 'var(--color-text-main)' }}>€{total.toFixed(0)}</div>
                         </div>
                     </div>
                 </div>
