@@ -1,4 +1,4 @@
-const { computeBalances, computeMonthlyTotals } = require('./stats');
+const { computeBalances, computeMonthlyTotalsByAccount } = require('./stats');
 const { transformTransactions } = require('./transform');
 const { computePeriodData, periodPrefixOf } = require('./periodStats');
 const {
@@ -9,9 +9,11 @@ const {
 function buildDashboard(docs, accounts, { month, timeRange = 'month', account, category, type, today, analytics = true }) {
     const transactions = transformTransactions(docs, accounts);
     const filters = { account, category, type, includeTransactions: false };
+    const monthlyTotalsByAccount = computeMonthlyTotalsByAccount(docs, accounts, { category });
     return {
         balances: computeBalances(docs, accounts),
-        monthlyTotals: computeMonthlyTotals(docs, accounts, { account, category }),
+        monthlyTotals: monthlyTotalsByAccount[account || ''] || {},
+        monthlyTotalsByAccount,
         period: computePeriodData(transactions, periodPrefixOf(timeRange, month), filters),
         month: computePeriodData(transactions, month, filters),
         yearly: computeYearlyData(transactions, month, account, category),

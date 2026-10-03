@@ -1,0 +1,129 @@
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { readApi } from '../server/test/readApi.mjs';
+import App from './App';
+
+const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }, { _id: 'cash', name: 'Наличные', type: 'cash' }];
+const response = body => ({ ok: true, status: 200, json: async () => body });
+let transactions, request;
+const statsCalls = () => request.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?'));
+const select = name => fireEvent.click(screen.getByRole('button', { name: `Показать ${name}` }));
+const skeleton = () => screen.queryByRole('status', { name: 'Загрузка итогов…' });
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-24T12:00:00Z'));
+  transactions = [
+    { _id: 'card-expense', title: 'Продукты', amount: 300, type: 'expense', account: 'card', category: 'Еда', date: '2026-09-20' },
+    { _id: 'cash-expense', title: 'Кофе', amount: 50, type: 'expense', account: 'cash', category: 'Еда', date: '2026-09-20' },
+  ];
+  request = vi.fn(async url => {
+    if (url === '/api/accounts') return response(accounts);
+    if (url === '/api/categories') return response([{ _id: 'food', name: 'Еда', type: 'expense' }]);
+    if (url === '/api/settings') return response({ monthlyLimit: 1200 });
+    return response(readApi(url, transactions, accounts) ?? []);
+  });
+  vi.stubGlobal('fetch', request);
+});
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+describe('instant account summaries', () => {
+  it('shows the correct monthly ring on the first account switch without any summary or reference-data requests', async () => {
+    render(<App />);
+    await screen.findByTestId('balance-carousel');
+    const count = statsCalls().length;
+    select('Наличные');
+    expect(skeleton()).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Расход:.*50/ })).toBeVisible();
+    select('Карта');
+    expect(skeleton()).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Расход:.*300/ })).toBeVisible();
+    select('Общий капитал');
+    expect(screen.getByRole('button', { name: /Расход:.*350/ })).toBeVisible();
+    await act(async () => {});
+    expect(statsCalls()).toHaveLength(count);
+    for (const path of ['/api/accounts', '/api/categories', '/api/settings']) {
+      expect(request.mock.calls.filter(([url]) => url === path)).toHaveLength(1);
+    }
+  });
+
+  it('loads only analytics for a new selection and instantly reuses visited selections', async () => {
+    render(<App />);
+    await screen.findByTestId('balance-carousel');
+    fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
+    await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    select('Наличные');
+    await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    expect(statsCalls()).toHaveLength(3); // startup + two analytics views
+    select('Общий капитал');
+    expect(skeleton()).not.toBeInTheDocument();
+    select('Наличные');
+    expect(skeleton()).not.toBeInTheDocument();
+    await act(async () => {});
+    expect(statsCalls()).toHaveLength(3);
+    for (const path of ['/api/accounts', '/api/categories', '/api/settings']) {
+      expect(request.mock.calls.filter(([url]) => url === path)).toHaveLength(1);
+    }
+  });
+
+  it('refreshes expired summaries in the background and keeps custom settings', async () => {
+    render(<App />);
+    await screen.findByTestId('balance-carousel');
+    select('Наличные');
+    const base = request.getMockImplementation();
+    let finish;
+    request.mockImplementation((url, options) => url.startsWith('/api/stats/dashboard?')
+      ? new Promise(resolve => { finish = () => base(url, options).then(resolve); }) : base(url, options));
+    vi.setSystemTime(new Date('2026-09-24T12:01:01Z'));
+    select('Карта');
+    await waitFor(() => expect(finish).toBeDefined());
+    expect(skeleton()).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Расход:.*300/ })).toBeVisible();
+    transactions[0].amount = 400;
+    await act(async () => finish());
+    expect(screen.getByRole('button', { name: /Расход:.*400/ })).toBeVisible();
+    expect(screen.getByRole('button', { name: /Расход:.*400.*лимита.*1\.200/ })).toBeVisible();
+  });
+
+  it('refreshes all views on return after expiry, without clearing the visible ring', async () => {
+    render(<App />);
+    await screen.findByTestId('balance-carousel');
+    select('Наличные');
+    vi.setSystemTime(new Date('2026-09-24T12:01:01Z'));
+    transactions[1].amount = 70;
+    fireEvent.focus(window);
+    expect(skeleton()).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /Расход:.*70/ })).toBeVisible());
+    expect(request.mock.calls.filter(([url]) => url === '/api/settings')).toHaveLength(2);
+  });
+
+  it('invalidates previously visited analytics after editing an operation', async () => {
+    const base = request.getMockImplementation();
+    request.mockImplementation((url, options) => {
+      if (url === '/api/transactions/cash-expense' && options?.method === 'PUT') {
+        const changes = JSON.parse(options.body);
+        transactions = transactions.map(t => t._id === 'cash-expense' ? { ...t, ...changes } : t);
+        return Promise.resolve(response({ ...changes, _id: 'cash-expense' }));
+      }
+      return base(url, options);
+    });
+    render(<App />);
+    await screen.findByTestId('balance-carousel');
+    fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
+    await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    select('Наличные');
+    await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    select('Общий капитал');
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Открыть список операций' }), { key: 'Enter' });
+    fireEvent.click(await screen.findByRole('button', { name: /^Кофе,/ }));
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '75' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Редактировать' })).not.toBeInTheDocument());
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Закрыть список операций' }), { key: 'Enter' });
+    select('Наличные');
+    await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    expect(statsCalls().filter(([url]) => url.includes('account=cash') && url.includes('analytics=1'))).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: /Главная/ }));
+    expect(screen.getByRole('button', { name: /Расход:.*75/ })).toBeVisible();
+  });
+});

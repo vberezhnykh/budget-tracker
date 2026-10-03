@@ -171,4 +171,27 @@ function computeMonthlyTotals(transactions, accounts = [], options = {}) {
     return totals;
 }
 
-module.exports = { computeBalances, computeMonthlyTotals, accountFlows, toDateKey };
+// Small summaries for every carousel slide, in one pass over the ledger.
+// The empty key is the unfiltered total; type keys retain the filter API.
+function computeMonthlyTotalsByAccount(transactions, accounts = [], { category } = {}) {
+    const totals = Object.fromEntries(['', 'type:card', 'type:cash', ...accounts.map(a => String(a._id))].map(key => [key, {}]));
+    const types = buildAccountTypeMap(accounts);
+    for (const t of transactions || []) {
+        if (t.type === 'transfer' || t.excludeFromStats || (category && t.category !== category)) continue;
+        const month = toDateKey(t.date).slice(0, 7);
+        const amount = parseFloat(t.amount);
+        if (!month || Number.isNaN(amount)) continue;
+        const signed = t.type === 'income' || t.type === 'initial' ? amount : -amount;
+        const account = t.account || 'card';
+        for (const key of new Set(['', account, `type:${accountTypeOf(account, types)}`])) {
+            totals[key] ||= {};
+            totals[key][month] ||= { income: 0, expense: 0 };
+            if (signed > 0) {
+                if (t.type !== 'initial') totals[key][month].income += signed;
+            } else totals[key][month].expense += signed;
+        }
+    }
+    return totals;
+}
+
+module.exports = { computeBalances, computeMonthlyTotals, computeMonthlyTotalsByAccount, accountFlows, toDateKey };

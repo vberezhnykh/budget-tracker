@@ -1,0 +1,39 @@
+import { test, expect } from '@playwright/test';
+import { mockApi } from './fixtures.js';
+
+test('account rings and visited analytics work with subsequent summary requests blocked', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-01-15T12:00:00Z'));
+  await mockApi(page);
+  const requested = [];
+  page.on('request', r => requested.push(new URL(r.url()).pathname));
+  await page.goto('/');
+  await expect(page.getByTestId('balance-carousel')).toBeVisible();
+  // The Vite dev app uses StrictMode, which replays the initial effect.
+  const referencePaths = ['/api/accounts', '/api/categories', '/api/settings'];
+  const initialReads = Object.fromEntries(referencePaths.map(path => [path, requested.filter(p => p === path).length]));
+  const skeleton = page.getByRole('status', { name: 'Загрузка итогов…' });
+  const summaries = () => requested.filter(path => path === '/api/stats/dashboard').length;
+  for (const [name, amount] of [['Наличные', '5,00'], ['Тинькофф', '120,00'], ['Общий капитал', '125,00']]) {
+    await page.getByRole('button', { name: `Показать ${name}` }).click();
+    await expect(page.getByRole('button', { name: `Расход: €${amount}`, exact: false })).toBeVisible();
+    await expect(skeleton).toHaveCount(0);
+  }
+  expect(summaries()).toBe(1);
+  await page.getByRole('button', { name: /Аналитика/ }).click();
+  await expect(page.getByText('Аналитика трат')).toBeVisible();
+  await page.getByRole('button', { name: 'Показать Наличные' }).click();
+  await expect(page.getByText('Аналитика трат')).toBeVisible();
+  await expect(skeleton).toHaveCount(0);
+  const before = summaries();
+  // Any accidental cache miss now fails rather than passing on fast localhost.
+  await page.route('**/api/stats/dashboard?*', route => route.abort());
+  for (const name of ['Общий капитал', 'Наличные']) {
+    await page.getByRole('button', { name: `Показать ${name}` }).click();
+    await expect(page.getByText('Аналитика трат')).toBeVisible();
+    await expect(skeleton).toHaveCount(0);
+  }
+  expect(summaries()).toBe(before);
+  for (const path of referencePaths) {
+    expect(requested.filter(p => p === path)).toHaveLength(initialReads[path]);
+  }
+});

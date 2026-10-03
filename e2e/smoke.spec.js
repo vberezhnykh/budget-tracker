@@ -23,12 +23,14 @@ import { mockApi, accounts, manyAccounts } from './fixtures.js';
 // is required.
 
 test.describe('Budget Tracker smoke (mobile, real browser)', () => {
-  test('slow reads show skeletons without resetting the month carousel', async ({ page }) => {
+  test('slow startup shows a skeleton, but switching accounts keeps the monthly ring visible', async ({ page }) => {
     await mockApi(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     let release;
-    let gate = new Promise(resolve => { release = resolve; });
+    const gate = new Promise(resolve => { release = resolve; });
+    let summaryRequests = 0;
     await page.route('**/api/stats/dashboard?*', async route => {
+      summaryRequests += 1;
       await gate;
       await route.fallback();
     });
@@ -46,16 +48,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     const documentTop = locator => locator.evaluate(el => el.getBoundingClientRect().top + window.scrollY);
     const before = await documentTop(carousel);
 
-    gate = new Promise(resolve => { release = resolve; });
     await page.getByRole('button', { name: /^Тинькофф:/ }).click();
     const summary = page.getByRole('status', { name: 'Загрузка итогов…' });
-    await expect(summary).toBeVisible();
-    await expect(carousel).toBeHidden();
-    expect(Math.abs(await documentTop(summary) - before)).toBeLessThan(2);
-    expect(await original.evaluate(el => el === document.querySelector('[data-testid="month-carousel"]'))).toBe(true);
-    release();
     await expect(summary).toHaveCount(0);
     await expect(carousel).toBeVisible();
+    expect(summaryRequests).toBe(1);
+    expect(await original.evaluate(el => el === document.querySelector('[data-testid="month-carousel"]'))).toBe(true);
     expect(Math.abs(await documentTop(carousel) - before)).toBeLessThan(2);
   });
 

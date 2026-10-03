@@ -16,6 +16,7 @@ import IconButton from './components/ui/IconButton'
 import { formatPeriodLabel, toDativeMonth, listPeriodMonths, formatMonthName } from './utils/period'
 import { transformTransactions, getPaceForecast } from './utils/finance'
 import usePagedHistory from './utils/usePagedHistory'
+import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
 import useSnapCarousel from './utils/useSnapCarousel'
@@ -140,6 +141,8 @@ function App() {
 
   // Transactions state
   const [dashboard, setDashboard] = useState(null);
+  const [dashboardCache, setDashboardCache] = useState({});
+  const [dashboardReads] = useState(() => createDashboardCache());
   const [historyRevision, setHistoryRevision] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -167,6 +170,8 @@ function App() {
     setAccounts([]);
     accountsRef.current = [];
     setDashboard(null);
+    dashboardReads.clear();
+    setDashboardCache({});
     setIsExporting(false);
     setHistoryRevision(value => value + 1);
     setCategories([]);
@@ -261,11 +266,32 @@ function App() {
   // Summaries contain complete totals, never calculated from a partial page.
   // Loading the first history page does not block the dashboard.
   const loadData = async ({ initial = !hasSnapshotRef.current, onlyStats = false } = {}) => {
+    // A filter change during a post-write refresh must still finish the full
+    // snapshot, rather than cancel it with a stats-only read.
+    onlyStats = onlyStats && !historyRefreshNeededRef.current;
     const session = sessionGenerationRef.current;
     const generation = ++loadGenerationRef.current;
-    if (!onlyStats) historyRefreshNeededRef.current = true;
+    if (!onlyStats) {
+      historyRefreshNeededRef.current = true;
+      dashboardReads.clear();
+      setDashboardCache({});
+    }
+    const cacheVersion = dashboardReads.version;
     const isCurrent = () => session === sessionGenerationRef.current
       && generation === loadGenerationRef.current;
+
+    const cached = dashboardReads.get(statsKey);
+    const fresh = timestamp => Date.now() - timestamp < DASHBOARD_FRESH_MS;
+    const hasFastTotals = summaryView === 'stats' && timeRange === 'month'
+      && dashboard?.categoryKey === (selectedCategory || '')
+      && dashboard.data.monthlyTotalsByAccount?.[selectedAccount || '']
+      && fresh(dashboard.updatedAt);
+    if (onlyStats && ((cached && fresh(cached.updatedAt)) || hasFastTotals)) {
+      setDashboardCache(dashboardReads.snapshot());
+      setIsRefreshing(false);
+      setSyncWarning(null);
+      return true;
+    }
 
     if (initial) {
       setIsLoading(true);
@@ -275,22 +301,25 @@ function App() {
     }
 
     try {
-      const loadedAccounts = await readJson(ACCOUNTS_URL, 'Не удалось загрузить счета');
+      const loadedAccounts = onlyStats ? accountsRef.current : await readJson(ACCOUNTS_URL, 'Не удалось загрузить счета');
       if (!Array.isArray(loadedAccounts)) throw new DataLoadError('Сервер вернул некорректный список счетов');
       if (!isCurrent()) return false;
 
       const [loadedDashboard, loadedCategories, loadedSettings] = await Promise.all([
-        readJson(`/api/stats/dashboard?${statsKey}`, 'Не удалось загрузить итоги'),
-        readJson(CATEGORIES_URL, 'Не удалось загрузить категории'),
+        dashboardReads.load(statsKey, async () => {
+          const data = await readJson(`/api/stats/dashboard?${statsKey}`, 'Не удалось загрузить итоги');
+          if (!data?.balances?.byAccount || !Number.isFinite(data.balances.total)
+            || !data.monthlyTotals || !data.month || !data.yearly || !data.lifetime) {
+            throw new DataLoadError('Сервер вернул некорректные итоги');
+          }
+          return data;
+        }),
+        onlyStats ? categories : readJson(CATEGORIES_URL, 'Не удалось загрузить категории'),
         // Compatibility with deployments from before shared settings: a 404
         // means the documented default, while network/5xx failures still make
         // the whole snapshot unsuccessful.
-        readJson(SETTINGS_URL, 'Не удалось загрузить настройки', { allowMissing: true }),
+        onlyStats ? null : readJson(SETTINGS_URL, 'Не удалось загрузить настройки', { allowMissing: true }),
       ]);
-      if (!loadedDashboard?.balances?.byAccount || !Number.isFinite(loadedDashboard.balances.total)
-        || !loadedDashboard.monthlyTotals || !loadedDashboard.month || !loadedDashboard.yearly || !loadedDashboard.lifetime) {
-        throw new DataLoadError('Сервер вернул некорректные итоги');
-      }
       if (!Array.isArray(loadedCategories)) throw new DataLoadError('Сервер вернул некорректный список категорий');
       if (loadedSettings !== null && (
         typeof loadedSettings !== 'object'
@@ -302,18 +331,20 @@ function App() {
       }
       if (!isCurrent()) return false;
 
-      const nextLimit = loadedSettings === null ? DEFAULT_MONTHLY_LIMIT : loadedSettings.monthlyLimit;
-      setAccounts(loadedAccounts);
-      accountsRef.current = loadedAccounts;
-      setDashboard({ key: statsKey, filterKey: summaryFilterKey, data: loadedDashboard });
+      setDashboardCache(dashboardReads.snapshot());
+      setDashboard({ key: statsKey, filterKey: summaryFilterKey, categoryKey: selectedCategory || '',
+        updatedAt: Date.now(), data: loadedDashboard });
+      if (!onlyStats) {
+        setAccounts(loadedAccounts);
+        accountsRef.current = loadedAccounts;
+        setCategories(loadedCategories);
+        setMonthlyLimit(loadedSettings === null ? DEFAULT_MONTHLY_LIMIT : loadedSettings.monthlyLimit);
+        setBankingEnabled(loadedSettings?.features?.banking === true);
+      }
       if (historyRefreshNeededRef.current) {
         setHistoryRevision(value => value + 1);
         historyRefreshNeededRef.current = false;
       }
-      setCategories(loadedCategories);
-      setMonthlyLimit(nextLimit);
-      // This optional module stays hidden unless the server explicitly enables it.
-      setBankingEnabled(loadedSettings?.features?.banking === true);
       setLastSuccessfulSync(new Date());
       setSyncWarning(null);
       setInitialLoadError(null);
@@ -333,6 +364,9 @@ function App() {
       }
       return false;
     } finally {
+      if (onlyStats && session === sessionGenerationRef.current && cacheVersion === dashboardReads.version) {
+        setDashboardCache(dashboardReads.snapshot());
+      }
       if (isCurrent()) {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -361,6 +395,24 @@ function App() {
     // only changes the selected summary, without reloading history pages.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statsKey]);
+
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== 'hidden' && isAuthenticated === true
+        && !historyRefreshNeededRef.current
+        && Date.now() - (lastSuccessfulSync?.getTime() || 0) >= DASHBOARD_FRESH_MS) {
+        loadData({ initial: false });
+      }
+    };
+    window.addEventListener('focus', refreshOnReturn);
+    document.addEventListener('visibilitychange', refreshOnReturn);
+    return () => {
+      window.removeEventListener('focus', refreshOnReturn);
+      document.removeEventListener('visibilitychange', refreshOnReturn);
+    };
+    // Always refresh the currently selected view when returning to the app.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statsKey, isAuthenticated, lastSuccessfulSync]);
 
   // Bank snapshots are independent of the budget snapshot: a bank outage must
   // not prevent using manually entered expenses. Pending entries never enter
@@ -506,11 +558,13 @@ function App() {
 
   // Calculate current balances (Total lifetime) - stays persistent
   const balances = dashboard?.data.balances || EMPTY_BALANCES;
-  const summary = dashboard?.key === statsKey ? dashboard.data : null;
+  const summary = dashboardCache[statsKey]?.data || (dashboard?.key === statsKey ? dashboard.data : null);
   // Month cards already have totals for every month. Keep them visible while
   // a swipe refreshes the selected month's details in the background.
   const matchingTotals = dashboard?.filterKey === summaryFilterKey;
-  const statsReady = Boolean(summary || (matchingTotals && summaryView === 'stats' && timeRange === 'month'));
+  const accountMonthlyTotals = dashboard?.categoryKey === (selectedCategory || '')
+    ? dashboard.data.monthlyTotalsByAccount?.[selectedAccount || ''] : undefined;
+  const statsReady = Boolean(summary || ((accountMonthlyTotals || matchingTotals) && summaryView === 'stats' && timeRange === 'month'));
 
   // Declarative slide list for the header balance carousel: total capital,
   // then one slide per individual account. The type-group slides
@@ -558,7 +612,7 @@ function App() {
   const comparisonData = summary?.comparison || EMPTY_COMPARISON;
   const categoryComparison = summary?.categoryComparison || {};
   const carouselMonths = useMemo(() => listPeriodMonths(), []);
-  const monthlyTotals = matchingTotals ? dashboard.data.monthlyTotals : {};
+  const monthlyTotals = accountMonthlyTotals || summary?.monthlyTotals || (matchingTotals ? dashboard.data.monthlyTotals : {});
   const monthlySeries = carouselMonths.map(month => ({
     month,
     year: Number(month.slice(0, 4)),

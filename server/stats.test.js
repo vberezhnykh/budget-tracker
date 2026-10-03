@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBalances, computeMonthlyTotals, toDateKey } from './stats.js';
+import { computeBalances, computeMonthlyTotals, computeMonthlyTotalsByAccount, toDateKey } from './stats.js';
 import { transformTransactions, calculateBalances, getMonthlyTotals } from '../src/utils/finance.js';
 
 // Счета всех интересных видов: карта, наличные, замороженный счёт с
@@ -47,6 +47,18 @@ const asClientSees = transformTransactions(transactions, accounts);
 // разойтись они не имеют права: это одна и та же цифра на одном и том же
 // экране.
 describe('серверные агрегаты совпадают с клиентскими', () => {
+    it.each([undefined, 'Продукты', 'Другое'])('сводки всех счетов совпадают с отдельными запросами: %s', category => {
+        const docs = [...transactions,
+            { account: 'acc-cash', date: '2026-08-01', type: 'initial', amount: -15, category: 'Другое' },
+            { date: '2026-08-01', type: 'expense', amount: 5, category: 'Другое' },
+        ];
+        const summaries = computeMonthlyTotalsByAccount(docs, accounts, { category });
+        for (const account of ['', 'type:cash', 'type:card', 'card', ...accounts.map(a => a._id)]) {
+            expect(summaries[account] || {}, account).toEqual(computeMonthlyTotals(docs, accounts, { account, category }));
+        }
+        expect(summaries['acc-deposit']).toEqual({});
+    });
+
     it('остатки по счетам, капитал и заморожено', () => {
         expect(computeBalances(transactions, accounts)).toEqual(calculateBalances(asClientSees, accounts));
     });
