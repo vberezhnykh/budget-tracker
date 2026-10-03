@@ -776,6 +776,8 @@ describe('App Integration Tests', () => {
         vi.setSystemTime(new Date('2026-01-15'));
 
         fireEvent.scroll(container);
+        expect(screen.getByTestId('account-summary')).toHaveClass('account-summary--pending');
+        expect(screen.getByTestId('account-summary')).toHaveAttribute('aria-busy', 'true');
         act(() => {
             vi.advanceTimersByTime(200);
         });
@@ -792,6 +794,7 @@ describe('App Integration Tests', () => {
         // Выбранный счёт виден в заголовке на ручке шторки - чип «Счет:»
         // лежит в её содержимом, а оно рендерится только у раскрытой.
         expect(screen.getByText(/^Список операций/)).toHaveTextContent('Карта');
+        await waitFor(() => expect(screen.getByTestId('account-summary')).not.toHaveClass('account-summary--pending'));
     });
 
     it('navigates the carousel via the dot indicators', async () => {

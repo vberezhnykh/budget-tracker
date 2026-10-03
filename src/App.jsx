@@ -637,6 +637,8 @@ function App() {
     },
   });
 
+  const accountStatsPending = accountCarousel.isScrolling || (!statsReady && (!syncWarning || isRefreshing));
+
   // Нажатие на слайд всегда выбирает его - без «нажать ещё раз, чтобы
   // снять»: ровно один слайд активен в любой момент.
   const handleSlideClick = (slide, index) => {
@@ -1560,7 +1562,7 @@ function App() {
         </section>
 
         {/* Summary Card with Budget Limit */}
-        <div aria-busy={!statsReady && (!syncWarning || isRefreshing)} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: '24px' }}>
+        <div data-testid="account-summary" className={accountStatsPending ? 'account-summary account-summary--pending' : 'account-summary'} aria-busy={accountStatsPending} inert={accountStatsPending} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: '24px' }}>
           {!statsReady && <div style={{ gridArea: '1 / 1', minWidth: 0 }}>
             {syncWarning && !isRefreshing
               ? <div className="glass-panel" style={{ padding: '24px', color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</div>

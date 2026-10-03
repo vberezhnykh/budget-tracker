@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Общая механика горизонтальной карусели со снапом: по ней листаются и счета
 // в шапке, и месяцы в карточке сводки. Ровно из-за этой механики в проекте
@@ -25,6 +25,7 @@ const SETTLE_DELAY_MS = 120;
 
 export default function useSnapCarousel({ onSettle }) {
     const containerRef = useRef(null);
+    const [isScrolling, setIsScrolling] = useState(false);
     // Индекс, к которому нас просили прокрутиться, пока прокручивать было
     // нечего: на первом рендере экран занят стартовым скелетоном, карусели в дереве
     // ещё нет, а эффект синхронизации уже отработал.
@@ -50,6 +51,7 @@ export default function useSnapCarousel({ onSettle }) {
 
     const commitSettledSlide = useCallback(() => {
         settleTimeoutRef.current = null;
+        setIsScrolling(false);
         const wasProgrammatic = programmaticRef.current;
         programmaticRef.current = false;
         if (wasProgrammatic) return;
@@ -83,6 +85,7 @@ export default function useSnapCarousel({ onSettle }) {
     }, [commitSettledSlide]);
 
     const handleScroll = useCallback(() => {
+        setIsScrolling(true);
         if (rafRef.current) return;
         rafRef.current = requestAnimationFrame(() => {
             rafRef.current = null;
@@ -103,6 +106,7 @@ export default function useSnapCarousel({ onSettle }) {
             pendingIndexRef.current = index;
             return;
         }
+        setIsScrolling(true);
         programmaticRef.current = true;
         // Флаг обязан сняться, даже если прокрутки не случится вовсе -
         // например, слайд уже по центру.
@@ -137,5 +141,5 @@ export default function useSnapCarousel({ onSettle }) {
         if (settleTimeoutRef.current) clearTimeout(settleTimeoutRef.current);
     }, []);
 
-    return { setContainer, handleScroll, scrollToIndex, getSlideElements };
+    return { setContainer, handleScroll, scrollToIndex, getSlideElements, isScrolling };
 }
