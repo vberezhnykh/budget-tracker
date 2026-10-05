@@ -100,7 +100,9 @@ export default function CompanyField({ item, transactions, onChange, onLogoChang
   } else if (!desiredUrl) {
     statusText = 'Иконка категории';
     actions = [openPanelAction('Найти логотип')];
-  } else if (waitingForTyping || previewStatus === 'loading') {
+  } else if (waitingForTyping || (previewStatus !== 'loaded' && previewStatus !== 'error')) {
+    // Пока картинка не ответила, статус ещё 'disabled' от иконки категории или
+    // 'loading' - «подобран» показываем только после реальной загрузки.
     statusText = 'Загружаем логотип…';
   } else if (previewStatus === 'error') {
     statusText = 'Логотип не найден — показана иконка категории';
