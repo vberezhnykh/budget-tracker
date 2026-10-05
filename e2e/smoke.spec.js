@@ -633,9 +633,9 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     const afterLabel = (await chip.textContent()).trim();
     expect(afterLabel).not.toBe(startLabel);
 
-    // Соседняя карточка подписана своим месяцем - иначе во время свайпа не
-    // понять, куда едешь.
-    await expect(carousel.getByText(new RegExp(afterLabel.split(' ')[0], 'i')).first()).toBeVisible();
+    // Месяц называет только чип - на самих карточках подписи нет, иначе
+    // одно и то же стояло бы на экране дважды.
+    await expect(carousel.getByText(new RegExp(afterLabel.split(' ')[0], 'i'))).toHaveCount(0);
 
     // Обратный путь: месяц, выбранный в чипе, подтягивает ленту к себе.
     await chip.click();

@@ -583,9 +583,10 @@ describe('App Integration Tests', () => {
         const december = within(slides[1]);
         const january = within(slides[2]);
 
-        expect(december.getByText('Декабрь 2025')).toBeInTheDocument();
+        // Подписи месяца на карточках нет - его называет чип периода.
+        expect(december.queryByText('Декабрь 2025')).not.toBeInTheDocument();
         expect(december.getByText('€700,00')).toBeInTheDocument();
-        expect(january.getByText('Январь 2026')).toBeInTheDocument();
+        expect(january.queryByText('Январь 2026')).not.toBeInTheDocument();
         // Январь: расход из mockTransactions, декабрьская трата в него не
         // просочилась.
         expect(january.queryByText('€700,00')).not.toBeInTheDocument();

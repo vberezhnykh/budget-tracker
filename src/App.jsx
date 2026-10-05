@@ -13,7 +13,7 @@ import { AppSkeleton, SummarySkeleton } from './components/ui/Skeleton'
 import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
-import { formatPeriodLabel, toDativeMonth, listPeriodMonths, formatMonthName } from './utils/period'
+import { formatPeriodLabel, toDativeMonth, listPeriodMonths } from './utils/period'
 import { transformTransactions, getPaceForecast } from './utils/finance'
 import usePagedHistory from './utils/usePagedHistory'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
@@ -1566,7 +1566,7 @@ function App() {
           {!statsReady && <div style={{ gridArea: '1 / 1', minWidth: 0 }}>
             {syncWarning && !isRefreshing
               ? <div className="glass-panel" style={{ padding: '24px', color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</div>
-              : <SummarySkeleton monthly={timeRange === 'month'} ring={Number.isFinite(monthlyLimit) && monthlyLimit > 0} analytics={summaryView === 'analytics'} />}
+              : <SummarySkeleton monthly={timeRange === 'month'} limitBar={Number.isFinite(monthlyLimit) && monthlyLimit > 0} analytics={summaryView === 'analytics'} />}
           </div>}
           {/* Keep the carousel mounted so loading never resets its scroll position. */}
           <div aria-hidden={!statsReady || undefined} style={{ gridArea: '1 / 1', minWidth: 0, visibility: statsReady ? 'visible' : 'hidden' }}>
@@ -1597,7 +1597,6 @@ function App() {
                 {carouselMonths.map((month) => {
                   const totals = monthlyTotals[month] || { income: 0, expense: 0 };
                   const isActive = month === selectedMonth;
-                  const [monthYear] = month.split('-');
                   return (
                     <div
                       key={month}
@@ -1613,11 +1612,6 @@ function App() {
                         transition: 'opacity 0.2s ease'
                       }}
                     >
-                      {/* Свой месяц подписан на каждой карточке - иначе во
-                          время свайпа не понять, куда едешь. */}
-                      <div style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)', textAlign: 'center', marginBottom: '12px' }}>
-                        {formatMonthName(month)} {monthYear}
-                      </div>
                       <SummaryCard
                         income={totals.income}
                         expense={totals.expense}

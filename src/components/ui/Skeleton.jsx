@@ -21,12 +21,18 @@ export function ListSkeleton({ label, rows = 3, amounts = true }) {
   </LoadingSkeleton>;
 }
 
-export function SummarySkeleton({ monthly = true, ring = true, analytics = false }) {
+export function SummarySkeleton({ monthly = true, limitBar = true, analytics = false }) {
+  const withLimitBar = monthly && limitBar && !analytics;
   return <LoadingSkeleton label="Загрузка итогов…" className={monthly && !analytics ? 'skeleton-month' : ''}>
     <div className="glass-panel skeleton-summary">
-      <Skeleton width={112} height={12} />
+      {!withLimitBar && <Skeleton width={112} height={12} />}
       {analytics ? <div className="skeleton-columns"><Skeleton height={64} /><Skeleton height={64} /><Skeleton height={64} /></div>
-        : monthly && ring ? <div className="skeleton-ring"><Skeleton width={94} height={28} /><Skeleton width={62} height={12} /></div>
+        : withLimitBar ? <div className="skeleton-limit">
+          <Skeleton width={56} height={12} />
+          <Skeleton width={150} height={40} />
+          <Skeleton width="100%" height={8} />
+          <div className="skeleton-limit-row"><Skeleton width={120} height={12} /><Skeleton width={90} height={12} /></div>
+        </div>
           : <Skeleton width={150} height={48} />}
       {!analytics && <div className="skeleton-columns"><Skeleton height={64} /><Skeleton height={64} /></div>}
     </div>

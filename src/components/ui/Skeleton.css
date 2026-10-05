@@ -27,7 +27,8 @@
 .skeleton-columns > .skeleton { flex: 1; min-width: 0; }
 .skeleton-summary { padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 20px; }
 .skeleton-month { width: 88%; margin: 0 auto; }
-.skeleton-ring { width: 188px; height: 188px; box-sizing: border-box; border: 14px solid var(--color-border-subtle); border-radius: 50%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; }
+.skeleton-limit { width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.skeleton-limit-row { width: 100%; display: flex; justify-content: space-between; }
 .skeleton-chart { margin-top: 16px; align-items: flex-start; }
 .skeleton-bars { height: 160px; display: flex; align-items: flex-end; gap: 12px; width: 100%; }
 .skeleton-bars > .skeleton { flex: 1; min-width: 0; }
