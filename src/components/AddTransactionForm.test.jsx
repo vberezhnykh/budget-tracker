@@ -26,6 +26,16 @@ const mockAccounts = [
     { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
 ];
 
+// Сторона перевода - группа чипов счетов с aria-label «Откуда» / «Куда»
+const side = label => screen.getByRole('group', { name: label });
+const sideChip = (label, name) => within(side(label)).getByRole('button', { name });
+const selectedIn = label => within(side(label)).getAllByRole('button').filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.textContent);
+const localDate = (offsetDays = 0) => {
+    const d = new Date();
+    d.setDate(d.getDate() + offsetDays);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 describe('AddTransactionForm Component', () => {
     const mockOnSubmit = vi.fn();
     const mockOnClose = vi.fn();
@@ -180,8 +190,8 @@ describe('AddTransactionForm Component', () => {
         render(<AddTransactionForm type="transfer" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         expect(screen.getByText('Перевод', { selector: 'h3' })).toBeInTheDocument();
-        expect(screen.getByLabelText('Откуда')).toBeInTheDocument();
-        expect(screen.getByLabelText('Куда')).toBeInTheDocument();
+        expect(side('Откуда')).toBeInTheDocument();
+        expect(side('Куда')).toBeInTheDocument();
 
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '200' } });
 
@@ -200,8 +210,8 @@ describe('AddTransactionForm Component', () => {
         // "Откуда" is the account that was active on the balance carousel, so
         // the only thing left to choose is where the money goes - and "Куда"
         // must not land on the same account.
-        expect(screen.getByLabelText('Откуда')).toHaveValue('card');
-        expect(screen.getByLabelText('Куда')).toHaveValue('cash');
+        expect(selectedIn('Откуда')).toEqual(['Карта']);
+        expect(selectedIn('Куда')).toEqual(['Наличные']);
 
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50' } });
         fireEvent.click(screen.getByText('Сохранить'));
@@ -216,8 +226,8 @@ describe('AddTransactionForm Component', () => {
     it('falls back to the default account pairing for a transfer with no preset (Общий капитал)', () => {
         render(<AddTransactionForm type="transfer" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        expect(screen.getByLabelText('Откуда')).toHaveValue('cash');
-        expect(screen.getByLabelText('Куда')).toHaveValue('card');
+        expect(selectedIn('Откуда')).toEqual(['Наличные']);
+        expect(selectedIn('Куда')).toEqual(['Карта']);
     });
 
     it('fills both transfer sides when switching to transfer from an account-less expense', () => {
@@ -225,36 +235,50 @@ describe('AddTransactionForm Component', () => {
 
         fireEvent.click(screen.getByText('Перевод'));
 
-        const from = screen.getByLabelText('Откуда');
-        const to = screen.getByLabelText('Куда');
-        expect(from.value).toBeTruthy();
-        expect(to.value).toBeTruthy();
-        expect(from.value).not.toBe(to.value);
+        const from = selectedIn('Откуда');
+        const to = selectedIn('Куда');
+        expect(from).toHaveLength(1);
+        expect(to).toHaveLength(1);
+        expect(from).not.toEqual(to);
     });
 
-    it('excludes the opposite account in both selects and updates options after changes and swaps', () => {
+    it('lists every account on both transfer sides and keeps from different from to after picks and swaps', () => {
         const accounts = [...mockAccounts, { _id: 'savings', name: 'Сбережения', type: 'card' }];
         render(<AddTransactionForm type="transfer" accounts={accounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
-        const from = screen.getByLabelText('Откуда');
-        const to = screen.getByLabelText('Куда');
-        const values = select => within(select).getAllByRole('option').map(option => option.value);
-        expect(values(from)).toEqual(['cash', 'savings']);
-        expect(values(to)).toEqual(['card', 'savings']);
+        const names = label => within(side(label)).getAllByRole('button').map(b => b.textContent);
+        expect(names('Откуда')).toEqual(['Карта', 'Наличные', 'Сбережения']);
+        expect(names('Куда')).toEqual(['Карта', 'Наличные', 'Сбережения']);
+        expect(selectedIn('Откуда')).toEqual(['Наличные']);
+        expect(selectedIn('Куда')).toEqual(['Карта']);
 
-        fireEvent.change(from, { target: { value: 'savings' } });
-        expect(to).toHaveValue('card');
-        expect(values(to)).toEqual(['card', 'cash']);
-        fireEvent.change(to, { target: { value: 'cash' } });
-        expect(from).toHaveValue('savings');
-        expect(values(from)).toEqual(['card', 'savings']);
+        fireEvent.click(sideChip('Откуда', 'Сбережения'));
+        expect(selectedIn('Откуда')).toEqual(['Сбережения']);
+        expect(selectedIn('Куда')).toEqual(['Карта']);
+        fireEvent.click(sideChip('Куда', 'Наличные'));
+        expect(selectedIn('Откуда')).toEqual(['Сбережения']);
+        expect(selectedIn('Куда')).toEqual(['Наличные']);
         fireEvent.click(screen.getByRole('button', { name: 'Поменять счета местами' }));
-        expect(from).toHaveValue('cash');
-        expect(to).toHaveValue('savings');
-        expect(values(from)).toEqual(['card', 'cash']);
-        expect(values(to)).toEqual(['card', 'savings']);
+        expect(selectedIn('Откуда')).toEqual(['Наличные']);
+        expect(selectedIn('Куда')).toEqual(['Сбережения']);
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
         fireEvent.click(screen.getByText('Сохранить'));
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash', toAccount: 'savings', amount: 25 }));
+    });
+
+    it('swaps the two transfer sides when the account chosen on the other side is picked', () => {
+        render(<AddTransactionForm type="transfer" accounts={mockAccounts} presetAccountId="card" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        expect(selectedIn('Откуда')).toEqual(['Карта']);
+        expect(selectedIn('Куда')).toEqual(['Наличные']);
+
+        // "Откуда" -> Наличные уже стоит в "Куда": стороны меняются местами
+        fireEvent.click(sideChip('Откуда', 'Наличные'));
+        expect(selectedIn('Откуда')).toEqual(['Наличные']);
+        expect(selectedIn('Куда')).toEqual(['Карта']);
+
+        // и симметрично со стороны "Куда"
+        fireEvent.click(sideChip('Куда', 'Наличные'));
+        expect(selectedIn('Откуда')).toEqual(['Карта']);
+        expect(selectedIn('Куда')).toEqual(['Наличные']);
     });
 
     it('keeps transfer accounts distinct after selecting the previous destination in expense mode', () => {
@@ -262,15 +286,15 @@ describe('AddTransactionForm Component', () => {
         fireEvent.click(screen.getByText('Расход'));
         fireEvent.click(screen.getByRole('button', { name: /Карта/ }));
         fireEvent.click(screen.getByText('Перевод'));
-        expect(screen.getByLabelText('Откуда')).toHaveValue('card');
-        expect(screen.getByLabelText('Куда')).toHaveValue('cash');
+        expect(selectedIn('Откуда')).toEqual(['Карта']);
+        expect(selectedIn('Куда')).toEqual(['Наличные']);
     });
 
-    it('filters the opposite account when editing an existing transfer', () => {
+    it('shows the existing sides when editing an existing transfer', () => {
         const initialData = { id: 'transfer-id', type: 'transfer', amount: 20, account: 'card', toAccount: 'cash' };
         render(<AddTransactionForm initialData={initialData} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
-        expect(within(screen.getByLabelText('Откуда')).queryByRole('option', { name: 'Наличные' })).not.toBeInTheDocument();
-        expect(within(screen.getByLabelText('Куда')).queryByRole('option', { name: 'Карта' })).not.toBeInTheDocument();
+        expect(selectedIn('Откуда')).toEqual(['Карта']);
+        expect(selectedIn('Куда')).toEqual(['Наличные']);
     });
 
     it('does not submit a transfer when only one account exists', () => {
@@ -289,7 +313,7 @@ describe('AddTransactionForm Component', () => {
         expect(mockOnClose).toHaveBeenCalled();
     });
 
-    it('calls onDelete when delete button is clicked and confirmed', () => {
+    it('calls onDelete when delete button is clicked, without a confirm dialog', () => {
         window.confirm = vi.fn(() => true);
         const editData = { id: 'test-id', amount: 100, category: 'Food', type: 'expense', account: 'cash' };
 
@@ -298,7 +322,7 @@ describe('AddTransactionForm Component', () => {
         const deleteButton = screen.getByRole('button', { name: 'Удалить операцию' });
         fireEvent.click(deleteButton);
 
-        expect(window.confirm).toHaveBeenCalled();
+        expect(window.confirm).not.toHaveBeenCalled();
         expect(mockOnDelete).toHaveBeenCalledWith('test-id');
     });
 
@@ -424,6 +448,135 @@ describe('AddTransactionForm Component', () => {
         expect(screen.getByText('Lidl')).toBeInTheDocument();
         expect(screen.queryByText('Wolt')).not.toBeInTheDocument();
     });
+
+    describe('чипы даты', () => {
+        it('по умолчанию выбрано «Сегодня», поле даты скрыто', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.getByRole('button', { name: 'Сегодня' })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByRole('button', { name: 'Вчера' })).toHaveAttribute('aria-pressed', 'false');
+            expect(screen.getByRole('button', { name: 'Другая…' })).toHaveAttribute('aria-pressed', 'false');
+            expect(screen.queryByLabelText('Дата')).not.toBeInTheDocument();
+        });
+
+        it('«Вчера» ставит вчерашнюю локальную дату', () => {
+            mockOnSubmit.mockClear();
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            fireEvent.click(screen.getByRole('button', { name: 'Вчера' }));
+            expect(screen.getByRole('button', { name: 'Вчера' })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByRole('button', { name: 'Сегодня' })).toHaveAttribute('aria-pressed', 'false');
+
+            fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
+            fireEvent.click(screen.getByText('Продукты'));
+            fireEvent.click(screen.getByText('Сохранить'));
+            expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ date: localDate(-1) }));
+        });
+
+        it('«Другая…» открывает поле даты и подписывает чип выбранной датой', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            fireEvent.click(screen.getByRole('button', { name: 'Другая…' }));
+            const input = screen.getByLabelText('Дата');
+            expect(input).toHaveAttribute('type', 'date');
+            expect(input).toHaveAttribute('max', localDate());
+
+            fireEvent.change(input, { target: { value: '2025-12-24' } });
+            expect(screen.getByRole('button', { name: /24 дек/ })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByRole('button', { name: 'Сегодня' })).toHaveAttribute('aria-pressed', 'false');
+
+            // возврат к быстрому чипу прячет поле
+            fireEvent.click(screen.getByRole('button', { name: 'Сегодня' }));
+            expect(screen.queryByLabelText('Дата')).not.toBeInTheDocument();
+        });
+
+        it('у редактируемой старой операции выбрана «Другая» и поле даты видно', () => {
+            const editData = { id: 'old', amount: 5, category: 'Продукты', type: 'expense', account: 'cash', date: '2025-12-24' };
+            render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.getByLabelText('Дата')).toHaveValue('2025-12-24');
+            expect(screen.getByRole('button', { name: /24 дек/ })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByRole('button', { name: 'Сегодня' })).toHaveAttribute('aria-pressed', 'false');
+            expect(screen.getByRole('button', { name: 'Вчера' })).toHaveAttribute('aria-pressed', 'false');
+        });
+    });
+
+    describe('«Дополнительно»', () => {
+        it('свёрнуто для новой операции, раскрывается по нажатию', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            const toggle = screen.getByRole('button', { name: /Дополнительно/ });
+            expect(toggle).toHaveAttribute('aria-expanded', 'false');
+            expect(screen.queryByText('Не считать в статистике')).not.toBeInTheDocument();
+            expect(screen.queryByRole('region', { name: 'Иконка операции' })).not.toBeInTheDocument();
+
+            fireEvent.click(toggle);
+            expect(toggle).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByText('Не считать в статистике')).toBeInTheDocument();
+            expect(screen.getByRole('region', { name: 'Иконка операции' })).toBeInTheDocument();
+        });
+
+        it('раскрыто при редактировании операции, исключённой из статистики', () => {
+            const editData = { id: 'x', amount: 5, category: 'Продукты', type: 'expense', account: 'cash', excludeFromStats: true };
+            render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.getByRole('button', { name: /Дополнительно/ })).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByText('Не считать в статистике')).toBeInTheDocument();
+        });
+
+        it('в свёрнутом виде напоминает, что операция не считается в статистике', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            const toggle = screen.getByRole('button', { name: /Дополнительно/ });
+            fireEvent.click(toggle);
+            fireEvent.click(screen.getByText('Не считать в статистике'));
+            fireEvent.click(toggle);
+
+            expect(toggle).toHaveAttribute('aria-expanded', 'false');
+            expect(toggle).toHaveTextContent('· не в статистике');
+        });
+
+        it('остаётся свёрнутым у редактируемой операции с умолчательной иконкой', () => {
+            const editData = { id: 'x', amount: 5, category: 'Продукты', type: 'expense', account: 'cash', logoMode: 'category' };
+            render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.getByRole('button', { name: /Дополнительно/ })).toHaveAttribute('aria-expanded', 'false');
+        });
+
+        it('раскрыто у операции с выбранным сайтом иконки', () => {
+            const editData = { id: 'x', amount: 5, category: 'Продукты', type: 'expense', account: 'cash', logoMode: 'domain', merchantDomain: 'wolt.com' };
+            render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.getByRole('button', { name: /Дополнительно/ })).toHaveAttribute('aria-expanded', 'true');
+        });
+
+        it('не показывается у перевода', () => {
+            render(<AddTransactionForm type="transfer" accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            expect(screen.queryByRole('button', { name: /Дополнительно/ })).not.toBeInTheDocument();
+        });
+    });
+
+    describe('новая категория', () => {
+        it('чип «Новая» стоит последним в ряду категорий и открывает поле ввода', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onAddCategory={vi.fn()} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            const add = screen.getByRole('button', { name: 'Новая', exact: true });
+            // следом за "Ещё N" (хвост свёрнут) - последний чип ряда
+            expect(add.previousElementSibling).toHaveTextContent('Ещё 3');
+            expect(add.nextElementSibling).toBeNull();
+            expect(screen.queryByPlaceholderText('Название...')).not.toBeInTheDocument();
+
+            fireEvent.click(add);
+            expect(screen.getByPlaceholderText('Название...')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Сохранить категорию' })).toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Отменить создание категории' }));
+            expect(screen.queryByPlaceholderText('Название...')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Новая', exact: true })).toBeInTheDocument();
+        });
+    });
+
     describe('свёрнутый список категорий', () => {
         // 11 расходных категорий в моке: 8 частых в свёрнутом виде + хвост из 3.
         const recent = (days) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -518,6 +671,7 @@ describe('transaction logo selection in the expense form', () => {
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
             fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
             fireEvent.click(screen.getByText('Красота'));
+            fireEvent.click(screen.getByRole('button', { name: /Дополнительно/ }));
             fireEvent.change(screen.getByPlaceholderText('Название магазина или сервиса'), { target: { value: 'Chop Chop' } });
             fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value: 'Стрижка' } });
 

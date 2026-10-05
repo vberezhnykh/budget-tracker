@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { ArrowDownLeft, ArrowDownUp, ArrowUpRight, Check, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { ArrowDownLeft, ArrowDownUp, ArrowUpRight, Check, ChevronDown, LoaderCircle, Plus, Trash2, X } from 'lucide-react';
 import AccountIcon from './AccountIcon';
 import TransactionLogoPicker from './TransactionLogoPicker';
 import CompanyField from './CompanyField';
@@ -12,6 +12,74 @@ import { saveCompanySelection } from '../utils/companies';
 import { MIN_DATE, toLocalDateInput } from '../utils/period';
 
 const EMPTY_SUGGESTIONS = [];
+
+const labelStyle = { display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' };
+
+// Значения logoMode, при которых в «Дополнительно» нечего показывать
+// раскрытым: новый расход стартует с 'category', 'auto' - умолчание пикера.
+const DEFAULT_LOGO_MODES = ['category', 'auto', ''];
+
+// 'YYYY-MM-DD' -> «5 окт.»; год добавляем только для чужого года
+const formatShortDate = (value) => {
+    const [y, m, d] = value.split('-').map(Number);
+    if (!y || !m || !d) return value;
+    return new Date(y, m - 1, d).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+        ...(y !== new Date().getFullYear() ? { year: 'numeric' } : {}),
+    });
+};
+
+// Ряд чипов счетов: общий для списания/зачисления и для сторон перевода.
+// scrollAlways - в узкой строке перевода чипы не сжимаются, а прокручиваются.
+function AccountChips({ accounts, isSelected, onPick, scrollAlways = false, ...props }) {
+    const scrolls = scrollAlways || accounts.length > 3;
+    const rowRef = useRef(null);
+    // Выбранный счёт может оказаться за краем прокрутки - подводим его в
+    // видимую часть при открытии формы
+    useEffect(() => {
+        const row = rowRef.current;
+        const chip = row?.querySelector('[aria-pressed="true"]');
+        if (row && chip && scrolls) row.scrollLeft = Math.max(0, chip.offsetLeft - row.offsetLeft - 8);
+    }, [scrolls]);
+    return (
+        <div
+            {...props}
+            ref={rowRef}
+            style={{
+                display: 'flex',
+                gap: scrollAlways ? '8px' : '12px',
+                overflowX: scrolls ? 'auto' : 'visible',
+                paddingBottom: scrolls ? '8px' : '0'
+            }}
+        >
+            {accounts.map(acc => (
+                <Chip
+                    key={acc._id}
+                    shape="block"
+                    selected={isSelected(acc)}
+                    onClick={() => onPick(acc)}
+                    style={{
+                        flex: scrolls ? '0 0 auto' : 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        minWidth: scrolls && !scrollAlways ? '120px' : 'auto',
+                        padding: scrollAlways ? '10px 12px' : '12px',
+                        fontWeight: '600',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                    }}
+                >
+                    <AccountIcon icon={acc.icon} type={acc.type} size={18} />
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.name}</span>
+                </Chip>
+            ))}
+        </div>
+    );
+}
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, categories: allCategories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], categoryCounts, apiFetch }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
@@ -60,11 +128,47 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const isTransfer = formData.type === 'transfer';
     const today = toLocalDateInput();
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterday = toLocalDateInput(yesterdayDate);
+    const showYesterday = yesterday >= MIN_DATE;
+
+    // «Другая…»: нативное поле даты открывается по нажатию, а у операции со
+    // старой датой видно сразу - иначе дату не увидеть и не поправить.
+    const [customDateOpen, setCustomDateOpen] = useState(false);
+    const [dateFocusTick, setDateFocusTick] = useState(0);
+    const dateInputRef = useRef(null);
+    const isCustomDate = formData.date !== today && !(showYesterday && formData.date === yesterday);
+    const showDateInput = customDateOpen || isCustomDate;
+    const pickDate = (value) => {
+        setCustomDateOpen(false);
+        setFormData(prev => ({ ...prev, date: value }));
+    };
+    const openCustomDate = () => {
+        setCustomDateOpen(true);
+        setDateFocusTick(t => t + 1);
+    };
+    useEffect(() => {
+        if (!dateFocusTick) return;
+        const input = dateInputRef.current;
+        if (!input) return;
+        input.focus();
+        try { input.showPicker?.(); } catch { /* пикер доступен не везде */ }
+    }, [dateFocusTick]);
 
     // Split Logic
     const [isSplit, setIsSplit] = useState(false);
     const [splits, setSplits] = useState([{ id: 1, amount: '', category: '' }, { id: 2, amount: '', category: '' }]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // «Дополнительно»: свёрнуто, если у редактируемой операции там нет ничего
+    // нестандартного (исключение из статистики, выбранная иконка)
+    const showExcludeToggle = !isTransfer && !isSplit;
+    const hasExtra = !isTransfer && (showExcludeToggle || formData.type === 'expense');
+    const [showExtra, setShowExtra] = useState(() => Boolean(initialData && (
+        initialData.excludeFromStats
+        || (initialData.type === 'expense' && !DEFAULT_LOGO_MODES.includes(initialData.logoMode ?? ''))
+    )));
 
     const totalSplitAmount = splits.reduce((sum, split) => sum + (parseFloat(split.amount) || 0), 0);
     const remainingAmount = (parseFloat(formData.amount) || 0) - totalSplitAmount;
@@ -148,11 +252,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         }
     };
 
-    // Each select excludes the account chosen on the opposite side.
+    // Both rows list every account; picking the one already chosen on the
+    // opposite side swaps the sides, so from !== to always holds.
     const setTransferAccount = (side, id) => {
         setFormData(prev => {
             const otherSide = side === 'account' ? 'toAccount' : 'account';
-            if (id === prev[otherSide] || !accounts.some(a => a._id === id)) return prev;
+            if (!accounts.some(a => a._id === id)) return prev;
+            if (id === prev[otherSide]) return { ...prev, [side]: id, [otherSide]: prev[side] };
             return { ...prev, [side]: id };
         });
     };
@@ -160,8 +266,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const swapTransferAccounts = () => {
         setFormData({ ...formData, account: formData.toAccount, toAccount: formData.account });
     };
-
-    const getAccountLabel = (acc) => acc.name;
 
     const categories = (allCategories || []).filter(c => c.type === formData.type);
 
@@ -179,6 +283,15 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         }),
         [categories, transactions, formData.type, formData.category, showAllCategories, categoryCounts]
     );
+    // В разделении своего "Ещё" нет - ряд и так прокручивается, поэтому
+    // частые идут первыми, хвост следом
+    const { frequent: splitFrequent, rest: splitRest } = useMemo(
+        () => splitCategoriesByUsage(categories, transactions, formData.type, {
+            counts: categoryCounts?.[formData.type],
+        }),
+        [categories, transactions, formData.type, categoryCounts]
+    );
+    const splitCategories = [...splitFrequent, ...splitRest];
     const visibleCategories = showAllCategories ? [...frequentCategories, ...restCategories] : frequentCategories;
 
     // Подсказки для поля комментария: то, что уже писалось для выбранной
@@ -345,7 +458,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
                     {/* Main Amount Input */}
                     <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>
+                        <label style={labelStyle}>
                             {isSplit ? 'Общая сумма' : 'Сумма'}
                         </label>
                         <div style={{ position: 'relative' }}>
@@ -423,130 +536,67 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             )}
 
                             {!isSplit ? (
-                                <>
-                                    {/* Account Selector */}
-                                    <div>
-                                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>
-                                            {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
-                                        </label>
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            gap: '12px', 
-                                            overflowX: accounts.length > 3 ? 'auto' : 'visible',
-                                            paddingBottom: accounts.length > 3 ? '8px' : '0'
-                                        }}>
-                                            {accounts.map(acc => (
-                                                <Chip
-                                                    key={acc._id}
-                                                    shape="block"
-                                                    selected={formData.account === acc._id}
-                                                    onClick={() => setFormData({ ...formData, account: acc._id })}
-                                                    style={{
-                                                        flex: accounts.length > 3 ? '0 0 auto' : 1,
-                                                        display: 'flex',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center',
-                                                        gap: '8px',
-                                                        minWidth: accounts.length > 3 ? '120px' : 'auto',
-                                                        padding: '12px',
-                                                        fontWeight: '600',
-                                                        whiteSpace: 'nowrap',
-                                                        overflow: 'hidden',
-                                                        textOverflow: 'ellipsis'
-                                                    }}
-                                                >
-                                                    <AccountIcon icon={acc.icon} type={acc.type} size={18} />
-                                                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.name}</span>
-                                                </Chip>
-                                            ))}
-                                        </div>
+                                /* Category Selection */
+                                <div>
+                                    <label style={labelStyle}>Категория</label>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        {visibleCategories.map(cat => (
+                                            <Chip
+                                                key={cat._id}
+                                                selected={formData.category === cat.name}
+                                                onClick={() => setFormData({ ...formData, category: cat.name })}
+                                                style={{ padding: '8px 16px' }}
+                                            >
+                                                {cat.name}
+                                            </Chip>
+                                        ))}
+
+                                        {restCategories.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAllCategories(!showAllCategories)}
+                                                aria-expanded={showAllCategories}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    borderRadius: 'var(--radius-pill)',
+                                                    border: '1px dashed var(--color-border-strong)',
+                                                    background: 'transparent',
+                                                    color: 'var(--color-primary)',
+                                                    fontSize: 'var(--text-base)',
+                                                    fontWeight: '600',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                            >
+                                                {showAllCategories ? 'Свернуть' : `Ещё ${restCategories.length}`}
+                                            </button>
+                                        )}
+
+                                        {/* Новая категория - последний чип ряда; пока
+                                            идёт ввод имени, его место занимает поле ниже */}
+                                        {!isAddingCategory && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsAddingCategory(true)}
+                                                style={{
+                                                    padding: '8px 16px',
+                                                    borderRadius: 'var(--radius-pill)',
+                                                    border: '1px dashed rgba(37, 99, 235, 0.3)',
+                                                    background: 'transparent',
+                                                    color: 'var(--color-primary)',
+                                                    fontSize: 'var(--text-base)',
+                                                    fontWeight: '500',
+                                                    cursor: 'pointer',
+                                                    transition: 'all 0.2s'
+                                                }}
+                                            >
+                                                <Plus size={16} strokeWidth={1.8} aria-hidden="true" /> Новая
+                                            </button>
+                                        )}
                                     </div>
 
-                                    {/* Category Selection */}
-                                    <div>
-                                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Категория</label>
-                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                            {visibleCategories.map(cat => (
-                                                <Chip
-                                                    key={cat._id}
-                                                    selected={formData.category === cat.name}
-                                                    onClick={() => setFormData({ ...formData, category: cat.name })}
-                                                    style={{ padding: '8px 16px' }}
-                                                >
-                                                    {cat.name}
-                                                </Chip>
-                                            ))}
-
-                                            {restCategories.length > 0 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowAllCategories(!showAllCategories)}
-                                                    aria-expanded={showAllCategories}
-                                                    style={{
-                                                        padding: '8px 16px',
-                                                        borderRadius: 'var(--radius-pill)',
-                                                        border: '1px dashed var(--color-border-strong)',
-                                                        background: 'transparent',
-                                                        color: 'var(--color-primary)',
-                                                        fontSize: 'var(--text-base)',
-                                                        fontWeight: '600',
-                                                        cursor: 'pointer',
-                                                        transition: 'all 0.2s'
-                                                    }}
-                                                >
-                                                    {showAllCategories ? 'Свернуть' : `Ещё ${restCategories.length}`}
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Exclude from stats toggle */}
-                                    {!isTransfer && (
-                                        <div
-                                            onClick={() => setFormData({ ...formData, excludeFromStats: !formData.excludeFromStats })}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                padding: '10px 14px',
-                                                borderRadius: 'var(--radius-md)',
-                                                border: '1px solid',
-                                                borderColor: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.3)' : 'var(--color-border)',
-                                                background: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.03)' : 'var(--color-surface)',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s',
-                                                userSelect: 'none'
-                                            }}
-                                        >
-                                            <span style={{ fontSize: 'var(--text-base)', color: formData.excludeFromStats ? 'var(--color-negative)' : 'var(--color-text-muted)' }}>
-                                                Не считать в статистике
-                                            </span>
-                                            <div style={{
-                                                width: '40px',
-                                                height: '22px',
-                                                borderRadius: 'var(--radius-pill)',
-                                                background: formData.excludeFromStats ? 'var(--color-negative)' : 'var(--color-control-off)',
-                                                position: 'relative',
-                                                transition: 'background 0.2s'
-                                            }}>
-                                                <div style={{
-                                                    width: '18px',
-                                                    height: '18px',
-                                                    borderRadius: '50%',
-                                                    background: 'var(--color-surface)',
-                                                    position: 'absolute',
-                                                    top: '2px',
-                                                    left: formData.excludeFromStats ? '20px' : '2px',
-                                                    transition: 'left 0.2s',
-                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                                                }} />
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Add New Category */}
-                                    {isAddingCategory ? (
-                                        <div style={{ marginTop: '4px' }}>
+                                    {isAddingCategory && (
+                                        <div style={{ marginTop: '10px' }}>
                                             <div style={{ display: 'flex', gap: '8px' }}>
                                               <Field
                                                 type="text"
@@ -562,6 +612,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 autoFocus
                                                 style={{
                                                     flex: 1,
+                                                    minWidth: 0,
                                                     padding: '8px 12px',
                                                     // поле-чип рядом с чипами категорий: рамка
                                                     // фирменная, а не нейтральная
@@ -606,26 +657,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                 </div>
                                             )}
                                         </div>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsAddingCategory(true)}
-                                            style={{
-                                                padding: '8px 16px',
-                                                borderRadius: 'var(--radius-pill)',
-                                                border: '1px dashed rgba(37, 99, 235, 0.3)',
-                                                background: 'transparent',
-                                                color: 'var(--color-primary)',
-                                                fontSize: 'var(--text-base)',
-                                                fontWeight: '500',
-                                                cursor: 'pointer',
-                                                transition: 'all 0.2s'
-                                            }}
-                                        >
-                                            <Plus size={16} strokeWidth={1.8} aria-hidden="true" /> Новая
-                                        </button>
                                     )}
-                                </>
+                                </div>
                             ) : (
                                 /* Split UI */
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'var(--color-surface-muted)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)' }}>
@@ -655,7 +688,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     paddingBottom: '4px',
                                                 }}
                                             >
-                                                {categories.map(cat => {
+                                                {splitCategories.map(cat => {
                                                     const isSelectedInOtherSplit = splits.some(s => s.id !== split.id && s.category === cat.name);
                                                     if (isSelectedInOtherSplit) return null;
 
@@ -682,6 +715,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                                     type="number"
                                                     tone="muted"
                                                     radius="var(--radius-sm)"
+                                                    inputMode="decimal"
+                                                    step="0.01"
                                                     placeholder="Сумма"
                                                     value={split.amount}
                                                     onChange={e => updateSplit(split.id, 'amount', e.target.value)}
@@ -700,17 +735,29 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     </button>
                                 </div>
                             )}
+
+                            {/* Account Selector (общий и для обычного режима, и для разделения) */}
+                            <div>
+                                <label style={labelStyle}>
+                                    {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
+                                </label>
+                                <AccountChips
+                                    accounts={accounts}
+                                    isSelected={acc => formData.account === acc._id}
+                                    onPick={acc => setFormData({ ...formData, account: acc._id })}
+                                />
+                            </div>
                         </>
                     )}
 
                     {isTransfer && (
-                        /* Transfer direction. The two accounts are stacked as
-                           full-width rows instead of two narrow side-by-side
-                           selects: at phone width those clipped anything longer
-                           than a word, which is exactly the part that has to be
-                           readable here. Each row carries its own colour-coded
-                           arrow badge, and the swap button on the divider
-                           reverses the direction in one tap. */
+                        /* Transfer direction. Each side is its own row of
+                           account chips (the same ones income/expense use)
+                           instead of a native select: every account is one
+                           tap away and long names stay readable. Each row
+                           carries its own colour-coded arrow badge, and the
+                           swap button on the divider reverses the direction
+                           in one tap. */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                             <div style={{
                                 position: 'relative',
@@ -729,8 +776,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             alignItems: 'center',
                                             gap: '12px',
                                             padding: '12px 14px',
-                                            // Room for the swap button so a long
-                                            // account name never runs under it.
+                                            // Room for the swap button so the chips
+                                            // never run under it.
                                             paddingRight: '62px',
                                             borderTop: index === 0 ? 'none' : '1px solid var(--color-border)'
                                         }}
@@ -751,44 +798,26 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             <row.icon size={20} strokeWidth={1.8} aria-hidden="true" />
                                         </div>
                                         <div style={{ flex: 1, minWidth: 0 }}>
-                                            <label
-                                                htmlFor={`transfer-${row.side}`}
+                                            <div
                                                 style={{
-                                                    display: 'block',
                                                     color: 'var(--color-text-muted)',
                                                     fontSize: 'var(--text-2xs)',
                                                     fontWeight: '600',
                                                     letterSpacing: '0.6px',
                                                     textTransform: 'uppercase',
-                                                    marginBottom: '2px'
+                                                    marginBottom: '6px'
                                                 }}
                                             >
                                                 {row.label}
-                                            </label>
-                                            <select
-                                                id={`transfer-${row.side}`}
-                                                value={row.value}
-                                                onChange={(e) => setTransferAccount(row.side, e.target.value)}
-                                                style={{
-                                                    width: '100%',
-                                                    background: 'transparent',
-                                                    border: 'none',
-                                                    padding: 0,
-                                                    color: 'var(--color-text-main)',
-                                                    fontFamily: 'inherit',
-                                                    fontSize: 'var(--text-xl)',
-                                                    fontWeight: '700',
-                                                    cursor: 'pointer',
-                                                    outline: 'none'
-                                                }}
-                                            >
-                                                {!row.value && <option value="">Выберите счет</option>}
-                                                {accounts.filter(acc => acc._id !== formData[row.side === 'account' ? 'toAccount' : 'account']).map(acc => (
-                                                    <option key={acc._id} value={acc._id}>
-                                                        {getAccountLabel(acc)}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                            </div>
+                                            <AccountChips
+                                                role="group"
+                                                aria-label={row.label}
+                                                accounts={accounts}
+                                                scrollAlways
+                                                isSelected={acc => row.value === acc._id}
+                                                onPick={acc => setTransferAccount(row.side, acc._id)}
+                                            />
                                         </div>
                                     </div>
                                 ))}
@@ -822,69 +851,58 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         </div>
                     )}
 
-                    {/* Description & Account for split (if split, account is shared) */}
-                    {isSplit && (
-                        <div>
-                            <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>
-                                {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
-                            </label>
-                             <div style={{ 
-                                 display: 'flex', 
-                                 gap: '12px', 
-                                 overflowX: accounts.length > 3 ? 'auto' : 'visible',
-                                 paddingBottom: accounts.length > 3 ? '8px' : '0'
-                             }}>
-                                 {accounts.map(acc => (
-                                     <Chip
-                                         key={acc._id}
-                                         shape="block"
-                                         selected={formData.account === acc._id}
-                                         onClick={() => setFormData({ ...formData, account: acc._id })}
-                                         style={{
-                                             flex: accounts.length > 3 ? '0 0 auto' : 1,
-                                             display: 'flex',
-                                             alignItems: 'center',
-                                             justifyContent: 'center',
-                                             gap: '8px',
-                                             minWidth: accounts.length > 3 ? '120px' : 'auto',
-                                             padding: '12px',
-                                             fontWeight: '600',
-                                             whiteSpace: 'nowrap',
-                                             overflow: 'hidden',
-                                             textOverflow: 'ellipsis'
-                                         }}
-                                     >
-                                         <AccountIcon icon={acc.icon} type={acc.type} size={18} />
-                                         <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{acc.name}</span>
-                                     </Chip>
-                                 ))}
-                             </div>
-                        </div>
-                    )}
-
-                    {/* Date Input */}
+                    {/* Date: быстрые чипы вместо крупного поля - почти всегда
+                        нужна сегодняшняя или вчерашняя дата */}
                     <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Дата</label>
-                        <Field
-                            type="date"
-                            tone="sunken"
-                            size="xl"
-                            value={formData.date}
-                            min={MIN_DATE}
-                            max={today}
-                            onChange={e => setFormData({ ...formData, date: e.target.value })}
-                            style={{
-                                width: '100%',
-                                display: 'block',
-                                margin: 0,
-                                // родное оформление поля даты в iOS/Safari
-                                // сбивается только этими четырьмя строками
-                                fontFamily: 'inherit',
-                                colorScheme: 'light',
-                                WebkitAppearance: 'none',
-                                appearance: 'none'
-                            }}
-                        />
+                        <label htmlFor="transaction-date" style={labelStyle}>Дата</label>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            <Chip
+                                selected={!showDateInput && formData.date === today}
+                                onClick={() => pickDate(today)}
+                                style={{ padding: '8px 16px' }}
+                            >
+                                Сегодня
+                            </Chip>
+                            {showYesterday && (
+                                <Chip
+                                    selected={!showDateInput && formData.date === yesterday}
+                                    onClick={() => pickDate(yesterday)}
+                                    style={{ padding: '8px 16px' }}
+                                >
+                                    Вчера
+                                </Chip>
+                            )}
+                            <Chip
+                                selected={showDateInput}
+                                onClick={openCustomDate}
+                                style={{ padding: '8px 16px' }}
+                            >
+                                {showDateInput && formData.date ? formatShortDate(formData.date) : 'Другая…'}
+                            </Chip>
+                        </div>
+                        {showDateInput && (
+                            <Field
+                                id="transaction-date"
+                                ref={dateInputRef}
+                                type="date"
+                                tone="sunken"
+                                value={formData.date}
+                                min={MIN_DATE}
+                                max={today}
+                                onChange={e => setFormData({ ...formData, date: e.target.value })}
+                                style={{
+                                    width: '100%',
+                                    display: 'block',
+                                    margin: '10px 0 0',
+                                    // родное оформление поля даты в iOS/Safari
+                                    // сбивается только этими четырьмя строками
+                                    fontFamily: 'inherit',
+                                    colorScheme: 'light',
+                                    WebkitAppearance: 'none',
+                                    appearance: 'none'
+                                }}
+                            />
+                        )}
                     </div>
 
                     {formData.type === 'expense' && (
@@ -897,11 +915,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
                     {/* Description */}
                     <div>
-                        <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>Описание (опц.)</label>
+                        <label style={labelStyle}>Описание (опц.)</label>
                         <Field
                             type="text"
                             tone="sunken"
-                            size="xl"
                             placeholder="Комментарий..."
                             value={formData.description}
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
@@ -949,18 +966,113 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         )}
                     </div>
 
-                    {formData.type === 'expense' && (
-                        <TransactionLogoPicker
-                            item={formData}
-                            canChoose={formData.companyName === undefined || Boolean(formData.companyName.trim())}
-                            apiFetch={apiFetch}
-                            onChange={choice => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, ...choice })); }}
-                            onMerchantSelect={merchant => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, companyId: '', companyName: merchant.name, logoMode: 'domain', merchantDomain: merchant.domain })); }}
-                        />
-                    )}
-                    {companyError && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--text-sm)' }}>{companyError}</p>}
+                    {/* Дополнительно: редко нужные настройки спрятаны, чтобы
+                        форма не вырастала на два экрана */}
+                    {hasExtra && (
+                        <div>
+                            <button
+                                type="button"
+                                aria-expanded={showExtra}
+                                aria-controls="transaction-extra"
+                                onClick={() => setShowExtra(v => !v)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    padding: '4px 0',
+                                    background: 'transparent',
+                                    color: 'var(--color-text-muted)',
+                                    fontSize: 'var(--text-base)',
+                                    fontWeight: '600',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                <ChevronDown
+                                    size={18}
+                                    strokeWidth={1.8}
+                                    aria-hidden="true"
+                                    style={{ transition: 'transform 0.2s', transform: showExtra ? 'rotate(180deg)' : 'none' }}
+                                />
+                                Дополнительно
+                                {/* включённая настройка не должна быть невидимой */}
+                                {!showExtra && showExcludeToggle && formData.excludeFromStats && (
+                                    <span style={{ fontWeight: '400' }}>· не в статистике</span>
+                                )}
+                            </button>
+                            {showExtra && (
+                                <div id="transaction-extra" style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '12px' }}>
+                                    {/* Exclude from stats toggle */}
+                                    {showExcludeToggle && (
+                                        <div
+                                            onClick={() => setFormData({ ...formData, excludeFromStats: !formData.excludeFromStats })}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                padding: '10px 14px',
+                                                borderRadius: 'var(--radius-md)',
+                                                border: '1px solid',
+                                                borderColor: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.3)' : 'var(--color-border)',
+                                                background: formData.excludeFromStats ? 'rgba(239, 68, 68, 0.03)' : 'var(--color-surface)',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s',
+                                                userSelect: 'none'
+                                            }}
+                                        >
+                                            <span style={{ fontSize: 'var(--text-base)', color: formData.excludeFromStats ? 'var(--color-negative)' : 'var(--color-text-muted)' }}>
+                                                Не считать в статистике
+                                            </span>
+                                            <div style={{
+                                                width: '40px',
+                                                height: '22px',
+                                                borderRadius: 'var(--radius-pill)',
+                                                background: formData.excludeFromStats ? 'var(--color-negative)' : 'var(--color-control-off)',
+                                                position: 'relative',
+                                                transition: 'background 0.2s'
+                                            }}>
+                                                <div style={{
+                                                    width: '18px',
+                                                    height: '18px',
+                                                    borderRadius: '50%',
+                                                    background: 'var(--color-surface)',
+                                                    position: 'absolute',
+                                                    top: '2px',
+                                                    left: formData.excludeFromStats ? '20px' : '2px',
+                                                    transition: 'left 0.2s',
+                                                    boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                                                }} />
+                                            </div>
+                                        </div>
+                                    )}
 
-                    <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
+                                    {formData.type === 'expense' && (
+                                        <TransactionLogoPicker
+                                            item={formData}
+                                            canChoose={formData.companyName === undefined || Boolean(formData.companyName.trim())}
+                                            apiFetch={apiFetch}
+                                            onChange={choice => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, ...choice })); }}
+                                            onMerchantSelect={merchant => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, companyId: '', companyName: merchant.name, logoMode: 'domain', merchantDomain: merchant.domain })); }}
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {companyError && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--text-sm)', margin: 0 }}>{companyError}</p>}
+
+                    {/* Футер прилипает к низу листа, пока форма прокручивается.
+                        Лист даёт нижний отступ 24px + safe-area, поэтому bottom
+                        компенсирует его, а paddingBottom возвращает воздух. */}
+                    <div style={{
+                        position: 'sticky',
+                        bottom: 'calc(-24px - env(safe-area-inset-bottom, 0px))',
+                        zIndex: 1,
+                        display: 'flex',
+                        gap: '12px',
+                        padding: '12px 0 calc(12px + env(safe-area-inset-bottom, 0px))',
+                        background: 'var(--color-surface)',
+                        boxShadow: '0 -1px 0 var(--color-border-subtle), 0 -8px 12px -6px rgba(0,0,0,0.06)'
+                    }}>
                         {initialData && (
                             <button
                                 type="button"
@@ -968,21 +1080,17 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 disabled={isSubmitting}
                                 onClick={async () => {
                                     if (isSubmitting) return;
-                                    const isSplitTx = !!initialData?.splitId;
-                                    const confirmMsg = isSplitTx
-                                        ? 'Это часть разделенной транзакции. Удалить всю транзакцию целиком?'
-                                        : 'Вы уверены, что хотите удалить эту запись?';
-                                    if (window.confirm(confirmMsg)) {
-                                        setIsSubmitting(true);
-                                        try {
-                                            const deletion = onDelete(initialData.id);
-                                            const succeeded = deletion && typeof deletion.then === 'function'
-                                                ? await deletion
-                                                : deletion;
-                                            if (succeeded !== false) onClose();
-                                        } finally {
-                                            setIsSubmitting(false);
-                                        }
+                                    // Без confirm: App переносит запись в корзину
+                                    // и показывает тост «Отменить»
+                                    setIsSubmitting(true);
+                                    try {
+                                        const deletion = onDelete(initialData.id);
+                                        const succeeded = deletion && typeof deletion.then === 'function'
+                                            ? await deletion
+                                            : deletion;
+                                        if (succeeded !== false) onClose();
+                                    } finally {
+                                        setIsSubmitting(false);
                                     }
                                 }}
                                 style={{

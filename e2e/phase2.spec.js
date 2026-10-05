@@ -2,22 +2,27 @@ import { test, expect } from '@playwright/test';
 import { accounts, categories, mockPhase2Api } from './fixtures.js';
 
 test.describe('Navigation, transfers and trash (mobile)', () => {
-  test('transfer account options exclude the opposite side and still allow swapping', async ({ page }) => {
+  test('transfer account chips list every account, swap on conflict and via the swap button', async ({ page }) => {
     await mockPhase2Api(page);
     await page.goto('/');
     await page.getByRole('button', { name: 'Добавить перевод' }).click();
-    const from = page.getByLabel('Откуда', { exact: true });
-    const to = page.getByLabel('Куда', { exact: true });
-    const fromId = await from.inputValue();
-    const toId = await to.inputValue();
-    expect(fromId).not.toBe(toId);
-    await expect(from.locator(`option[value="${toId}"]`)).toHaveCount(0);
-    await expect(to.locator(`option[value="${fromId}"]`)).toHaveCount(0);
+    const from = page.getByRole('group', { name: 'Откуда', exact: true });
+    const to = page.getByRole('group', { name: 'Куда', exact: true });
+    const selected = group => group.locator('button[aria-pressed="true"]');
+    await expect(from.getByRole('button')).toHaveCount(accounts.length);
+    await expect(to.getByRole('button')).toHaveCount(accounts.length);
+    const fromName = (await selected(from).textContent()).trim();
+    const toName = (await selected(to).textContent()).trim();
+    expect(fromName).not.toBe(toName);
+
     await page.getByRole('button', { name: 'Поменять счета местами' }).click();
-    await expect(from).toHaveValue(toId);
-    await expect(to).toHaveValue(fromId);
-    await expect(from.locator(`option[value="${fromId}"]`)).toHaveCount(0);
-    await expect(to.locator(`option[value="${toId}"]`)).toHaveCount(0);
+    await expect(selected(from)).toHaveText(toName);
+    await expect(selected(to)).toHaveText(fromName);
+
+    // выбор в "Откуда" счёта, уже стоящего в "Куда", меняет стороны местами
+    await from.getByRole('button', { name: fromName, exact: true }).click();
+    await expect(selected(from)).toHaveText(fromName);
+    await expect(selected(to)).toHaveText(toName);
   });
 
   test('two navigation tabs fit at 320px and persisted trash restores after reload', async ({ page }, testInfo) => {

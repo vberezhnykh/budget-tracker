@@ -463,7 +463,7 @@ describe('App Integration Tests', () => {
         const callsBeforeDelete = fetchMock.mock.calls.length;
         fireEvent.click(deleteBtn);
 
-        expect(window.confirm).toHaveBeenCalled();
+        expect(window.confirm).not.toHaveBeenCalled();
         expect(fetchMock).toHaveBeenCalledWith(
             expect.stringContaining('/api/transactions/2'),
             expect.objectContaining({ method: 'DELETE' })

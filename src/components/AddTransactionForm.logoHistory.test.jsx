@@ -21,6 +21,9 @@ function renderForm({ transactions = [], initialData = null, companies = [], cre
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
     fireEvent.click(screen.getByRole('button', { name: 'Красота', exact: true }));
   }
+  // Выбор иконки лежит в свёрнутом по умолчанию «Дополнительно»
+  const extra = screen.getByRole('button', { name: /Дополнительно/ });
+  if (extra.getAttribute('aria-expanded') === 'false') fireEvent.click(extra);
   return { onSubmit, apiFetch };
 }
 
