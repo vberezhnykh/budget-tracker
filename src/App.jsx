@@ -1622,7 +1622,7 @@ function App() {
                         income={totals.income}
                         expense={totals.expense}
                         monthlyLimit={monthlyLimit}
-                        showLimitRing
+                        showLimitBar
                         selectedType={selectedType}
                         onToggleType={toggleTypeFilter}
                         isActive={isActive}
@@ -1633,14 +1633,14 @@ function App() {
                 <div aria-hidden="true" style={{ flex: '0 0 max(0px, 6% - 12px)', pointerEvents: 'none' }} />
               </div>
             ) : (
-              /* Год и «всё время» листать нечем - одна карточка без кольца:
+              /* Год и «всё время» листать нечем - одна карточка без полосы лимита:
                  месячный лимит для такого периода ничего не значит. */
               <div className="glass-panel" style={{ padding: '24px' }}>
                 <SummaryCard
                   income={periodStats.income}
                   expense={periodStats.expense}
                   monthlyLimit={monthlyLimit}
-                  showLimitRing={false}
+                  showLimitBar={false}
                   headlineLabel={timeRange === 'year' ? 'Расход за год' : 'Расход за всё время'}
                   selectedType={selectedType}
                   onToggleType={toggleTypeFilter}

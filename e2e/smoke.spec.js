@@ -23,7 +23,7 @@ import { mockApi, accounts, manyAccounts } from './fixtures.js';
 // is required.
 
 test.describe('Budget Tracker smoke (mobile, real browser)', () => {
-  test('slow startup shows a skeleton, but switching accounts keeps the monthly ring visible', async ({ page }) => {
+  test('slow startup shows a skeleton, but switching accounts keeps the monthly limit bar visible', async ({ page }) => {
     await mockApi(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     let release;

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { mockApi } from './fixtures.js';
 
-test('account rings and visited analytics work with subsequent summary requests blocked', async ({ page }) => {
+test('account limit bars and visited analytics work with subsequent summary requests blocked', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-01-15T12:00:00Z'));
   await mockApi(page);
   const requested = [];

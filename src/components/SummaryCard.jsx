@@ -1,4 +1,4 @@
-// Карточка сводки за период: расход крупно (для месяца - внутри кольца
+// Карточка сводки за период: расход крупно (для месяца - над полосой
 // лимита), под ним доход и сальдо. Вынесена из App.jsx, когда месяцы стали
 // каруселью: таких карточек теперь на экране столько, сколько месяцев в
 // истории, и рисовать их надо из одних и тех же данных, а не из состояния
@@ -47,9 +47,9 @@ export default function SummaryCard({
     income,
     expense,
     monthlyLimit,
-    // Кольцо лимита рисуется только для месяца: у года и «всего времени»
+    // Полоса лимита рисуется только для месяца: у года и «всего времени»
     // месячный лимит ничего не означает.
-    showLimitRing,
+    showLimitBar,
     headlineLabel = 'Расход',
     selectedType,
     onToggleType,
@@ -61,7 +61,7 @@ export default function SummaryCard({
     const saldoText = `${saldo > 0 ? '+' : ''}€${formatEuro(saldo)}`;
 
     const isLimitUsable = Number.isFinite(monthlyLimit) && monthlyLimit > 0;
-    const withRing = showLimitRing && isLimitUsable;
+    const withLimitBar = showLimitBar && isLimitUsable;
     const limitRatio = isLimitUsable ? expenseAbs / monthlyLimit : 0;
     const isOverLimit = isLimitUsable && expenseAbs > monthlyLimit;
     const limitPercentDisplay = Number.isFinite(limitRatio) ? Math.round(limitRatio * 100) : 0;
@@ -74,12 +74,14 @@ export default function SummaryCard({
                 interactive={isActive}
                 onClick={() => onToggleType('expense')}
                 ariaPressed={selectedType === 'expense'}
-                ariaLabel={`Расход: €${formatEuro(expenseAbs)}${withRing ? ` из лимита €${monthlyLimit.toLocaleString('de-DE')}` : ''}`}
+                ariaLabel={`Расход: €${formatEuro(expenseAbs)}${withLimitBar ? ` из лимита €${monthlyLimit.toLocaleString('de-DE')}` : ''}`}
                 style={{
-                    alignSelf: 'center',
+                    alignSelf: withLimitBar ? 'stretch' : 'center',
                     background: 'transparent',
                     border: 'none',
-                    padding: '4px',
+                    // Без бокового отступа шкала встаёт вровень с плитками
+                    // дохода и сальдо под ней.
+                    padding: withLimitBar ? '4px 0' : '4px',
                     cursor: isActive ? 'pointer' : 'default',
                     display: 'flex',
                     flexDirection: 'column',
@@ -87,54 +89,52 @@ export default function SummaryCard({
                     gap: '10px'
                 }}
             >
-                {withRing ? (
-                    <div style={{ position: 'relative', width: '188px', height: '188px' }}>
-                        <svg width="188" height="188" viewBox="0 0 188 188" aria-hidden="true" style={{ transform: 'rotate(-90deg)' }}>
-                            <circle cx="94" cy="94" r="82" fill="none" stroke="var(--color-border-subtle)" strokeWidth="14" />
-                            <circle
+                <div style={{ textAlign: 'center', padding: withLimitBar ? 0 : '8px 0' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600', marginBottom: '4px' }}>
+                        {headlineLabel}
+                    </div>
+                    <div data-account-value style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
+                        €{formatEuro(expenseAbs)}
+                    </div>
+                </div>
+                {withLimitBar && (
+                    <div style={{ width: '100%', boxSizing: 'border-box', textAlign: 'left' }}>
+                        <div
+                            aria-hidden="true"
+                            style={{
+                                width: '100%',
+                                height: '8px',
+                                borderRadius: '999px',
+                                background: 'var(--color-surface-sunken)',
+                                overflow: 'hidden'
+                            }}
+                        >
+                            <div
                                 data-account-value
-                                cx="94"
-                                cy="94"
-                                r="82"
-                                fill="none"
-                                stroke={isOverLimit ? 'var(--color-negative)' : 'var(--color-primary)'}
-                                strokeWidth="14"
-                                strokeLinecap="round"
-                                strokeDasharray={2 * Math.PI * 82}
-                                strokeDashoffset={2 * Math.PI * 82 * (1 - limitBarWidthDisplay / 100)}
-                                style={{ transition: 'stroke-dashoffset 0.4s ease' }}
+                                style={{
+                                    width: `${limitBarWidthDisplay}%`,
+                                    height: '100%',
+                                    borderRadius: 'inherit',
+                                    background: isOverLimit ? 'var(--color-negative)' : 'var(--color-primary)',
+                                    transition: 'width 0.4s ease'
+                                }}
                             />
-                        </svg>
+                        </div>
                         <div style={{
-                            position: 'absolute',
-                            inset: 0,
                             display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            gap: '2px'
+                            justifyContent: 'space-between',
+                            gap: '8px',
+                            marginTop: '6px',
+                            fontSize: 'var(--text-xs)'
                         }}>
-                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600' }}>Расход</div>
-                            <div data-account-value style={{ fontSize: '1.75rem', fontWeight: '800', color: 'var(--color-text-main)', lineHeight: 1.1 }}>
-                                €{formatEuro(expenseAbs)}
-                            </div>
-                            <div data-account-value style={{ fontSize: 'var(--text-xs)', color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: '600' }}>
+                            <span data-account-value style={{ color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: '600', whiteSpace: 'nowrap' }}>
                                 {isOverLimit
                                     ? `сверх лимита €${formatEuro(Math.abs(limitRemaining))}`
                                     : `осталось €${formatEuro(limitRemaining)}`}
-                            </div>
-                            <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>
+                            </span>
+                            <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
                                 <span data-account-value>{limitPercentDisplay}%</span> от €{monthlyLimit.toLocaleString('de-DE')}
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <div style={{ textAlign: 'center', padding: '8px 0' }}>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600', marginBottom: '4px' }}>
-                            {headlineLabel}
-                        </div>
-                        <div data-account-value style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
-                            €{formatEuro(expenseAbs)}
+                            </span>
                         </div>
                     </div>
                 )}
