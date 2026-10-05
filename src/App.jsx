@@ -13,7 +13,7 @@ import { AppSkeleton, SummarySkeleton } from './components/ui/Skeleton'
 import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
-import { formatPeriodLabel, toDativeMonth, listPeriodMonths } from './utils/period'
+import { formatPeriodLabel, toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput } from './utils/period'
 import { transformTransactions, getPaceForecast } from './utils/finance'
 import usePagedHistory from './utils/usePagedHistory'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
@@ -82,7 +82,7 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(null);
 
   // State for selected. Defaults to current month YYYY-MM
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth);
   const [historyMonth, setHistoryMonth] = useState(selectedMonth);
   // Which of the two bottom tabs is showing. 'stats' is the default screen
   // (spending ring, income/saldo, top categories); 'analytics' is the
@@ -243,7 +243,7 @@ function App() {
   };
 
   const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todayKey = toLocalDateInput(today);
   const statsParams = new URLSearchParams({
     month: selectedMonth, timeRange,
     today: todayKey,
@@ -622,9 +622,7 @@ function App() {
   }));
 
   const isActualCurrentMonth = useMemo(() => {
-    const now = new Date();
-    const currentMonthStr = now.toISOString().slice(0, 7);
-    return selectedMonth === currentMonthStr;
+    return selectedMonth === getCurrentMonth();
   }, [selectedMonth]);
 
   // Карусель счетов: вся механика прокрутки со снапом - в useSnapCarousel,

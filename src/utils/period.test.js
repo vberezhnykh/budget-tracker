@@ -3,6 +3,7 @@ import {
   MIN_MONTH,
   formatMonthName,
   formatPeriodLabel,
+  getCurrentMonth,
   getLastMonthOfYear,
   listPeriodMonths,
   listPeriodYears,
@@ -106,5 +107,23 @@ describe('period helpers', () => {
     it('caps the list at the current month when no maximum is given', () => {
       expect(listPeriodMonths()).toEqual(['2025-11', '2025-12', '2026-01', '2026-02']);
     });
+  });
+});
+
+describe('getCurrentMonth', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('uses the local month, not UTC, right after local midnight', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 1, 1, 30));
+    expect(getCurrentMonth()).toBe('2026-10');
+  });
+
+  it('stays in the same month late in the evening on its last day', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 8, 30, 23, 30));
+    expect(getCurrentMonth()).toBe('2026-09');
   });
 });

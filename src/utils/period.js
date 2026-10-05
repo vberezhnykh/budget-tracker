@@ -6,9 +6,18 @@
 // is nothing meaningful to show before that month. The upper bound is the
 // current month - the app never shows a future period.
 
-export const MIN_MONTH = '2025-11';
+export const MIN_DATE = '2025-11-09';
+export const MIN_MONTH = MIN_DATE.slice(0, 7);
 
-export const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
+// Локальная дата 'YYYY-MM-DD', а не UTC: toISOString сдвигает день ночью.
+export function toLocalDateInput(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export const getCurrentMonth = () => toLocalDateInput().slice(0, 7);
 
 const parseMonth = (month) => {
   const [year, m] = month.split('-').map(Number);

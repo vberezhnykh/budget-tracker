@@ -352,6 +352,34 @@ describe('AddTransactionForm Component', () => {
         ]));
     });
 
+    it('labels the shared account "Зачислить на" in income split mode', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Доход' }));
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
+        fireEvent.click(screen.getByText('Разделить на несколько категорий'));
+
+        expect(screen.getByText('Зачислить на')).toBeInTheDocument();
+        expect(screen.queryByText('Списать с')).not.toBeInTheDocument();
+    });
+
+    it('treats float-noisy splits (0.1 + 0.2 of 0.3) as balanced', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '0.3' } });
+        fireEvent.click(screen.getByText('Разделить на несколько категорий'));
+
+        const splitInputs = screen.getAllByPlaceholderText('Сумма');
+        fireEvent.change(splitInputs[0], { target: { value: '0.1' } });
+        fireEvent.click(screen.getAllByText('Продукты')[0]);
+        fireEvent.change(splitInputs[1], { target: { value: '0.2' } });
+        fireEvent.click(screen.getAllByText('Транспорт')[1]);
+        fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
+
+        expect(screen.getByText('€0,00')).toBeInTheDocument();
+        expect(screen.getByText('Сохранить')).not.toBeDisabled();
+    });
+
     const mockTransactions = [
         { category: 'Продукты', type: 'expense', description: 'Wolt', date: '2026-01-01' },
         { category: 'Продукты', type: 'expense', description: 'Wolt', date: '2026-01-02' },

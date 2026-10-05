@@ -9,6 +9,7 @@ import Sheet from './ui/Sheet'
 import IconButton from './ui/IconButton'
 import { getDescriptionSuggestions, splitCategoriesByUsage } from '../utils/finance';
 import { saveCompanySelection } from '../utils/companies';
+import { MIN_DATE, toLocalDateInput } from '../utils/period';
 
 const EMPTY_SUGGESTIONS = [];
 
@@ -39,7 +40,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const [formData, setFormData] = useState(initialData ? {
         ...initialData,
         __v: Number.isInteger(initialData.__v) ? initialData.__v : 0,
-        date: initialData.date || new Date().toISOString().split('T')[0],
+        date: initialData.date || toLocalDateInput(),
         account: initialAccount,
         toAccount: initialToAccount
     } : {
@@ -47,7 +48,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         category: '',
         description: '',
         ...(type === 'expense' ? { companyName: '', logoMode: 'category' } : {}),
-        date: new Date().toISOString().split('T')[0],
+        date: toLocalDateInput(),
         type: type, // 'income', 'expense', or 'transfer'
         account: initialAccount,
         toAccount: initialToAccount,
@@ -58,7 +59,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const [companyError, setCompanyError] = useState('');
 
     const isTransfer = formData.type === 'transfer';
-    const today = new Date().toISOString().split('T')[0];
+    const today = toLocalDateInput();
 
     // Split Logic
     const [isSplit, setIsSplit] = useState(false);
@@ -68,8 +69,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const totalSplitAmount = splits.reduce((sum, split) => sum + (parseFloat(split.amount) || 0), 0);
     const remainingAmount = (parseFloat(formData.amount) || 0) - totalSplitAmount;
 
+    // Копейки float: сравниваем с допуском, а не с нулём
+    const isSplitBalanced = Math.abs(remainingAmount) < 0.01;
     // Validation for split: check if split mode is active, remaining amount is approx 0, and all splits have data
-    const isSplitValid = isSplit && Math.abs(remainingAmount) < 0.01 && splits.every(s => s.amount && s.category);
+    const isSplitValid = isSplit && isSplitBalanced && splits.every(s => s.amount && s.category);
 
     // Shared save-gate for both the submit button (disabled state) and the
     // submit handler (so the gate can't be bypassed some other way, e.g. an
@@ -396,7 +399,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     <div style={{
                                         width: '40px',
                                         height: '20px',
-                                        background: isSplit ? 'var(--color-primary)' : 'rgba(255,255,255,0.2)',
+                                        background: isSplit ? 'var(--color-primary)' : 'var(--color-control-off)',
                                         borderRadius: 'var(--radius-pill)',
                                         position: 'relative',
                                         transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -413,7 +416,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                             boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
                                         }} />
                                     </div>
-                                    <span style={{ fontSize: 'var(--text-md)', fontWeight: '500', color: isSplit ? 'var(--color-text-inverse)' : 'var(--color-text-muted)' }}>
+                                    <span style={{ fontSize: 'var(--text-md)', fontWeight: '500', color: isSplit ? 'var(--color-text-main)' : 'var(--color-text-muted)' }}>
                                         Разделить на несколько категорий
                                     </span>
                                 </div>
@@ -628,8 +631,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'var(--color-surface-muted)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-md)' }}>
                                         <span>Осталось распределить:</span>
-                                        <span style={{ color: remainingAmount === 0 ? '#4ade80' : ((remainingAmount < 0) ? 'var(--color-negative)' : 'var(--color-warning)'), fontWeight: 'bold' }}>
-                                            €{remainingAmount.toFixed(2)}
+                                        <span style={{ color: isSplitBalanced ? 'var(--color-positive)' : ((remainingAmount < 0) ? 'var(--color-negative)' : 'var(--color-warning)'), fontWeight: 'bold' }}>
+                                            €{(isSplitBalanced ? 0 : remainingAmount).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </span>
                                     </div>
 
@@ -823,7 +826,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     {isSplit && (
                         <div>
                             <label style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)' }}>
-                                Списать с
+                                {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
                             </label>
                              <div style={{ 
                                  display: 'flex', 
@@ -867,7 +870,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             tone="sunken"
                             size="xl"
                             value={formData.date}
-                            min="2025-11-09"
+                            min={MIN_DATE}
                             max={today}
                             onChange={e => setFormData({ ...formData, date: e.target.value })}
                             style={{
