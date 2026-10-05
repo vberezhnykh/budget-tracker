@@ -62,3 +62,14 @@ export default function Field({ tone = 'outline', size = 'md', radius, style, ..
         />
     );
 }
+
+// Подпись над полем или рядом чипов в форме. Одна и та же строка стиля
+// раньше повторялась у каждого блока формы операции.
+export function FormLabel({ style, ...props }) {
+    return (
+        <label
+            {...props}
+            style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)', ...style }}
+        />
+    );
+}

@@ -55,6 +55,8 @@
   --color-primary-soft: rgba(37, 99, 235, 0.05);
   --color-primary-tint: rgba(37, 99, 235, 0.08);
   --color-primary-glow: rgba(37, 99, 235, 0.2);
+  /* Фирменная рамка: поле и чип «+ Новая» рядом с чипами категорий. */
+  --color-primary-border: rgba(37, 99, 235, 0.3);
   --color-primary-gradient: linear-gradient(135deg, #2563eb, #3b82f6);
 
   --color-secondary: #ec4899;
@@ -76,6 +78,11 @@
   --color-negative: #ef4444;
   --color-danger: var(--color-negative);
   --color-danger-soft: rgba(239, 68, 68, 0.08);
+  /* Включённая «опасная» настройка (строка «Не считать в статистике») и
+     кнопка удаления: едва заметная подложка и две рамки разной густоты. */
+  --color-danger-faint: rgba(239, 68, 68, 0.03);
+  --color-danger-border-soft: rgba(239, 68, 68, 0.2);
+  --color-danger-border: rgba(239, 68, 68, 0.3);
 
   --color-success: #22c55e;
   --color-warning: #fbbf24;
@@ -129,6 +136,16 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-glow: 0 0 20px var(--color-primary-glow);
+  /* Активная ячейка сегментного переключателя. */
+  --shadow-segment: 0 2px 4px rgba(0, 0, 0, 0.05);
+  /* Ручка тумблера. */
+  --shadow-thumb: 0 1px 3px rgba(0, 0, 0, 0.2);
+  /* Круглая кнопка, приподнятая над строками (смена счетов местами). */
+  --shadow-float: 0 1px 4px rgba(0, 0, 0, 0.08);
+  /* Тень кнопки удаления в тон её красной рамке. */
+  --shadow-danger: 0 2px 4px rgba(239, 68, 68, 0.05);
+  /* Липкий футер формы: тонкая линия сверху и мягкий отрыв от контента. */
+  --shadow-sticky-footer: 0 -1px 0 var(--color-border-subtle), 0 -8px 12px -6px rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -213,6 +230,16 @@ button {
   max-width: 1200px;
   margin: 0 auto;
   padding: 20px;
+}
+
+/* Горизонтальные ряды чипов прокручиваются, но без полосы прокрутки. */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 /* Появление модального листа: затемнение проявляется, сам лист выезжает

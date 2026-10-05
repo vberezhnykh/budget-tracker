@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import Chip from './ui/Chip'
 import Sheet from './ui/Sheet'
+import SegmentedControl from './ui/SegmentedControl'
 import {
   getCurrentMonth,
   getLastMonthOfYear,
@@ -115,40 +116,23 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
               </button>
             </div>
 
-            {!monthsOnly && <div style={{ display: 'flex', gap: '4px', background: 'var(--color-surface-sunken)', padding: '4px', borderRadius: 'var(--radius-md)' }}>
-              {[
-                { id: 'month', label: 'Месяц' },
-                { id: 'year', label: 'Год' },
-                { id: 'lifetime', label: 'Всё время' },
-              ].map(option => {
-                const isActive = draftRange === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    // "Всё время" has nothing further to choose, so it
-                    // applies and closes on the spot instead of leaving the
-                    // sheet open with an empty body.
-                    onClick={() => (option.id === 'lifetime' ? chooseLifetime() : setDraftRange(option.id))}
-                    aria-pressed={isActive}
-                    style={{
-                      flex: 1,
-                      background: isActive ? 'var(--color-surface)' : 'transparent',
-                      border: 'none',
-                      borderRadius: 'var(--radius-sm)',
-                      padding: '10px 8px',
-                      color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                      fontSize: 'var(--text-base)',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      boxShadow: isActive ? '0 2px 4px rgba(0,0,0,0.05)' : 'none',
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>}
+            {!monthsOnly && (
+              <SegmentedControl
+                ariaLabel="Охват периода"
+                size="lg"
+                style={{ gap: '4px', background: 'var(--color-surface-sunken)' }}
+                options={[
+                  { id: 'month', label: 'Месяц' },
+                  { id: 'year', label: 'Год' },
+                  { id: 'lifetime', label: 'Всё время' },
+                ]}
+                value={draftRange}
+                // "Всё время" has nothing further to choose, so it applies
+                // and closes on the spot instead of leaving the sheet open
+                // with an empty body.
+                onChange={id => (id === 'lifetime' ? chooseLifetime() : setDraftRange(id))}
+              />
+            )}
 
             {draftRange === 'month' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
