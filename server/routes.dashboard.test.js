@@ -53,7 +53,7 @@ describe('GET /api/stats/dashboard', () => {
         expect(Object.keys(res.body).sort()).toEqual([
             'balances', 'categoryComparison', 'categoryCounts', 'categoryUsage',
             'comparison', 'lifetime', 'month', 'monthlySeries', 'monthlyTotals',
-            'period', 'yearly'
+            'monthlyTotalsByAccount', 'period', 'yearly'
         ]);
     });
 
