@@ -628,14 +628,23 @@ function App() {
   // Карусель счетов: вся механика прокрутки со снапом - в useSnapCarousel,
   // она же обслуживает карусель месяцев ниже. Здесь остаётся только то, что
   // значит выбор слайда именно для счетов - фильтр по счёту.
+  const accountSummaryRef = useRef(null);
   const accountCarousel = useSnapCarousel({
     onSettle: (index) => {
       const filter = slides[index]?.filter ?? null;
       setSelectedAccount(prev => (prev === filter ? prev : filter));
     },
+    onScrollProgress: (progress) => accountSummaryRef.current?.style.setProperty('--swipe-blur', String(progress)),
   });
 
   const accountStatsPending = accountCarousel.isScrolling || (!statsReady && (!syncWarning || isRefreshing));
+
+  // Размытие по свайпу действует только на время самого свайпа: когда
+  // ожидание кончилось, сбрасываем переменную, чтобы следующее ожидание без
+  // свайпа (загрузка данных, смена периода) снова размывало полностью.
+  useEffect(() => {
+    if (!accountStatsPending) accountSummaryRef.current?.style.removeProperty('--swipe-blur');
+  }, [accountStatsPending]);
 
   // Нажатие на слайд всегда выбирает его - без «нажать ещё раз, чтобы
   // снять»: ровно один слайд активен в любой момент.
@@ -1560,7 +1569,7 @@ function App() {
         </section>
 
         {/* Summary Card with Budget Limit */}
-        <div data-testid="account-summary" className={accountStatsPending ? 'account-summary account-summary--pending' : 'account-summary'} aria-busy={accountStatsPending} inert={accountStatsPending} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: '24px' }}>
+        <div ref={accountSummaryRef} data-testid="account-summary" className={accountStatsPending ? 'account-summary account-summary--pending' : 'account-summary'} aria-busy={accountStatsPending} inert={accountStatsPending} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: '24px' }}>
           {!statsReady && <div style={{ gridArea: '1 / 1', minWidth: 0 }}>
             {syncWarning && !isRefreshing
               ? <div className="glass-panel" style={{ padding: '24px', color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</div>

@@ -267,14 +267,17 @@ button {
 }
 
 /* Mask the previous account's figures from the first scroll until selection
-   settles and the selected account's summary is ready. Reveal gently only. */
+   settles and the selected account's summary is ready. The mask grows with
+   the swipe distance via --swipe-blur (0..1, set by App from useSnapCarousel
+   progress); without it (data loading, period change) it defaults to full
+   blur. Reveal gently only. */
 .account-summary [data-account-value] {
   filter: blur(0);
   transition: filter 160ms ease;
 }
 
 .account-summary--pending [data-account-value] {
-  filter: blur(8px);
+  filter: blur(calc(var(--swipe-blur, 1) * 8px));
   transition: none;
   user-select: none;
 }

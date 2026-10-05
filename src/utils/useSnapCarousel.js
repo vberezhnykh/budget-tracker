@@ -20,10 +20,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // 4. Ближайший слайд ищется по настоящим offsetLeft/offsetWidth, а не по
 //    «предполагаемой ширине слайда»: ширины могут отличаться, а в jsdom они
 //    вообще нулевые - там мы честно ничего не выбираем.
+// 5. Для тех, кто хочет реагировать на сам свайп (например, размывать цифры
+//    пропорционально сдвигу), на каждое событие прокрутки отдаётся прогресс
+//    onScrollProgress - число от 0 до 1.
 
 const SETTLE_DELAY_MS = 120;
 
-export default function useSnapCarousel({ onSettle }) {
+export default function useSnapCarousel({ onSettle, onScrollProgress }) {
     const containerRef = useRef(null);
     const [isScrolling, setIsScrolling] = useState(false);
     // Индекс, к которому нас просили прокрутиться, пока прокручивать было
@@ -41,6 +44,10 @@ export default function useSnapCarousel({ onSettle }) {
     const onSettleRef = useRef(onSettle);
     useEffect(() => {
         onSettleRef.current = onSettle;
+    });
+    const onScrollProgressRef = useRef(onScrollProgress);
+    useEffect(() => {
+        onScrollProgressRef.current = onScrollProgress;
     });
 
     const getSlideElements = useCallback(() => {
@@ -84,14 +91,33 @@ export default function useSnapCarousel({ onSettle }) {
         settleTimeoutRef.current = setTimeout(commitSettledSlide, SETTLE_DELAY_MS);
     }, [commitSettledSlide]);
 
+    // Насколько палец уже утащил ленту от выбранного слайда: 0 - стоим на нём,
+    // 1 - соседний слайд встал ровно на его место. Размытие идёт за пальцем,
+    // а полная маска - когда сосед въехал целиком. Наша собственная прокрутка
+    // (выбор уже сменился) и отсутствие вёрстки (jsdom) - сразу полная маска.
+    const measureProgress = useCallback(() => {
+        if (programmaticRef.current) return 1;
+        const container = containerRef.current;
+        const el = getSlideElements()[syncedIndexRef.current];
+        if (!container || !el) return 1;
+        const step = el.offsetWidth;
+        if (!step) return 1;
+        const originCenter = el.offsetLeft + step / 2;
+        const containerCenter = container.scrollLeft + container.clientWidth / 2;
+        return Math.min(1, Math.abs(containerCenter - originCenter) / step);
+    }, [getSlideElements]);
+
     const handleScroll = useCallback(() => {
+        // Синхронно и на каждое событие: значение должно быть выставлено до
+        // первой отрисовки с «ожидающим» состоянием.
+        onScrollProgressRef.current?.(measureProgress());
         setIsScrolling(true);
         if (rafRef.current) return;
         rafRef.current = requestAnimationFrame(() => {
             rafRef.current = null;
             scheduleSettle();
         });
-    }, [scheduleSettle]);
+    }, [measureProgress, scheduleSettle]);
 
     // Прокрутить к слайду самим. skipIfSynced - для синхронизации с внешним
     // выбором: если мы уже приводили карусель к этому слайду, второй раз
