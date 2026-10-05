@@ -4,7 +4,7 @@ export const companyKey = value => typeof value === 'string'
   ? value.normalize('NFKC').trim().toLowerCase().replace(/\s+/gu, ' ').replace(/\s*&\s*/gu, ' & ').trim()
   : '';
 
-export function getCompanySuggestions(companies, transactions, query = '') {
+export function getCompanySuggestions(companies, transactions, query = '', category = '') {
   const saved = new Map((companies || []).map(company => [companyKey(company.name), { ...company, source: 'saved' }]));
   const history = new Map();
   for (const transaction of transactions || []) {
@@ -16,13 +16,15 @@ export function getCompanySuggestions(companies, transactions, query = '') {
     if (transaction.logoMode === 'domain' && !domain) continue;
     const rank = `${transaction.date || ''}:${transaction.id || transaction._id || ''}`;
     if (!history.has(key) || rank > history.get(key).rank) {
-      history.set(key, { name: name.trim(), logoMode: transaction.logoMode, merchantDomain: domain, rank, source: 'history' });
+      history.set(key, { name: name.trim(), logoMode: transaction.logoMode, merchantDomain: domain, ...(transaction.category ? { category: transaction.category } : {}), rank, source: 'history' });
     }
   }
   const term = companyKey(query);
   return [...saved.values(), ...history.values()]
     .filter(company => !term || companyKey(company.name).includes(term))
+    // Компании с той же обычной категорией выше остальных, но не вместо точного совпадения имени
     .sort((a, b) => Number(companyKey(b.name) === term) - Number(companyKey(a.name) === term)
+      || Number(Boolean(category) && b.category === category) - Number(Boolean(category) && a.category === category)
       || Number(b.source === 'saved') - Number(a.source === 'saved') || a.name.localeCompare(b.name))
     .slice(0, 8);
 }

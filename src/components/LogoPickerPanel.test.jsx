@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import TransactionLogoPicker from './TransactionLogoPicker';
+import LogoPickerPanel from './LogoPickerPanel';
 
 const expense = { type: 'expense', description: 'Chop Chop', category: 'Красота' };
 const response = merchants => ({ ok: true, json: async () => ({ merchants }) });
 
-function ControlledPicker({ initialItem, apiFetch, onChange }) {
+function ControlledPicker({ initialItem, apiFetch, onChange, onClose }) {
   const [item, setItem] = useState(initialItem);
-  return <TransactionLogoPicker item={item} apiFetch={apiFetch} onChange={choice => {
+  return <LogoPickerPanel id="panel" item={item} apiFetch={apiFetch} onClose={onClose} onChange={choice => {
     onChange(choice);
     setItem(previous => ({ ...previous, ...choice }));
   }} />;
@@ -16,17 +16,17 @@ function ControlledPicker({ initialItem, apiFetch, onChange }) {
 
 function renderPicker({ item = expense, apiFetch = vi.fn().mockResolvedValue(response([])) } = {}) {
   const onChange = vi.fn();
-  return { ...render(<ControlledPicker initialItem={item} apiFetch={apiFetch} onChange={onChange} />), apiFetch, onChange };
+  const onClose = vi.fn();
+  return { ...render(<ControlledPicker initialItem={item} apiFetch={apiFetch} onChange={onChange} onClose={onClose} />), apiFetch, onChange, onClose };
 }
 
 beforeEach(() => vi.stubEnv('VITE_LOGO_DEV_PUBLISHABLE_KEY', 'pk_test_logo_picker'));
 afterEach(() => { cleanup(); vi.unstubAllEnvs(); });
 
-describe('transaction logo picker', () => {
+describe('logo picker panel', () => {
   it('debounces catalogue searches and selects the displayed company domain', async () => {
     const apiFetch = vi.fn().mockResolvedValue(response([{ name: 'Chop Chop Barber Shop', domain: 'chopchop.com' }]));
-    const { onChange } = renderPicker({ apiFetch });
-    fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
+    const { onChange, onClose } = renderPicker({ apiFetch });
     const search = screen.getByRole('searchbox', { name: 'Найти компанию' });
     fireEvent.change(search, { target: { value: 'Cho' } });
     fireEvent.change(search, { target: { value: 'Chop Chop' } });
@@ -36,24 +36,21 @@ describe('transaction logo picker', () => {
     expect(apiFetch).toHaveBeenCalledTimes(1);
     expect(apiFetch).toHaveBeenCalledWith('/api/merchants/search?q=Chop%20Chop', expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(onChange).toHaveBeenCalledWith({ logoMode: 'domain', merchantDomain: 'chopchop.com' });
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(onClose).toHaveBeenCalled();
   });
 
   it('lets category and automatic modes clear a previously selected domain', () => {
     const { onChange, container } = renderPicker({ item: { ...expense, logoMode: 'domain', merchantDomain: 'chopchop.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
     fireEvent.click(screen.getByRole('button', { name: 'Иконка категории', exact: true }));
     expect(onChange).toHaveBeenLastCalledWith({ logoMode: 'category', merchantDomain: '' });
     expect(container.querySelector('img')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
     fireEvent.click(screen.getByRole('button', { name: 'Автоподбор', exact: true }));
     expect(onChange).toHaveBeenLastCalledWith({ logoMode: 'auto', merchantDomain: '' });
   });
 
   it('validates a manual website and sends only its normalized hostname', () => {
     const { onChange } = renderPicker();
-    fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
     const website = screen.getByRole('textbox', { name: 'Или укажите сайт компании' });
     fireEvent.change(website, { target: { value: 'javascript:alert(1)' } });
     fireEvent.click(screen.getByRole('button', { name: 'Применить' }));
@@ -74,7 +71,6 @@ describe('transaction logo picker', () => {
       .mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }))
       .mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve; }));
     renderPicker({ apiFetch });
-    fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
     const oldSignal = apiFetch.mock.calls[0][1].signal;
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'New Barber' } });
@@ -91,7 +87,6 @@ describe('transaction logo picker', () => {
   it('keeps manual selection available when the catalogue fails', async () => {
     const apiFetch = vi.fn().mockResolvedValue({ ok: false, status: 503 });
     const { onChange } = renderPicker({ apiFetch });
-    fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
     expect(await screen.findByText('Каталог сейчас недоступен. Можно указать сайт вручную.')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Или укажите сайт компании' }), { target: { value: 'chopchop.com' } });
     fireEvent.click(screen.getByRole('button', { name: 'Применить' }));

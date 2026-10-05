@@ -508,12 +508,15 @@ describe('AddTransactionForm Component', () => {
             const toggle = screen.getByRole('button', { name: /Дополнительно/ });
             expect(toggle).toHaveAttribute('aria-expanded', 'false');
             expect(screen.queryByText('Не считать в статистике')).not.toBeInTheDocument();
-            expect(screen.queryByRole('region', { name: 'Иконка операции' })).not.toBeInTheDocument();
 
             fireEvent.click(toggle);
             expect(toggle).toHaveAttribute('aria-expanded', 'true');
             expect(screen.getByText('Не считать в статистике')).toBeInTheDocument();
-            expect(screen.getByRole('region', { name: 'Иконка операции' })).toBeInTheDocument();
+            // выбор иконки переехал в поле компании и в «Дополнительно» не лежит
+            const extra = document.getElementById('transaction-extra');
+            expect(within(extra).queryByRole('button', { name: /иконк/i })).not.toBeInTheDocument();
+            expect(within(extra).queryByText(/Иконка в истории/)).not.toBeInTheDocument();
+            expect(screen.getByRole('status')).toHaveTextContent('Укажите компанию, чтобы подобрать логотип');
         });
 
         it('раскрыто при редактировании операции, исключённой из статистики', () => {
@@ -543,11 +546,19 @@ describe('AddTransactionForm Component', () => {
             expect(screen.getByRole('button', { name: /Дополнительно/ })).toHaveAttribute('aria-expanded', 'false');
         });
 
-        it('раскрыто у операции с выбранным сайтом иконки', () => {
+        it('не раскрывается из-за выбранного сайта иконки: она больше не здесь', () => {
             const editData = { id: 'x', amount: 5, category: 'Продукты', type: 'expense', account: 'cash', logoMode: 'domain', merchantDomain: 'wolt.com' };
             render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-            expect(screen.getByRole('button', { name: /Дополнительно/ })).toHaveAttribute('aria-expanded', 'true');
+            expect(screen.getByRole('button', { name: /Дополнительно/ })).toHaveAttribute('aria-expanded', 'false');
+        });
+
+        it('скрыта целиком в режиме разделения', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+
+            fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
+            fireEvent.click(screen.getByRole('switch', { name: 'Разделить на несколько категорий' }));
+            expect(screen.queryByRole('button', { name: /Дополнительно/ })).not.toBeInTheDocument();
         });
 
         it('не показывается у перевода', () => {
@@ -671,23 +682,23 @@ describe('transaction logo selection in the expense form', () => {
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
             fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
             fireEvent.click(screen.getByText('Красота'));
-            fireEvent.click(screen.getByRole('button', { name: /Дополнительно/ }));
             fireEvent.change(screen.getByPlaceholderText('Название магазина или сервиса'), { target: { value: 'Chop Chop' } });
             fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value: 'Стрижка' } });
 
-            const preview = screen.getByRole('region', { name: 'Иконка операции' });
+            // превью видно в поле компании без открытия каких-либо панелей
+            const preview = screen.getByRole('button', { name: 'Выбрать иконку' });
             await waitFor(() => expect(preview.querySelector('img')).not.toBeNull());
             expect(preview.querySelector('img')).toHaveAttribute('loading', 'eager');
             fireEvent.load(preview.querySelector('img'));
-            expect(preview).toHaveTextContent('Автоподбор по названию — проверьте совпадение');
+            expect(screen.getByRole('status')).toHaveTextContent('Логотип подобран по названию');
             expect(onSubmit).not.toHaveBeenCalled();
 
-            fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Другой логотип' }));
             fireEvent.click(await screen.findByRole('button', { name: /Chop Chop Barber Shop.*chopchop\.com/ }));
             await waitFor(() => expect(preview.querySelector('img')).not.toBeNull());
             expect(new URL(preview.querySelector('img').src).pathname).toBe('/chopchop.com');
             fireEvent.load(preview.querySelector('img'));
-            expect(preview).toHaveTextContent('Выбрано: chopchop.com');
+            expect(screen.getByRole('status')).toHaveTextContent('Логотип: chopchop.com · запомним для «Chop Chop Barber Shop»');
             expect(onSubmit).not.toHaveBeenCalled();
             expect(screen.getByPlaceholderText('Название магазина или сервиса')).toHaveValue('Chop Chop Barber Shop');
             expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('Стрижка');
@@ -711,9 +722,12 @@ describe('transaction logo selection in the expense form', () => {
                 return { ok: true, json: async () => [{ _id: 'company-wolt', name: 'Wolt', logoMode: 'domain', merchantDomain: 'wolt.com', __v: 0 }] };
             });
             render(<AddTransactionForm initialData={initialData} categories={mockCategories} accounts={mockAccounts} apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
-            fireEvent.click(screen.getByRole('button', { name: 'Выбрать иконку' }));
+            const icon = screen.getByRole('button', { name: 'Выбрать иконку' });
+            fireEvent.load(icon.querySelector('img'));
+            expect(screen.getByRole('status')).toHaveTextContent('Логотип: wolt.com');
             fireEvent.click(screen.getByRole('button', { name: 'Иконка категории', exact: true }));
-            expect(screen.getByRole('region', { name: 'Иконка операции' }).querySelector('img')).toBeNull();
+            expect(icon.querySelector('img')).toBeNull();
+            expect(screen.getByRole('status')).toHaveTextContent('Иконка категории · запомним для «Wolt»');
             expect(onSubmit).not.toHaveBeenCalled();
 
             fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));

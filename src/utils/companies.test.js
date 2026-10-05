@@ -31,6 +31,27 @@ describe('company registry selection', () => {
     expect(getCompanySuggestions([], [...rows].reverse(), 'shop')[0].merchantDomain).toBe('new.com');
   });
 
+  it('puts companies with the current category first, after an exact name match, without dropping others', () => {
+    const saved = [
+      { _id: 'a', name: 'Alpha', logoMode: 'auto', category: 'Услуги' },
+      { _id: 'b', name: 'Beta', logoMode: 'auto', category: 'Кафе' },
+      { _id: 'c', name: 'Gamma', logoMode: 'auto' },
+    ];
+    const history = [{ type: 'expense', companyName: 'Delta', logoMode: 'category', category: 'Кафе', date: '2026-09-01' }];
+    expect(getCompanySuggestions(saved, history).map(c => c.name)).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
+    expect(getCompanySuggestions(saved, history, '', 'Кафе').map(c => c.name)).toEqual(['Beta', 'Delta', 'Alpha', 'Gamma']);
+    expect(getCompanySuggestions(saved, history, 'alpha', 'Кафе').map(c => c.name)).toEqual(['Alpha']);
+    expect(getCompanySuggestions([{ ...saved[0], name: 'Beta Alpha' }, ...saved.slice(1)], [], 'beta', 'Услуги').map(c => c.name)).toEqual(['Beta', 'Beta Alpha']);
+  });
+
+  it('carries the latest category of a historical company', () => {
+    const rows = [
+      { type: 'expense', companyName: 'Shop', date: '2026-09-01', logoMode: 'category', category: 'Старая' },
+      { type: 'expense', companyName: 'Shop', date: '2026-09-05', logoMode: 'category', category: 'Новая' },
+    ];
+    expect(getCompanySuggestions([], rows)[0].category).toBe('Новая');
+  });
+
   it('leaves legacy transactions and unchanged linked snapshots untouched', async () => {
     const request = vi.fn();
     for (const item of [

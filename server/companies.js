@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { normalizeMerchantDomain } = require('./merchantDomain');
-const { companyHistory } = require('./companyHistory');
+const { companyHistory, usualCategories } = require('./companyHistory');
 const { activeTransactionFilter } = require('./ledgerState');
 
 const COMPANY_LOGO_MODES = ['auto', 'domain', 'category'];
@@ -28,13 +28,14 @@ function validateCompanyInput(body) {
     return { company };
 }
 
-function serializeCompany(company) {
+function serializeCompany(company, category) {
     return {
         _id: String(company._id),
         __v: Number.isSafeInteger(company.__v) ? company.__v : 0,
         name: company.name,
         logoMode: company.logoMode || 'auto',
-        ...(company.logoMode === 'domain' && company.merchantDomain ? { merchantDomain: company.merchantDomain } : {})
+        ...(company.logoMode === 'domain' && company.merchantDomain ? { merchantDomain: company.merchantDomain } : {}),
+        ...(category ? { category } : {})
     };
 }
 
@@ -48,8 +49,17 @@ function createCompaniesRouter() {
 
     router.get('/', async (req, res) => {
         try {
-            const companies = await Company.find().sort({ normalizedName: 1, _id: 1 }).lean();
-            return res.json(companies.map(serializeCompany));
+            const Transaction = require('./models/Transaction');
+            const [companies, groups] = await Promise.all([
+                Company.find().sort({ normalizedName: 1, _id: 1 }).lean(),
+                // Один проход по расходам со ссылкой на компанию, а не запрос на каждую
+                Transaction.aggregate([
+                    { $match: activeTransactionFilter({ type: 'expense', companyId: { $ne: null } }) },
+                    { $group: { _id: { companyId: '$companyId', category: '$category' }, count: { $sum: 1 }, lastDate: { $max: '$date' } } }
+                ])
+            ]);
+            const usual = usualCategories(groups);
+            return res.json(companies.map(company => serializeCompany(company, usual.get(String(company._id)))));
         } catch {
             return res.status(500).json({ code: 'COMPANIES_UNAVAILABLE', message: 'Не удалось загрузить компании' });
         }
@@ -60,7 +70,7 @@ function createCompaniesRouter() {
             const Transaction = require('./models/Transaction');
             const [docs, companies] = await Promise.all([
                 Transaction.find(activeTransactionFilter({ type: 'expense', logoMode: { $in: ['domain', 'category'] } }))
-                    .select('date companyName description logoMode merchantDomain type').lean(),
+                    .select('date companyName description logoMode merchantDomain type category').lean(),
                 Company.find().select('name').lean()
             ]);
             res.json(companyHistory(docs, companies, typeof req.query.q === 'string' ? req.query.q : ''));

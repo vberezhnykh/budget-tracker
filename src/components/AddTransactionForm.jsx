@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { ChevronDown, Trash2, X } from 'lucide-react';
-import TransactionLogoPicker from './TransactionLogoPicker';
 import CompanyField from './CompanyField';
 import Field, { FormLabel } from './ui/Field'
 import Sheet from './ui/Sheet'
@@ -16,10 +15,6 @@ import useDescriptionSuggestions from './transaction-form/useDescriptionSuggesti
 import { buildSubmission } from './transaction-form/buildSubmission'
 import { saveCompanySelection } from '../utils/companies';
 import { toLocalDateInput } from '../utils/period';
-
-// Значения logoMode, при которых в «Дополнительно» нечего показывать
-// раскрытым: новый расход стартует с 'category', 'auto' - умолчание пикера.
-const DEFAULT_LOGO_MODES = ['category', 'auto', ''];
 
 export default function AddTransactionForm({ type = 'expense', initialData = null, categories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], categoryCounts, apiFetch }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
@@ -65,6 +60,11 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const [companyLogoChanged, setCompanyLogoChanged] = useState(false);
     const [companyError, setCompanyError] = useState('');
+    // Обычная категория выбранной компании и признак того, что текущую
+    // категорию подставили мы, а не выбрал пользователь: такую можно молча
+    // заменить при смене компании, выбранную руками - только предложить.
+    const [usualCategory, setUsualCategory] = useState('');
+    const [categoryAutoFilled, setCategoryAutoFilled] = useState(false);
 
     const isTransfer = formData.type === 'transfer';
 
@@ -74,13 +74,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // «Дополнительно»: свёрнуто, если у редактируемой операции там нет ничего
-    // нестандартного (исключение из статистики, выбранная иконка)
+    // нестандартного (исключение из статистики). Без содержимого (перевод,
+    // разделение) секции нет вовсе.
     const showExcludeToggle = !isTransfer && !isSplit;
-    const hasExtra = !isTransfer && (showExcludeToggle || formData.type === 'expense');
-    const [showExtra, setShowExtra] = useState(() => Boolean(initialData && (
-        initialData.excludeFromStats
-        || (initialData.type === 'expense' && !DEFAULT_LOGO_MODES.includes(initialData.logoMode ?? ''))
-    )));
+    const [showExtra, setShowExtra] = useState(() => Boolean(initialData?.excludeFromStats));
 
     // Validation for split: check if split mode is active, remaining amount is approx 0, and all splits have data
     const isSplitValid = isSplit && split.isBalanced && split.isComplete;
@@ -158,6 +155,22 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     // the form becomes closable again and remains filled for a retry.
     const requestClose = () => {
         if (!isSubmitting) onClose();
+    };
+
+    // Обычная категория компании подставляется только в расходе без
+    // разделения и только если такая категория у нас есть.
+    const usualCategoryAvailable = formData.type === 'expense' && !isSplit
+        && categories.some(c => c.type === 'expense' && c.name === usualCategory);
+    const suggestedCategory = usualCategoryAvailable && formData.category && formData.category !== usualCategory ? usualCategory : '';
+    const chooseCompany = ({ usualCategory: usual = '', ...choice }) => {
+        setCompanyLogoChanged(false);
+        setCompanyError('');
+        setUsualCategory(usual);
+        const fill = formData.type === 'expense' && !isSplit && usual
+            && categories.some(c => c.type === 'expense' && c.name === usual)
+            && (!formData.category || categoryAutoFilled);
+        if (fill) setCategoryAutoFilled(true);
+        setFormData(prev => ({ ...prev, ...choice, ...(fill ? { category: usual } : {}) }));
     };
 
     const changeType = (id) => setFormData(prev => {
@@ -250,7 +263,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     type={formData.type}
                                     categoryCounts={categoryCounts}
                                     value={formData.category}
-                                    onChange={category => setFormData(prev => ({ ...prev, category }))}
+                                    onChange={category => { setCategoryAutoFilled(false); setFormData(prev => ({ ...prev, category })); }}
                                     onAddCategory={onAddCategory}
                                 />
                             ) : (
@@ -290,11 +303,23 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     <DateField value={formData.date} onChange={date => setFormData(prev => ({ ...prev, date }))} />
 
                     {formData.type === 'expense' && (
-                        <CompanyField item={formData} transactions={transactions} apiFetch={apiFetch} onChange={choice => {
-                            setCompanyLogoChanged(false);
-                            setCompanyError('');
-                            setFormData(prev => ({ ...prev, ...choice }));
-                        }} />
+                        <CompanyField
+                            item={formData}
+                            transactions={transactions}
+                            apiFetch={apiFetch}
+                            logoChanged={companyLogoChanged}
+                            onChange={chooseCompany}
+                            onLogoChange={choice => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, ...choice })); }}
+                            onMerchantSelect={merchant => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, companyId: '', companyName: merchant.name, logoMode: 'domain', merchantDomain: merchant.domain })); }}
+                        >
+                            {suggestedCategory && (
+                                <div className="company-field__hint">
+                                    <button type="button" onClick={() => { setCategoryAutoFilled(true); setFormData(prev => ({ ...prev, category: suggestedCategory })); }}>
+                                        Обычно: {suggestedCategory}
+                                    </button>
+                                </div>
+                            )}
+                        </CompanyField>
                     )}
 
                     {/* Description */}
@@ -352,7 +377,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
                     {/* Дополнительно: редко нужные настройки спрятаны, чтобы
                         форма не вырастала на два экрана */}
-                    {hasExtra && (
+                    {showExcludeToggle && (
                         <div>
                             <button
                                 type="button"
@@ -395,15 +420,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         />
                                     )}
 
-                                    {formData.type === 'expense' && (
-                                        <TransactionLogoPicker
-                                            item={formData}
-                                            canChoose={formData.companyName === undefined || Boolean(formData.companyName.trim())}
-                                            apiFetch={apiFetch}
-                                            onChange={choice => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, ...choice })); }}
-                                            onMerchantSelect={merchant => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, companyId: '', companyName: merchant.name, logoMode: 'domain', merchantDomain: merchant.domain })); }}
-                                        />
-                                    )}
                                 </div>
                             )}
                         </div>

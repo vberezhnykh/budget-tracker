@@ -16,13 +16,33 @@ function companyHistory(docs, companies, query = '') {
         if (doc.logoMode === 'domain' && !domain) continue;
         const rank = `${new Date(doc.date).toISOString()}:${doc._id}`;
         if (!choices.has(key) || rank > choices.get(key).rank) {
-            choices.set(key, { rank, type: 'expense', companyName: name.trim(), logoMode: doc.logoMode, merchantDomain: domain });
+            choices.set(key, { rank, type: 'expense', companyName: name.trim(), logoMode: doc.logoMode, merchantDomain: domain, category: doc.category });
         }
     }
     const term = keyOf(query);
     return [...choices.values()].sort((a, b) => Number(keyOf(b.companyName) === term) - Number(keyOf(a.companyName) === term)
         || a.companyName.localeCompare(b.companyName)).slice(0, 8)
-        .map(({ type, companyName, logoMode, merchantDomain }) => ({ type, companyName, logoMode, merchantDomain }));
+        .map(({ type, companyName, logoMode, merchantDomain, category }) => ({
+            type, companyName, logoMode, merchantDomain,
+            ...(typeof category === 'string' && category ? { category } : {})
+        }));
 }
 
-module.exports = { companyHistory };
+// Обычная категория компании: самая частая, при равенстве - с более свежей
+// датой. На вход - строки группировки { _id: { companyId, category }, count, lastDate },
+// чтобы одним агрегатом обойтись без запроса на каждую компанию.
+function usualCategories(groups) {
+    const best = new Map();
+    for (const { _id, count, lastDate } of groups) {
+        if (!_id?.companyId || typeof _id.category !== 'string' || !_id.category) continue;
+        const id = String(_id.companyId);
+        const time = new Date(lastDate).getTime() || 0;
+        const current = best.get(id);
+        if (!current || count > current.count || (count === current.count && time > current.time)) {
+            best.set(id, { category: _id.category, count, time });
+        }
+    }
+    return new Map([...best].map(([id, { category }]) => [id, category]));
+}
+
+module.exports = { companyHistory, usualCategories };

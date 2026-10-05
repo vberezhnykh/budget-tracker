@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { buildHistoryPage, parseHistoryQuery } = require('./history');
 const { buildDashboard } = require('./dashboard');
-const { companyHistory } = require('./companyHistory');
+const { companyHistory, usualCategories } = require('./companyHistory');
 
 const accounts = [{ _id: 'card', type: 'card' }, { _id: 'cash', type: 'cash' }];
 const tx = (id, changes = {}) => ({ _id: String(id).padStart(3, '0'), amount: 10, type: 'expense', category: 'Еда', account: 'card', date: '2026-09-20', ...changes });
@@ -111,6 +111,18 @@ describe('paged history', () => {
         const docs = [tx(1, { description: 'Old shop', logoMode: 'domain', merchantDomain: 'shop.com', date: '2025-12-01' }),
             tx(2, { description: 'Old shop', logoMode: 'category' }), tx(3, { description: 'Saved', logoMode: 'category' })];
         const choices = companyHistory(docs, [{ name: 'Saved' }], 'shop');
-        expect(choices).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'category', merchantDomain: '' }]);
+        expect(choices).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'category', merchantDomain: '', category: 'Еда' }]);
+    });
+
+    it('picks the usual category by frequency, then by recency', () => {
+        const group = (companyId, category, count, lastDate) => ({ _id: { companyId, category }, count, lastDate });
+        const usual = usualCategories([
+            group('a', 'Продукты', 1, '2026-03-20'), group('a', 'Кафе', 2, '2026-03-01'),
+            group('b', 'Продукты', 1, '2026-03-01'), group('b', 'Кафе', 1, '2026-03-10'),
+            group('c', '', 5, '2026-03-01'),
+        ]);
+        expect(usual.get('a')).toBe('Кафе');
+        expect(usual.get('b')).toBe('Кафе');
+        expect(usual.has('c')).toBe(false);
     });
 });

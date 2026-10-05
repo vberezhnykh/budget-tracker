@@ -21,23 +21,22 @@ function renderForm({ transactions = [], initialData = null, companies = [], cre
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
     fireEvent.click(screen.getByRole('button', { name: 'Красота', exact: true }));
   }
-  // Выбор иконки лежит в свёрнутом по умолчанию «Дополнительно»
-  const extra = screen.getByRole('button', { name: /Дополнительно/ });
-  if (extra.getAttribute('aria-expanded') === 'false') fireEvent.click(extra);
   return { onSubmit, apiFetch };
 }
 
 const typeCompany = value => fireEvent.change(screen.getByPlaceholderText('Название магазина или сервиса'), { target: { value } });
 const typeDescription = value => fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value } });
+const iconButton = () => screen.getByRole('button', { name: 'Выбрать иконку' });
+const logoStatus = () => screen.getByRole('status');
 const submit = () => fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));
 async function loadPreview(pathname) {
-  const preview = screen.getByRole('region', { name: 'Иконка операции' });
+  const preview = iconButton();
   await waitFor(() => {
     expect(preview.querySelector('img')).not.toBeNull();
     expect(new URL(preview.querySelector('img').src).pathname).toBe(pathname);
   });
   fireEvent.load(preview.querySelector('img'));
-  return preview;
+  return logoStatus();
 }
 
 beforeEach(() => vi.stubEnv('VITE_LOGO_DEV_PUBLISHABLE_KEY', 'pk_test_logo_history'));
@@ -73,7 +72,7 @@ describe('separate company selection and transaction comments', () => {
     typeCompany('  CHOP   CHOP  ');
     typeDescription('Стрижка и уход');
     const preview = await loadPreview('/chopchop.com');
-    expect(preview).toHaveTextContent('Выбрано: chopchop.com');
+    expect(preview).toHaveTextContent('Логотип: chopchop.com');
     expect(onSubmit).not.toHaveBeenCalled();
 
     submit();
@@ -92,7 +91,8 @@ describe('separate company selection and transaction comments', () => {
     fireEvent.click(screen.getByRole('button', { name: /Chop Chop.*Из истории/ }));
     expect(screen.getByPlaceholderText('Название магазина или сервиса')).toHaveValue('Chop Chop');
     expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('');
-    expect(screen.getByRole('region', { name: 'Иконка операции' }).querySelector('img')).toBeNull();
+    expect(iconButton().querySelector('img')).toBeNull();
+    expect(logoStatus()).toHaveTextContent('Иконка категории');
 
     submit();
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ companyName: 'Chop Chop', description: '', logoMode: 'category', merchantDomain: '' })));
@@ -105,7 +105,7 @@ describe('separate company selection and transaction comments', () => {
     typeCompany('Unlisted Shop');
     const preview = await loadPreview('/name/unlisted%20shop');
     expect(preview).not.toHaveTextContent('Из истории');
-    expect(preview).toHaveTextContent('Автоподбор');
+    expect(preview).toHaveTextContent('Логотип подобран по названию');
 
     submit();
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
@@ -126,7 +126,7 @@ describe('separate company selection and transaction comments', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Применить' }));
     typeDescription('Another Barber');
     const preview = await loadPreview('/mybarber.com');
-    expect(preview).toHaveTextContent('Выбрано: mybarber.com');
+    expect(preview).toHaveTextContent('Логотип: mybarber.com · запомним для «Chop Chop»');
     expect(preview).not.toHaveTextContent('Из истории');
 
     submit();
@@ -139,7 +139,7 @@ describe('separate company selection and transaction comments', () => {
       transaction({ id: 'newer', date: '2026-09-09', logoMode: 'domain', merchantDomain: 'chopchop.com' }),
     ] });
     const preview = await loadPreview('/originalbarber.com');
-    expect(preview).toHaveTextContent('Выбрано: originalbarber.com');
+    expect(preview).toHaveTextContent('Логотип: originalbarber.com');
     expect(preview).not.toHaveTextContent('Из истории');
 
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '35' } });
@@ -167,8 +167,9 @@ describe('separate company selection and transaction comments', () => {
     const { onSubmit, apiFetch } = renderForm();
     await act(async () => {});
     typeDescription('Chop Chop');
-    expect(screen.getByRole('region', { name: 'Иконка операции' }).querySelector('img')).toBeNull();
+    expect(document.querySelector('.company-field img')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Выбрать иконку' })).not.toBeInTheDocument();
+    expect(logoStatus()).toHaveTextContent('Укажите компанию, чтобы подобрать логотип');
     submit();
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ companyName: '', description: 'Chop Chop', logoMode: 'category' }));
     expect(apiFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
@@ -184,5 +185,144 @@ describe('separate company selection and transaction comments', () => {
     expect(screen.getByPlaceholderText('Название магазина или сервиса')).toHaveValue('Chop Chop');
     expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('Стрижка');
     expect(screen.getByRole('button', { name: 'Сохранить', exact: true })).toBeEnabled();
+  });
+});
+
+describe('company field logo status and actions', () => {
+  const saved = { _id: 'saved-company', __v: 0, name: 'Chop Chop', logoMode: 'domain', merchantDomain: 'chopchop.com' };
+  function renderWithRegistry(companies) {
+    const onSubmit = vi.fn().mockReturnValue(false);
+    const apiFetch = vi.fn().mockImplementation(async (url, options = {}) => {
+      if (options.method === 'PUT') return { ok: true, json: async () => ({ _id: 'saved-company', ...JSON.parse(options.body), __v: 1 }) };
+      if (url === '/api/companies') return { ok: true, json: async () => companies };
+      return { ok: true, json: async () => ({ merchants: [] }) };
+    });
+    render(<AddTransactionForm type="expense" categories={categories} accounts={accounts} presetAccountId="card" apiFetch={apiFetch} onClose={vi.fn()} onSubmit={onSubmit} />);
+    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Красота', exact: true }));
+    return { onSubmit, apiFetch };
+  }
+  const pickSuggestion = async name => {
+    fireEvent.focus(screen.getByPlaceholderText('Название магазина или сервиса'));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(name) }));
+  };
+
+  it('shows the category icon in the empty company field and prompts for a company', async () => {
+    renderWithRegistry([]);
+    await act(async () => {});
+    expect(document.querySelector('.company-field [data-transaction-icon]')).not.toBeNull();
+    expect(logoStatus()).toHaveTextContent('Укажите компанию, чтобы подобрать логотип');
+    expect(screen.queryByRole('button', { name: 'Выбрать иконку' })).not.toBeInTheDocument();
+  });
+
+  it('switches to the category icon in one tap and remembers it for the company on save', async () => {
+    const { onSubmit, apiFetch } = renderWithRegistry([saved]);
+    await pickSuggestion('Chop Chop');
+    await loadPreview('/chopchop.com');
+    expect(logoStatus()).toHaveTextContent('Логотип: chopchop.com');
+    expect(logoStatus()).not.toHaveTextContent('запомним');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Иконка категории', exact: true }));
+    expect(iconButton().querySelector('img')).toBeNull();
+    expect(logoStatus()).toHaveTextContent('Иконка категории · запомним для «Chop Chop»');
+    expect(screen.getByRole('button', { name: 'Подобрать логотип' })).toBeInTheDocument();
+
+    submit();
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ companyId: 'saved-company', logoMode: 'category', merchantDomain: '' })));
+    const update = apiFetch.mock.calls.find(([, options]) => options?.method === 'PUT');
+    expect(JSON.parse(update[1].body)).toEqual({ name: 'Chop Chop', logoMode: 'category', merchantDomain: '', __v: 0 });
+  });
+
+  it('returns from the category icon to automatic matching', async () => {
+    renderWithRegistry([{ ...saved, logoMode: 'category', merchantDomain: undefined }]);
+    await pickSuggestion('Chop Chop');
+    expect(logoStatus()).toHaveTextContent('Иконка категории');
+    fireEvent.click(screen.getByRole('button', { name: 'Подобрать логотип' }));
+    await loadPreview('/name/chop%20chop');
+    expect(logoStatus()).toHaveTextContent('Логотип подобран по названию · запомним для «Chop Chop»');
+  });
+
+  it('reports a missing logo and offers to search for one', async () => {
+    renderWithRegistry([]);
+    typeCompany('Unknown Shop');
+    const icon = iconButton();
+    await waitFor(() => expect(icon.querySelector('img')).not.toBeNull());
+    expect(logoStatus()).toHaveTextContent('Загружаем логотип…');
+    fireEvent.error(icon.querySelector('img'));
+    expect(logoStatus()).toHaveTextContent('Логотип не найден — показана иконка категории');
+    fireEvent.click(screen.getByRole('button', { name: 'Найти логотип' }));
+    expect(screen.getByRole('searchbox', { name: 'Найти компанию' })).toBeInTheDocument();
+    expect(icon).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(icon);
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+});
+
+describe('usual category of a company', () => {
+  const cafe = { _id: 'mc', __v: 0, name: 'McDonalds', logoMode: 'category', category: 'Кафе и доставка' };
+  const services = { _id: 'sv', __v: 0, name: 'Servis Pro', logoMode: 'category', category: 'Услуги' };
+  const stranger = { _id: 'xx', __v: 0, name: 'Mystery', logoMode: 'category', category: 'Несуществующая' };
+  const allCategories = [...categories, { _id: 'cafe', name: 'Кафе и доставка', type: 'expense' }];
+  function renderForCategories({ companies, select = '' } = {}) {
+    const apiFetch = vi.fn().mockImplementation(async url => ({ ok: true, json: async () => (url === '/api/companies' ? companies : { merchants: [] }) }));
+    render(<AddTransactionForm type="expense" categories={allCategories} accounts={accounts} presetAccountId="card" apiFetch={apiFetch} onClose={vi.fn()} onSubmit={vi.fn()} />);
+    if (select) fireEvent.click(screen.getByRole('button', { name: select, exact: true }));
+  }
+  const pick = async (name, typed = '') => {
+    if (typed) typeCompany(typed);
+    fireEvent.focus(screen.getByPlaceholderText('Название магазина или сервиса'));
+    fireEvent.click(await screen.findByRole('button', { name: new RegExp(name) }));
+  };
+  const pressed = name => screen.getByRole('button', { name, exact: true }).getAttribute('aria-pressed') === 'true';
+
+  it('fills an empty category from the chosen company', async () => {
+    renderForCategories({ companies: [cafe] });
+    await pick('McDonalds');
+    expect(pressed('Кафе и доставка')).toBe(true);
+    expect(screen.queryByRole('button', { name: /Обычно/ })).toBeNull();
+  });
+
+  it('fills the category when a saved company name is typed exactly', async () => {
+    renderForCategories({ companies: [cafe] });
+    await act(async () => {});
+    typeCompany('mcdonalds');
+    expect(pressed('Кафе и доставка')).toBe(true);
+  });
+
+  it('keeps a manually chosen category and offers the usual one in a tap', async () => {
+    renderForCategories({ companies: [cafe], select: 'Красота' });
+    await pick('McDonalds');
+    expect(pressed('Красота')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Обычно: Кафе и доставка' }));
+    expect(pressed('Кафе и доставка')).toBe(true);
+    expect(pressed('Красота')).toBe(false);
+    expect(screen.queryByRole('button', { name: /Обычно/ })).toBeNull();
+  });
+
+  it('replaces an auto-filled category when another company is chosen', async () => {
+    renderForCategories({ companies: [cafe, services] });
+    await pick('McDonalds');
+    await pick('Servis Pro', 'Servis');
+    expect(pressed('Услуги')).toBe(true);
+    expect(screen.queryByRole('button', { name: /Обычно/ })).toBeNull();
+  });
+
+  it('stops replacing the category once the user picks one manually', async () => {
+    renderForCategories({ companies: [cafe, services] });
+    await pick('McDonalds');
+    fireEvent.click(screen.getByRole('button', { name: 'Красота', exact: true }));
+    await pick('Servis Pro', 'Servis');
+    expect(pressed('Красота')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Обычно: Услуги' })).toBeInTheDocument();
+  });
+
+  it('keeps the category when the company is cleared and ignores unknown categories', async () => {
+    renderForCategories({ companies: [cafe, stranger] });
+    await pick('McDonalds');
+    fireEvent.click(screen.getByRole('button', { name: 'Убрать компанию' }));
+    expect(pressed('Кафе и доставка')).toBe(true);
+    await pick('Mystery', 'Myst');
+    expect(pressed('Кафе и доставка')).toBe(true);
+    expect(screen.queryByRole('button', { name: /Обычно/ })).toBeNull();
   });
 });

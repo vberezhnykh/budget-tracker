@@ -62,6 +62,46 @@ describe('company registry API', () => {
         expect(listed.body[2]).not.toHaveProperty('merchantDomain');
     });
 
+    it('exposes the usual category: the most frequent one among active expenses', async () => {
+        const company = await Company.create(chosenCompany);
+        const empty = await Company.create({ name: 'No Purchases', logoMode: 'auto' });
+        const other = await Company.create({ name: 'Other Shop', logoMode: 'auto' });
+        const linked = (changes = {}) => tx({ companyId: company._id, ...changes });
+        await Transaction.create([
+            linked({ category: 'Кафе и доставка', date: '2026-03-01T00:00:00.000Z' }),
+            linked({ category: 'Кафе и доставка', date: '2026-03-02T00:00:00.000Z' }),
+            linked({ category: 'Продукты', date: '2026-03-20T00:00:00.000Z' }),
+            tx({ companyId: other._id, category: 'Транспорт' })
+        ]);
+        const listed = await agent.get('/api/companies');
+        const byName = Object.fromEntries(listed.body.map(item => [item.name, item]));
+        expect(byName['Mr & Mrs Pet'].category).toBe('Кафе и доставка');
+        expect(byName['Other Shop'].category).toBe('Транспорт');
+        expect(byName['No Purchases']).not.toHaveProperty('category');
+        expect(byName['No Purchases']._id).toBe(String(empty._id));
+    });
+
+    it('breaks a usual-category tie by the most recent date', async () => {
+        const company = await Company.create(chosenCompany);
+        await Transaction.create([
+            tx({ companyId: company._id, category: 'Продукты', date: '2026-03-01T00:00:00.000Z' }),
+            tx({ companyId: company._id, category: 'Кафе и доставка', date: '2026-03-10T00:00:00.000Z' })
+        ]);
+        expect((await agent.get('/api/companies')).body[0].category).toBe('Кафе и доставка');
+    });
+
+    it('ignores trashed transactions when choosing the usual category', async () => {
+        const company = await Company.create(chosenCompany);
+        await Transaction.create([
+            tx({ companyId: company._id, category: 'Удалённая', deletedAt: new Date() }),
+            tx({ companyId: company._id, category: 'Удалённая', deletedAt: new Date() }),
+            tx({ companyId: company._id, category: 'Продукты' })
+        ]);
+        expect((await agent.get('/api/companies')).body[0].category).toBe('Продукты');
+        await Transaction.deleteMany({ category: 'Продукты' });
+        expect(await agent.get('/api/companies').then(result => result.body[0])).not.toHaveProperty('category');
+    });
+
     it('rejects duplicate normalized names and returns the existing company for selection', async () => {
         const first = await agent.post('/api/companies').send(chosenCompany);
         const duplicate = await agent.post('/api/companies').send({ name: ' ＭＲ＆ＭＲＳ   PET ', logoMode: 'category' });
