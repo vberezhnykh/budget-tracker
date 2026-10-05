@@ -276,7 +276,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(analyticsTab);
 
         await waitFor(() => {
-            expect(screen.getByText(/Аналитика трат/)).toBeInTheDocument();
+            expect(screen.getByText(/Расходы по категориям/)).toBeInTheDocument();
         });
         // The period chip follows you across tabs rather than being owned by
         // the stats screen.
@@ -286,7 +286,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(homeTab);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Аналитика трат/)).not.toBeInTheDocument();
+            expect(screen.queryByText(/Расходы по категориям/)).not.toBeInTheDocument();
         });
         expect(screen.getByRole('button', { name: /^Период:/ })).toBeInTheDocument();
     });

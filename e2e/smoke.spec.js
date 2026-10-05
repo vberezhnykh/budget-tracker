@@ -745,12 +745,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // period, which would leave a blank screen).
     await expect(page.getByText('За выбранный период трат нет')).toBeVisible();
 
-    // Widening the range from the chip fills the same tab with the donut.
+    // Widening the range from the chip fills the same tab with category bars.
     await page.getByRole('button', { name: /^Период:/ }).click();
     await page.getByRole('dialog', { name: 'Выбор периода' }).getByRole('button', { name: 'Всё время' }).click();
-    await expect(page.getByText('Аналитика трат')).toBeVisible();
+    await expect(page.getByText('Расходы по категориям')).toBeVisible();
 
     await homeTab.click();
-    await expect(page.getByText('Аналитика трат')).toHaveCount(0);
+    await expect(page.getByText('Расходы по категориям')).toHaveCount(0);
   });
 });

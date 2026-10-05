@@ -12,10 +12,19 @@ describe('CategoryDonut Component', () => {
     it('renders category names and totals', () => {
         render(<CategoryDonut data={mockData} onToggle={() => { }} />);
 
+        expect(screen.getByRole('heading', { name: 'Расходы по категориям' })).toBeInTheDocument();
         expect(screen.getByText('Products')).toBeInTheDocument();
         expect(screen.getByText('Rent')).toBeInTheDocument();
         // Total trats display
         expect(screen.getByText('€610')).toBeInTheDocument();
+    });
+
+    it('uses proportional horizontal bars instead of a circular chart', () => {
+        const { container } = render(<CategoryDonut data={mockData} onToggle={() => { }} />);
+
+        expect(container.querySelector('svg')).not.toBeInTheDocument();
+        expect(container.querySelector('[data-category-bar="Rent"] > div')).toHaveStyle({ width: `${500 / 610 * 100}%` });
+        expect(container.querySelector('[data-category-bar="Products"] > div')).toHaveStyle({ width: `${100 / 610 * 100}%` });
     });
 
     it('groups small categories into "Прочее"', () => {

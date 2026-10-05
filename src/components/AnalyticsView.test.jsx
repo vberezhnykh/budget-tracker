@@ -29,13 +29,13 @@ describe('AnalyticsView Component', () => {
         onSelectCategory: () => { }
     };
 
-    it('renders the summary card and the donut when the period has spending', () => {
+    it('renders the summary card and category bars when the period has spending', () => {
         render(<AnalyticsView {...baseProps} />);
 
         expect(screen.getByText('Сводка')).toBeInTheDocument();
         const summary = screen.getByText('Сводка').parentElement;
         expect(within(summary).getByText('Январь 2026')).toBeInTheDocument();
-        expect(screen.getByText('Аналитика трат')).toBeInTheDocument();
+        expect(screen.getByText('Расходы по категориям')).toBeInTheDocument();
         expect(screen.getByText('Food')).toBeInTheDocument();
     });
 
@@ -116,13 +116,13 @@ describe('AnalyticsView Component', () => {
         render(<AnalyticsView {...baseProps} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
 
         expect(screen.getByText('За выбранный период трат нет')).toBeInTheDocument();
-        expect(screen.queryByText('Аналитика трат')).not.toBeInTheDocument();
+        expect(screen.queryByText('Расходы по категориям')).not.toBeInTheDocument();
     });
 
     it('does not pass category comparison through for a non-month time range', () => {
         render(<AnalyticsView {...baseProps} timeRange="year" pace={null} />);
         // The pace card never shows outside the month view even if pace were set,
-        // and the comparison label above the donut is skipped too.
+        // and the comparison label above the category bars is skipped too.
         expect(screen.queryByText('к 15 января')).not.toBeInTheDocument();
     });
 });

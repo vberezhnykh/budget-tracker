@@ -20,16 +20,16 @@ test('account rings and visited analytics work with subsequent summary requests 
   }
   expect(summaries()).toBe(1);
   await page.getByRole('button', { name: /Аналитика/ }).click();
-  await expect(page.getByText('Аналитика трат')).toBeVisible();
+  await expect(page.getByText('Расходы по категориям')).toBeVisible();
   await page.getByRole('button', { name: 'Показать Наличные' }).click();
-  await expect(page.getByText('Аналитика трат')).toBeVisible();
+  await expect(page.getByText('Расходы по категориям')).toBeVisible();
   await expect(skeleton).toHaveCount(0);
   const before = summaries();
   // Any accidental cache miss now fails rather than passing on fast localhost.
   await page.route('**/api/stats/dashboard?*', route => route.abort());
   for (const name of ['Общий капитал', 'Наличные']) {
     await page.getByRole('button', { name: `Показать ${name}` }).click();
-    await expect(page.getByText('Аналитика трат')).toBeVisible();
+    await expect(page.getByText('Расходы по категориям')).toBeVisible();
     await expect(skeleton).toHaveCount(0);
   }
   expect(summaries()).toBe(before);
