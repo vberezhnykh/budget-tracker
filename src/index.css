@@ -270,10 +270,14 @@ button {
    settles and the selected account's summary is ready. The mask grows with
    the swipe distance via --swipe-blur (0..1, set by App from useSnapCarousel
    progress); without it (data loading, period change) it defaults to full
-   blur. Reveal gently only. */
+   blur. Reveal gently only.
+   will-change gives each value its own layer: Safari otherwise repaints only
+   the element's box while the blur radius changes frame by frame, and the
+   blur's top edge stays clipped against the label above as a hard stripe. */
 .account-summary [data-account-value] {
   filter: blur(0);
   transition: filter 160ms ease;
+  will-change: filter;
 }
 
 .account-summary--pending [data-account-value] {
