@@ -243,14 +243,22 @@ button {
 }
 
 /* Появление модального листа: затемнение проявляется, сам лист выезжает
-   снизу. Обе анимации задаются в ui/Sheet.jsx и больше нигде. */
-@keyframes fadeIn {
+   снизу. Обе анимации задаются в ui/Sheet.jsx и больше нигде.
+   Затемнение проявляется через цвет и радиус размытия, а не через opacity:
+   Safari, пока у элемента с backdrop-filter анимируется прозрачность,
+   накладывает его фон на подложку дважды, и экран сначала темнеет сильнее
+   нужного, а в конце анимации рывком светлеет. */
+@keyframes overlayIn {
   from {
-    opacity: 0;
+    background-color: transparent;
+    -webkit-backdrop-filter: blur(0);
+    backdrop-filter: blur(0);
   }
 
   to {
-    opacity: 1;
+    background-color: var(--color-overlay);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
   }
 }
 
