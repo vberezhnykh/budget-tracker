@@ -3,11 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import Sheet from './ui/Sheet';
 import IconButton from './ui/IconButton';
+import Button from './ui/Button';
 
 const cardStyle = { padding: '14px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '10px' };
 const smallStyle = { margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' };
-const buttonStyle = { padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-inset)', color: 'var(--color-text-main)', fontWeight: '600' };
-const selectStyle = { ...buttonStyle, width: '100%', border: '1px solid var(--color-border)' };
+const selectStyle = { padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-inset)', color: 'var(--color-text-main)', fontWeight: '600', width: '100%', border: '1px solid var(--color-border)' };
 const statusLabels = { connected: 'Подключён', disconnected: 'Отключён', error: 'Не удалось обновить', expired: 'Требуется повторное подключение' };
 const balanceLabels = { BOOK: 'Проведённый остаток', CLBD: 'Проведённый остаток', OPBD: 'Остаток на начало периода', ITBD: 'Текущий проведённый остаток', CLAV: 'Доступно на конец периода', OPAV: 'Доступно на начало дня', ITAV: 'Доступно сейчас', PRCD: 'Остаток предыдущего периода', XPCD: 'Ожидаемый остаток', FWAV: 'Ожидаемый доступный остаток', INFO: 'Информационный остаток', VALU: 'Остаток по дате валютирования', OTHR: 'Другой остаток' };
 
@@ -42,7 +42,7 @@ function BankAccount({ account, accounts, disabled, onMap }) {
               {accounts.filter(item => item.type !== 'cash').map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
             </select>
           </label>
-          <button type="button" disabled={disabled || !selected} onClick={() => onMap(account.id, selected)} style={buttonStyle}>Связать счёт</button>
+          <Button tone="secondary" size="sm" disabled={disabled || !selected} onClick={() => onMap(account.id, selected)}>Связать счёт</Button>
           <p style={smallStyle}>Выберите счёт, куда уже вносите покупки вручную. После импорта привязку изменить нельзя.</p>
         </>
       )}
@@ -95,7 +95,7 @@ function ReviewEntry({ entry, accounts, categories, disabled, onResolve }) {
               <span style={smallStyle}>{String(candidate.date || '').slice(0, 10)} · {money(candidate.amount, candidate.currency || 'EUR')} · {candidate.category || 'Без категории'}</span>
               {candidate.groupCount > 1 && <span style={smallStyle}>Разбита на {candidate.groupCount} части</span>}
               {candidate.deleted && <span style={smallStyle}>В корзине. Для сопоставления сначала восстановите запись.</span>}
-              <button type="button" aria-label={`Это эта операция: ${candidate.title || candidate.category || 'Операция'}`} disabled={disabled || !canImport || candidate.deleted} onClick={() => resolve({ action: 'match', transactionId: candidate.transactionId, transactionVersion: candidate.version })} style={buttonStyle}>Это эта операция</button>
+              <Button tone="secondary" size="sm" aria-label={`Это эта операция: ${candidate.title || candidate.category || 'Операция'}`} disabled={disabled || !canImport || candidate.deleted} onClick={() => resolve({ action: 'match', transactionId: candidate.transactionId, transactionVersion: candidate.version })}>Это эта операция</Button>
             </div>
           ))}
         </div>
@@ -111,10 +111,10 @@ function ReviewEntry({ entry, accounts, categories, disabled, onResolve }) {
         <textarea aria-label={`Описание: ${entry.description || 'Банковская операция'}`} value={description} onChange={event => setDescription(event.target.value)} disabled={disabled || !canImport} maxLength={1000} rows={2} style={{ ...selectStyle, marginTop: '6px', resize: 'vertical' }} />
       </label>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-        <button type="button" disabled={disabled || !canImport} onClick={() => resolve({ action: 'import', category, description, candidateToken: entry.candidateToken })} className="btn-primary" style={{ padding: '10px 12px', borderRadius: 'var(--radius-md)' }}>{candidates.length ? 'Добавить отдельно' : 'Добавить в бюджет'}</button>
-        <button type="button" disabled={disabled} onClick={() => resolve({ action: 'ignore' })} style={buttonStyle}>Отклонить</button>
+        <Button size="sm" disabled={disabled || !canImport} onClick={() => resolve({ action: 'import', category, description, candidateToken: entry.candidateToken })}>{candidates.length ? 'Добавить отдельно' : 'Добавить в бюджет'}</Button>
+        <Button tone="secondary" size="sm" disabled={disabled} onClick={() => resolve({ action: 'ignore' })}>Отклонить</Button>
       </div>
-      <button type="button" aria-expanded={showTransfer} onClick={() => setShowTransfer(current => !current)} disabled={disabled} style={{ ...buttonStyle, textAlign: 'left', color: 'var(--color-primary)', fontSize: 'var(--text-sm)' }}>Это перевод между своими счетами</button>
+      <Button tone="text" size="sm" aria-expanded={showTransfer} onClick={() => setShowTransfer(current => !current)} disabled={disabled} style={{ alignSelf: 'flex-start' }}>Это перевод между своими счетами</Button>
       {showTransfer && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px' }}>
           <label style={smallStyle}>
@@ -124,7 +124,7 @@ function ReviewEntry({ entry, accounts, categories, disabled, onResolve }) {
               {accounts.filter(item => item._id !== entry.accountId).map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
             </select>
           </label>
-          <button type="button" disabled={disabled || !canImport || !transferAccount} onClick={() => resolve({ action: 'transfer', description, candidateToken: entry.candidateToken, [income ? 'fromAccountId' : 'toAccountId']: transferAccount })} style={buttonStyle}>Добавить перевод</button>
+          <Button tone="secondary" size="sm" disabled={disabled || !canImport || !transferAccount} onClick={() => resolve({ action: 'transfer', description, candidateToken: entry.candidateToken, [income ? 'fromAccountId' : 'toAccountId']: transferAccount })}>Добавить перевод</Button>
         </div>
       )}
     </article>
@@ -179,11 +179,11 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
         <IconButton round tone="neutral" onClick={requestClose} disabled={busy} aria-label="Закрыть банки"><X size={20} /></IconButton>
       </div>
 
-      <button type="button" onClick={onRetry} disabled={loading || busy} style={buttonStyle}>Обновить список предложений</button>
+      <Button tone="secondary" size="sm" onClick={onRetry} disabled={loading || busy}>Обновить список предложений</Button>
 
       {(error || actionError) && <div role="alert" style={{ ...cardStyle, background: 'var(--color-danger-soft)', color: 'var(--color-negative)' }}>
         <span>{actionError || error}</span>
-        {error && <button type="button" onClick={onRetry} disabled={loading || busy} style={buttonStyle}>Повторить загрузку</button>}
+        {error && <Button tone="secondary" size="sm" onClick={onRetry} disabled={loading || busy}>Повторить загрузку</Button>}
       </div>}
       {loading && !data && <ListSkeleton label="Загрузка банковских данных…" />}
       {data?.configured === false && <p style={smallStyle}>Подключение банков пока не настроено. Оно появится после настройки приложения.</p>}
@@ -197,7 +197,7 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
           </label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {[['boc', 'Bank of Cyprus'], ['revolut', 'Revolut']].map(([bank, name]) => (
-              <button type="button" key={bank} onClick={() => connect(bank)} disabled={busy || !validImportDate || data.connections?.some(connection => connection.bank === bank && connection.status === 'connected')} style={buttonStyle}>{pendingAction === `connect:${bank}` ? 'Открываем банк…' : `Подключить ${name}`}</button>
+              <Button tone="secondary" size="sm" key={bank} onClick={() => connect(bank)} disabled={busy || !validImportDate || data.connections?.some(connection => connection.bank === bank && connection.status === 'connected')}>{pendingAction === `connect:${bank}` ? 'Открываем банк…' : `Подключить ${name}`}</Button>
             ))}
           </div>
           <p style={smallStyle}>Подтвердите доступ на странице банка. Пароль от банка сюда вводить не нужно.</p>
@@ -216,9 +216,9 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
               {connection.consentExpiresAt && <p style={smallStyle}>Доступ до: {timestamp(connection.consentExpiresAt)}</p>}
               {connection.warningsCount > 0 && <p style={smallStyle}>Часть данных требует внимания: {connection.warningsCount}. Полученные операции доступны в предложениях ниже.</p>}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                <button type="button" disabled={busy || !canSync} onClick={() => run(`sync:${connection.id}`, () => onSync(connection.id))} style={buttonStyle}>{pendingAction === `sync:${connection.id}` ? 'Обновление…' : notDue ? `Обновить после ${timestamp(connection.nextSyncAt)}` : 'Обновить сейчас'}</button>
-                {['expired', 'disconnected', 'error'].includes(connection.status) && <button type="button" disabled={busy || !validImportDate || connection.syncing} onClick={() => connect(connection.bank)} style={buttonStyle}>Подключить заново</button>}
-                {connection.status !== 'disconnected' && <button type="button" disabled={busy || connection.syncing} onClick={() => run(`disconnect:${connection.id}`, () => onDisconnect(connection.id))} style={buttonStyle}>Отключить банк</button>}
+                <Button tone="secondary" size="sm" disabled={busy || !canSync} onClick={() => run(`sync:${connection.id}`, () => onSync(connection.id))}>{pendingAction === `sync:${connection.id}` ? 'Обновление…' : notDue ? `Обновить после ${timestamp(connection.nextSyncAt)}` : 'Обновить сейчас'}</Button>
+                {['expired', 'disconnected', 'error'].includes(connection.status) && <Button tone="secondary" size="sm" disabled={busy || !validImportDate || connection.syncing} onClick={() => connect(connection.bank)}>Подключить заново</Button>}
+                {connection.status !== 'disconnected' && <Button tone="secondary" size="sm" disabled={busy || connection.syncing} onClick={() => run(`disconnect:${connection.id}`, () => onDisconnect(connection.id))}>Отключить банк</Button>}
               </div>
               <p style={smallStyle}>Снимки баланса банка показаны отдельно от капитала, рассчитанного по операциям приложения.</p>
               {(connection.accounts || []).map(account => <BankAccount key={account.id} account={account} accounts={accounts} disabled={busy || connection.status === 'disconnected'} onMap={(id, accountId) => run(`map:${id}`, () => onMapAccount(id, accountId))} />)}

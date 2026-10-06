@@ -70,7 +70,7 @@ export default function BottomTabs({ active, onChange }) {
               // меньше внешнего примерно на этот отступ - иначе выглядит
               // толще родителя.
               borderRadius: 'var(--radius-md)',
-              background: isActive ? 'rgba(37, 99, 235, 0.1)' : 'transparent',
+              background: isActive ? 'var(--color-primary-tint)' : 'transparent',
               color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)',
               fontSize: 'var(--text-xs)',
               fontWeight: isActive ? '700' : '600',

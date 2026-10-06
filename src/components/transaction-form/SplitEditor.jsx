@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Plus, X } from 'lucide-react';
 import Chip from '../ui/Chip';
 import Field from '../ui/Field';
+import IconButton from '../ui/IconButton';
 import { splitCategoriesByUsage } from '../../utils/finance';
 
 // Блок разделения: сколько осталось распределить и по строке на часть -
@@ -28,7 +29,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>Категория {index + 1}</span>
                         {splits.length > 2 && (
-                            <button type="button" aria-label={`Удалить часть ${index + 1}`} onClick={() => remove(part.id)} style={{ color: 'var(--color-negative)', background: 'transparent', fontSize: 'var(--text-2xl)' }}><X size={20} strokeWidth={1.8} aria-hidden="true" /></button>
+                            <IconButton round tone="danger" size={32} aria-label={`Удалить часть ${index + 1}`} onClick={() => remove(part.id)}><X size={20} strokeWidth={1.8} aria-hidden="true" /></IconButton>
                         )}
                     </div>
 

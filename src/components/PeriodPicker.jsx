@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import Chip from './ui/Chip'
+import IconButton from './ui/IconButton'
 import Sheet from './ui/Sheet'
 import SegmentedControl from './ui/SegmentedControl'
 import {
@@ -98,22 +99,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
         <Sheet ariaLabel={monthsOnly ? 'Переход к месяцу' : 'Выбор периода'} onClose={close} maxHeight="80vh">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <h3 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: '700' }}>{monthsOnly ? 'Переход к месяцу' : 'Период'}</h3>
-              <button
-                type="button"
-                onClick={close}
-                aria-label="Закрыть"
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--color-text-muted)',
-                  fontSize: '1.4rem',
-                  lineHeight: 1,
-                  cursor: 'pointer',
-                  padding: '4px 8px',
-                }}
-              >
-                <X size={20} />
-              </button>
+              <IconButton round tone="neutral" onClick={close} aria-label="Закрыть"><X size={20} /></IconButton>
             </div>
 
             {!monthsOnly && (

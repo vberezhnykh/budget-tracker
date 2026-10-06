@@ -1,6 +1,7 @@
 import { ListSkeleton } from './ui/Skeleton';
 import { useState } from 'react';
 import { X } from 'lucide-react';
+import Button from './ui/Button';
 import IconButton from './ui/IconButton';
 import Sheet from './ui/Sheet';
 
@@ -51,7 +52,7 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
       {(error || actionError) && (
         <div role="alert" style={{ padding: '12px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-soft)', color: 'var(--color-negative)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
           <span>{actionError || error}</span>
-          {error && <button type="button" onClick={onRetry} disabled={loading} style={{ padding: '7px 10px', borderRadius: 'var(--radius-sm)', background: 'var(--color-surface)', color: 'var(--color-primary)', fontWeight: '700' }}>Повторить</button>}
+          {error && <Button tone="secondary" size="sm" onClick={onRetry} disabled={loading}>Повторить</Button>}
         </div>
       )}
 
@@ -81,12 +82,12 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
                   </div>
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                  <button type="button" disabled={Boolean(pendingAction)} onClick={() => run('restore', group)} className="btn-primary" style={{ padding: '9px 10px' }}>
+                  <Button size="sm" disabled={Boolean(pendingAction)} onClick={() => run('restore', group)}>
                     {isBusy && pendingAction.startsWith('restore') ? 'Восстановление...' : 'Восстановить'}
-                  </button>
-                  <button type="button" disabled={Boolean(pendingAction)} onClick={() => run('purge', group)} style={{ padding: '9px 10px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-soft)', color: 'var(--color-danger)', fontWeight: '700' }}>
+                  </Button>
+                  <Button tone="danger" size="sm" disabled={Boolean(pendingAction)} onClick={() => run('purge', group)}>
                     {isBusy && pendingAction.startsWith('purge') ? 'Удаление...' : 'Удалить навсегда'}
-                  </button>
+                  </Button>
                 </div>
               </article>
             );

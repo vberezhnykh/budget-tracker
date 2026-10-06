@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Field from './ui/Field'
+import Button from './ui/Button'
 
 // Single shared-password login screen. Shown whenever the app detects an
 // unauthenticated state (a 401 from the API) - see App.jsx. There is no
@@ -69,14 +70,9 @@ function LoginScreen({ onSuccess }) {
             </div>
           )}
 
-          <button
-            type="submit"
-            className="btn-primary"
-            disabled={isSubmitting}
-            style={{ padding: '12px', borderRadius: 'var(--radius-md)', fontWeight: '700', opacity: isSubmitting ? 0.7 : 1 }}
-          >
+          <Button type="submit" block disabled={isSubmitting}>
             {isSubmitting ? 'Вход...' : 'Войти'}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

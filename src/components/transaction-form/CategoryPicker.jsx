@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Check, LoaderCircle, Plus, X } from 'lucide-react';
 import Chip from '../ui/Chip';
+import Button from '../ui/Button';
 import Field, { FormLabel } from '../ui/Field';
 import { splitCategoriesByUsage } from '../../utils/finance';
 
@@ -127,37 +128,19 @@ export default function CategoryPicker({ categories, transactions, type, categor
                                 border: '1px solid var(--color-primary-border)',
                             }}
                         />
-                        <button
-                            type="button"
+                        <Button
+                            size="sm"
                             aria-label="Сохранить категорию"
                             aria-busy={creating}
                             onClick={handleCreate}
                             disabled={!newName.trim() || creating}
-                            style={{
-                                padding: '8px 14px',
-                                borderRadius: 'var(--radius-pill)',
-                                border: 'none',
-                                background: newName.trim() ? 'var(--color-primary)' : 'var(--color-surface-inset)',
-                                color: newName.trim() ? 'var(--color-text-inverse)' : 'var(--color-text-muted)',
-                                fontSize: 'var(--text-base)',
-                                fontWeight: '600',
-                                cursor: newName.trim() ? 'pointer' : 'default'
-                            }}
-                        >{creating ? <LoaderCircle size={18} strokeWidth={1.8} aria-hidden="true" /> : <Check size={18} strokeWidth={1.8} aria-hidden="true" />}</button>
-                        <button
-                            type="button"
+                        >{creating ? <LoaderCircle size={18} strokeWidth={1.8} aria-hidden="true" /> : <Check size={18} strokeWidth={1.8} aria-hidden="true" />}</Button>
+                        <Button
+                            tone="secondary"
+                            size="sm"
                             aria-label="Отменить создание категории"
                             onClick={() => { setIsAdding(false); setNewName(''); setError(''); }}
-                            style={{
-                                padding: '8px 14px',
-                                borderRadius: 'var(--radius-pill)',
-                                border: '1px solid var(--color-border)',
-                                background: 'var(--color-surface)',
-                                color: 'var(--color-text-muted)',
-                                fontSize: 'var(--text-base)',
-                                cursor: 'pointer'
-                            }}
-                        ><X size={18} strokeWidth={1.8} aria-hidden="true" /></button>
+                        ><X size={18} strokeWidth={1.8} aria-hidden="true" /></Button>
                     </div>
                     {error && (
                         <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-sm)', marginTop: '6px' }}>

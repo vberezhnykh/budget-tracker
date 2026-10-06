@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Button from './ui/Button';
 
 const COLORS = [
     '#6366f1', // Indigo
@@ -184,24 +185,9 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
         <div className="glass-panel" style={{ padding: '20px', marginTop: '0' }}>
             <div style={{ display: 'grid', gridTemplateColumns: onToggle ? 'auto 1fr auto' : '1fr auto', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 {onToggle && (
-                    <button
-                        onClick={onToggle}
-                        style={{
-                            background: 'var(--color-surface-sunken)',
-                            border: '1px solid var(--color-border)',
-                            borderRadius: 'var(--radius-sm)',
-                            padding: '4px 12px',
-                            color: 'var(--color-primary)',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            fontSize: 'var(--text-sm)',
-                            fontWeight: '600'
-                        }}
-                    >
+                    <Button tone="secondary" size="sm" onClick={onToggle}>
                         <span>←</span> Назад
-                    </button>
+                    </Button>
                 )}
                 <h3 style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)', textAlign: 'left' }}>
                     Расходы по категориям

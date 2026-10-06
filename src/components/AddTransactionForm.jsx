@@ -3,6 +3,8 @@ import { ChevronDown, Trash2, X } from 'lucide-react';
 import CompanyField from './CompanyField';
 import Field, { FormLabel } from './ui/Field'
 import Sheet from './ui/Sheet'
+import Button from './ui/Button'
+import IconButton from './ui/IconButton'
 import SegmentedControl from './ui/SegmentedControl'
 import Switch from './ui/Switch'
 import AccountPicker from './transaction-form/AccountPicker'
@@ -184,17 +186,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         <Sheet ariaLabel={getTitle()} onClose={requestClose}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <h3 style={{ margin: 0 }}>{getTitle()}</h3>
-                    <button
-                        type="button"
-                        aria-label="Закрыть"
-                        onClick={requestClose}
-                        style={{
-                            background: 'transparent',
-                            color: 'var(--color-text-muted)',
-                            fontSize: '1.5rem',
-                            lineHeight: 1
-                        }}
-                    ><X size={22} strokeWidth={1.8} aria-hidden="true" /></button>
+                    <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть"><X size={20} strokeWidth={1.8} aria-hidden="true" /></IconButton>
                 </div>
 
                 {/* Type Toggle - Hide if splitting or editing */}
@@ -379,22 +371,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         форма не вырастала на два экрана */}
                     {showExcludeToggle && (
                         <div>
-                            <button
-                                type="button"
+                            <Button
+                                tone="text"
+                                size="sm"
                                 aria-expanded={showExtra}
                                 aria-controls="transaction-extra"
                                 onClick={() => setShowExtra(v => !v)}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '6px',
-                                    padding: '4px 0',
-                                    background: 'transparent',
-                                    color: 'var(--color-text-muted)',
-                                    fontSize: 'var(--text-base)',
-                                    fontWeight: '600',
-                                    cursor: 'pointer'
-                                }}
+                                style={{ color: 'var(--color-text-muted)' }}
                             >
                                 <ChevronDown
                                     size={18}
@@ -407,7 +390,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 {!showExtra && showExcludeToggle && formData.excludeFromStats && (
                                     <span style={{ fontWeight: '400' }}>· не в статистике</span>
                                 )}
-                            </button>
+                            </Button>
                             {showExtra && (
                                 <div id="transaction-extra" style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '12px' }}>
                                     {/* Exclude from stats toggle */}
@@ -440,8 +423,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         boxShadow: 'var(--shadow-sticky-footer)'
                     }}>
                         {initialData && (
-                            <button
-                                type="button"
+                            <Button
+                                tone="danger"
+                                size="lg"
                                 aria-label="Удалить операцию"
                                 disabled={isSubmitting}
                                 onClick={async () => {
@@ -459,35 +443,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         setIsSubmitting(false);
                                     }
                                 }}
-                                style={{
-                                    padding: '16px',
-                                    borderRadius: 'var(--radius-md)',
-                                    background: 'var(--color-surface)',
-                                    color: 'var(--color-negative)',
-                                    fontWeight: '700',
-                                    border: '1px solid var(--color-danger-border-soft)',
-                                    fontSize: 'var(--text-3xl)',
-                                    lineHeight: 1,
-                                    boxShadow: 'var(--shadow-danger)'
-                                }}
                             >
                                 <Trash2 size={22} strokeWidth={1.8} aria-hidden="true" />
-                            </button>
+                            </Button>
                         )}
-                        <button
-                            type="submit"
-                            className="btn-primary"
-                            disabled={isSaveDisabled}
-                            style={{
-                                flex: 1,
-                                padding: '16px',
-                                fontSize: 'var(--text-2xl)',
-                                opacity: isSaveDisabled ? 0.5 : 1,
-                                cursor: isSaveDisabled ? 'not-allowed' : 'pointer'
-                            }}
-                        >
+                        <Button type="submit" size="lg" disabled={isSaveDisabled} style={{ flex: 1 }}>
                             {isSubmitting ? 'Сохранение...' : 'Сохранить'}
-                        </button>
+                        </Button>
                     </div>
                 </form>
         </Sheet>

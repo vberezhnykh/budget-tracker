@@ -382,7 +382,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
 
     // All three sit on the same row - their vertical centres line up, within
     // a couple of pixels (allowing for sub-pixel rounding differences
-    // between the glass-panel and btn-primary classes).
+    // between the filled and the tinted quick-action tones).
     const centres = boxes.map((box) => box.y + box.height / 2);
     for (const centre of centres) {
       expect(Math.abs(centre - centres[0])).toBeLessThanOrEqual(2);

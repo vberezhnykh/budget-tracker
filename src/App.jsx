@@ -13,6 +13,7 @@ import { AppSkeleton, SummarySkeleton } from './components/ui/Skeleton'
 import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
+import Button from './components/ui/Button'
 import { formatPeriodLabel, toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput } from './utils/period'
 import { transformTransactions, getPaceForecast } from './utils/finance'
 import usePagedHistory from './utils/usePagedHistory'
@@ -1249,14 +1250,9 @@ function App() {
           <p style={{ margin: '12px 0 20px', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
             {initialLoadError}. Проверьте подключение и попробуйте ещё раз.
           </p>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => loadData({ initial: true })}
-            style={{ padding: '12px 20px', borderRadius: 'var(--radius-md)', fontWeight: '700' }}
-          >
+          <Button onClick={() => loadData({ initial: true })}>
             Повторить
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -1334,9 +1330,9 @@ function App() {
           <span style={{ color: undoDeletion.error ? 'var(--color-negative)' : 'var(--color-text-main)', fontSize: 'var(--text-sm)', fontWeight: '600' }}>
             {undoDeletion.error || `В корзине.${undoDeletion.count > 1 ? ` Операций: ${undoDeletion.count}.` : ''}`}
           </span>
-          <button type="button" onClick={handleUndoDeletion} disabled={undoDeletion.pending} style={{ padding: '8px 10px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary-tint)', color: 'var(--color-primary)', fontWeight: '700', flexShrink: 0 }}>
+          <Button tone="soft" size="sm" onClick={handleUndoDeletion} disabled={undoDeletion.pending} style={{ flexShrink: 0 }}>
             {undoDeletion.pending ? 'Восстановление...' : 'Отменить'}
-          </button>
+          </Button>
         </div>
       )}
       {syncWarning && (
@@ -1361,15 +1357,14 @@ function App() {
               Показана синхронизация: {lastSyncLabel}. {syncWarning}
             </div>
           </div>
-          <button
-            type="button"
-            className="btn-primary"
+          <Button
+            size="sm"
             disabled={isRefreshing}
             onClick={() => loadData({ initial: false })}
-            style={{ padding: '9px 12px', borderRadius: 'var(--radius-md)', flexShrink: 0 }}
+            style={{ flexShrink: 0 }}
           >
             {isRefreshing ? 'Обновление...' : 'Повторить'}
-          </button>
+          </Button>
         </div>
       )}
       {/* Premium Header */}
@@ -1547,15 +1542,15 @@ function App() {
         {/* Quick Actions */}
         <section style={{ marginBottom: '32px' }}>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => openAddModal('income')} aria-label="Добавить доход" className="btn-primary quick-action" style={{ flex: 1, background: 'var(--color-positive-gradient)', boxShadow: '0 4px 15px rgba(16, 185, 129, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
+            <Button tone="positive" onClick={() => openAddModal('income')} aria-label="Добавить доход" style={{ flex: 1, whiteSpace: 'nowrap' }}>
               <Plus size={18} /> Доход
-            </button>
-            <button onClick={() => openAddModal('expense')} aria-label="Добавить расход" className="btn-primary quick-action" style={{ flex: 1, background: 'var(--color-expense-gradient)', boxShadow: '0 4px 15px rgba(244, 63, 94, 0.3)', padding: '12px 8px', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
+            </Button>
+            <Button tone="expense" onClick={() => openAddModal('expense')} aria-label="Добавить расход" style={{ flex: 1, whiteSpace: 'nowrap' }}>
               <Minus size={18} /> Расход
-            </button>
-            <button onClick={() => openAddModal('transfer')} aria-label="Добавить перевод" className="glass-panel quick-action" style={{ flex: 1, border: '1px solid rgba(129, 140, 248, 0.2)', color: '#818cf8', padding: '12px 8px', borderRadius: 'var(--radius-lg)', fontWeight: '600', fontSize: 'var(--text-md)', whiteSpace: 'nowrap' }}>
+            </Button>
+            <Button tone="soft" onClick={() => openAddModal('transfer')} aria-label="Добавить перевод" style={{ flex: 1, whiteSpace: 'nowrap' }}>
               <ArrowRightLeft size={18} /> Перевод
-            </button>
+            </Button>
           </div>
         </section>
 

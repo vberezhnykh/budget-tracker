@@ -6,6 +6,7 @@ import AccountIcon from './AccountIcon'
 import Field from './ui/Field'
 import Sheet from './ui/Sheet'
 import IconButton from './ui/IconButton'
+import Button from './ui/Button'
 import { DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 
@@ -283,39 +284,14 @@ export default function AccountsSettingsModal({
           </label>
 
           <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={savingAccount}
-              style={{
-                flex: 1,
-                padding: '10px',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-base)',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-            >
+            <Button type="submit" disabled={savingAccount} style={{ flex: 1 }}>
               {savingAccount ? 'Сохранение...' : (editingAccountId ? 'Сохранить изменения' : 'Добавить счёт')}
-            </button>
+            </Button>
 
             {editingAccountId && (
-              <button
-                type="button"
-                onClick={resetForm}
-                style={{
-                  background: 'var(--color-surface-inset)',
-                  border: 'none',
-                  padding: '10px 16px',
-                  borderRadius: 'var(--radius-md)',
-                  fontSize: 'var(--text-base)',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  color: 'var(--color-text-main)'
-                }}
-              >
+              <Button tone="secondary" onClick={resetForm}>
                 Отмена
-              </button>
+              </Button>
             )}
           </div>
         </form>
@@ -346,9 +322,9 @@ export default function AccountsSettingsModal({
         </div>
 
         {onOpenBanking && (
-          <button type="button" onClick={onOpenBanking} style={{ padding: '12px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-inset)', border: '1px solid var(--color-border-subtle)', color: 'var(--color-text-main)', fontSize: 'var(--text-base)', fontWeight: '700' }}>
+          <Button tone="secondary" onClick={onOpenBanking}>
             Банки{pendingBankingCount > 0 ? ` · предложений: ${pendingBankingCount}` : ''}
-          </button>
+          </Button>
         )}
 
         {/* Monthly spending limit - shared across devices via the server
@@ -461,64 +437,23 @@ export default function AccountsSettingsModal({
               placeholder="Например, 7000"
               value={limitInput}
               onChange={(e) => setLimitInput(e.target.value)}
-              style={{ flex: 1 }}
+              style={{ flex: 1, minWidth: 0 }}
             />
-            <button
-              type="submit"
-              className="btn-primary"
-              disabled={savingLimit}
-              style={{
-                padding: '10px 16px',
-                borderRadius: 'var(--radius-md)',
-                fontSize: 'var(--text-base)',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-            >
+            <Button type="submit" disabled={savingLimit} style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
               {savingLimit ? 'Сохранение...' : 'Сохранить лимит'}
-            </button>
+            </Button>
           </form>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenTrash}
-          style={{
-            background: 'var(--color-surface-inset)',
-            border: '1px solid var(--color-border-subtle)',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--color-text-main)',
-            cursor: 'pointer',
-            fontSize: 'var(--text-base)',
-            fontWeight: '700',
-            padding: '11px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-          }}
-        >
+        <Button tone="secondary" onClick={onOpenTrash}>
           <Trash2 size={18} strokeWidth={1.8} aria-hidden="true" /> Корзина операций
-        </button>
+        </Button>
 
         {/* Session: the only place a logout control lives - deliberately
             not added as new chrome on the main screen. */}
-        <button
-          type="button"
-          onClick={onLogout}
-          style={{
-            background: 'var(--color-danger-soft)',
-            border: 'none',
-            borderRadius: 'var(--radius-md)',
-            color: 'var(--color-danger)',
-            cursor: 'pointer',
-            fontSize: 'var(--text-base)',
-            fontWeight: '600',
-            padding: '10px'
-          }}
-        >
+        <Button tone="danger" onClick={onLogout}>
           Выйти
-        </button>
+        </Button>
     </Sheet>
   );
 }

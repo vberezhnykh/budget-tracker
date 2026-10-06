@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
+import Button from './ui/Button';
 import Field from './ui/Field';
 import IconButton from './ui/IconButton';
 import Sheet from './ui/Sheet';
@@ -121,9 +122,9 @@ function PaymentFormSheet({ payment, accounts, categories, onSave, onClose }) {
           <Field value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} placeholder="Детали платежа" />
         </FormRow>
         {error && <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-sm)' }}>{error}</div>}
-        <button type="submit" className="btn-primary" disabled={pending} style={{ width: '100%' }}>
+        <Button type="submit" block disabled={pending}>
           {pending ? 'Сохранение...' : 'Сохранить'}
-        </button>
+        </Button>
       </form>
     </Sheet>
   );
@@ -245,9 +246,9 @@ function PaySheet({ payment, accounts, categories, transactions, onPay, onClose 
           </>
         )}
         {error && <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-sm)' }}>{error}</div>}
-        <button type="submit" className="btn-primary" disabled={pending} style={{ width: '100%' }}>
+        <Button type="submit" block disabled={pending}>
           {pending ? 'Оплата...' : mode === 'existing' ? 'Связать с расходом' : 'Создать расход и оплатить'}
-        </button>
+        </Button>
       </form>
     </Sheet>
   );
@@ -280,21 +281,21 @@ function PaymentCard({ payment, accounts, busy, onEdit, onPay, onStatus, onOpenT
         </div>
       )}
       {payment.transactionDeleted && (
-        <button type="button" onClick={onOpenTrash} style={{ ...secondaryButtonStyle, color: 'var(--color-danger)', background: 'var(--color-danger-soft)' }}>
+        <Button tone="danger" size="sm" onClick={onOpenTrash}>
           Расход находится в корзине — восстановить
-        </button>
+        </Button>
       )}
       {payment.status === 'pending' && (
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button type="button" onClick={onPay} disabled={busy} className="btn-primary" style={{ padding: '8px 12px' }}>Оплатить</button>
-          <button type="button" onClick={onEdit} disabled={busy} style={secondaryButtonStyle}>Изменить</button>
-          <button type="button" onClick={() => onStatus('skipped')} disabled={busy} style={{ ...secondaryButtonStyle, color: 'var(--color-danger)', background: 'var(--color-danger-soft)' }}>Отменить план</button>
+          <Button size="sm" onClick={onPay} disabled={busy}>Оплатить</Button>
+          <Button tone="secondary" size="sm" onClick={onEdit} disabled={busy}>Изменить</Button>
+          <Button tone="danger" size="sm" onClick={() => onStatus('skipped')} disabled={busy}>Отменить план</Button>
         </div>
       )}
       {payment.status === 'skipped' && (
-        <button type="button" onClick={() => onStatus('pending')} disabled={busy} style={{ ...secondaryButtonStyle, alignSelf: 'flex-start' }}>
+        <Button tone="secondary" size="sm" onClick={() => onStatus('pending')} disabled={busy} style={{ alignSelf: 'flex-start' }}>
           Вернуть в ожидающие
-        </button>
+        </Button>
       )}
     </article>
   );
@@ -351,7 +352,7 @@ export default function PlannedPaymentsView({ plannedPayments, accounts, categor
           <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>До конца месяца, включая просроченные</div>
           <div style={{ color: 'var(--color-text-main)', fontSize: '1.8rem', fontWeight: '800', marginTop: '4px' }}>{money(groups.pendingThroughMonth)}</div>
         </div>
-        <button type="button" className="btn-primary" onClick={() => setShowForm(true)} style={{ padding: '10px 14px', flexShrink: 0 }}>+ Добавить</button>
+        <Button size="sm" onClick={() => setShowForm(true)} style={{ flexShrink: 0 }}>+ Добавить</Button>
       </section>
 
       {actionError && <div role="alert" className="glass-panel" style={{ padding: '12px', color: 'var(--color-negative)' }}>{actionError}</div>}

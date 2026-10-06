@@ -1,5 +1,6 @@
 import { Component } from 'react';
 import { reportClientError } from '../utils/clientErrorReporter';
+import Button from './ui/Button';
 
 // Catches render-time exceptions anywhere below it in the tree (the
 // carousel, the drawer, the transaction list, ...) and shows a fallback
@@ -34,14 +35,9 @@ class ErrorBoundary extends Component {
             <p style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
               Приложение столкнулось с ошибкой. Попробуйте перезагрузить страницу.
             </p>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => window.location.reload()}
-              style={{ padding: '12px', borderRadius: 'var(--radius-md)', fontWeight: '700', border: 'none', cursor: 'pointer' }}
-            >
+            <Button block onClick={() => window.location.reload()}>
               Перезагрузить
-            </button>
+            </Button>
           </div>
         </div>
       );

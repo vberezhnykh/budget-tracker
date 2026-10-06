@@ -144,6 +144,10 @@
   --shadow-float: 0 1px 4px rgba(0, 0, 0, 0.08);
   /* Тень кнопки удаления в тон её красной рамке. */
   --shadow-danger: 0 2px 4px rgba(239, 68, 68, 0.05);
+  /* Цветные тени заливных кнопок ui/Button: в тон заливке каждого тона. */
+  --shadow-primary: 0 4px 12px rgba(37, 99, 235, 0.3);
+  --shadow-positive: 0 4px 15px rgba(16, 185, 129, 0.3);
+  --shadow-expense: 0 4px 15px rgba(244, 63, 94, 0.3);
   /* Липкий футер формы: тонкая линия сверху и мягкий отрыв от контента. */
   --shadow-sticky-footer: 0 -1px 0 var(--color-border-subtle), 0 -8px 12px -6px rgba(0, 0, 0, 0.06);
 }
@@ -187,17 +191,33 @@ button {
   font-family: inherit;
 }
 
+/* Состояния ui/Button: псевдоклассы инлайном не задать, поэтому они здесь.
+   Наведение - только там, где оно есть (мышь), иначе на телефоне после тапа
+   кнопка оставалась бы подсвеченной. */
+.ui-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ui-button:not(:disabled):active {
+  transform: scale(0.98);
+}
+
+.ui-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .ui-button:not(:disabled):hover {
+    filter: brightness(1.05);
+  }
+}
+
 .lucide {
   flex-shrink: 0;
   vertical-align: middle;
   stroke-width: 1.8;
-}
-
-.quick-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
 }
 
 /* Utilities */
@@ -208,22 +228,6 @@ button {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-}
-
-.btn-primary {
-  background: linear-gradient(135deg, var(--color-primary), #4f46e5);
-  color: white;
-  padding: 12px 24px;
-  border-radius: var(--radius-md);
-  font-weight: 600;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-}
-
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-  filter: brightness(1.1);
 }
 
 .layout-container {

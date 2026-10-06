@@ -4,6 +4,7 @@ import { ChevronDown, Download, Search, X } from 'lucide-react';
 import HistoryTimeline from './HistoryTimeline'
 import useBodyScrollLock from '../utils/useBodyScrollLock'
 import Field from './ui/Field'
+import Button from './ui/Button'
 import Chip from './ui/Chip'
 
 // Bottom-sheet chrome (CoinKeeper-style) wrapping the transaction history.
@@ -386,9 +387,9 @@ export default function TransactionsDrawer({
             <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
-                <button onClick={exportToCSV} disabled={isExporting} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: 'var(--radius-sm)', color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Button tone="secondary" size="sm" onClick={exportToCSV} disabled={isExporting}>
                   <Download size={16} strokeWidth={1.8} aria-hidden="true" /> {isExporting ? 'Экспорт…' : 'Экспорт'}
-                </button>
+                </Button>
               </div>
 
               {/* Search Bar */}
@@ -451,9 +452,9 @@ export default function TransactionsDrawer({
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
                       Счет: <strong>{getAccountFilterLabel(selectedAccount)}</strong>
                     </span>
-                    <button onClick={() => setSelectedAccount(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
+                    <Button tone="text" size="sm" onClick={() => setSelectedAccount(null)}>
                       Сбросить <X size={14} strokeWidth={1.8} aria-hidden="true" />
-                    </button>
+                    </Button>
                   </div>
                 )}
 
@@ -462,9 +463,9 @@ export default function TransactionsDrawer({
                     <span style={{ fontSize: 'var(--text-sm)', color: selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-negative)' }}>
                       Тип: <strong>{selectedType === 'income' ? 'Доходы' : 'Расходы'}</strong>
                     </span>
-                    <button onClick={() => setSelectedType(null)} style={{ background: 'none', border: 'none', color: selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-negative)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
+                    <Button tone="text" size="sm" onClick={() => setSelectedType(null)} style={{ color: selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-negative)' }}>
                       Сбросить <X size={14} strokeWidth={1.8} aria-hidden="true" />
-                    </button>
+                    </Button>
                   </div>
                 )}
 
@@ -473,18 +474,18 @@ export default function TransactionsDrawer({
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
                       Категория: <strong>{selectedCategory}</strong>
                     </span>
-                    <button onClick={() => setSelectedCategory(null)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontSize: 'var(--text-sm)', cursor: 'pointer', fontWeight: 'bold' }}>
+                    <Button tone="text" size="sm" onClick={() => setSelectedCategory(null)}>
                       Сбросить <X size={14} strokeWidth={1.8} aria-hidden="true" />
-                    </button>
+                    </Button>
                   </div>
                 )}
               </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {hasNewer && <div style={{ padding: '16px 24px', textAlign: 'center' }}>
-                <button type="button" className="btn-primary" disabled={historyLoading} onClick={requestNewer}>
+                <Button disabled={historyLoading} onClick={requestNewer}>
                   {historyLoading && historyDirection === 'newer' ? 'Загрузка…' : 'Загрузить более новые'}
-                </button>
+                </Button>
                 {historyError && historyDirection === 'newer' && <div role="alert">{historyError}</div>}
               </div>}
               {((!historyLoading && !historyError) || Object.keys(groups || {}).length > 0) && <HistoryTimeline
@@ -503,9 +504,9 @@ export default function TransactionsDrawer({
                 {historyLoading && historyDirection !== 'newer' && <ListSkeleton label="Загрузка операций…" rows={Object.keys(groups || {}).length > 0 ? 2 : 5} />}
                 {historyError && historyDirection !== 'newer' && <div role="alert">{historyError}</div>}
                 {!historyLoading && (hasMore || (historyError && historyDirection !== 'newer')) && (
-                  <button type="button" className="btn-primary" onClick={loadMore}>
+                  <Button onClick={loadMore}>
                     {historyError ? 'Повторить загрузку' : 'Загрузить еще'}
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
