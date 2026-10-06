@@ -76,7 +76,7 @@
   background: var(--account-background, linear-gradient(120deg, var(--account-tint), var(--color-surface)));
   border-radius: var(--radius-xl);
   border: 2px solid var(--account-border);
-  padding: 18px 16px;
+  padding: var(--space-4) var(--space-4);
   cursor: pointer;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -125,8 +125,11 @@
   font-size: var(--text-md);
   color: var(--account-accent);
   font-weight: var(--weight-strong);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   letter-spacing: 0.5px;
+  /* Не шаг шкалы, а геометрия: имя обходит иконку в углу карточки
+     (right 12px + ширина 32px - padding карточки 16px = 28px). Больше -
+     и длинное имя переносится, а за ним растёт высота всей карусели. */
   padding: 0 28px;
   overflow-wrap: anywhere;
 }
@@ -138,7 +141,7 @@
 }
 
 .account-card__note {
-  margin-top: 4px;
+  margin-top: var(--space-1);
   font-size: var(--text-xs);
   color: var(--color-text-muted);
 }

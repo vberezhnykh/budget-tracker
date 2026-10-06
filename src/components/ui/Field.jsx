@@ -39,11 +39,11 @@ const TONES = {
 };
 
 const SIZES = {
-    sm: { padding: '6px 10px', fontSize: 'var(--text-base)' },
-    md: { padding: '10px 14px', fontSize: 'var(--text-base)' },
-    lg: { padding: '12px 14px', fontSize: 'var(--text-lg)' },
+    sm: { padding: 'var(--space-1-5) var(--space-3)', fontSize: 'var(--text-base)' },
+    md: { padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-base)' },
+    lg: { padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-lg)' },
     // Крупное поле формы операции: сумма, дата, комментарий.
-    xl: { padding: '16px', fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-strong)' },
+    xl: { padding: 'var(--space-4)', fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-strong)' },
 };
 
 export default function Field({ tone = 'outline', size = 'md', radius, style, ...props }) {
@@ -69,7 +69,7 @@ export function FormLabel({ style, ...props }) {
     return (
         <label
             {...props}
-            style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: '8px', fontSize: 'var(--text-base)', ...style }}
+            style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontSize: 'var(--text-base)', ...style }}
         />
     );
 }

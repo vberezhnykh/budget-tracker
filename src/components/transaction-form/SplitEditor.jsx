@@ -16,7 +16,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
     }, [categories, transactions, type, categoryCounts]);
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'var(--color-surface-muted)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-md)' }}>
                 <span>Осталось распределить:</span>
                 <span style={{ color: isBalanced ? 'var(--color-positive)' : ((remaining < 0) ? 'var(--color-negative)' : 'var(--color-warning)'), fontWeight: 'var(--weight-strong)' }}>
@@ -25,7 +25,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
             </div>
 
             {splits.map((part, index) => (
-                <div key={part.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
+                <div key={part.id} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', paddingBottom: 'var(--space-4)', borderBottom: '1px solid var(--color-border-subtle)' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>Категория {index + 1}</span>
                         {splits.length > 2 && (
@@ -33,7 +33,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
                         )}
                     </div>
 
-                    <div className="no-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                    <div className="no-scrollbar" style={{ display: 'flex', gap: 'var(--space-2)', overflowX: 'auto', paddingBottom: 'var(--space-1)' }}>
                         {ordered.map(cat => {
                             // категория, занятая другой частью, здесь не предлагается
                             if (splits.some(s => s.id !== part.id && s.category === cat.name)) return null;
@@ -43,7 +43,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
                                     selected={part.category === cat.name}
                                     onClick={() => update(part.id, 'category', cat.name)}
                                     style={{
-                                        padding: '6px 12px',
+                                        padding: 'var(--space-1-5) var(--space-3)',
                                         borderRadius: 'var(--radius-lg)',
                                         whiteSpace: 'nowrap',
                                         fontSize: 'var(--text-sm)',
@@ -55,7 +55,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
                         })}
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                         <Field
                             type="number"
                             tone="muted"
@@ -65,7 +65,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
                             placeholder="Сумма"
                             value={part.amount}
                             onChange={e => update(part.id, 'amount', e.target.value)}
-                            style={{ flex: 1, padding: '10px' }}
+                            style={{ flex: 1, padding: 'var(--space-3)' }}
                         />
                     </div>
                 </div>
@@ -74,7 +74,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
             <button
                 type="button"
                 onClick={add}
-                style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px dashed var(--color-border-strong)', fontWeight: 'var(--weight-label)' }}
+                style={{ width: '100%', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px dashed var(--color-border-strong)', fontWeight: 'var(--weight-label)' }}
             >
                 <Plus size={18} strokeWidth={1.8} aria-hidden="true" /> Добавить категорию
             </button>

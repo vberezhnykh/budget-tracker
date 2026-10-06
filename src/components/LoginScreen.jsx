@@ -41,8 +41,8 @@ function LoginScreen({ onSuccess }) {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
-      <Card padding="lg" style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 'var(--space-5)' }}>
+      <Card padding="lg" style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
         <h1 style={{ fontSize: '1.6rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0, textAlign: 'center' }}>
           BudgetTracker
         </h1>
@@ -50,7 +50,7 @@ function LoginScreen({ onSuccess }) {
           Введите пароль, чтобы продолжить
         </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           <label style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-label)' }}>
             Пароль
             <Field
@@ -61,7 +61,7 @@ function LoginScreen({ onSuccess }) {
               autoFocus
               placeholder="Введите пароль"
               aria-label="Пароль"
-              style={{ width: '100%', marginTop: '6px' }}
+              style={{ width: '100%', marginTop: 'var(--space-2)' }}
             />
           </label>
 

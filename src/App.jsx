@@ -1245,10 +1245,10 @@ function App() {
 
   if (initialLoadError && !hasSnapshotRef.current) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 'var(--space-5)' }}>
         <Card padding="lg" role="alert" style={{ width: '100%', maxWidth: '380px', textAlign: 'center' }}>
           <h1 style={{ margin: 0, fontSize: 'var(--text-3xl)', color: 'var(--color-text-main)' }}>Не удалось загрузить данные</h1>
-          <p style={{ margin: '12px 0 20px', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
+          <p style={{ margin: 'var(--space-3) 0 var(--space-5)', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
             {initialLoadError}. Проверьте подключение и попробуйте ещё раз.
           </p>
           <Button onClick={() => loadData({ initial: true })}>
@@ -1278,7 +1278,7 @@ function App() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '12px',
+            gap: 'var(--space-3)',
             borderLeft: `4px solid ${notice.type === 'success' ? 'var(--color-success)' : 'var(--color-negative)'}`,
           }}
         >
@@ -1322,7 +1322,7 @@ function App() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '12px',
+            gap: 'var(--space-3)',
             borderLeft: `4px solid ${undoDeletion.error ? 'var(--color-negative)' : 'var(--color-primary)'}`,
           }}
         >
@@ -1339,11 +1339,11 @@ function App() {
           role="alert"
           padding="sm"
           style={{
-            marginBottom: '12px',
+            marginBottom: 'var(--space-3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            gap: '12px',
+            gap: 'var(--space-3)',
             borderLeft: '4px solid var(--color-negative)',
           }}
         >
@@ -1351,7 +1351,7 @@ function App() {
             <div style={{ color: 'var(--color-text-main)', fontWeight: 'var(--weight-strong)', fontSize: 'var(--text-base)' }}>
               Не удалось обновить данные
             </div>
-            <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginTop: '2px' }}>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>
               Показана синхронизация: {lastSyncLabel}. {syncWarning}
             </div>
           </div>
@@ -1366,13 +1366,13 @@ function App() {
         </Card>
       )}
       {/* Premium Header */}
-      <Card as="header" padding="lg" style={{ marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+      <Card as="header" padding="lg" style={{ marginBottom: 'var(--space-6)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-8)' }}>
           <div style={{ width: '24px' }}></div>
           <div style={{ textAlign: 'center' }}>
             <h1 style={{ fontSize: '1.8rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
             {lastSyncLabel && (
-              <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-2xs)', marginTop: '2px' }}>
+              <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-2xs)', marginTop: 'var(--space-1)' }}>
                 Синхронизировано: {lastSyncLabel}
               </div>
             )}
@@ -1402,7 +1402,7 @@ function App() {
             overflowX: 'auto',
             scrollSnapType: 'x mandatory',
             WebkitOverflowScrolling: 'touch',
-            gap: '12px',
+            gap: 'var(--space-3)',
             scrollbarWidth: 'none',
             msOverflowStyle: 'none'
           }}
@@ -1482,7 +1482,7 @@ function App() {
         </div>
 
         {/* Carousel dot indicators */}
-        <div style={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center', marginTop: '12px' }}>
+        <div style={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center', marginTop: 'var(--space-3)' }}>
           {slides.map((slide, index) => {
             const isActive = slide.filter === selectedAccount;
             return (
@@ -1538,8 +1538,8 @@ function App() {
 
       <main style={{ paddingBottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px` }}>
         {/* Quick Actions */}
-        <section style={{ marginBottom: '32px' }}>
-          <div style={{ display: 'flex', gap: '10px' }}>
+        <section style={{ marginBottom: 'var(--space-8)' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             <Button tone="positive" onClick={() => openAddModal('income')} aria-label="Добавить доход" style={{ flex: 1, whiteSpace: 'nowrap' }}>
               <Plus size={18} /> Доход
             </Button>
@@ -1557,12 +1557,12 @@ function App() {
             year, replacing the old header arrow row plus the range toggle
             that used to live inside the stats card. It sits above the
             summary card so both bottom tabs share it. */}
-        <section style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+        <section style={{ marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           <PeriodPicker timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />
         </section>
 
         {/* Summary Card with Budget Limit */}
-        <div ref={accountSummaryRef} data-testid="account-summary" className={accountStatsPending ? 'account-summary account-summary--pending' : 'account-summary'} aria-busy={accountStatsPending} inert={accountStatsPending} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: '24px' }}>
+        <div ref={accountSummaryRef} data-testid="account-summary" className={accountStatsPending ? 'account-summary account-summary--pending' : 'account-summary'} aria-busy={accountStatsPending} inert={accountStatsPending} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: 'var(--space-6)' }}>
           {!statsReady && <div style={{ gridArea: '1 / 1', minWidth: 0 }}>
             {syncWarning && !isRefreshing
               ? <Card padding="lg" style={{ color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</Card>
@@ -1585,7 +1585,7 @@ function App() {
                   overflowX: 'auto',
                   scrollSnapType: 'x mandatory',
                   WebkitOverflowScrolling: 'touch',
-                  gap: '12px',
+                  gap: 'var(--space-3)',
                   scrollbarWidth: 'none',
                   msOverflowStyle: 'none'
                 }}

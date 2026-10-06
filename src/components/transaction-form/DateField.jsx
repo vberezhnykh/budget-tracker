@@ -49,11 +49,11 @@ export default function DateField({ value, onChange }) {
     return (
         <div>
             <FormLabel htmlFor="transaction-date">Дата</FormLabel>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 <Chip
                     selected={!showInput && value === today}
                     onClick={() => pick(today)}
-                    style={{ padding: '8px 16px' }}
+                    style={{ padding: 'var(--space-2) var(--space-4)' }}
                 >
                     Сегодня
                 </Chip>
@@ -61,7 +61,7 @@ export default function DateField({ value, onChange }) {
                     <Chip
                         selected={!showInput && value === yesterday}
                         onClick={() => pick(yesterday)}
-                        style={{ padding: '8px 16px' }}
+                        style={{ padding: 'var(--space-2) var(--space-4)' }}
                     >
                         Вчера
                     </Chip>
@@ -69,7 +69,7 @@ export default function DateField({ value, onChange }) {
                 <Chip
                     selected={showInput}
                     onClick={openCustom}
-                    style={{ padding: '8px 16px' }}
+                    style={{ padding: 'var(--space-2) var(--space-4)' }}
                 >
                     {showInput && value ? formatShortDate(value) : 'Другая…'}
                 </Chip>
@@ -87,7 +87,7 @@ export default function DateField({ value, onChange }) {
                     style={{
                         width: '100%',
                         display: 'block',
-                        margin: '10px 0 0',
+                        margin: 'var(--space-3) 0 0',
                         // родное оформление поля даты в iOS/Safari
                         // сбивается только этими четырьмя строками
                         fontFamily: 'inherit',

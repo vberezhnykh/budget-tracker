@@ -8,7 +8,7 @@ import IconButton from '../ui/IconButton';
 // разделителе меняет направление одним нажатием.
 export default function TransferAccounts({ accounts, from, to, onPick, onSwap }) {
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             <div style={{
                 position: 'relative',
                 background: 'var(--color-surface-muted)',
@@ -24,8 +24,8 @@ export default function TransferAccounts({ accounts, from, to, onPick, onSwap })
                         style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: '12px',
-                            padding: '12px 14px',
+                            gap: 'var(--space-3)',
+                            padding: 'var(--space-3) var(--space-4)',
                             // Room for the swap button so the chips
                             // never run under it.
                             paddingRight: '62px',
@@ -54,7 +54,7 @@ export default function TransferAccounts({ accounts, from, to, onPick, onSwap })
                                     fontWeight: 'var(--weight-label)',
                                     letterSpacing: '0.6px',
                                     textTransform: 'uppercase',
-                                    marginBottom: '6px'
+                                    marginBottom: 'var(--space-2)'
                                 }}
                             >
                                 {row.label}

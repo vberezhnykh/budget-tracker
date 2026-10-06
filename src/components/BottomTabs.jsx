@@ -42,8 +42,8 @@ export default function BottomTabs({ active, onChange }) {
         height: `${TAB_BAR_HEIGHT}px`,
         display: 'flex',
         alignItems: 'stretch',
-        gap: '4px',
-        padding: '5px',
+        gap: 'var(--space-1)',
+        padding: 'var(--space-1)',
         borderRadius: 'var(--radius-lg)',
       }}
     >
@@ -61,8 +61,8 @@ export default function BottomTabs({ active, onChange }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '4px',
-              padding: '0 3px',
+              gap: 'var(--space-1)',
+              padding: '0 var(--space-1)',
               minWidth: 0,
               border: 'none',
               // На ступень меньше внешнего --radius-lg: кнопка лежит внутри

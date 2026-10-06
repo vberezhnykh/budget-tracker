@@ -42,16 +42,16 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
 
   return (
     <Sheet ariaLabel="Корзина операций" onClose={requestClose}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)' }}>Корзина</h2>
-          <p style={{ margin: '4px 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Удалённые операции сохраняются после перезагрузки.</p>
+          <p style={{ margin: 'var(--space-1) 0 0', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Удалённые операции сохраняются после перезагрузки.</p>
         </div>
         <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть корзину"><X size={20} /></IconButton>
       </div>
 
       {(error || actionError) && (
-        <div role="alert" style={{ padding: '12px', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-soft)', color: 'var(--color-negative)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+        <div role="alert" style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--color-danger-soft)', color: 'var(--color-negative)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
           <span>{actionError || error}</span>
           {error && <Button tone="secondary" size="sm" onClick={onRetry} disabled={loading}>Повторить</Button>}
         </div>
@@ -62,16 +62,16 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
       ) : groups.length === 0 && !error ? (
         <Card tone="muted" padding="lg" style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>Корзина пуста.</Card>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {groups.map(group => {
             const total = (group.transactions || []).reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
             const isBusy = pendingAction?.endsWith(`:${group.id}`);
             return (
-              <Card as="article" key={group.id} tone="plain" padding="md" style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
+              <Card as="article" key={group.id} tone="plain" padding="md" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
                   <div style={{ minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', overflowWrap: 'anywhere' }}>{groupTitle(group)}</h3>
-                    <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginTop: '3px' }}>
+                    <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', marginTop: 'var(--space-1)' }}>
                       Удалено {new Date(group.deletedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </div>
@@ -82,7 +82,7 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
                     {group.transactions.map(transaction => transaction.category || transaction.title).join(' · ')}
                   </div>
                 )}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
                   <Button size="sm" disabled={Boolean(pendingAction)} onClick={() => run('restore', group)}>
                     {isBusy && pendingAction.startsWith('restore') ? 'Восстановление...' : 'Восстановить'}
                   </Button>

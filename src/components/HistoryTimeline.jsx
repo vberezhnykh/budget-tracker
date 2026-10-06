@@ -16,9 +16,9 @@ export default function HistoryTimeline({ groups, initialMonth, onSelectMonth, s
   return Object.keys(months).sort().reverse().map(month => (
     <section key={month} data-history-month={month} aria-label={formatPeriodLabel('month', month)}>
       <div data-testid="history-month-heading" style={{ position: 'sticky', top: 0, zIndex: 2,
-        padding: '8px 24px', background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
+        padding: 'var(--space-2) var(--space-6)', background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
         {searching || !onSelectMonth
-          ? <h4 style={{ margin: 0, padding: '10px 0' }}>{formatPeriodLabel('month', month)}</h4>
+          ? <h4 style={{ margin: 0, padding: 'var(--space-3) 0' }}>{formatPeriodLabel('month', month)}</h4>
           : <PeriodPicker monthsOnly timeRange="month" selectedMonth={month}
             onChange={({ selectedMonth }) => onSelectMonth(selectedMonth)} />}
       </div>

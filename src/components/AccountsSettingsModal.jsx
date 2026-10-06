@@ -24,17 +24,17 @@ function AccountListItem({ account, onDelete, onEdit }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '12px 16px',
+      padding: 'var(--space-3) var(--space-4)',
       background: 'var(--color-surface-muted)',
       borderRadius: 'var(--radius-lg)',
       border: '1px solid var(--color-border-subtle)'
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flex: 1, minWidth: 0 }}>
         <span
           {...attributes}
           {...listeners}
           aria-label={`Изменить порядок: ${account.name}`}
-          style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: 'var(--text-2xl)', lineHeight: 1, padding: '4px 2px', flexShrink: 0 }}
+          style={{ cursor: 'grab', touchAction: 'none', color: 'var(--color-text-muted)', fontSize: 'var(--text-2xl)', lineHeight: 1, padding: 'var(--space-1) var(--space-0-5)', flexShrink: 0 }}
         >
           <GripVertical size={18} strokeWidth={1.8} aria-hidden="true" />
         </span>
@@ -46,7 +46,7 @@ function AccountListItem({ account, onDelete, onEdit }) {
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
         <IconButton tone="primary" onClick={onEdit} aria-label="Изменить">
           <Pencil size={18} strokeWidth={1.8} aria-hidden="true" />
         </IconButton>
@@ -204,12 +204,12 @@ export default function AccountsSettingsModal({
         </div>
 
         {/* Account Form */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--color-surface-muted)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--color-border)' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--color-border)' }}>
           <h3 style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-muted)', margin: 0 }}>
             {editingAccountId ? 'Редактировать счёт' : 'Добавить новый счёт'}
           </h3>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             <Field
               type="text"
               placeholder="Имя счёта (например, Мой Revolut)"
@@ -241,8 +241,8 @@ export default function AccountsSettingsModal({
           </fieldset>
 
           {!editingAccountId && (
-            <div style={{ display: 'flex', gap: '16px', fontSize: 'var(--text-base)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-4)', fontSize: 'var(--text-base)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1-5)', cursor: 'pointer' }}>
                 <input
                   type="radio"
                   name="formType"
@@ -255,7 +255,7 @@ export default function AccountsSettingsModal({
                 />
                 <AccountIcon icon="credit-card" size={16} /> Карта
               </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1-5)', cursor: 'pointer' }}>
                 <input
                   type="radio"
                   name="formType"
@@ -274,7 +274,7 @@ export default function AccountsSettingsModal({
           {/* Показывается и при редактировании, в отличие от типа счёта: тип
               задаётся раз и навсегда, а "заморожен ли счёт" со временем
               меняется - залог возвращают, вклад закрывают. */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--text-base)', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-base)', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={formExcludeFromTotal}
@@ -283,7 +283,7 @@ export default function AccountsSettingsModal({
             Не учитывать в общем капитале
           </label>
 
-          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-1)' }}>
             <Button type="submit" disabled={savingAccount} style={{ flex: 1 }}>
               {savingAccount ? 'Сохранение...' : (editingAccountId ? 'Сохранить изменения' : 'Добавить счёт')}
             </Button>
@@ -297,9 +297,9 @@ export default function AccountsSettingsModal({
         </form>
 
         {/* Accounts List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-muted)', margin: 0 }}>Список счетов</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', overflowY: 'auto', maxHeight: '250px', paddingRight: 'var(--space-1)' }}>
             <DndContext sensors={accountDndSensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={accounts.map(acc => acc._id)} strategy={verticalListSortingStrategy}>
                 {accounts.map(acc => (
@@ -331,9 +331,9 @@ export default function AccountsSettingsModal({
             (see GET/PUT /api/settings in server/app.js), so it's edited
             here rather than as new chrome on the main screen. */}
         {/* Categories */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-muted)', margin: 0 }}>Категории</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', overflowY: 'auto', maxHeight: '250px', paddingRight: 'var(--space-1)' }}>
             {categories.length === 0 ? (
               <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Категорий пока нет</div>
             ) : (
@@ -347,8 +347,8 @@ export default function AccountsSettingsModal({
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '10px',
-                      padding: '8px 12px',
+                      gap: 'var(--space-3)',
+                      padding: 'var(--space-2) var(--space-3)',
                       borderRadius: 'var(--radius-md)',
                       border: '1px solid var(--color-border-subtle)',
                       background: 'var(--color-surface)',
@@ -357,7 +357,7 @@ export default function AccountsSettingsModal({
                     {isEditing ? (
                       <form
                         onSubmit={(e) => handleCategoryRenameSubmit(e, cat)}
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}
+                        style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flex: 1, minWidth: 0 }}
                       >
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <Field
@@ -372,7 +372,7 @@ export default function AccountsSettingsModal({
                           {/* Тот же подстрочник, что и в обычном виде строки:
                               переименование затрагивает все эти операции, и
                               счётчик лучше держать перед глазами. */}
-                          <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                          <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
                             {meta}
                           </div>
                         </div>
@@ -428,9 +428,9 @@ export default function AccountsSettingsModal({
         </div>
 
         {/* Monthly limit */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-muted)', margin: 0 }}>Лимит трат в месяц</h3>
-          <form onSubmit={handleSaveLimit} style={{ display: 'flex', gap: '10px' }}>
+          <form onSubmit={handleSaveLimit} style={{ display: 'flex', gap: 'var(--space-3)' }}>
             <Field
               type="number"
               step="0.01"

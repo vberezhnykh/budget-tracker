@@ -17,8 +17,8 @@
 const TONES = {
     primary: {
         row: () => ({
-            gap: '12px',
-            padding: '12px',
+            gap: 'var(--space-3)',
+            padding: 'var(--space-3)',
             background: 'var(--color-surface-sunken)',
             border: '1px solid var(--color-border-subtle)',
         }),
@@ -29,7 +29,7 @@ const TONES = {
     negative: {
         row: on => ({
             justifyContent: 'space-between',
-            padding: '10px 14px',
+            padding: 'var(--space-3) var(--space-4)',
             border: '1px solid',
             borderColor: on ? 'var(--color-danger-border)' : 'var(--color-border)',
             background: on ? 'var(--color-danger-faint)' : 'var(--color-surface)',

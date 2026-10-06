@@ -328,7 +328,7 @@ export default function TransactionsDrawer({
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: '8px',
+            gap: 'var(--space-2)',
             cursor: 'pointer',
             touchAction: 'none',
             userSelect: 'none',
@@ -385,7 +385,7 @@ export default function TransactionsDrawer({
           {/* Transaction History (moved verbatim from App.jsx) */}
           {expanded && (
           <Card padding="none" style={{ overflow: 'visible' }}>
-            <div style={{ padding: '24px', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ padding: 'var(--space-6)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
                 <Button tone="secondary" size="sm" onClick={exportToCSV} disabled={isExporting}>
@@ -404,7 +404,7 @@ export default function TransactionsDrawer({
                   style={{
                     width: '100%',
                     // отступ слева - под иконку лупы, лежащую поверх поля
-                    padding: '12px 16px 12px 40px',
+                    padding: 'var(--space-3) var(--space-4) var(--space-3) 40px',
                     fontSize: 'var(--text-md)',
                   }}
                 />
@@ -422,7 +422,7 @@ export default function TransactionsDrawer({
               </div>
 
               {/* Category Filter Chips */}
-              <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', overflowX: 'auto', paddingBottom: 'var(--space-1)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 <style>{`
                   div::-webkit-scrollbar { display: none; }
                 `}</style>
@@ -434,7 +434,7 @@ export default function TransactionsDrawer({
                     onClick={() => toggleCategoryFilter(cat.name)}
                     style={{
                       flexShrink: 0,
-                      padding: '6px 12px',
+                      padding: 'var(--space-1-5) var(--space-3)',
                       fontSize: 'var(--text-xs)',
                       transition: 'all 0.2s ease',
                       // включённый фильтр приподнят над лентой - её можно
@@ -447,9 +447,9 @@ export default function TransactionsDrawer({
                 ))}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                 {selectedAccount && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-primary-border-soft)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-primary-border-soft)' }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
                       Счет: <strong>{getAccountFilterLabel(selectedAccount)}</strong>
                     </span>
@@ -460,7 +460,7 @@ export default function TransactionsDrawer({
                 )}
 
                 {selectedType && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedType === 'income' ? 'var(--color-positive-soft)' : 'var(--color-danger-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid', borderColor: selectedType === 'income' ? 'var(--color-positive-border-soft)' : 'var(--color-danger-border-faint)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedType === 'income' ? 'var(--color-positive-soft)' : 'var(--color-danger-soft)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid', borderColor: selectedType === 'income' ? 'var(--color-positive-border-soft)' : 'var(--color-danger-border-faint)' }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-negative)' }}>
                       Тип: <strong>{selectedType === 'income' ? 'Доходы' : 'Расходы'}</strong>
                     </span>
@@ -471,7 +471,7 @@ export default function TransactionsDrawer({
                 )}
 
                 {selectedCategory && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-primary-border-soft)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-primary-border-soft)' }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
                       Категория: <strong>{selectedCategory}</strong>
                     </span>
@@ -483,7 +483,7 @@ export default function TransactionsDrawer({
               </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {hasNewer && <div style={{ padding: '16px 24px', textAlign: 'center' }}>
+              {hasNewer && <div style={{ padding: 'var(--space-4) var(--space-6)', textAlign: 'center' }}>
                 <Button disabled={historyLoading} onClick={requestNewer}>
                   {historyLoading && historyDirection === 'newer' ? 'Загрузка…' : 'Загрузить более новые'}
                 </Button>
@@ -501,7 +501,7 @@ export default function TransactionsDrawer({
                 getAccountDisplay={getAccountDisplay}
                 formatDate={formatDate}
               />}
-              <div ref={moreRef} style={{ padding: '16px 24px', textAlign: 'center' }}>
+              <div ref={moreRef} style={{ padding: 'var(--space-4) var(--space-6)', textAlign: 'center' }}>
                 {historyLoading && historyDirection !== 'newer' && <ListSkeleton label="Загрузка операций…" rows={Object.keys(groups || {}).length > 0 ? 2 : 5} />}
                 {historyError && historyDirection !== 'newer' && <div role="alert">{historyError}</div>}
                 {!historyLoading && (hasMore || (historyError && historyDirection !== 'newer')) && (

@@ -42,7 +42,7 @@ export default function IconButton({
                 fontSize: 'var(--text-xl)',
                 ...(round
                     ? { width: `${size}px`, height: `${size}px`, borderRadius: '50%', padding: 0 }
-                    : { minWidth: `${size}px`, minHeight: `${size}px`, borderRadius: 'var(--radius-md)', padding: '8px' }),
+                    : { minWidth: `${size}px`, minHeight: `${size}px`, borderRadius: 'var(--radius-md)', padding: 'var(--space-2)' }),
                 ...TONES[tone],
                 ...style,
             }}

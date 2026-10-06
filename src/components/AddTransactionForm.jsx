@@ -204,7 +204,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     />
                 )}
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
                     {/* Main Amount Input */}
                     <div>
@@ -233,7 +233,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     width: '100%',
                                     // слева оставлено место под знак валюты,
                                     // который лежит поверх поля
-                                    padding: '16px 16px 16px 36px',
+                                    padding: 'var(--space-4) var(--space-4) var(--space-4) 36px',
                                     fontSize: '1.5rem',
                                     fontWeight: 'var(--weight-strong)',
                                 }}
@@ -330,14 +330,14 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 className="no-scrollbar"
                                 style={{
                                     display: 'flex',
-                                    gap: '8px',
-                                    marginTop: '10px',
+                                    gap: 'var(--space-2)',
+                                    marginTop: 'var(--space-3)',
                                     // Одна строка с горизонтальной прокруткой:
                                     // перенос подсказок в несколько рядов
                                     // сдвигал бы кнопку сохранения вниз при
                                     // каждой смене категории.
                                     overflowX: 'auto',
-                                    paddingBottom: '2px'
+                                    paddingBottom: 'var(--space-1)'
                                 }}
                             >
                                 {visibleSuggestions.map(suggestion => (
@@ -348,7 +348,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                         style={{
                                             flex: '0 0 auto',
                                             maxWidth: '100%',
-                                            padding: '6px 12px',
+                                            padding: 'var(--space-1-5) var(--space-3)',
                                             borderRadius: 'var(--radius-lg)',
                                             border: '1px solid var(--color-border)',
                                             background: 'var(--color-surface)',
@@ -392,7 +392,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 )}
                             </Button>
                             {showExtra && (
-                                <div id="transaction-extra" style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '12px' }}>
+                                <div id="transaction-extra" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', marginTop: 'var(--space-3)' }}>
                                     {/* Exclude from stats toggle */}
                                     {showExcludeToggle && (
                                         <Switch
@@ -417,8 +417,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         bottom: 'calc(-24px - env(safe-area-inset-bottom, 0px))',
                         zIndex: 1,
                         display: 'flex',
-                        gap: '12px',
-                        padding: '12px 0 calc(12px + env(safe-area-inset-bottom, 0px))',
+                        gap: 'var(--space-3)',
+                        padding: 'var(--space-3) 0 calc(var(--space-3) + env(safe-area-inset-bottom, 0px))',
                         background: 'var(--color-surface)',
                         boxShadow: 'var(--shadow-sticky-footer)'
                     }}>

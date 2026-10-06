@@ -21,9 +21,9 @@ export default function AccountPicker({ accounts, value, onChange, scrollAlways 
             ref={rowRef}
             style={{
                 display: 'flex',
-                gap: scrollAlways ? '8px' : '12px',
+                gap: scrollAlways ? 'var(--space-2)' : 'var(--space-3)',
                 overflowX: scrolls ? 'auto' : 'visible',
-                paddingBottom: scrolls ? '8px' : '0'
+                paddingBottom: scrolls ? 'var(--space-2)' : '0'
             }}
         >
             {accounts.map(acc => (
@@ -37,9 +37,9 @@ export default function AccountPicker({ accounts, value, onChange, scrollAlways 
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        gap: '8px',
+                        gap: 'var(--space-2)',
                         minWidth: scrolls && !scrollAlways ? '120px' : 'auto',
-                        padding: scrollAlways ? '10px 12px' : '12px',
+                        padding: scrollAlways ? 'var(--space-3) var(--space-3)' : 'var(--space-3)',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis'

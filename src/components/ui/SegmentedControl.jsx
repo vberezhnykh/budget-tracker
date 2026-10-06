@@ -9,8 +9,8 @@
 //   lg - выбор периода: ячейки повыше, палец попадает увереннее.
 
 const SIZES = {
-    md: { padding: '8px', fontSize: 'var(--text-md)' },
-    lg: { padding: '10px 8px', fontSize: 'var(--text-base)' },
+    md: { padding: 'var(--space-2)', fontSize: 'var(--text-md)' },
+    lg: { padding: 'var(--space-3) var(--space-2)', fontSize: 'var(--text-base)' },
 };
 
 export default function SegmentedControl({ options, value, onChange, ariaLabel, size = 'md', style }) {
@@ -18,7 +18,7 @@ export default function SegmentedControl({ options, value, onChange, ariaLabel, 
         <div
             role="group"
             aria-label={ariaLabel}
-            style={{ display: 'flex', padding: '4px', borderRadius: 'var(--radius-md)', ...style }}
+            style={{ display: 'flex', padding: 'var(--space-1)', borderRadius: 'var(--radius-md)', ...style }}
         >
             {options.map(option => {
                 const active = value === option.id;

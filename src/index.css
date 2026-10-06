@@ -287,7 +287,7 @@ button {
 .layout-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: var(--space-5);
 }
 
 /* Горизонтальные ряды чипов прокручиваются, но без полосы прокрутки. */

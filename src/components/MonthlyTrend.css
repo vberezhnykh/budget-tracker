@@ -7,7 +7,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: var(--space-2);
 }
 
 .monthly-trend__heading h3 {
@@ -19,13 +19,13 @@
 .monthly-trend__heading p,
 .monthly-trend__hint,
 .monthly-trend__empty {
-    margin: 5px 0 0;
+    margin: var(--space-1) 0 0;
     color: var(--color-text-muted);
     font-size: var(--text-2xs);
     line-height: 1.5;
 }
 
-.monthly-trend__navigation { display: flex; gap: 4px; }
+.monthly-trend__navigation { display: flex; gap: var(--space-1); }
 .monthly-trend__navigation button {
     display: grid;
     place-items: center;
@@ -41,8 +41,8 @@
 .monthly-trend__navigation button:enabled:hover { background: var(--color-primary-tint); }
 .monthly-trend button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 
-.monthly-trend__legend { display: flex; gap: 18px; margin: 18px 0 8px; }
-.monthly-trend__legend span { display: inline-flex; align-items: center; gap: 7px; font-size: var(--text-xs); color: var(--color-text-muted); }
+.monthly-trend__legend { display: flex; gap: var(--space-4); margin: var(--space-4) 0 var(--space-2); }
+.monthly-trend__legend span { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted); }
 .monthly-trend__key { width: 18px; height: 0; border-top: 2px solid; }
 .monthly-trend__key--income { color: var(--color-positive-strong); }
 .monthly-trend__key--expense { color: var(--color-expense); border-top-style: dashed; }
@@ -72,7 +72,7 @@
 .monthly-trend__month {
     flex: 1 0 0;
     min-width: 0;
-    padding: 0 0 8px;
+    padding: 0 0 var(--space-2);
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-muted);
@@ -81,23 +81,23 @@
 .monthly-trend__month[aria-pressed="true"] { background: var(--color-primary-tint); color: var(--color-primary); font-weight: var(--weight-label); }
 .monthly-trend__month:hover { background: var(--color-primary-soft); }
 .monthly-trend__month span { display: block; }
-.monthly-trend__month small { display: block; margin-top: 3px; font-size: 0.6rem; }
-.monthly-trend__hint { margin-top: 10px; }
+.monthly-trend__month small { display: block; margin-top: var(--space-1); font-size: 0.6rem; }
+.monthly-trend__hint { margin-top: var(--space-3); }
 
-.monthly-trend__detail { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--color-border); }
+.monthly-trend__detail { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
 .monthly-trend__selected-label { flex-wrap: wrap; font-size: var(--text-sm); }
 .monthly-trend__selected-label > span { color: var(--color-text-muted); font-size: var(--text-2xs); }
-.monthly-trend__totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }
-.monthly-trend__totals dt { font-size: var(--text-2xs); color: var(--color-text-muted); margin-bottom: 4px; }
+.monthly-trend__totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: var(--space-3) 0 0; }
+.monthly-trend__totals dt { font-size: var(--text-2xs); color: var(--color-text-muted); margin-bottom: var(--space-1); }
 .monthly-trend__totals dd { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .monthly-trend__income { color: var(--color-positive-strong); }
 .monthly-trend__negative { color: var(--color-expense-strong); }
-.monthly-trend__empty { margin-top: 10px; }
+.monthly-trend__empty { margin-top: var(--space-3); }
 
 @media (max-width: 360px) {
     /* Отступ карточки задаёт ui/Card инлайном, поэтому узкий экран
        переопределяет его только через !important. */
-    .monthly-trend { padding: 16px 12px !important; }
-    .monthly-trend__totals { grid-template-columns: 1fr; gap: 9px; }
-    .monthly-trend__totals > div { display: flex; justify-content: space-between; gap: 8px; }
+    .monthly-trend { padding: var(--space-4) var(--space-3) !important; }
+    .monthly-trend__totals { grid-template-columns: 1fr; gap: var(--space-2); }
+    .monthly-trend__totals > div { display: flex; justify-content: space-between; gap: var(--space-2); }
 }

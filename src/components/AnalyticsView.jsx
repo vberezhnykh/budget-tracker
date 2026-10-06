@@ -47,9 +47,9 @@ export default function AnalyticsView({
     const showCategoryComparison = timeRange === 'month' && !!categoryComparison;
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', minWidth: 0 }}>
             <Card padding="lg">
-                <h3 style={{ margin: '0 0 16px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
+                <h3 style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                     Сводка
                 </h3>
                 {/* Three equal boxes at phone width leave ~100px each, so the
@@ -57,14 +57,14 @@ export default function AnalyticsView({
                     "+\n€3.400,00" reads as two separate numbers. The sign is
                     rendered before the € rather than letting toLocaleString
                     put it after it ("€-281,00"). */}
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
                     {[
                         { label: 'Расход', value: expenseAbs, color: 'var(--color-text-main)', sign: '' },
                         { label: 'Доход', value: periodStats.income, color: 'var(--color-positive)', sign: '' },
                         { label: 'Сальдо', value: Math.abs(saldo), color: saldo < 0 ? 'var(--color-negative)' : 'var(--color-positive)', sign: saldo < 0 ? '−' : (saldo > 0 ? '+' : '') }
                     ].map(box => (
-                        <div key={box.label} style={{ flex: 1, minWidth: 0, background: 'var(--color-surface-muted)', border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-lg)', padding: '12px 10px' }}>
-                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>{box.label}</div>
+                        <div key={box.label} style={{ flex: 1, minWidth: 0, background: 'var(--color-surface-muted)', border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3) var(--space-3)' }}>
+                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>{box.label}</div>
                             <div data-account-value style={{
                                 fontSize: 'var(--text-lg)',
                                 fontWeight: 'var(--weight-strong)',
@@ -88,7 +88,7 @@ export default function AnalyticsView({
                     ради которого туда заходят. Сравнивать с «прошлым месяцем»
                     имеет смысл только когда период - месяц. */}
                 {timeRange === 'month' && expenseComparison && (
-                    <div data-account-value style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--color-border-subtle)' }}>
+                    <div data-account-value style={{ marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-subtle)' }}>
                         {expenseComparison.percent === null ? (
                             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
                                 В прошлом месяце трат не было
@@ -98,7 +98,7 @@ export default function AnalyticsView({
                                 <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-strong)', color: expenseComparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
                                     {expenseComparison.diff > 0 ? '↑' : '↓'} {Math.abs(expenseComparison.percent)}% к прошлому месяцу
                                 </div>
-                                <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                                <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
                                     {expenseComparison.label}
                                 </div>
                             </>
@@ -112,10 +112,10 @@ export default function AnalyticsView({
                 the month view - a year/lifetime total isn't "on pace". */}
             {pace && timeRange === 'month' && (
                 <Card padding="lg">
-                    <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
+                    <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                         Темп трат
                     </h3>
-                    <div data-account-value style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 'var(--text-base)', color: 'var(--color-text-main)' }}>
+                    <div data-account-value style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', fontSize: 'var(--text-base)', color: 'var(--color-text-main)' }}>
                         <div>В среднем €{formatEuro(pace.perDay)} в день</div>
                         <div>Прогноз до конца месяца ~€{formatEuro(pace.forecast)}</div>
                         {/* On the last day of the month there is no "per day
@@ -149,7 +149,7 @@ export default function AnalyticsView({
             {hasSpending ? (
                 <div>
                     {showCategoryComparison && comparisonLabel && (
-                        <div style={{ textAlign: 'center', fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
+                        <div style={{ textAlign: 'center', fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>
                             {comparisonLabel}
                         </div>
                     )}

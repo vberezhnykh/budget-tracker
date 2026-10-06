@@ -8,9 +8,9 @@ import Card from './ui/Card';
 
 // Карточка банка, счёта и предложения: рамка, фон и отступ задаёт ui/Card,
 // здесь только раскладка содержимого.
-const cardLayout = { display: 'flex', flexDirection: 'column', gap: '10px' };
+const cardLayout = { display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' };
 const smallStyle = { margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' };
-const selectStyle = { padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-inset)', color: 'var(--color-text-main)', fontWeight: 'var(--weight-text)', width: '100%', border: '1px solid var(--color-border)' };
+const selectStyle = { padding: 'var(--space-3) var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-inset)', color: 'var(--color-text-main)', fontWeight: 'var(--weight-text)', width: '100%', border: '1px solid var(--color-border)' };
 const statusLabels = { connected: 'Подключён', disconnected: 'Отключён', error: 'Не удалось обновить', expired: 'Требуется повторное подключение' };
 const balanceLabels = { BOOK: 'Проведённый остаток', CLBD: 'Проведённый остаток', OPBD: 'Остаток на начало периода', ITBD: 'Текущий проведённый остаток', CLAV: 'Доступно на конец периода', OPAV: 'Доступно на начало дня', ITAV: 'Доступно сейчас', PRCD: 'Остаток предыдущего периода', XPCD: 'Ожидаемый остаток', FWAV: 'Ожидаемый доступный остаток', INFO: 'Информационный остаток', VALU: 'Остаток по дате валютирования', OTHR: 'Другой остаток' };
 
@@ -40,7 +40,7 @@ function BankAccount({ account, accounts, disabled, onMap }) {
         <>
           <label>
             Счёт в приложении
-            <select aria-label={`Счёт в приложении: ${account.name || 'Банковский счёт'}`} value={selected} onChange={event => setSelected(event.target.value)} disabled={disabled} style={{ ...selectStyle, marginTop: '6px' }}>
+            <select aria-label={`Счёт в приложении: ${account.name || 'Банковский счёт'}`} value={selected} onChange={event => setSelected(event.target.value)} disabled={disabled} style={{ ...selectStyle, marginTop: 'var(--space-2)' }}>
               <option value="">Выберите существующий счёт</option>
               {accounts.filter(item => item.type !== 'cash').map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
             </select>
@@ -53,7 +53,7 @@ function BankAccount({ account, accounts, disabled, onMap }) {
         <div>
           <p style={smallStyle}>Баланс по данным банка</p>
           {account.balances.map((balance, index) => (
-            <p key={`${balance.currency}:${balance.type}:${index}`} style={{ margin: '6px 0 0' }}>
+            <p key={`${balance.currency}:${balance.type}:${index}`} style={{ margin: 'var(--space-2) 0 0' }}>
               <strong>{money(balance.amount, balance.currency)}</strong>
               <span style={smallStyle}> · {balanceLabels[balance.type] || 'Баланс'} · {balance.asOf ? 'На ' : 'Получен '}{timestamp(balance.asOf || account.balancesUpdatedAt)}</span>
             </p>
@@ -79,7 +79,7 @@ function ReviewEntry({ entry, accounts, categories, disabled, onResolve }) {
 
   return (
     <Card as="article" tone="plain" padding="md" style={cardLayout} aria-label={`Проверка: ${entry.description || 'Банковская операция'}`}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
         <strong style={{ overflowWrap: 'anywhere' }}>{entry.description || 'Банковская операция'}</strong>
         <strong>{income ? '+' : '−'}{money(entry.amount, entry.currency)}</strong>
         <p style={smallStyle}>{String(entry.date || '').slice(0, 10)} · {account?.name || 'Счёт ещё не связан'}</p>
@@ -89,11 +89,11 @@ function ReviewEntry({ entry, accounts, categories, disabled, onResolve }) {
       {['own_transfer', 'possible_transfer'].includes(entry.reason) && <p style={smallStyle}>Возможно, это перевод между своими счетами. Проверьте направление и выберите «Это перевод между своими счетами» ниже, чтобы не учитывать его как покупку или доход.</p>}
       {entry.reason === 'missing_reference' && <p style={smallStyle}>Банк не передал постоянный идентификатор операции. Перед добавлением особенно внимательно проверьте похожие записи в бюджете.</p>}
       {candidates.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           <p style={smallStyle}>Возможно, вы уже внесли эту покупку. Совпадение даты и суммы не означает, что это одна операция.</p>
           <p style={smallStyle}>При сопоставлении категория и описание ручной записи сохраняются.</p>
           {candidates.map(candidate => (
-            <div key={candidate.transactionId} style={{ padding: '10px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-muted)', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <div key={candidate.transactionId} style={{ padding: 'var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-muted)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               <strong style={{ overflowWrap: 'anywhere' }}>{candidate.title || candidate.category || 'Операция'}</strong>
               <span style={smallStyle}>{String(candidate.date || '').slice(0, 10)} · {money(candidate.amount, candidate.currency || 'EUR')} · {candidate.category || 'Без категории'}</span>
               {candidate.groupCount > 1 && <span style={smallStyle}>Разбита на {candidate.groupCount} части</span>}
@@ -105,24 +105,24 @@ function ReviewEntry({ entry, accounts, categories, disabled, onResolve }) {
       )}
       <label style={smallStyle}>
         Категория при добавлении
-        <select aria-label={`Категория: ${entry.description || 'Банковская операция'}`} value={category} onChange={event => setCategory(event.target.value)} disabled={disabled || !canImport} style={{ ...selectStyle, marginTop: '6px' }}>
+        <select aria-label={`Категория: ${entry.description || 'Банковская операция'}`} value={category} onChange={event => setCategory(event.target.value)} disabled={disabled || !canImport} style={{ ...selectStyle, marginTop: 'var(--space-2)' }}>
           {categoryNames.map(name => <option key={name} value={name}>{name}</option>)}
         </select>
       </label>
       <label style={smallStyle}>
         Описание при добавлении
-        <textarea aria-label={`Описание: ${entry.description || 'Банковская операция'}`} value={description} onChange={event => setDescription(event.target.value)} disabled={disabled || !canImport} maxLength={1000} rows={2} style={{ ...selectStyle, marginTop: '6px', resize: 'vertical' }} />
+        <textarea aria-label={`Описание: ${entry.description || 'Банковская операция'}`} value={description} onChange={event => setDescription(event.target.value)} disabled={disabled || !canImport} maxLength={1000} rows={2} style={{ ...selectStyle, marginTop: 'var(--space-2)', resize: 'vertical' }} />
       </label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         <Button size="sm" disabled={disabled || !canImport} onClick={() => resolve({ action: 'import', category, description, candidateToken: entry.candidateToken })}>{candidates.length ? 'Добавить отдельно' : 'Добавить в бюджет'}</Button>
         <Button tone="secondary" size="sm" disabled={disabled} onClick={() => resolve({ action: 'ignore' })}>Отклонить</Button>
       </div>
       <Button tone="text" size="sm" aria-expanded={showTransfer} onClick={() => setShowTransfer(current => !current)} disabled={disabled} style={{ alignSelf: 'flex-start' }}>Это перевод между своими счетами</Button>
       {showTransfer && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '10px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', paddingTop: 'var(--space-3)' }}>
           <label style={smallStyle}>
             {income ? 'Откуда переведены деньги' : 'Куда переведены деньги'}
-            <select aria-label={income ? 'Счёт отправителя' : 'Счёт получателя'} value={transferAccount} onChange={event => setTransferAccount(event.target.value)} disabled={disabled || !canImport} style={{ ...selectStyle, marginTop: '6px' }}>
+            <select aria-label={income ? 'Счёт отправителя' : 'Счёт получателя'} value={transferAccount} onChange={event => setTransferAccount(event.target.value)} disabled={disabled || !canImport} style={{ ...selectStyle, marginTop: 'var(--space-2)' }}>
               <option value="">Выберите другой свой счёт</option>
               {accounts.filter(item => item._id !== entry.accountId).map(item => <option key={item._id} value={item._id}>{item.name}</option>)}
             </select>
@@ -174,10 +174,10 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
 
   return (
     <Sheet ariaLabel="Банки" onClose={requestClose}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)' }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)' }}>Банки</h2>
-          <p style={{ ...smallStyle, marginTop: '5px' }}>Обновление: {data?.scheduleLabel || '08:00, 14:00 и 20:00'} · {data?.timeZone || 'Europe/Bucharest'}.</p>
+          <p style={{ ...smallStyle, marginTop: 'var(--space-1)' }}>Обновление: {data?.scheduleLabel || '08:00, 14:00 и 20:00'} · {data?.timeZone || 'Europe/Bucharest'}.</p>
         </div>
         <IconButton round tone="neutral" onClick={requestClose} disabled={busy} aria-label="Закрыть банки"><X size={20} /></IconButton>
       </div>
@@ -196,9 +196,9 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
           <h3 style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Подключить банк</h3>
           <label>
             Загрузить операции начиная с
-            <input aria-label="Загрузить операции начиная с" type="date" value={importFrom} min={earliestImportDate} max={today} onChange={event => setImportFrom(event.target.value)} disabled={busy} style={{ ...selectStyle, marginTop: '6px' }} />
+            <input aria-label="Загрузить операции начиная с" type="date" value={importFrom} min={earliestImportDate} max={today} onChange={event => setImportFrom(event.target.value)} disabled={busy} style={{ ...selectStyle, marginTop: 'var(--space-2)' }} />
           </label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
             {[['boc', 'Bank of Cyprus'], ['revolut', 'Revolut']].map(([bank, name]) => (
               <Button tone="secondary" size="sm" key={bank} onClick={() => connect(bank)} disabled={busy || !validImportDate || data.connections?.some(connection => connection.bank === bank && connection.status === 'connected')}>{pendingAction === `connect:${bank}` ? 'Открываем банк…' : `Подключить ${name}`}</Button>
             ))}
@@ -218,7 +218,7 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
               <p style={smallStyle}>Следующее обновление: {timestamp(connection.nextSyncAt)}</p>
               {connection.consentExpiresAt && <p style={smallStyle}>Доступ до: {timestamp(connection.consentExpiresAt)}</p>}
               {connection.warningsCount > 0 && <p style={smallStyle}>Часть данных требует внимания: {connection.warningsCount}. Полученные операции доступны в предложениях ниже.</p>}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
                 <Button tone="secondary" size="sm" disabled={busy || !canSync} onClick={() => run(`sync:${connection.id}`, () => onSync(connection.id))}>{pendingAction === `sync:${connection.id}` ? 'Обновление…' : notDue ? `Обновить после ${timestamp(connection.nextSyncAt)}` : 'Обновить сейчас'}</Button>
                 {['expired', 'disconnected', 'error'].includes(connection.status) && <Button tone="secondary" size="sm" disabled={busy || !validImportDate || connection.syncing} onClick={() => connect(connection.bank)}>Подключить заново</Button>}
                 {connection.status !== 'disconnected' && <Button tone="secondary" size="sm" disabled={busy || connection.syncing} onClick={() => run(`disconnect:${connection.id}`, () => onDisconnect(connection.id))}>Отключить банк</Button>}
@@ -229,7 +229,7 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
           );
         })}
 
-        <section aria-label="Предложения из банков" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <section aria-label="Предложения из банков" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           <h3 style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Предложения из банков ({review.total || 0})</h3>
           <p style={smallStyle}>Ни одна операция не попадёт в бюджет без вашего подтверждения. Можно изменить категорию и описание перед добавлением, а затем отредактировать запись в истории.</p>
           {loading && (review.items || []).length === 0 && <ListSkeleton label="Загрузка предложений…" />}

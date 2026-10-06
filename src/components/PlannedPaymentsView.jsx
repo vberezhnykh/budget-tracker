@@ -9,7 +9,7 @@ import { groupPlannedPayments, plannedDateKey, toLocalDateInput } from '../utils
 
 const controlStyle = {
   width: '100%',
-  padding: '10px 14px',
+  padding: 'var(--space-3) var(--space-4)',
   borderRadius: 'var(--radius-md)',
   border: '1px solid var(--color-border-strong)',
   background: 'var(--color-surface)',
@@ -18,7 +18,7 @@ const controlStyle = {
 };
 
 const secondaryButtonStyle = {
-  padding: '9px 12px',
+  padding: 'var(--space-2) var(--space-3)',
   borderRadius: 'var(--radius-md)',
   background: 'var(--color-surface-inset)',
   color: 'var(--color-text-main)',
@@ -42,7 +42,7 @@ function accountName(accounts, id) {
 
 function FormRow({ label, children }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)' }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)' }}>
       {label}
       {children}
     </label>
@@ -89,15 +89,15 @@ function PaymentFormSheet({ payment, accounts, categories, onSave, onClose }) {
 
   return (
     <Sheet ariaLabel={payment ? 'Изменить предстоящий платёж' : 'Добавить предстоящий платёж'} onClose={requestClose}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)' }}>{payment ? 'Изменить платёж' : 'Новый платёж'}</h2>
         <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть форму платежа"><X size={20} /></IconButton>
       </div>
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         <FormRow label="Название">
           <Field value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="Например, аренда" autoFocus />
         </FormRow>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 'var(--space-3)' }}>
           <FormRow label="Плановая сумма, €">
             <Field type="number" min="0.01" step="0.01" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value })} />
           </FormRow>
@@ -185,14 +185,14 @@ function PaySheet({ payment, accounts, categories, transactions, onPay, onClose 
 
   return (
     <Sheet ariaLabel={`Оплатить: ${payment.title}`} onClose={requestClose}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         <div style={{ minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)', overflowWrap: 'anywhere' }}>Оплатить «{payment.title}»</h2>
-          <div style={{ marginTop: '4px', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>План: {money(payment.amount)} · {displayDate(payment.dueDate)}</div>
+          <div style={{ marginTop: 'var(--space-1)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>План: {money(payment.amount)} · {displayDate(payment.dueDate)}</div>
         </div>
         <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть форму оплаты"><X size={20} /></IconButton>
       </div>
-      <div role="group" aria-label="Способ учёта платежа" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+      <div role="group" aria-label="Способ учёта платежа" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
         {[
           ['new', 'Создать расход'],
           ['existing', 'Уже учтён'],
@@ -208,7 +208,7 @@ function PaySheet({ payment, accounts, categories, transactions, onPay, onClose 
           </button>
         ))}
       </div>
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         {mode === 'existing' ? (
           <FormRow label="Активный расход">
             <select aria-label="Уже учтённый расход" value={form.transactionId} onChange={event => setForm({ ...form, transactionId: event.target.value })} style={controlStyle}>
@@ -222,7 +222,7 @@ function PaySheet({ payment, accounts, categories, transactions, onPay, onClose 
           </FormRow>
         ) : (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 'var(--space-3)' }}>
               <FormRow label="Дата факта">
                 <Field type="date" value={form.date} onChange={event => setForm({ ...form, date: event.target.value })} />
               </FormRow>
@@ -265,11 +265,11 @@ function PaymentCard({ payment, accounts, busy, onEdit, onPay, onStatus, onOpenT
   );
 
   return (
-    <Card as="article" tone="plain" padding="md" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start' }}>
+    <Card as="article" tone="plain" padding="md" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
         <div style={{ minWidth: 0 }}>
           <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', overflowWrap: 'anywhere' }}>{payment.title}</h3>
-          <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginTop: '3px' }}>
+          <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>
             {displayDate(payment.dueDate)} · {accountName(accounts, payment.account)} · {payment.category}
           </div>
         </div>
@@ -277,7 +277,7 @@ function PaymentCard({ payment, accounts, busy, onEdit, onPay, onStatus, onOpenT
       </div>
       {payment.description && <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', overflowWrap: 'anywhere' }}>{payment.description}</p>}
       {payment.status === 'paid' && actual && (
-        <div style={{ padding: '9px 10px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+        <div style={{ padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
           {differs ? `План ${money(payment.amount)} · факт ${money(actual.amount)} (${displayDate(actual.date)})` : `Оплачено ${displayDate(actual.date)} · ${money(actual.amount)}`}
         </div>
       )}
@@ -287,7 +287,7 @@ function PaymentCard({ payment, accounts, busy, onEdit, onPay, onStatus, onOpenT
         </Button>
       )}
       {payment.status === 'pending' && (
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
           <Button size="sm" onClick={onPay} disabled={busy}>Оплатить</Button>
           <Button tone="secondary" size="sm" onClick={onEdit} disabled={busy}>Изменить</Button>
           <Button tone="danger" size="sm" onClick={() => onStatus('skipped')} disabled={busy}>Отменить план</Button>
@@ -305,7 +305,7 @@ function PaymentCard({ payment, accounts, busy, onEdit, onPay, onStatus, onOpenT
 function PaymentSection({ title, payments, tone, renderPayment }) {
   if (payments.length === 0) return null;
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <section style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
       <h2 style={{ margin: 0, fontSize: 'var(--text-xl)', color: tone || 'var(--color-text-main)' }}>{title}</h2>
       {payments.map(renderPayment)}
     </section>
@@ -347,11 +347,11 @@ export default function PlannedPaymentsView({ plannedPayments, accounts, categor
   );
 
   return (
-    <div data-testid="planned-payments-view" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <Card as="section" padding="lg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+    <div data-testid="planned-payments-view" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+      <Card as="section" padding="lg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
         <div>
           <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>До конца месяца, включая просроченные</div>
-          <div style={{ color: 'var(--color-text-main)', fontSize: '1.8rem', fontWeight: 'var(--weight-strong)', marginTop: '4px' }}>{money(groups.pendingThroughMonth)}</div>
+          <div style={{ color: 'var(--color-text-main)', fontSize: '1.8rem', fontWeight: 'var(--weight-strong)', marginTop: 'var(--space-1)' }}>{money(groups.pendingThroughMonth)}</div>
         </div>
         <Button size="sm" onClick={() => setShowForm(true)} style={{ flexShrink: 0 }}>+ Добавить</Button>
       </Card>
@@ -367,10 +367,10 @@ export default function PlannedPaymentsView({ plannedPayments, accounts, categor
 
       {groups.history.length > 0 && (
         <section>
-          <button type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen(open => !open)} style={{ width: '100%', padding: '12px 14px', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface)', color: 'var(--color-text-main)', fontWeight: 'var(--weight-strong)', textAlign: 'left', border: '1px solid var(--color-border-subtle)' }}>
+          <button type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen(open => !open)} style={{ width: '100%', padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface)', color: 'var(--color-text-main)', fontWeight: 'var(--weight-strong)', textAlign: 'left', border: '1px solid var(--color-border-subtle)' }}>
             Завершённые ({groups.history.length}) {historyOpen ? '▴' : '▾'}
           </button>
-          {historyOpen && <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>{groups.history.map(renderPayment)}</div>}
+          {historyOpen && <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>{groups.history.map(renderPayment)}</div>}
         </section>
       )}
 

@@ -18,8 +18,8 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
 
     const content = (
         <div style={{ width: '100%', minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0 }}>
                     {color && <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: color, flexShrink: 0 }} />}
                     <span style={{
                         fontSize: indent ? 'var(--text-xs)' : 'var(--text-sm)',
@@ -45,7 +45,7 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
                         </span>
                     )}
                 </div>
-                <div data-account-value style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                <div data-account-value style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1-5)', flexShrink: 0 }}>
                     <span style={{ fontSize: indent ? 'var(--text-xs)' : 'var(--text-sm)', fontWeight: 'var(--weight-label)', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)' }}>
                         €{value.toFixed(0)}
                     </span>
@@ -67,7 +67,7 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
                     data-category-bar={name}
                     style={{
                         height: indent ? '4px' : '6px',
-                        marginTop: indent ? '5px' : '7px',
+                        marginTop: indent ? 'var(--space-1)' : 'var(--space-2)',
                         borderRadius: '999px',
                         background: 'var(--color-surface-sunken)',
                         overflow: 'hidden'
@@ -89,7 +89,7 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
     const rowStyle = {
         display: 'flex',
         width: '100%',
-        paddingLeft: indent ? '16px' : 0
+        paddingLeft: indent ? 'var(--space-4)' : 0
     };
 
     if (isExpander) {
@@ -98,7 +98,7 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
                 type="button"
                 onClick={onSelect}
                 aria-expanded={isExpanded}
-                style={{ ...rowStyle, background: 'transparent', border: 'none', padding: '4px 0', cursor: 'pointer', textAlign: 'left' }}
+                style={{ ...rowStyle, background: 'transparent', border: 'none', padding: 'var(--space-1) 0', cursor: 'pointer', textAlign: 'left' }}
             >
                 {content}
             </button>
@@ -115,14 +115,14 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
                 // "Housing€98,40" for screen readers - same fix as the "Куда
                 // ушло" list in App.jsx.
                 aria-label={`${name}: €${value.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`}
-                style={{ ...rowStyle, background: 'transparent', border: 'none', padding: '4px 0', cursor: 'pointer', textAlign: 'left' }}
+                style={{ ...rowStyle, background: 'transparent', border: 'none', padding: 'var(--space-1) 0', cursor: 'pointer', textAlign: 'left' }}
             >
                 {content}
             </button>
         );
     }
 
-    return <div style={{ ...rowStyle, padding: '4px 0' }}>{content}</div>;
+    return <div style={{ ...rowStyle, padding: 'var(--space-1) 0' }}>{content}</div>;
 }
 
 // onToggle is optional: when the category breakdown is reached through the bottom tab bar
@@ -176,7 +176,7 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
 
     return (
         <Card padding="lg">
-            <div style={{ display: 'grid', gridTemplateColumns: onToggle ? 'auto 1fr auto' : '1fr auto', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: onToggle ? 'auto 1fr auto' : '1fr auto', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
                 {onToggle && (
                     <Button tone="secondary" size="sm" onClick={onToggle}>
                         <span>←</span> Назад
@@ -190,7 +190,7 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
                 </div>
             </div>
 
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                 {segments.map((s, i) => {
                         const isOther = s.category === 'Прочее';
 
@@ -210,7 +210,7 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
                                         onSelect={() => setOtherExpanded(prev => !prev)}
                                     />
                                     {otherExpanded && (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
                                             {s.children.map(child => (
                                                 <CategoryRow
                                                     key={child.name}

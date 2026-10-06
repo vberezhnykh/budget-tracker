@@ -34,7 +34,7 @@ export default function Sheet({
     ariaLabel,
     onClose,
     maxHeight = '92vh',
-    gap = '20px',
+    gap = 'var(--space-5)',
     overlayStyle,
     style,
     children,
@@ -135,7 +135,7 @@ export default function Sheet({
                     boxShadow: 'var(--shadow-sheet)',
                     // нижний отступ крупнее: под ним домашний индикатор iOS,
                     // перекрывающий последнюю строку листа
-                    padding: '24px 20px calc(24px + env(safe-area-inset-bottom, 0px))',
+                    padding: 'var(--space-6) var(--space-5) calc(var(--space-6) + env(safe-area-inset-bottom, 0px))',
                     maxHeight,
                     overflowY: 'auto',
                     overflowX: 'hidden',

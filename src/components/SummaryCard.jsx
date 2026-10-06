@@ -69,7 +69,7 @@ export default function SummaryCard({
     const limitRemaining = isLimitUsable ? monthlyLimit - expenseAbs : 0;
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
             <Pressable
                 interactive={isActive}
                 onClick={() => onToggleType('expense')}
@@ -81,16 +81,16 @@ export default function SummaryCard({
                     border: 'none',
                     // Без бокового отступа шкала встаёт вровень с плитками
                     // дохода и сальдо под ней.
-                    padding: withLimitBar ? '4px 0' : '4px',
+                    padding: withLimitBar ? 'var(--space-1) 0' : 'var(--space-1)',
                     cursor: isActive ? 'pointer' : 'default',
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    gap: '10px'
+                    gap: 'var(--space-3)'
                 }}
             >
-                <div style={{ textAlign: 'center', padding: withLimitBar ? 0 : '8px 0' }}>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-label)', marginBottom: '4px' }}>
+                <div style={{ textAlign: 'center', padding: withLimitBar ? 0 : 'var(--space-2) 0' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-label)', marginBottom: 'var(--space-1)' }}>
                         {headlineLabel}
                     </div>
                     <div data-account-value style={{ fontSize: '2rem', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-main)' }}>
@@ -123,8 +123,8 @@ export default function SummaryCard({
                         <div style={{
                             display: 'flex',
                             justifyContent: 'space-between',
-                            gap: '8px',
-                            marginTop: '6px',
+                            gap: 'var(--space-2)',
+                            marginTop: 'var(--space-2)',
                             fontSize: 'var(--text-xs)'
                         }}>
                             <span data-account-value style={{ color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: 'var(--weight-label)', whiteSpace: 'nowrap' }}>
@@ -145,7 +145,7 @@ export default function SummaryCard({
                 )}
             </Pressable>
 
-            <div style={{ display: 'flex', gap: '12px' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                 <Pressable
                     interactive={isActive}
                     onClick={() => onToggleType('income')}
@@ -158,12 +158,12 @@ export default function SummaryCard({
                         border: '1px solid',
                         borderColor: isActive && selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-border-subtle)',
                         borderRadius: 'var(--radius-lg)',
-                        padding: '12px 14px',
+                        padding: 'var(--space-3) var(--space-4)',
                         cursor: isActive ? 'pointer' : 'default',
                         transition: 'all 0.2s ease'
                     }}
                 >
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Доход</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>Доход</div>
                     <div data-account-value style={{ ...amountStyle(incomeText), color: 'var(--color-positive)' }}>
                         {incomeText}
                     </div>
@@ -173,9 +173,9 @@ export default function SummaryCard({
                     background: 'var(--color-surface-muted)',
                     border: '1px solid var(--color-border-subtle)',
                     borderRadius: 'var(--radius-lg)',
-                    padding: '12px 14px'
+                    padding: 'var(--space-3) var(--space-4)'
                 }}>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>Сальдо</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>Сальдо</div>
                     <div data-account-value style={{ ...amountStyle(saldoText), color: saldo >= 0 ? 'var(--color-text-main)' : 'var(--color-negative)' }}>
                         {saldoText}
                     </div>

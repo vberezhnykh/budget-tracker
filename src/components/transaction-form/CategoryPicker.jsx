@@ -6,7 +6,7 @@ import Field, { FormLabel } from '../ui/Field';
 import { splitCategoriesByUsage } from '../../utils/finance';
 
 const chipButton = {
-    padding: '8px 16px',
+    padding: 'var(--space-2) var(--space-4)',
     borderRadius: 'var(--radius-pill)',
     background: 'transparent',
     color: 'var(--color-primary)',
@@ -68,13 +68,13 @@ export default function CategoryPicker({ categories, transactions, type, categor
     return (
         <div>
             <FormLabel>Категория</FormLabel>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 {visible.map(cat => (
                     <Chip
                         key={cat._id}
                         selected={value === cat.name}
                         onClick={() => onChange(cat.name)}
-                        style={{ padding: '8px 16px' }}
+                        style={{ padding: 'var(--space-2) var(--space-4)' }}
                     >
                         {cat.name}
                     </Chip>
@@ -105,8 +105,8 @@ export default function CategoryPicker({ categories, transactions, type, categor
             </div>
 
             {isAdding && (
-                <div style={{ marginTop: '10px' }}>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ marginTop: 'var(--space-3)' }}>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                         <Field
                             type="text"
                             tone="muted"
@@ -122,7 +122,7 @@ export default function CategoryPicker({ categories, transactions, type, categor
                             style={{
                                 flex: 1,
                                 minWidth: 0,
-                                padding: '8px 12px',
+                                padding: 'var(--space-2) var(--space-3)',
                                 // поле-чип рядом с чипами категорий: рамка
                                 // фирменная, а не нейтральная
                                 border: '1px solid var(--color-primary-border)',
@@ -143,7 +143,7 @@ export default function CategoryPicker({ categories, transactions, type, categor
                         ><X size={18} strokeWidth={1.8} aria-hidden="true" /></Button>
                     </div>
                     {error && (
-                        <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-sm)', marginTop: '6px' }}>
+                        <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-2)' }}>
                             {error}
                         </div>
                     )}

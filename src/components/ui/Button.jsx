@@ -33,9 +33,9 @@
 // ui-button. `style` остаётся для раскладки: flex, alignSelf, margin.
 
 const SIZES = {
-    sm: { padding: '8px 12px', fontSize: 'var(--text-base)', minHeight: '36px' },
-    md: { padding: '12px 16px', fontSize: 'var(--text-md)', minHeight: '44px' },
-    lg: { padding: '16px', fontSize: 'var(--text-2xl)', minHeight: '52px' },
+    sm: { padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-base)', minHeight: '36px' },
+    md: { padding: 'var(--space-3) var(--space-4)', fontSize: 'var(--text-md)', minHeight: '44px' },
+    lg: { padding: 'var(--space-4)', fontSize: 'var(--text-2xl)', minHeight: '52px' },
 };
 
 const TONES = {
@@ -79,7 +79,7 @@ export default function Button({
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: '6px',
+                gap: 'var(--space-1-5)',
                 border: 'none',
                 borderRadius: 'var(--radius-md)',
                 fontWeight: 'var(--weight-strong)',

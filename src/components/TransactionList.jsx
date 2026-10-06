@@ -82,7 +82,7 @@ export default function TransactionList({
     getAccountDisplay,
     formatDate,
     emptyText = 'Нет операций',
-    rowPadding = '16px 24px',
+    rowPadding = 'var(--space-4) var(--space-6)',
 }) {
     const dates = Object.keys(groups || {}).sort((a, b) => new Date(b) - new Date(a));
 
@@ -122,7 +122,7 @@ export default function TransactionList({
 
     return dates.map(date => (
         <div key={date} data-history-date={date}>
-            <div style={{ padding: '10px 24px', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
+            <div style={{ padding: 'var(--space-3) var(--space-6)', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>{formatDate(date)}</span>
                 {groups[date].dailySum !== 0 && (
                     <span style={{ fontWeight: 'var(--weight-strong)', whiteSpace: 'nowrap', color: groups[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
@@ -135,8 +135,8 @@ export default function TransactionList({
                 if (item.type === 'split_group') {
                     return (
                         <div key={item.id} data-history-item={item.id} style={{ borderBottom: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: rowPadding, background: 'var(--color-surface-muted)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', padding: rowPadding, background: 'var(--color-surface-muted)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', minWidth: 0 }}>
                                     <TransactionIcon item={item} />
                                     <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                                         <div style={{ fontWeight: 'var(--weight-label)', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{displayName(item)} (Разделено)</div>
@@ -155,11 +155,11 @@ export default function TransactionList({
 
                             {/* Части разбитой операции. Засеянными 'initial' они не
                                 бывают, поэтому редактируются всегда. */}
-                            <div style={{ paddingLeft: '54px', paddingBottom: '8px' }}>
+                            <div style={{ paddingLeft: '54px', paddingBottom: 'var(--space-2)' }}>
                                 {item.items.map(subItem => (
                                     <div
                                         key={subItem.id}
-                                        style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: '8px 24px 8px 16px', fontSize: 'var(--text-base)', cursor: 'pointer', borderLeft: '2px solid var(--color-primary-glow)', marginBottom: '4px' }}
+                                        style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', padding: 'var(--space-2) var(--space-6) var(--space-2) var(--space-4)', fontSize: 'var(--text-base)', cursor: 'pointer', borderLeft: '2px solid var(--color-primary-glow)', marginBottom: 'var(--space-1)' }}
                                     >
                                         <RowOverlayButton
                                             label={`${displayName(item)} (Разделено): ${rowLabel(subItem)}`}
@@ -200,18 +200,18 @@ export default function TransactionList({
                     <div
                         key={item.id}
                         data-history-item={item.id}
-                        style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: rowPadding, borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}
+                        style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)', padding: rowPadding, borderBottom: '1px solid var(--color-border-subtle)', cursor: isEditable ? 'pointer' : 'default', background: item.excludeFromStats ? 'var(--color-surface-muted)' : 'var(--color-surface)', opacity: item.excludeFromStats ? 0.5 : 1 }}
                     >
                         {isEditable && (
                             <RowOverlayButton label={rowLabel(item)} onClick={() => openEditModal(item)} />
                         )}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', minWidth: 0 }}>
                             <TransactionIcon item={item} />
                             <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                                 <div style={{ fontWeight: 'var(--weight-label)', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
                                     {displayName(item)}
                                     {item.excludeFromStats && (
-                                        <span role="img" aria-label="Исключено из статистики" title="Исключено из статистики" style={{ marginLeft: '6px', color: 'var(--color-text-muted)' }}><EyeOff size={14} strokeWidth={1.8} aria-hidden="true" /></span>
+                                        <span role="img" aria-label="Исключено из статистики" title="Исключено из статистики" style={{ marginLeft: 'var(--space-1-5)', color: 'var(--color-text-muted)' }}><EyeOff size={14} strokeWidth={1.8} aria-hidden="true" /></span>
                                     )}
                                 </div>
                                 {displayComment(item) && (

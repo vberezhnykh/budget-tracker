@@ -78,11 +78,11 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          gap: '8px',
+          gap: 'var(--space-2)',
           background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius-pill)',
-          padding: '10px 16px',
+          padding: 'var(--space-3) var(--space-4)',
           minHeight: '40px',
           color: 'var(--color-text-main)',
           fontSize: 'var(--text-base)',
@@ -106,7 +106,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
               <SegmentedControl
                 ariaLabel="Охват периода"
                 size="lg"
-                style={{ gap: '4px', background: 'var(--color-surface-sunken)' }}
+                style={{ gap: 'var(--space-1)', background: 'var(--color-surface-sunken)' }}
                 options={[
                   { id: 'month', label: 'Месяц' },
                   { id: 'year', label: 'Год' },
@@ -121,13 +121,13 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
             )}
 
             {draftRange === 'month' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
                 {years.map(year => (
                   <div key={year}>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-muted)', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-muted)', letterSpacing: '0.5px', marginBottom: 'var(--space-2)' }}>
                       {year}
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-2)' }}>
                       {months.filter(m => m.startsWith(`${year}-`)).map(month => {
                         const isActive = timeRange === 'month' && month === selectedMonth;
                         return (
@@ -139,7 +139,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
                             data-testid="period-month"
                             onClick={() => chooseMonth(month)}
                             style={{
-                              padding: '12px 4px',
+                              padding: 'var(--space-3) var(--space-1)',
                               minHeight: '44px',
                               fontSize: 'var(--text-sm)',
                             }}
@@ -155,7 +155,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
             )}
 
             {draftRange === 'year' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                 {years.map(year => {
                   const isActive = timeRange === 'year' && year === selectedYear;
                   return (
@@ -167,7 +167,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
                       onClick={() => chooseYear(year)}
                       style={{
                         textAlign: 'left',
-                        padding: '14px 16px',
+                        padding: 'var(--space-4) var(--space-4)',
                         fontSize: 'var(--text-md)',
                       }}
                     >
