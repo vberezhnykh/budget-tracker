@@ -60,6 +60,11 @@ export async function connectTestDb(dbName) {
 // Инстанс базы общий на прогон и останавливается в globalSetup - здесь
 // закрывается только своё подключение.
 export async function disconnectTestDb() {
+    await Promise.all([...servers].map(server => new Promise(resolve => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+    })));
+    servers.clear();
     await mongoose.disconnect();
 }
 
@@ -70,10 +75,26 @@ export async function clearCollections() {
     await Promise.all(collections.map(collection => collection.deleteMany({})));
 }
 
+// Серверы, поднятые под клиентов loginAgent; закрываются в disconnectTestDb.
+const servers = new Set();
+
 // Логинится один раз и возвращает клиента с кукой сессии. Дальше все
 // запросы идут через него - именно так, как ходит браузер.
+//
+// Клиенту отдаётся уже слушающий сервер, а не само приложение. Получив
+// приложение, supertest на каждый запрос поднимает новый сервер на свободном
+// порту и закрывает его после ответа. Пока запросы идут по одному, это
+// незаметно, но в тестах на одновременные запросы (Promise.all) часть
+// соединений рвалась с ECONNRESET - так в CI время от времени падал тест
+// одновременного сохранения настроек. С одним сервером на файл гонки нет.
 export async function loginAgent(app) {
-    const agent = request.agent(app);
+    const server = app.listen(0, '127.0.0.1');
+    servers.add(server);
+    await new Promise((resolve, reject) => {
+        server.once('listening', resolve);
+        server.once('error', reject);
+    });
+    const agent = request.agent(server);
     const res = await agent.post('/api/login').send({ password: TEST_PASSWORD });
     if (res.status !== 200) {
         throw new Error(`Не удалось залогиниться в тестовом приложении: ${res.status} ${JSON.stringify(res.body)}`);
