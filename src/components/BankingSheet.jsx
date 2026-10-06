@@ -4,10 +4,13 @@ import { X } from 'lucide-react';
 import Sheet from './ui/Sheet';
 import IconButton from './ui/IconButton';
 import Button from './ui/Button';
+import Card from './ui/Card';
 
-const cardStyle = { padding: '14px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '10px' };
+// Карточка банка, счёта и предложения: рамка, фон и отступ задаёт ui/Card,
+// здесь только раскладка содержимого.
+const cardLayout = { display: 'flex', flexDirection: 'column', gap: '10px' };
 const smallStyle = { margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' };
-const selectStyle = { padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-inset)', color: 'var(--color-text-main)', fontWeight: '600', width: '100%', border: '1px solid var(--color-border)' };
+const selectStyle = { padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface-inset)', color: 'var(--color-text-main)', fontWeight: 'var(--weight-text)', width: '100%', border: '1px solid var(--color-border)' };
 const statusLabels = { connected: 'Подключён', disconnected: 'Отключён', error: 'Не удалось обновить', expired: 'Требуется повторное подключение' };
 const balanceLabels = { BOOK: 'Проведённый остаток', CLBD: 'Проведённый остаток', OPBD: 'Остаток на начало периода', ITBD: 'Текущий проведённый остаток', CLAV: 'Доступно на конец периода', OPAV: 'Доступно на начало дня', ITAV: 'Доступно сейчас', PRCD: 'Остаток предыдущего периода', XPCD: 'Ожидаемый остаток', FWAV: 'Ожидаемый доступный остаток', INFO: 'Информационный остаток', VALU: 'Остаток по дате валютирования', OTHR: 'Другой остаток' };
 
@@ -28,7 +31,7 @@ function BankAccount({ account, accounts, disabled, onMap }) {
   const [selected, setSelected] = useState('');
   const mapped = accounts.find(item => item._id === account.accountId);
   return (
-    <div style={{ ...cardStyle, background: 'var(--color-surface-muted)' }}>
+    <Card tone="plain" padding="md" style={{ ...cardLayout, background: 'var(--color-surface-muted)' }}>
       <strong style={{ overflowWrap: 'anywhere' }}>{account.name || 'Банковский счёт'}{account.maskedNumber ? ` · ${account.maskedNumber}` : ''}</strong>
       <p style={smallStyle}>Валюта счёта: {account.currency === 'XXX' ? 'мультивалютный / не указана' : account.currency || 'не указана'}</p>
       {account.accountId ? (
@@ -57,7 +60,7 @@ function BankAccount({ account, accounts, disabled, onMap }) {
           ))}
         </div>
       ) : <p style={smallStyle}>Банк пока не передал баланс.</p>}
-    </div>
+    </Card>
   );
 }
 
@@ -75,7 +78,7 @@ function ReviewEntry({ entry, accounts, categories, disabled, onResolve }) {
   const resolve = fields => onResolve(entry.id, { version: entry.version, ...fields });
 
   return (
-    <article style={cardStyle} aria-label={`Проверка: ${entry.description || 'Банковская операция'}`}>
+    <Card as="article" tone="plain" padding="md" style={cardLayout} aria-label={`Проверка: ${entry.description || 'Банковская операция'}`}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
         <strong style={{ overflowWrap: 'anywhere' }}>{entry.description || 'Банковская операция'}</strong>
         <strong>{income ? '+' : '−'}{money(entry.amount, entry.currency)}</strong>
@@ -127,7 +130,7 @@ function ReviewEntry({ entry, accounts, categories, disabled, onResolve }) {
           <Button tone="secondary" size="sm" disabled={disabled || !canImport || !transferAccount} onClick={() => resolve({ action: 'transfer', description, candidateToken: entry.candidateToken, [income ? 'fromAccountId' : 'toAccountId']: transferAccount })}>Добавить перевод</Button>
         </div>
       )}
-    </article>
+    </Card>
   );
 }
 
@@ -181,15 +184,15 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
 
       <Button tone="secondary" size="sm" onClick={onRetry} disabled={loading || busy}>Обновить список предложений</Button>
 
-      {(error || actionError) && <div role="alert" style={{ ...cardStyle, background: 'var(--color-danger-soft)', color: 'var(--color-negative)' }}>
+      {(error || actionError) && <Card role="alert" tone="plain" padding="md" style={{ ...cardLayout, background: 'var(--color-danger-soft)', color: 'var(--color-negative)' }}>
         <span>{actionError || error}</span>
         {error && <Button tone="secondary" size="sm" onClick={onRetry} disabled={loading || busy}>Повторить загрузку</Button>}
-      </div>}
+      </Card>}
       {loading && !data && <ListSkeleton label="Загрузка банковских данных…" />}
       {data?.configured === false && <p style={smallStyle}>Подключение банков пока не настроено. Оно появится после настройки приложения.</p>}
 
       {data?.configured && <>
-        <section style={cardStyle} aria-label="Подключить банк">
+        <Card as="section" tone="plain" padding="md" style={cardLayout} aria-label="Подключить банк">
           <h3 style={{ margin: 0, fontSize: 'var(--text-lg)' }}>Подключить банк</h3>
           <label>
             Загрузить операции начиная с
@@ -201,14 +204,14 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
             ))}
           </div>
           <p style={smallStyle}>Подтвердите доступ на странице банка. Пароль от банка сюда вводить не нужно.</p>
-        </section>
+        </Card>
 
         {(data.connections || []).map(connection => {
           const next = Date.parse(connection.nextSyncAt);
           const notDue = Number.isFinite(next) && next > now;
           const canSync = ['connected', 'error'].includes(connection.status) && !notDue && !connection.syncing;
           return (
-            <section key={connection.id} aria-label={connection.name || connection.bank} style={cardStyle}>
+            <Card as="section" key={connection.id} tone="plain" padding="md" style={cardLayout} aria-label={connection.name || connection.bank}>
               <h3 style={{ margin: 0, fontSize: 'var(--text-lg)' }}>{connection.name || (connection.bank === 'boc' ? 'Bank of Cyprus' : 'Revolut')}</h3>
               <strong>{connection.syncing ? 'Получаем данные из банка…' : statusLabels[connection.status] || 'Статус неизвестен'}</strong>
               <p style={smallStyle}>Обновлено: {timestamp(connection.lastSuccessfulSyncAt)}</p>
@@ -222,7 +225,7 @@ export default function BankingSheet({ data, review = { items: [], total: 0 }, a
               </div>
               <p style={smallStyle}>Снимки баланса банка показаны отдельно от капитала, рассчитанного по операциям приложения.</p>
               {(connection.accounts || []).map(account => <BankAccount key={account.id} account={account} accounts={accounts} disabled={busy || connection.status === 'disconnected'} onMap={(id, accountId) => run(`map:${id}`, () => onMapAccount(id, accountId))} />)}
-            </section>
+            </Card>
           );
         })}
 

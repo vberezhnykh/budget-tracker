@@ -15,21 +15,24 @@
 //   quiet - ячейка периода: невыбранная лежит на подложке и остаётся
 //           обычным читаемым текстом, потому что их там два десятка сразу.
 //
+// Насыщенность во всех тонах одна и та же: выбранный чип - label, невыбранный -
+// text (см. правило в index.css): вес дополняет заливку, а не заменяет её.
+//
 // Форма (`shape`) отделена от тона: чип с текстом - «таблетка», а плитка
 // счёта в форме - прямоугольник со скруглением из шкалы.
 
 const TONES = {
     soft: {
-        on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary-soft)', color: 'var(--color-primary)', fontWeight: '600' },
-        off: { borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', fontWeight: 'normal' },
+        on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary-soft)', color: 'var(--color-primary)', fontWeight: 'var(--weight-label)' },
+        off: { borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-text)' },
     },
     solid: {
-        on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: '600' },
-        off: { borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', fontWeight: '600' },
+        on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 'var(--weight-label)' },
+        off: { borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-text)' },
     },
     quiet: {
-        on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary-tint)', color: 'var(--color-primary)', fontWeight: '700' },
-        off: { borderColor: 'var(--color-border)', background: 'var(--color-surface-muted)', color: 'var(--color-text-main)', fontWeight: '500' },
+        on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary-tint)', color: 'var(--color-primary)', fontWeight: 'var(--weight-label)' },
+        off: { borderColor: 'var(--color-border)', background: 'var(--color-surface-muted)', color: 'var(--color-text-main)', fontWeight: 'var(--weight-text)' },
     },
 };
 

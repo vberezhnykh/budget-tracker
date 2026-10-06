@@ -1,5 +1,4 @@
 .monthly-trend {
-    padding: 20px;
     min-width: 0;
 }
 
@@ -79,7 +78,7 @@
     color: var(--color-text-muted);
     font-size: var(--text-xs);
 }
-.monthly-trend__month[aria-pressed="true"] { background: var(--color-primary-tint); color: var(--color-primary); font-weight: 700; }
+.monthly-trend__month[aria-pressed="true"] { background: var(--color-primary-tint); color: var(--color-primary); font-weight: var(--weight-label); }
 .monthly-trend__month:hover { background: var(--color-primary-soft); }
 .monthly-trend__month span { display: block; }
 .monthly-trend__month small { display: block; margin-top: 3px; font-size: 0.6rem; }
@@ -90,13 +89,15 @@
 .monthly-trend__selected-label > span { color: var(--color-text-muted); font-size: var(--text-2xs); }
 .monthly-trend__totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }
 .monthly-trend__totals dt { font-size: var(--text-2xs); color: var(--color-text-muted); margin-bottom: 4px; }
-.monthly-trend__totals dd { margin: 0; font-size: var(--text-sm); font-weight: 700; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.monthly-trend__totals dd { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .monthly-trend__income { color: var(--color-positive-strong); }
 .monthly-trend__negative { color: var(--color-expense-strong); }
 .monthly-trend__empty { margin-top: 10px; }
 
 @media (max-width: 360px) {
-    .monthly-trend { padding: 16px 12px; }
+    /* Отступ карточки задаёт ui/Card инлайном, поэтому узкий экран
+       переопределяет его только через !important. */
+    .monthly-trend { padding: 16px 12px !important; }
     .monthly-trend__totals { grid-template-columns: 1fr; gap: 9px; }
     .monthly-trend__totals > div { display: flex; justify-content: space-between; gap: 8px; }
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 import CategoryDonut from './CategoryDonut';
 import MonthlyTrend from './MonthlyTrend';
+import Card from './ui/Card';
 
 // maximumFractionDigits matters here in a way it doesn't for the plain sums
 // elsewhere in the app: pace figures come out of a division, so without a cap
@@ -47,7 +48,7 @@ export default function AnalyticsView({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
-            <div className="glass-panel" style={{ padding: '20px' }}>
+            <Card padding="lg">
                 <h3 style={{ margin: '0 0 16px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                     Сводка
                 </h3>
@@ -66,7 +67,7 @@ export default function AnalyticsView({
                             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: '2px' }}>{box.label}</div>
                             <div data-account-value style={{
                                 fontSize: 'var(--text-lg)',
-                                fontWeight: '700',
+                                fontWeight: 'var(--weight-strong)',
                                 color: box.color,
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
@@ -77,7 +78,7 @@ export default function AnalyticsView({
                         </div>
                     ))}
                 </div>
-                <div style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
+                <div style={{ fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-label)', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
                     {periodLabel}
                 </div>
 
@@ -94,7 +95,7 @@ export default function AnalyticsView({
                             </div>
                         ) : (
                             <>
-                                <div style={{ fontSize: 'var(--text-base)', fontWeight: '700', color: expenseComparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
+                                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-strong)', color: expenseComparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
                                     {expenseComparison.diff > 0 ? '↑' : '↓'} {Math.abs(expenseComparison.percent)}% к прошлому месяцу
                                 </div>
                                 <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
@@ -104,13 +105,13 @@ export default function AnalyticsView({
                         )}
                     </div>
                 )}
-            </div>
+            </Card>
 
             {/* Pace only exists (getPaceForecast returns non-null) for the
                 month actually in progress, and only reads sensibly next to
                 the month view - a year/lifetime total isn't "on pace". */}
             {pace && timeRange === 'month' && (
-                <div className="glass-panel" style={{ padding: '20px' }}>
+                <Card padding="lg">
                     <h3 style={{ margin: '0 0 12px', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                         Темп трат
                     </h3>
@@ -131,16 +132,16 @@ export default function AnalyticsView({
                             forecast warning would only muddy it by adding
                             that it "will be" exceeded. */}
                         {pace.remaining !== null && pace.remaining < 0 ? (
-                            <div style={{ color: 'var(--color-negative)', fontWeight: '600' }}>
+                            <div style={{ color: 'var(--color-negative)', fontWeight: 'var(--weight-label)' }}>
                                 Лимит €{monthlyLimit.toLocaleString('de-DE')} уже превышен на €{formatEuro(Math.abs(pace.remaining))}
                             </div>
                         ) : pace.willExceedLimit && (
-                            <div style={{ color: 'var(--color-negative)', fontWeight: '600' }}>
+                            <div style={{ color: 'var(--color-negative)', fontWeight: 'var(--weight-label)' }}>
                                 При текущем темпе лимит €{monthlyLimit.toLocaleString('de-DE')} будет превышен
                             </div>
                         )}
                     </div>
-                </div>
+                </Card>
             )}
 
             <MonthlyTrend series={series} selectedMonth={selectedMonth} onSelectMonth={onSelectMonth} />
@@ -160,9 +161,9 @@ export default function AnalyticsView({
                     />
                 </div>
             ) : (
-                <div className="glass-panel" style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
+                <Card padding="lg" style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
                     <span data-account-value>За выбранный период трат нет</span>
-                </div>
+                </Card>
             )}
         </div>
     );

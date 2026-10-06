@@ -1,18 +1,11 @@
 import React, { useState } from 'react';
 import Button from './ui/Button';
+import Card from './ui/Card';
 
-const COLORS = [
-    '#6366f1', // Indigo
-    '#f43f5e', // Rose
-    '#10b981', // Emerald
-    '#f59e0b', // Amber
-    '#8b5cf6', // Violet
-    '#ec4899', // Pink
-    '#06b6d4', // Cyan
-    '#84cc16', // Lime
-    '#f97316', // Orange
-    '#64748b'  // Slate
-];
+// Цвета категорий лежат токенами в index.css (--color-chart-*) и используются
+// только через style (фон точки и полосы), поэтому var() здесь работает.
+// «Прочее» в палитру не входит: оно всегда text-muted.
+const COLORS = Array.from({ length: 9 }, (_, i) => `var(--color-chart-${i + 1})`);
 
 // A category row can be four different things depending on the props this
 // instance was rendered with: a plain div (no interaction), a filter button
@@ -31,7 +24,7 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
                     <span style={{
                         fontSize: indent ? 'var(--text-xs)' : 'var(--text-sm)',
                         color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)',
-                        fontWeight: isSelected ? '700' : '400',
+                        fontWeight: isSelected ? 'var(--weight-label)' : 'var(--weight-text)',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap'
@@ -53,7 +46,7 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
                     )}
                 </div>
                 <div data-account-value style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    <span style={{ fontSize: indent ? 'var(--text-xs)' : 'var(--text-sm)', fontWeight: '500', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)' }}>
+                    <span style={{ fontSize: indent ? 'var(--text-xs)' : 'var(--text-sm)', fontWeight: 'var(--weight-label)', color: isSelected ? 'var(--color-primary)' : 'var(--color-text-main)' }}>
                         €{value.toFixed(0)}
                     </span>
                     {percent !== null && (
@@ -62,7 +55,7 @@ function CategoryRow({ name, count, value, percent, color, comparison, isSelecte
                         </span>
                     )}
                     {showDelta && (
-                        <span style={{ fontSize: 'var(--text-2xs)', fontWeight: '700', color: comparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
+                        <span style={{ fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-strong)', color: comparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
                             {comparison.diff > 0 ? '+' : '−'}{Math.abs(comparison.percent)}%
                         </span>
                     )}
@@ -177,12 +170,12 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
             value: item.value,
             percent,
             children: item.children,
-            color: item.name === 'Прочее' ? '#64748b' : COLORS[i % COLORS.length]
+            color: item.name === 'Прочее' ? 'var(--color-text-muted)' : COLORS[i % COLORS.length]
         };
     });
 
     return (
-        <div className="glass-panel" style={{ padding: '20px', marginTop: '0' }}>
+        <Card padding="lg">
             <div style={{ display: 'grid', gridTemplateColumns: onToggle ? 'auto 1fr auto' : '1fr auto', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
                 {onToggle && (
                     <Button tone="secondary" size="sm" onClick={onToggle}>
@@ -192,7 +185,7 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
                 <h3 style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)', textAlign: 'left' }}>
                     Расходы по категориям
                 </h3>
-                <div data-account-value style={{ color: 'var(--color-text-main)', fontSize: 'var(--text-lg)', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                <div data-account-value style={{ color: 'var(--color-text-main)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)', whiteSpace: 'nowrap' }}>
                     €{total.toFixed(0)}
                 </div>
             </div>
@@ -251,6 +244,6 @@ export default function CategoryDonut({ data, onToggle, comparison, selectedCate
                         );
                 })}
             </div>
-        </div>
+        </Card>
     );
 }

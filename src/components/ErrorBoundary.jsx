@@ -1,6 +1,7 @@
 import { Component } from 'react';
 import { reportClientError } from '../utils/clientErrorReporter';
 import Button from './ui/Button';
+import Card from './ui/Card';
 
 // Catches render-time exceptions anywhere below it in the tree (the
 // carousel, the drawer, the transaction list, ...) and shows a fallback
@@ -28,8 +29,8 @@ class ErrorBoundary extends Component {
     if (this.state.hasError) {
       return (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
-          <div className="glass-panel" style={{ padding: '32px', width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'center' }}>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>
+          <Card padding="lg" style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'center' }}>
+            <h1 style={{ fontSize: '1.4rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>
               Что-то пошло не так
             </h1>
             <p style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
@@ -38,7 +39,7 @@ class ErrorBoundary extends Component {
             <Button block onClick={() => window.location.reload()}>
               Перезагрузить
             </Button>
-          </div>
+          </Card>
         </div>
       );
     }

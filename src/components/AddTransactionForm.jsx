@@ -235,7 +235,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     // который лежит поверх поля
                                     padding: '16px 16px 16px 36px',
                                     fontSize: '1.5rem',
-                                    fontWeight: 'bold',
+                                    fontWeight: 'var(--weight-strong)',
                                 }}
                             />
                         </div>
@@ -388,7 +388,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 Дополнительно
                                 {/* включённая настройка не должна быть невидимой */}
                                 {!showExtra && showExcludeToggle && formData.excludeFromStats && (
-                                    <span style={{ fontWeight: '400' }}>· не в статистике</span>
+                                    <span style={{ fontWeight: 'var(--weight-text)' }}>· не в статистике</span>
                                 )}
                             </Button>
                             {showExtra && (

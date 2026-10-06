@@ -1,4 +1,5 @@
 import './Skeleton.css';
+import Card from './Card';
 
 export function Skeleton({ width = '100%', height = 16, className = '' }) {
   return <div aria-hidden="true" className={`skeleton ${className}`} style={{ width, height }} />;
@@ -24,7 +25,7 @@ export function ListSkeleton({ label, rows = 3, amounts = true }) {
 export function SummarySkeleton({ monthly = true, limitBar = true, analytics = false }) {
   const withLimitBar = monthly && limitBar && !analytics;
   return <LoadingSkeleton label="Загрузка итогов…" className={monthly && !analytics ? 'skeleton-month' : ''}>
-    <div className="glass-panel skeleton-summary">
+    <Card padding="lg" className="skeleton-summary">
       {!withLimitBar && <Skeleton width={112} height={12} />}
       {analytics ? <div className="skeleton-columns"><Skeleton height={64} /><Skeleton height={64} /><Skeleton height={64} /></div>
         : withLimitBar ? <div className="skeleton-limit">
@@ -35,23 +36,23 @@ export function SummarySkeleton({ monthly = true, limitBar = true, analytics = f
         </div>
           : <Skeleton width={150} height={48} />}
       {!analytics && <div className="skeleton-columns"><Skeleton height={64} /><Skeleton height={64} /></div>}
-    </div>
-    {analytics && <div className="glass-panel skeleton-summary skeleton-chart">
+    </Card>
+    {analytics && <Card padding="lg" className="skeleton-summary skeleton-chart">
       <Skeleton width={140} height={16} />
       <div className="skeleton-bars">{[45, 72, 58, 86, 62, 100].map((height, index) => <Skeleton key={index} height={`${height}%`} />)}</div>
       <Skeleton width="70%" height={12} />
-    </div>}
+    </Card>}
   </LoadingSkeleton>;
 }
 
 export function AppSkeleton() {
   return <div className="layout-container" aria-busy="true">
     <LoadingSkeleton label="Загрузка приложения…">
-      <div className="glass-panel skeleton-header">
+      <Card padding="lg" className="skeleton-header">
         <div className="skeleton-brand"><Skeleton width={190} height={30} /><Skeleton width={150} height={10} /></div>
         <div className="skeleton-account"><Skeleton width={110} height={12} /><Skeleton width={180} height={36} /></div>
         <div className="skeleton-dots">{[0, 1, 2].map(key => <Skeleton key={key} width={8} height={8} />)}</div>
-      </div>
+      </Card>
       <div className="skeleton-columns skeleton-actions"><Skeleton height={44} /><Skeleton height={44} /><Skeleton height={44} /></div>
       <div className="skeleton-period"><Skeleton width={150} height={36} /></div>
     </LoadingSkeleton>

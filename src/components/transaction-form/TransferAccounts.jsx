@@ -41,7 +41,7 @@ export default function TransferAccounts({ accounts, from, to, onPick, onSwap })
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            fontWeight: '700',
+                            fontWeight: 'var(--weight-strong)',
                             fontSize: 'var(--text-xl)'
                         }}>
                             <row.icon size={20} strokeWidth={1.8} aria-hidden="true" />
@@ -51,7 +51,7 @@ export default function TransferAccounts({ accounts, from, to, onPick, onSwap })
                                 style={{
                                     color: 'var(--color-text-muted)',
                                     fontSize: 'var(--text-2xs)',
-                                    fontWeight: '600',
+                                    fontWeight: 'var(--weight-label)',
                                     letterSpacing: '0.6px',
                                     textTransform: 'uppercase',
                                     marginBottom: '6px'

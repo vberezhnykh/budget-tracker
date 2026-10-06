@@ -30,7 +30,7 @@ export default function BottomTabs({ active, onChange }) {
         // through it made both unreadable.
         background: 'var(--color-surface)',
         border: '1px solid var(--color-border-subtle)',
-        boxShadow: '0 6px 20px -6px rgba(0, 0, 0, 0.18)',
+        boxShadow: 'var(--shadow-tabbar)',
         position: 'fixed',
         bottom: `${PEEK_HEIGHT + GAP_ABOVE_DRAWER}px`,
         left: '50%',
@@ -73,7 +73,7 @@ export default function BottomTabs({ active, onChange }) {
               background: isActive ? 'var(--color-primary-tint)' : 'transparent',
               color: isActive ? 'var(--color-primary)' : 'var(--color-text-muted)',
               fontSize: 'var(--text-xs)',
-              fontWeight: isActive ? '700' : '600',
+              fontWeight: 'var(--weight-label)',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
             }}

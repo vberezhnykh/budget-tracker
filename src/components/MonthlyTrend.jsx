@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import Card from './ui/Card';
 import { formatMonthName, formatPeriodLabel, getCurrentMonth } from '../utils/period';
 import './MonthlyTrend.css';
 
@@ -70,7 +71,7 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
     };
 
     return (
-        <section className="glass-panel monthly-trend" aria-label="Динамика по месяцам">
+        <Card as="section" padding="lg" className="monthly-trend" aria-label="Динамика по месяцам">
             <div className="monthly-trend__heading">
                 <div>
                     <h3>Динамика по месяцам</h3>
@@ -142,6 +143,6 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
                     {selected.income === 0 && selected.expense === 0 && <p className="monthly-trend__empty">Нет доходов и расходов за этот месяц</p>}
                 </div>
             )}
-        </section>
+        </Card>
     );
 }

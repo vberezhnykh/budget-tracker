@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Field from './ui/Field'
 import Button from './ui/Button'
+import Card from './ui/Card'
 
 // Single shared-password login screen. Shown whenever the app detects an
 // unauthenticated state (a 401 from the API) - see App.jsx. There is no
@@ -41,8 +42,8 @@ function LoginScreen({ onSuccess }) {
 
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
-      <div className="glass-panel" style={{ padding: '32px', width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <h1 style={{ fontSize: '1.6rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0, textAlign: 'center' }}>
+      <Card padding="lg" style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <h1 style={{ fontSize: '1.6rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0, textAlign: 'center' }}>
           BudgetTracker
         </h1>
         <p style={{ margin: 0, textAlign: 'center', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
@@ -50,7 +51,7 @@ function LoginScreen({ onSuccess }) {
         </p>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <label style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', fontWeight: '600' }}>
+          <label style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-label)' }}>
             Пароль
             <Field
               type="password"
@@ -65,7 +66,7 @@ function LoginScreen({ onSuccess }) {
           </label>
 
           {error && (
-            <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-base)', fontWeight: '500' }}>
+            <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-label)' }}>
               {error}
             </div>
           )}
@@ -74,7 +75,7 @@ function LoginScreen({ onSuccess }) {
             {isSubmitting ? 'Вход...' : 'Войти'}
           </Button>
         </form>
-      </div>
+      </Card>
     </div>
   );
 }

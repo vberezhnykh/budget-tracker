@@ -117,14 +117,14 @@
   background: var(--account-accent);
   color: var(--color-text-inverse);
   font-size: var(--text-xs);
-  font-weight: 700;
+  font-weight: var(--weight-strong);
   line-height: 1;
 }
 
 .account-card__name {
   font-size: var(--text-md);
   color: var(--account-accent);
-  font-weight: 700;
+  font-weight: var(--weight-strong);
   margin-bottom: 8px;
   letter-spacing: 0.5px;
   padding: 0 28px;
@@ -133,7 +133,7 @@
 
 .account-card .balance-amount {
   font-size: 2.2rem;
-  font-weight: 800;
+  font-weight: var(--weight-strong);
   color: var(--color-text-main);
 }
 

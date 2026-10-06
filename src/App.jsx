@@ -14,6 +14,7 @@ import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
 import Button from './components/ui/Button'
+import Card from './components/ui/Card'
 import { formatPeriodLabel, toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput } from './utils/period'
 import { transformTransactions, getPaceForecast } from './utils/finance'
 import usePagedHistory from './utils/usePagedHistory'
@@ -1245,7 +1246,7 @@ function App() {
   if (initialLoadError && !hasSnapshotRef.current) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: '20px' }}>
-        <div className="glass-panel" role="alert" style={{ padding: '28px', width: '100%', maxWidth: '380px', textAlign: 'center' }}>
+        <Card padding="lg" role="alert" style={{ width: '100%', maxWidth: '380px', textAlign: 'center' }}>
           <h1 style={{ margin: 0, fontSize: 'var(--text-3xl)', color: 'var(--color-text-main)' }}>Не удалось загрузить данные</h1>
           <p style={{ margin: '12px 0 20px', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
             {initialLoadError}. Проверьте подключение и попробуйте ещё раз.
@@ -1253,7 +1254,7 @@ function App() {
           <Button onClick={() => loadData({ initial: true })}>
             Повторить
           </Button>
-        </div>
+        </Card>
       </div>
     );
   }
@@ -1263,9 +1264,9 @@ function App() {
   return (
     <div className="layout-container">
       {notice && (
-        <div
+        <Card
           role="alert"
-          className="glass-panel"
+          padding="md"
           style={{
             position: 'fixed',
             top: '16px',
@@ -1274,7 +1275,6 @@ function App() {
             zIndex: 1100,
             width: 'calc(100% - 40px)',
             maxWidth: '420px',
-            padding: '14px 16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1282,7 +1282,7 @@ function App() {
             borderLeft: `4px solid ${notice.type === 'success' ? 'var(--color-success)' : 'var(--color-negative)'}`,
           }}
         >
-          <span style={{ fontSize: 'var(--text-md)', fontWeight: '500', color: 'var(--color-text-main)' }}>
+          <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-main)' }}>
             {notice.message}
           </span>
           <button
@@ -1305,12 +1305,12 @@ function App() {
           >
             <X size={18} />
           </button>
-        </div>
+        </Card>
       )}
       {undoDeletion && (
-        <div
+        <Card
           role={undoDeletion.error ? 'alert' : 'status'}
-          className="glass-panel"
+          padding="sm"
           style={{
             position: 'fixed',
             left: '50%',
@@ -1319,7 +1319,6 @@ function App() {
             zIndex: 950,
             width: 'calc(100% - 40px)',
             maxWidth: '420px',
-            padding: '12px 14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1327,21 +1326,20 @@ function App() {
             borderLeft: `4px solid ${undoDeletion.error ? 'var(--color-negative)' : 'var(--color-primary)'}`,
           }}
         >
-          <span style={{ color: undoDeletion.error ? 'var(--color-negative)' : 'var(--color-text-main)', fontSize: 'var(--text-sm)', fontWeight: '600' }}>
+          <span style={{ color: undoDeletion.error ? 'var(--color-negative)' : 'var(--color-text-main)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)' }}>
             {undoDeletion.error || `В корзине.${undoDeletion.count > 1 ? ` Операций: ${undoDeletion.count}.` : ''}`}
           </span>
           <Button tone="soft" size="sm" onClick={handleUndoDeletion} disabled={undoDeletion.pending} style={{ flexShrink: 0 }}>
             {undoDeletion.pending ? 'Восстановление...' : 'Отменить'}
           </Button>
-        </div>
+        </Card>
       )}
       {syncWarning && (
-        <div
+        <Card
           role="alert"
-          className="glass-panel"
+          padding="sm"
           style={{
             marginBottom: '12px',
-            padding: '12px 14px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1350,7 +1348,7 @@ function App() {
           }}
         >
           <div>
-            <div style={{ color: 'var(--color-text-main)', fontWeight: '700', fontSize: 'var(--text-base)' }}>
+            <div style={{ color: 'var(--color-text-main)', fontWeight: 'var(--weight-strong)', fontSize: 'var(--text-base)' }}>
               Не удалось обновить данные
             </div>
             <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginTop: '2px' }}>
@@ -1365,14 +1363,14 @@ function App() {
           >
             {isRefreshing ? 'Обновление...' : 'Повторить'}
           </Button>
-        </div>
+        </Card>
       )}
       {/* Premium Header */}
-      <header className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
+      <Card as="header" padding="lg" style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
           <div style={{ width: '24px' }}></div>
           <div style={{ textAlign: 'center' }}>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
             {lastSyncLabel && (
               <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-2xs)', marginTop: '2px' }}>
                 Синхронизировано: {lastSyncLabel}
@@ -1536,7 +1534,7 @@ function App() {
           })}
         </div>
 
-      </header>
+      </Card>
 
       <main style={{ paddingBottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px` }}>
         {/* Quick Actions */}
@@ -1567,7 +1565,7 @@ function App() {
         <div ref={accountSummaryRef} data-testid="account-summary" className={accountStatsPending ? 'account-summary account-summary--pending' : 'account-summary'} aria-busy={accountStatsPending} inert={accountStatsPending} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: '24px' }}>
           {!statsReady && <div style={{ gridArea: '1 / 1', minWidth: 0 }}>
             {syncWarning && !isRefreshing
-              ? <div className="glass-panel" style={{ padding: '24px', color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</div>
+              ? <Card padding="lg" style={{ color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</Card>
               : <SummarySkeleton monthly={timeRange === 'month'} limitBar={Number.isFinite(monthlyLimit) && monthlyLimit > 0} analytics={summaryView === 'analytics'} />}
           </div>}
           {/* Keep the carousel mounted so loading never resets its scroll position. */}
@@ -1600,16 +1598,18 @@ function App() {
                   const totals = monthlyTotals[month] || { income: 0, expense: 0 };
                   const isActive = month === selectedMonth;
                   return (
-                    <div
+                    <Card
                       key={month}
                       data-carousel-slide
-                      className="glass-panel"
+                      padding="lg"
                       style={{
                         flex: '0 0 88%',
                         scrollSnapAlign: 'center',
                         scrollSnapStop: 'always',
                         boxSizing: 'border-box',
-                        padding: '20px 24px 24px',
+                        // сверху отступ на ступень меньше, чем с остальных
+                        // сторон, - высота слайда прежняя; пресет lg дал бы +4px
+                        padding: 'var(--space-5) var(--space-6) var(--space-6)',
                         opacity: isActive ? 1 : 0.5,
                         transition: 'opacity 0.2s ease'
                       }}
@@ -1623,7 +1623,7 @@ function App() {
                         onToggleType={toggleTypeFilter}
                         isActive={isActive}
                       />
-                    </div>
+                    </Card>
                   );
                 })}
                 <div aria-hidden="true" style={{ flex: '0 0 max(0px, 6% - 12px)', pointerEvents: 'none' }} />
@@ -1631,7 +1631,7 @@ function App() {
             ) : (
               /* Год и «всё время» листать нечем - одна карточка без полосы лимита:
                  месячный лимит для такого периода ничего не значит. */
-              <div className="glass-panel" style={{ padding: '24px' }}>
+              <Card padding="lg">
                 <SummaryCard
                   income={periodStats.income}
                   expense={periodStats.expense}
@@ -1641,7 +1641,7 @@ function App() {
                   selectedType={selectedType}
                   onToggleType={toggleTypeFilter}
                 />
-              </div>
+              </Card>
             )
           ) : (
             /* Analytics tab: same period as the stats tab (periodStats), so

@@ -6,6 +6,7 @@ import useBodyScrollLock from '../utils/useBodyScrollLock'
 import Field from './ui/Field'
 import Button from './ui/Button'
 import Chip from './ui/Chip'
+import Card from './ui/Card'
 
 // Bottom-sheet chrome (CoinKeeper-style) wrapping the transaction history.
 // Geometry:
@@ -277,7 +278,7 @@ export default function TransactionsDrawer({
           right: 0,
           bottom: 0,
           zIndex: 899,
-          background: 'rgba(15, 23, 42, 0.4)',
+          background: 'var(--color-overlay)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
           opacity: expanded ? 1 : 0,
@@ -299,7 +300,7 @@ export default function TransactionsDrawer({
           background: 'var(--color-surface)',
           borderTopLeftRadius: '16px',
           borderTopRightRadius: '16px',
-          boxShadow: '0 -10px 15px -3px rgba(0, 0, 0, 0.1), 0 -4px 6px -4px rgba(0, 0, 0, 0.1)',
+          boxShadow: 'var(--shadow-drawer)',
           display: 'flex',
           flexDirection: 'column',
           transform: expanded ? 'translateY(0)' : `translateY(calc(88vh - ${PEEK_HEIGHT}px))`,
@@ -342,7 +343,7 @@ export default function TransactionsDrawer({
               background: 'var(--color-control-off)',
             }}
           />
-          <span style={{ fontSize: 'var(--text-base)', fontWeight: '600', color: 'var(--color-text-muted)' }}>
+          <span style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-muted)' }}>
             {title}
           </span>
           {/* Purely visual close/open affordance - the handle's role="button",
@@ -383,8 +384,8 @@ export default function TransactionsDrawer({
         <div ref={scrollRef} onScroll={handleScroll} data-testid="history-scroll" style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'contain', overflowAnchor: 'none' }}>
           {/* Transaction History (moved verbatim from App.jsx) */}
           {expanded && (
-          <div className="glass-panel" style={{ padding: '0', overflow: 'visible' }}>
-            <div style={{ padding: '24px', borderBottom: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <Card padding="none" style={{ overflow: 'visible' }}>
+            <div style={{ padding: '24px', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h3 style={{ margin: 0 }}>{searchQuery ? `Результаты поиска (${searchResults.count})` : 'История'}</h3>
                 <Button tone="secondary" size="sm" onClick={exportToCSV} disabled={isExporting}>
@@ -438,7 +439,7 @@ export default function TransactionsDrawer({
                       transition: 'all 0.2s ease',
                       // включённый фильтр приподнят над лентой - её можно
                       // листать, и он должен быть виден боковым зрением
-                      boxShadow: selectedCategory === cat.name ? '0 2px 6px rgba(37, 99, 235, 0.2)' : 'none'
+                      boxShadow: selectedCategory === cat.name ? '0 2px 6px var(--color-primary-glow)' : 'none'
                     }}
                   >
                     {cat.name}
@@ -448,7 +449,7 @@ export default function TransactionsDrawer({
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {selectedAccount && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-primary-border-soft)' }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
                       Счет: <strong>{getAccountFilterLabel(selectedAccount)}</strong>
                     </span>
@@ -459,7 +460,7 @@ export default function TransactionsDrawer({
                 )}
 
                 {selectedType && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedType === 'income' ? 'rgba(34, 197, 94, 0.05)' : 'rgba(239, 68, 68, 0.05)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid', borderColor: selectedType === 'income' ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: selectedType === 'income' ? 'var(--color-positive-soft)' : 'var(--color-danger-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid', borderColor: selectedType === 'income' ? 'var(--color-positive-border-soft)' : 'var(--color-danger-border-faint)' }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-negative)' }}>
                       Тип: <strong>{selectedType === 'income' ? 'Доходы' : 'Расходы'}</strong>
                     </span>
@@ -470,7 +471,7 @@ export default function TransactionsDrawer({
                 )}
 
                 {selectedCategory && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(37, 99, 235, 0.1)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: '8px 12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-primary-border-soft)' }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
                       Категория: <strong>{selectedCategory}</strong>
                     </span>
@@ -510,7 +511,7 @@ export default function TransactionsDrawer({
                 )}
               </div>
             </div>
-          </div>
+          </Card>
           )}
         </div>
       </div>

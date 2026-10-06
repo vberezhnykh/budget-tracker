@@ -82,7 +82,7 @@ export default function Button({
                 gap: '6px',
                 border: 'none',
                 borderRadius: 'var(--radius-md)',
-                fontWeight: '700',
+                fontWeight: 'var(--weight-strong)',
                 fontFamily: 'inherit',
                 cursor: 'pointer',
                 transition: 'filter 0.2s ease, opacity 0.2s ease, transform 0.1s ease',

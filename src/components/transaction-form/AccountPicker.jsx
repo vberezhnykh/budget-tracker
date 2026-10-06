@@ -40,7 +40,6 @@ export default function AccountPicker({ accounts, value, onChange, scrollAlways 
                         gap: '8px',
                         minWidth: scrolls && !scrollAlways ? '120px' : 'auto',
                         padding: scrollAlways ? '10px 12px' : '12px',
-                        fontWeight: '600',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis'

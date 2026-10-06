@@ -19,7 +19,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', background: 'var(--color-surface-muted)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-md)' }}>
                 <span>Осталось распределить:</span>
-                <span style={{ color: isBalanced ? 'var(--color-positive)' : ((remaining < 0) ? 'var(--color-negative)' : 'var(--color-warning)'), fontWeight: 'bold' }}>
+                <span style={{ color: isBalanced ? 'var(--color-positive)' : ((remaining < 0) ? 'var(--color-negative)' : 'var(--color-warning)'), fontWeight: 'var(--weight-strong)' }}>
                     €{(isBalanced ? 0 : remaining).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
             </div>
@@ -74,7 +74,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
             <button
                 type="button"
                 onClick={add}
-                style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px dashed var(--color-border-strong)', fontWeight: '500' }}
+                style={{ width: '100%', padding: '10px', borderRadius: 'var(--radius-md)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', border: '1px dashed var(--color-border-strong)', fontWeight: 'var(--weight-label)' }}
             >
                 <Plus size={18} strokeWidth={1.8} aria-hidden="true" /> Добавить категорию
             </button>

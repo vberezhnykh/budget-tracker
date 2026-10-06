@@ -15,5 +15,5 @@
 .company-field__suggestions strong { color: var(--color-text-main); font-size: var(--text-base); }
 .company-field__suggestions small, .company-field__hint { color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.5; }
 .company-field__hint { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 0; overflow-wrap: anywhere; }
-.company-field__hint button { min-height: 28px; padding: 0; color: var(--color-primary); background: transparent; font-size: var(--text-sm); font-weight: 600; }
+.company-field__hint button { min-height: 28px; padding: 0; color: var(--color-primary); background: transparent; font-size: var(--text-sm); font-weight: var(--weight-strong); }
 .company-field button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }

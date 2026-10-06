@@ -64,7 +64,7 @@ function CategoryFilterLink({ category, selected, onToggle }) {
                 position: 'relative',
                 zIndex: 1,
                 color: selected ? 'var(--color-primary)' : 'inherit',
-                fontWeight: selected ? '700' : 'normal',
+                fontWeight: selected ? 'var(--weight-label)' : 'var(--weight-text)',
                 textDecoration: 'underline',
                 textUnderlineOffset: '2px',
             }}
@@ -125,7 +125,7 @@ export default function TransactionList({
             <div style={{ padding: '10px 24px', background: 'var(--color-surface-muted)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border-subtle)', display: 'flex', justifyContent: 'space-between' }}>
                 <span>{formatDate(date)}</span>
                 {groups[date].dailySum !== 0 && (
-                    <span style={{ fontWeight: '600', whiteSpace: 'nowrap', color: groups[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
+                    <span style={{ fontWeight: 'var(--weight-strong)', whiteSpace: 'nowrap', color: groups[date].dailySum > 0 ? 'var(--color-positive)' : 'var(--color-text-muted)' }}>
                         {groups[date].dailySum > 0 ? '+' : ''}{groups[date].dailySum.toFixed(2)}€
                     </span>
                 )}
@@ -139,7 +139,7 @@ export default function TransactionList({
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                                     <TransactionIcon item={item} />
                                     <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                                        <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{displayName(item)} (Разделено)</div>
+                                        <div style={{ fontWeight: 'var(--weight-label)', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>{displayName(item)} (Разделено)</div>
                                         {displayComment(item) && (
                                             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>{displayComment(item)}</div>
                                         )}
@@ -148,7 +148,7 @@ export default function TransactionList({
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ fontWeight: '700', whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--color-text-main)' }}>
+                                <div style={{ fontWeight: 'var(--weight-strong)', whiteSpace: 'nowrap', flexShrink: 0, color: 'var(--color-text-main)' }}>
                                     €{Math.abs(item.visualAmount).toFixed(2)}
                                 </div>
                             </div>
@@ -208,7 +208,7 @@ export default function TransactionList({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
                             <TransactionIcon item={item} />
                             <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                                <div style={{ fontWeight: '600', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
+                                <div style={{ fontWeight: 'var(--weight-label)', fontSize: 'var(--text-lg)', color: 'var(--color-text-main)' }}>
                                     {displayName(item)}
                                     {item.excludeFromStats && (
                                         <span role="img" aria-label="Исключено из статистики" title="Исключено из статистики" style={{ marginLeft: '6px', color: 'var(--color-text-muted)' }}><EyeOff size={14} strokeWidth={1.8} aria-hidden="true" /></span>
@@ -234,7 +234,7 @@ export default function TransactionList({
                         </div>
                         {/* nowrap - чтобы знак «+» не оставался на строке один,
                             когда сумма длинная, а название операции широкое. */}
-                        <div style={{ fontWeight: '700', whiteSpace: 'nowrap', flexShrink: 0, color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? 'var(--color-positive-strong)' : 'var(--color-text-main)') }}>
+                        <div style={{ fontWeight: 'var(--weight-strong)', whiteSpace: 'nowrap', flexShrink: 0, color: (item.type === 'initial' || item.type === 'transfer') ? 'var(--color-primary)' : (item.visualAmount > 0 ? 'var(--color-positive-strong)' : 'var(--color-text-main)') }}>
                             {item.type !== 'initial' && item.type !== 'transfer' && item.visualAmount > 0 ? '+' : ''}€{Math.abs(item.visualAmount).toFixed(2)}
                         </div>
                     </div>

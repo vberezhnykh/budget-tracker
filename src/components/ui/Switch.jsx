@@ -24,7 +24,7 @@ const TONES = {
         }),
         trackFirst: true,
         track: { width: 40, height: 20, thumb: 16, travel: 20, onColor: 'var(--color-primary)', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' },
-        label: on => ({ fontWeight: '500', color: on ? 'var(--color-text-main)' : 'var(--color-text-muted)', fontSize: 'var(--text-md)' }),
+        label: on => ({ fontWeight: 'var(--weight-label)', color: on ? 'var(--color-text-main)' : 'var(--color-text-muted)', fontSize: 'var(--text-md)' }),
     },
     negative: {
         row: on => ({

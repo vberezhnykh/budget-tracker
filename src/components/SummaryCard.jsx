@@ -23,7 +23,7 @@ const formatEuro = (value) => value.toLocaleString('de-DE', { minimumFractionDig
 // многоточие - последняя страховка, чтобы карточка не поехала.
 const amountStyle = (text) => ({
     fontSize: text.length > 11 ? 'var(--text-sm)' : 'var(--text-lg)',
-    fontWeight: '700',
+    fontWeight: 'var(--weight-strong)',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
@@ -90,10 +90,10 @@ export default function SummaryCard({
                 }}
             >
                 <div style={{ textAlign: 'center', padding: withLimitBar ? 0 : '8px 0' }}>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: '600', marginBottom: '4px' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-label)', marginBottom: '4px' }}>
                         {headlineLabel}
                     </div>
-                    <div data-account-value style={{ fontSize: '2rem', fontWeight: '800', color: 'var(--color-text-main)' }}>
+                    <div data-account-value style={{ fontSize: '2rem', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-main)' }}>
                         €{formatEuro(expenseAbs)}
                     </div>
                 </div>
@@ -127,7 +127,7 @@ export default function SummaryCard({
                             marginTop: '6px',
                             fontSize: 'var(--text-xs)'
                         }}>
-                            <span data-account-value style={{ color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                            <span data-account-value style={{ color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: 'var(--weight-label)', whiteSpace: 'nowrap' }}>
                                 {isOverLimit
                                     ? `сверх лимита €${formatEuro(Math.abs(limitRemaining))}`
                                     : `осталось €${formatEuro(limitRemaining)}`}
@@ -139,7 +139,7 @@ export default function SummaryCard({
                     </div>
                 )}
                 {isActive && selectedType === 'expense' && (
-                    <span style={{ fontSize: 'var(--text-2xs)', fontWeight: '600', color: 'var(--color-primary)' }}>
+                    <span style={{ fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-label)', color: 'var(--color-primary)' }}>
                         список отфильтрован по расходам
                     </span>
                 )}
@@ -154,9 +154,9 @@ export default function SummaryCard({
                     style={{
                         flex: 1,
                         textAlign: 'left',
-                        background: isActive && selectedType === 'income' ? 'rgba(34, 197, 94, 0.12)' : 'var(--color-surface-muted)',
+                        background: isActive && selectedType === 'income' ? 'var(--color-positive-soft)' : 'var(--color-surface-muted)',
                         border: '1px solid',
-                        borderColor: isActive && selectedType === 'income' ? '#4ade80' : 'var(--color-border-subtle)',
+                        borderColor: isActive && selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-border-subtle)',
                         borderRadius: 'var(--radius-lg)',
                         padding: '12px 14px',
                         cursor: isActive ? 'pointer' : 'default',

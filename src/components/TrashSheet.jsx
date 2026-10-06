@@ -2,6 +2,7 @@ import { ListSkeleton } from './ui/Skeleton';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import Button from './ui/Button';
+import Card from './ui/Card';
 import IconButton from './ui/IconButton';
 import Sheet from './ui/Sheet';
 
@@ -59,14 +60,14 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
       {loading ? (
         <ListSkeleton label="Загрузка корзины…" />
       ) : groups.length === 0 && !error ? (
-        <div style={{ padding: '24px', textAlign: 'center', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface-muted)', color: 'var(--color-text-muted)' }}>Корзина пуста.</div>
+        <Card tone="muted" padding="lg" style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>Корзина пуста.</Card>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {groups.map(group => {
             const total = (group.transactions || []).reduce((sum, transaction) => sum + (Number(transaction.amount) || 0), 0);
             const isBusy = pendingAction?.endsWith(`:${group.id}`);
             return (
-              <article key={group.id} style={{ padding: '14px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)', background: 'var(--color-surface)', display: 'flex', flexDirection: 'column', gap: '9px' }}>
+              <Card as="article" key={group.id} tone="plain" padding="md" style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px' }}>
                   <div style={{ minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', overflowWrap: 'anywhere' }}>{groupTitle(group)}</h3>
@@ -89,7 +90,7 @@ export default function TrashSheet({ groups, loading, error, onRetry, onRestore,
                     {isBusy && pendingAction.startsWith('purge') ? 'Удаление...' : 'Удалить навсегда'}
                   </Button>
                 </div>
-              </article>
+              </Card>
             );
           })}
         </div>

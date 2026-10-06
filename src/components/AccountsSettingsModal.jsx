@@ -40,7 +40,7 @@ function AccountListItem({ account, onDelete, onEdit }) {
         </span>
         <span className="account-settings-symbol"><AccountIcon icon={account.icon} type={account.type} /></span>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 'var(--text-md)', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
+          <div style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{account.name}</div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {account.type === 'cash' ? 'Наличные' : 'Карта'} {account.isDefault ? '(Стандартный)' : ''}
           </div>
@@ -190,14 +190,14 @@ export default function AccountsSettingsModal({
   return (
     <Sheet ariaLabel="Настройки" onClose={handleClose}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: 'var(--text-3xl)', fontWeight: '800', color: 'var(--color-text-main)', margin: 0 }}>Настройки</h2>
+          <h2 style={{ fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-main)', margin: 0 }}>Настройки</h2>
           <IconButton
             tone="neutral"
             round
             size={32}
             onClick={handleClose}
             aria-label="Закрыть настройки"
-            style={{ fontWeight: 'bold' }}
+            style={{ fontWeight: 'var(--weight-strong)' }}
           >
             <X size={18} strokeWidth={1.8} aria-hidden="true" />
           </IconButton>
@@ -205,7 +205,7 @@ export default function AccountsSettingsModal({
 
         {/* Account Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--color-surface-muted)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--color-border)' }}>
-          <h3 style={{ fontSize: 'var(--text-md)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>
+          <h3 style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-muted)', margin: 0 }}>
             {editingAccountId ? 'Редактировать счёт' : 'Добавить новый счёт'}
           </h3>
 
@@ -298,7 +298,7 @@ export default function AccountsSettingsModal({
 
         {/* Accounts List */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Список счетов</h3>
+          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-muted)', margin: 0 }}>Список счетов</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
             <DndContext sensors={accountDndSensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={accounts.map(acc => acc._id)} strategy={verticalListSortingStrategy}>
@@ -332,7 +332,7 @@ export default function AccountsSettingsModal({
             here rather than as new chrome on the main screen. */}
         {/* Categories */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Категории</h3>
+          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-muted)', margin: 0 }}>Категории</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', overflowY: 'auto', maxHeight: '250px', paddingRight: '4px' }}>
             {categories.length === 0 ? (
               <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>Категорий пока нет</div>
@@ -399,7 +399,7 @@ export default function AccountsSettingsModal({
                     ) : (
                       <>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 'var(--text-md)', fontWeight: '600', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {cat.name}
                           </div>
                           <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)' }}>
@@ -429,7 +429,7 @@ export default function AccountsSettingsModal({
 
         {/* Monthly limit */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: '700', color: 'var(--color-text-muted)', margin: 0 }}>Лимит трат в месяц</h3>
+          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-muted)', margin: 0 }}>Лимит трат в месяц</h3>
           <form onSubmit={handleSaveLimit} style={{ display: 'flex', gap: '10px' }}>
             <Field
               type="number"

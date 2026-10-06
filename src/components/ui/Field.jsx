@@ -43,7 +43,7 @@ const SIZES = {
     md: { padding: '10px 14px', fontSize: 'var(--text-base)' },
     lg: { padding: '12px 14px', fontSize: 'var(--text-lg)' },
     // Крупное поле формы операции: сумма, дата, комментарий.
-    xl: { padding: '16px', fontSize: 'var(--text-3xl)', fontWeight: '700' },
+    xl: { padding: '16px', fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-strong)' },
 };
 
 export default function Field({ tone = 'outline', size = 'md', radius, style, ...props }) {

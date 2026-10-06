@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { X } from 'lucide-react';
 import Button from './ui/Button';
+import Card from './ui/Card';
 import Field from './ui/Field';
 import IconButton from './ui/IconButton';
 import Sheet from './ui/Sheet';
@@ -21,7 +22,7 @@ const secondaryButtonStyle = {
   borderRadius: 'var(--radius-md)',
   background: 'var(--color-surface-inset)',
   color: 'var(--color-text-main)',
-  fontWeight: '600',
+  fontWeight: 'var(--weight-strong)',
 };
 
 function money(value) {
@@ -41,7 +42,7 @@ function accountName(accounts, id) {
 
 function FormRow({ label, children }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', fontWeight: '600' }}>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)' }}>
       {label}
       {children}
     </label>
@@ -264,7 +265,7 @@ function PaymentCard({ payment, accounts, busy, onEdit, onPay, onStatus, onOpenT
   );
 
   return (
-    <article style={{ padding: '14px', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface)', border: '1px solid var(--color-border-subtle)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+    <Card as="article" tone="plain" padding="md" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'flex-start' }}>
         <div style={{ minWidth: 0 }}>
           <h3 style={{ margin: 0, fontSize: 'var(--text-lg)', overflowWrap: 'anywhere' }}>{payment.title}</h3>
@@ -297,7 +298,7 @@ function PaymentCard({ payment, accounts, busy, onEdit, onPay, onStatus, onOpenT
           Вернуть в ожидающие
         </Button>
       )}
-    </article>
+    </Card>
   );
 }
 
@@ -347,26 +348,26 @@ export default function PlannedPaymentsView({ plannedPayments, accounts, categor
 
   return (
     <div data-testid="planned-payments-view" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <section className="glass-panel" style={{ padding: '20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+      <Card as="section" padding="lg" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
         <div>
           <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>До конца месяца, включая просроченные</div>
-          <div style={{ color: 'var(--color-text-main)', fontSize: '1.8rem', fontWeight: '800', marginTop: '4px' }}>{money(groups.pendingThroughMonth)}</div>
+          <div style={{ color: 'var(--color-text-main)', fontSize: '1.8rem', fontWeight: 'var(--weight-strong)', marginTop: '4px' }}>{money(groups.pendingThroughMonth)}</div>
         </div>
         <Button size="sm" onClick={() => setShowForm(true)} style={{ flexShrink: 0 }}>+ Добавить</Button>
-      </section>
+      </Card>
 
-      {actionError && <div role="alert" className="glass-panel" style={{ padding: '12px', color: 'var(--color-negative)' }}>{actionError}</div>}
+      {actionError && <Card role="alert" padding="sm" style={{ color: 'var(--color-negative)' }}>{actionError}</Card>}
       {groups.overdue.length === 0 && groups.upcoming.length === 0 && (
-        <div className="glass-panel" style={{ padding: '24px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+        <Card padding="lg" style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>
           Предстоящих платежей пока нет.
-        </div>
+        </Card>
       )}
       <PaymentSection title="Просрочено" tone="var(--color-negative)" payments={groups.overdue} renderPayment={renderPayment} />
       <PaymentSection title="Предстоящие" payments={groups.upcoming} renderPayment={renderPayment} />
 
       {groups.history.length > 0 && (
         <section>
-          <button type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen(open => !open)} style={{ width: '100%', padding: '12px 14px', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface)', color: 'var(--color-text-main)', fontWeight: '700', textAlign: 'left', border: '1px solid var(--color-border-subtle)' }}>
+          <button type="button" aria-expanded={historyOpen} onClick={() => setHistoryOpen(open => !open)} style={{ width: '100%', padding: '12px 14px', borderRadius: 'var(--radius-lg)', background: 'var(--color-surface)', color: 'var(--color-text-main)', fontWeight: 'var(--weight-strong)', textAlign: 'left', border: '1px solid var(--color-border-subtle)' }}>
             Завершённые ({groups.history.length}) {historyOpen ? '▴' : '▾'}
           </button>
           {historyOpen && <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>{groups.history.map(renderPayment)}</div>}

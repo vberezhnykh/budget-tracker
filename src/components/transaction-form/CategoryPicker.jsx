@@ -85,7 +85,7 @@ export default function CategoryPicker({ categories, transactions, type, categor
                         type="button"
                         onClick={() => setShowAll(!showAll)}
                         aria-expanded={showAll}
-                        style={{ ...chipButton, border: '1px dashed var(--color-border-strong)', fontWeight: '600' }}
+                        style={{ ...chipButton, border: '1px dashed var(--color-border-strong)', fontWeight: 'var(--weight-label)' }}
                     >
                         {showAll ? 'Свернуть' : `Ещё ${rest.length}`}
                     </button>
@@ -97,7 +97,7 @@ export default function CategoryPicker({ categories, transactions, type, categor
                     <button
                         type="button"
                         onClick={() => setIsAdding(true)}
-                        style={{ ...chipButton, border: '1px dashed var(--color-primary-border)', fontWeight: '500' }}
+                        style={{ ...chipButton, border: '1px dashed var(--color-primary-border)', fontWeight: 'var(--weight-label)' }}
                     >
                         <Plus size={16} strokeWidth={1.8} aria-hidden="true" /> Новая
                     </button>

@@ -86,9 +86,9 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
           minHeight: '40px',
           color: 'var(--color-text-main)',
           fontSize: 'var(--text-base)',
-          fontWeight: '700',
+          fontWeight: 'var(--weight-strong)',
           cursor: 'pointer',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+          boxShadow: 'var(--shadow-xs)',
         }}
       >
         {formatPeriodLabel(timeRange, selectedMonth)}
@@ -98,7 +98,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
       {isOpen && renderSheet(
         <Sheet ariaLabel={monthsOnly ? 'Переход к месяцу' : 'Выбор периода'} onClose={close} maxHeight="80vh">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: '700' }}>{monthsOnly ? 'Переход к месяцу' : 'Период'}</h3>
+              <h3 style={{ margin: 0, fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-strong)' }}>{monthsOnly ? 'Переход к месяцу' : 'Период'}</h3>
               <IconButton round tone="neutral" onClick={close} aria-label="Закрыть"><X size={20} /></IconButton>
             </div>
 
@@ -124,7 +124,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {years.map(year => (
                   <div key={year}>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: '700', color: 'var(--color-text-muted)', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-muted)', letterSpacing: '0.5px', marginBottom: '8px' }}>
                       {year}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
