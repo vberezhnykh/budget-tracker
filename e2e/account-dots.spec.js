@@ -4,7 +4,9 @@ import { manyAccounts, mockApi } from './fixtures.js';
 const dotAccounts = manyAccounts.slice(0, 7);
 
 async function openAccounts(page, width) {
-  await page.setViewportSize({ width, height: 900 });
+  // Ниже страницы: без чипа периода главный экран стал короче 900px, и
+  // вертикальной прокрутке, которую проверяет второй тест, негде случиться.
+  await page.setViewportSize({ width, height: 800 });
   await page.clock.setFixedTime(new Date(2026, 8, 12, 12));
   await mockApi(page, { accounts: dotAccounts, plannedPayments: [] });
   await page.goto('/');

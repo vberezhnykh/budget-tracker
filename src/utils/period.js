@@ -86,3 +86,16 @@ export const formatPeriodLabel = (timeRange, selectedMonth) => {
       .replace(' г.', '')
   );
 };
+
+// Период как часть фразы - «Расход за сентябрь», «Сводка за 2026»: месяц в
+// именительном падеже строчными, год - только если он не текущий (иначе
+// «за сентябрь 2026» читается как лишнее уточнение очевидного), год и всё
+// время - без слова «год». now параметром, а не new Date() внутри - чтобы
+// «текущий год» не зависел от часов на машине в тестах.
+export const formatPeriodPhrase = (timeRange, selectedMonth, now = new Date()) => {
+  if (timeRange === 'lifetime') return 'всё время';
+  const [year] = selectedMonth.split('-');
+  if (timeRange === 'year') return year;
+  const name = formatMonthName(selectedMonth).toLowerCase();
+  return Number(year) === now.getFullYear() ? name : `${name} ${year}`;
+};

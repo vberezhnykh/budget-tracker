@@ -2,6 +2,7 @@ import React from 'react';
 import CategoryDonut from './CategoryDonut';
 import MonthlyTrend from './MonthlyTrend';
 import Card from './ui/Card';
+import PeriodPicker from './PeriodPicker';
 
 // maximumFractionDigits matters here in a way it doesn't for the plain sums
 // elsewhere in the app: pace figures come out of a division, so without a cap
@@ -24,8 +25,8 @@ const pluralDays = (count) => {
 // monthly timeline, and the category donut with month-over-month deltas.
 export default function AnalyticsView({
     periodStats,
-    periodLabel,
     timeRange,
+    onChangePeriod,
     pace,
     monthlyLimit,
     series,
@@ -49,15 +50,19 @@ export default function AnalyticsView({
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', minWidth: 0 }}>
             <Card padding="lg">
+                {/* Заголовок - заодно единственный на этой вкладке выбор
+                    периода. Карточка со сводкой рисуется всегда, и когда трат
+                    нет тоже (пустое состояние внизу - отдельная карточка), так
+                    что пустой месяц не остаётся без способа сменить период. */}
                 <h3 style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
-                    Сводка
+                    <PeriodPicker variant="inline" prefix="Сводка за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={onChangePeriod} />
                 </h3>
                 {/* Three equal boxes at phone width leave ~100px each, so the
                     amounts are sized down and pinned to one line: a wrapped
                     "+\n€3.400,00" reads as two separate numbers. The sign is
                     rendered before the € rather than letting toLocaleString
                     put it after it ("€-281,00"). */}
-                <div style={{ display: 'flex', gap: 'var(--space-3)', marginBottom: 'var(--space-3)' }}>
+                <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                     {[
                         { label: 'Расход', value: expenseAbs, color: 'var(--color-text-main)', sign: '' },
                         { label: 'Доход', value: periodStats.income, color: 'var(--color-positive)', sign: '' },
@@ -78,10 +83,6 @@ export default function AnalyticsView({
                         </div>
                     ))}
                 </div>
-                <div style={{ fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-label)', letterSpacing: '1px', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>
-                    {periodLabel}
-                </div>
-
                 {/* Расход против прошлого месяца. Раньше эта строка стояла на
                     главной, но отвечает она на вопрос разбора («стало больше
                     или меньше»), а не на вопрос «сколько можно ещё потратить»,

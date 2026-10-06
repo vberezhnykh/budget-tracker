@@ -15,7 +15,7 @@ import BankingSheet from './components/BankingSheet'
 import IconButton from './components/ui/IconButton'
 import Button from './components/ui/Button'
 import Card from './components/ui/Card'
-import { formatPeriodLabel, toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput } from './utils/period'
+import { formatPeriodPhrase, toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput } from './utils/period'
 import { transformTransactions, getPaceForecast } from './utils/finance'
 import usePagedHistory from './utils/usePagedHistory'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
@@ -679,7 +679,7 @@ function App() {
   };
 
   // Both halves of "which period am I looking at" move together, from the
-  // one PeriodPicker chip - picking a year has to land on a concrete month
+  // one PeriodPicker trigger - picking a year has to land on a concrete month
   // too, because getYearlyData derives its year from selectedMonth.
   const handlePeriodChange = ({ timeRange: nextRange, selectedMonth: nextMonth }) => {
     setTimeRange(nextRange);
@@ -1538,7 +1538,7 @@ function App() {
 
       <main style={{ paddingBottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px` }}>
         {/* Quick Actions */}
-        <section style={{ marginBottom: 'var(--space-8)' }}>
+        <section style={{ marginBottom: 'var(--space-6)' }}>
           <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
             <Button tone="positive" onClick={() => openAddModal('income')} aria-label="Добавить доход" style={{ flex: 1, whiteSpace: 'nowrap' }}>
               <Plus size={18} /> Доход
@@ -1552,15 +1552,11 @@ function App() {
           </div>
         </section>
 
-        {/* One period control for the whole screen: the chip carries both
-            the granularity (месяц/год/всё время) and the concrete month or
-            year, replacing the old header arrow row plus the range toggle
-            that used to live inside the stats card. It sits above the
-            summary card so both bottom tabs share it. */}
-        <section style={{ marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <PeriodPicker timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />
-        </section>
-
+        {/* Единственный выбор периода на экране - не отдельная строка, а часть
+            подписи сводки: «Расход за сентябрь ⌄» на карточке (месяц, год,
+            всё время) и «Сводка за сентябрь ⌄» на «Аналитике». Он стоит
+            сразу под быстрыми действиями, поэтому у них тот же отступ снизу,
+            что у шапки. */}
         {/* Summary Card with Budget Limit */}
         <div ref={accountSummaryRef} data-testid="account-summary" className={accountStatsPending ? 'account-summary account-summary--pending' : 'account-summary'} aria-busy={accountStatsPending} inert={accountStatsPending} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: 'var(--space-6)' }}>
           {!statsReady && <div style={{ gridArea: '1 / 1', minWidth: 0 }}>
@@ -1622,6 +1618,13 @@ function App() {
                         selectedType={selectedType}
                         onToggleType={toggleTypeFilter}
                         isActive={isActive}
+                        // Активная карточка - кнопка выбора периода, соседние -
+                        // тот же текст про свой месяц, но обычный: триггер на
+                        // карточке, которая ещё не выбрана, спорил бы с жестом
+                        // выбора по нажатию на неё. Кнопка в DOM ровно одна.
+                        headline={isActive
+                          ? <PeriodPicker variant="inline" prefix="Расход за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />
+                          : `Расход за ${formatPeriodPhrase('month', month)}`}
                       />
                     </Card>
                   );
@@ -1637,7 +1640,7 @@ function App() {
                   expense={periodStats.expense}
                   monthlyLimit={monthlyLimit}
                   showLimitBar={false}
-                  headlineLabel={timeRange === 'year' ? 'Расход за год' : 'Расход за всё время'}
+                  headline={<PeriodPicker variant="inline" prefix="Расход за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />}
                   selectedType={selectedType}
                   onToggleType={toggleTypeFilter}
                 />
@@ -1651,8 +1654,8 @@ function App() {
                broken. */
             <AnalyticsView
               periodStats={periodStats}
-              periodLabel={formatPeriodLabel(timeRange, selectedMonth)}
               timeRange={timeRange}
+              onChangePeriod={handlePeriodChange}
               pace={paceForecast}
               monthlyLimit={monthlyLimit}
               series={monthlySeries}

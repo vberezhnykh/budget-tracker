@@ -229,14 +229,16 @@ describe('App Integration Tests', () => {
         await waitFor(() => expect(screen.getByText('BudgetTracker')).toBeInTheDocument());
     });
 
-    it('changes the month from the Период chip', async () => {
+    it('changes the month from the period trigger on the summary card', async () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        // The chip carries the current period, and is the only way to change
-        // it - the old header arrow row is gone.
-        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
+        // The trigger is part of the active card's label and is the only way
+        // to change the period - the old header arrow row is gone. Inactive
+        // neighbour cards show their own month as plain text, never a button.
+        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toHaveTextContent('Расход за январь');
+        expect(screen.getAllByRole('button', { name: /^Период:/ })).toHaveLength(1);
 
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
 
@@ -278,9 +280,9 @@ describe('App Integration Tests', () => {
         await waitFor(() => {
             expect(screen.getByText(/Расходы по категориям/)).toBeInTheDocument();
         });
-        // The period chip follows you across tabs rather than being owned by
-        // the stats screen.
-        expect(screen.getByRole('button', { name: /^Период:/ })).toBeInTheDocument();
+        // The period trigger follows you across tabs (it moves into the
+        // «Сводка» heading) rather than being owned by the stats screen.
+        expect(screen.getByRole('button', { name: /^Период:/ })).toHaveTextContent('Сводка за январь');
         expect(analyticsTab).toHaveAttribute('aria-current', 'page');
 
         fireEvent.click(homeTab);

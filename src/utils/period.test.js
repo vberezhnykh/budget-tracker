@@ -3,6 +3,7 @@ import {
   MIN_MONTH,
   formatMonthName,
   formatPeriodLabel,
+  formatPeriodPhrase,
   getCurrentMonth,
   getLastMonthOfYear,
   listPeriodMonths,
@@ -91,6 +92,28 @@ describe('period helpers', () => {
 
     it('ignores the selected month for the lifetime period', () => {
       expect(formatPeriodLabel('lifetime', '2026-08')).toBe('Всё время');
+    });
+  });
+
+  describe('formatPeriodPhrase', () => {
+    const now = new Date(2026, 8, 5, 12);
+
+    it('names a month of the current year in lowercase nominative, without the year', () => {
+      expect(formatPeriodPhrase('month', '2026-09', now)).toBe('сентябрь');
+      expect(formatPeriodPhrase('month', '2026-05', now)).toBe('май');
+    });
+
+    it('adds the year for a month of another year', () => {
+      expect(formatPeriodPhrase('month', '2025-12', now)).toBe('декабрь 2025');
+    });
+
+    it('is just the year for a yearly period, whatever the current year is', () => {
+      expect(formatPeriodPhrase('year', '2026-09', now)).toBe('2026');
+      expect(formatPeriodPhrase('year', '2025-12', now)).toBe('2025');
+    });
+
+    it('reads "всё время" for the lifetime period', () => {
+      expect(formatPeriodPhrase('lifetime', '2026-09', now)).toBe('всё время');
     });
   });
 

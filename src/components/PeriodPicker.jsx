@@ -10,6 +10,7 @@ import {
   getLastMonthOfYear,
   formatMonthName,
   formatPeriodLabel,
+  formatPeriodPhrase,
   listPeriodMonths,
   listPeriodYears,
 } from '../utils/period';
@@ -19,16 +20,24 @@ import {
 // Tapping it opens a sheet that picks both the granularity and the concrete
 // month/year, so the whole notion of "which period am I looking at" lives in
 // one place and the header stays free of it.
-export default function PeriodPicker({ timeRange, selectedMonth, onChange, monthsOnly = false }) {
+//
+// Триггер бывает двух видов. По умолчанию - чип «Период» (так его видит
+// шторка истории с monthsOnly). variant="inline" - текстовая кнопка внутри
+// подписи карточки: «{prefix} <период> ⌄». Лист и логика выбора у них одни,
+// отличается только то, что нажимают.
+export default function PeriodPicker({ timeRange, selectedMonth, onChange, monthsOnly = false, variant = 'chip', prefix = '' }) {
   const [isOpen, setIsOpen] = useState(false);
   // The granularity being previewed inside the open sheet. It only becomes
   // the app's timeRange once a concrete choice is made (or immediately, for
   // "Всё время", which has nothing further to pick).
   const [draftRange, setDraftRange] = useState(timeRange);
   const chipRef = useRef(null);
-  // The history drawer transforms and scrolls its contents. A nested fixed
-  // sheet must escape that containing/stacking context.
-  const renderSheet = node => monthsOnly ? createPortal(node, document.body) : node;
+  // Лист всегда уходит в body. Шторка истории трансформируется и скроллится,
+  // а карточка сводки (Card tone glass) имеет backdrop-filter, и тот делает
+  // её containing block для position:fixed потомков: лист внутри карточки
+  // встал бы по её границам, а не по экрану. Из любого такого контекста
+  // вложенный fixed-лист надо выводить наружу.
+  const renderSheet = node => createPortal(node, document.body);
 
   const maxMonth = getCurrentMonth();
   const months = listPeriodMonths(maxMonth);
@@ -45,6 +54,16 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
     // Return focus to the control that opened the sheet, so keyboard and
     // screen-reader users don't get dropped back at the top of the page.
     chipRef.current?.focus({ preventScroll: true });
+    // После выбора месяца активной становится другая карточка карусели, а
+    // карточка, открывавшая лист, показывает период обычным текстом: её
+    // триггер исчез. Фокус тогда переходит к триггеру новой активной карточки.
+    // Ждём кадр - к этому моменту React уже перерисовал карусель.
+    if (variant === 'inline') {
+      requestAnimationFrame(() => {
+        if (chipRef.current?.isConnected) return;
+        document.querySelector('[data-period-trigger]')?.focus({ preventScroll: true });
+      });
+    }
   };
 
   const chooseMonth = (month) => {
@@ -68,6 +87,46 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
 
   return (
     <>
+      {variant === 'inline' ? (
+        <button
+          ref={chipRef}
+          type="button"
+          data-period-trigger
+          onClick={open}
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
+          aria-label={`Период: ${formatPeriodLabel(timeRange, selectedMonth)}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-1)',
+            background: 'transparent',
+            border: 'none',
+            borderRadius: 'var(--radius-pill)',
+            // Размер, цвет и насыщенность берутся у подписи, в которую кнопка
+            // вставлена (карточка или заголовок «Сводки»). Отступы дают
+            // кнопке площадь нажатия под палец (~36px в высоту при кегле
+            // подписи), а равный им отрицательный margin оставляет текст ровно
+            // там, где он стоял без кнопки. Снизу эта площадь заходит на
+            // кнопку-фильтр с суммой - position и zIndex отдают перекрытие
+            // подписи, сама сумма начинается ниже.
+            padding: 'var(--space-3)',
+            margin: 'calc(-1 * var(--space-3))',
+            position: 'relative',
+            zIndex: 1,
+            font: 'inherit',
+            color: 'inherit',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+          }}
+        >
+          <span>
+            {prefix}{' '}
+            <span style={{ color: 'var(--color-primary)' }}>{formatPeriodPhrase(timeRange, selectedMonth)}</span>
+          </span>
+          <ChevronDown size={14} style={{ color: 'var(--color-primary)' }} />
+        </button>
+      ) : (
       <button
         ref={chipRef}
         type="button"
@@ -94,6 +153,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
         {formatPeriodLabel(timeRange, selectedMonth)}
         <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />
       </button>
+      )}
 
       {isOpen && renderSheet(
         <Sheet ariaLabel={monthsOnly ? 'Переход к месяцу' : 'Выбор периода'} onClose={close} maxHeight="80vh">

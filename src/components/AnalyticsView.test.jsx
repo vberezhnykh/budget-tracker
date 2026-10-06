@@ -1,8 +1,18 @@
-import { render, screen, within } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, within, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import AnalyticsView from './AnalyticsView';
 
 describe('AnalyticsView Component', () => {
+    // The period phrase drops the year for the current one, so "now" is pinned.
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 0, 15, 12));
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     const basePeriodStats = {
         income: 1000,
         expense: -400,
@@ -16,7 +26,7 @@ describe('AnalyticsView Component', () => {
 
     const baseProps = {
         periodStats: basePeriodStats,
-        periodLabel: 'Январь 2026',
+        onChangePeriod: () => { },
         timeRange: 'month',
         pace: null,
         monthlyLimit: 500,
@@ -32,9 +42,9 @@ describe('AnalyticsView Component', () => {
     it('renders the summary card and category bars when the period has spending', () => {
         render(<AnalyticsView {...baseProps} />);
 
-        expect(screen.getByText('Сводка')).toBeInTheDocument();
-        const summary = screen.getByText('Сводка').parentElement;
-        expect(within(summary).getByText('Январь 2026')).toBeInTheDocument();
+        // The heading carries the period and is the period trigger.
+        const trigger = screen.getByRole('button', { name: 'Период: Январь 2026' });
+        expect(trigger).toHaveTextContent('Сводка за январь');
         expect(screen.getByText('Расходы по категориям')).toBeInTheDocument();
         expect(screen.getByText('Food')).toBeInTheDocument();
     });
@@ -124,5 +134,27 @@ describe('AnalyticsView Component', () => {
         // The pace card never shows outside the month view even if pace were set,
         // and the comparison label above the category bars is skipped too.
         expect(screen.queryByText('к 15 января')).not.toBeInTheDocument();
+    });
+
+    it('words the summary heading by period: month, year, lifetime', () => {
+        const { rerender } = render(<AnalyticsView {...baseProps} />);
+        expect(screen.getByRole('button', { name: /^Период:/ })).toHaveTextContent(/^Сводка за январь$/);
+
+        rerender(<AnalyticsView {...baseProps} timeRange="year" />);
+        expect(screen.getByRole('button', { name: 'Период: 2026 год' })).toHaveTextContent('Сводка за 2026');
+
+        rerender(<AnalyticsView {...baseProps} timeRange="lifetime" />);
+        expect(screen.getByRole('button', { name: 'Период: Всё время' })).toHaveTextContent('Сводка за всё время');
+    });
+
+    it('keeps exactly one period trigger, and it still opens the sheet, when the period is empty', () => {
+        const onChangePeriod = vi.fn();
+        render(<AnalyticsView {...baseProps} onChangePeriod={onChangePeriod} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
+
+        // An empty month must not leave the tab without a way to change it.
+        expect(screen.getAllByRole('button', { name: /^Период:/ })).toHaveLength(1);
+        fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'Выбор периода' })).getByRole('button', { name: 'Декабрь' }));
+        expect(onChangePeriod).toHaveBeenCalledWith({ timeRange: 'month', selectedMonth: '2025-12' });
     });
 });

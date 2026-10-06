@@ -54,7 +54,6 @@ export function AppSkeleton() {
         <div className="skeleton-dots">{[0, 1, 2].map(key => <Skeleton key={key} width={8} height={8} />)}</div>
       </Card>
       <div className="skeleton-columns skeleton-actions"><Skeleton height={44} /><Skeleton height={44} /><Skeleton height={44} /></div>
-      <div className="skeleton-period"><Skeleton width={150} height={36} /></div>
     </LoadingSkeleton>
     <SummarySkeleton />
   </div>;

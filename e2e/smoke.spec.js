@@ -408,10 +408,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
-  test('the Период chip replaces the header month row and its sheet is reachable and tappable', async ({ page }) => {
+  test('the period trigger replaces the header month row and its sheet is reachable and tappable', async ({ page }) => {
     // The month arrow row and the Месяц/Год/Всё время toggle were replaced
-    // by a single "Период" chip that opens a bottom sheet (CoinKeeper's
-    // pattern). The header must no longer carry any month control, and the
+    // by a single period control that opens a bottom sheet (CoinKeeper's
+    // pattern); it now lives in the summary card's label («Расход за
+    // сентябрь ⌄») instead of a row of its own. The header must no longer
+    // carry any month control, and the
     // sheet's month cells must be finger-sized and fit the viewport - none
     // of which jsdom can measure, since it lays nothing out.
     await mockApi(page);
@@ -425,7 +427,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     const chip = page.getByRole('button', { name: /^Период:/ });
     await expect(chip).toBeVisible();
 
-    // The chip lives in <main>, not the header card - the header is now
+    // The trigger lives in <main>, not the header card - the header is now
     // purely balance/identity chrome.
     const ancestry = await chip.evaluate((el) => ({
       insideHeader: !!el.closest('header'),
@@ -434,8 +436,10 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(ancestry.insideHeader).toBe(false);
     expect(ancestry.insideMain).toBe(true);
 
+    // Текстовая кнопка в подписи: сам текст мелкий, но площадь нажатия
+    // добирается padding'ом до размера под палец.
     const chipBox = await chip.boundingBox();
-    expect(chipBox.height).toBeGreaterThanOrEqual(40);
+    expect(chipBox.height).toBeGreaterThanOrEqual(36);
 
     await chip.click();
     const sheet = page.getByRole('dialog', { name: 'Выбор периода' });
@@ -609,7 +613,10 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(count).toBeGreaterThan(1);
 
     const chip = page.getByRole('button', { name: /^Период:/ });
-    const startLabel = (await chip.textContent()).trim();
+    // Название месяца берём из имени кнопки («Период: Сентябрь 2026»), а не
+    // из её текста: текст теперь фраза («Расход за сентябрь»).
+    const monthWord = async () => (await chip.getAttribute('aria-label')).replace('Период: ', '').split(' ')[0];
+    const startMonth = await monthWord();
 
     // Лента открывается на выбранном месяце, а не на первом слайде: он
     // самый старый, и увидеть при запуске ноябрь позапрошлого года вместо
@@ -630,19 +637,23 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       el.scrollBy({ left: -(slide.offsetWidth + 12), behavior: 'instant' });
     });
     await page.waitForTimeout(500);
-    const afterLabel = (await chip.textContent()).trim();
-    expect(afterLabel).not.toBe(startLabel);
+    const afterMonth = await monthWord();
+    expect(afterMonth).not.toBe(startMonth);
 
-    // Месяц называет только чип - на самих карточках подписи нет, иначе
-    // одно и то же стояло бы на экране дважды.
-    await expect(carousel.getByText(new RegExp(afterLabel.split(' ')[0], 'i'))).toHaveCount(0);
+    // Месяц называет подпись каждой карточки, но кнопка выбора периода в
+    // ленте одна - у активной. Соседи показывают свой месяц обычным
+    // текстом, иначе на карточке, которая ещё не выбрана, было бы две
+    // кнопки, спорящие с жестом выбора.
+    await expect(carousel.getByRole('button', { name: /^Период:/ })).toHaveCount(1);
+    await expect(slides.filter({ hasText: /Расход за / })).toHaveCount(count);
+    await expect(slides.filter({ has: chip })).toHaveCount(1);
 
     // Обратный путь: месяц, выбранный в чипе, подтягивает ленту к себе.
     await chip.click();
     const sheet = page.getByRole('dialog', { name: 'Выбор периода' });
-    await sheet.getByRole('button', { name: startLabel.split(' ')[0] }).click();
+    await sheet.getByRole('button', { name: startMonth }).click();
     await page.waitForTimeout(600);
-    await expect(chip).toHaveText(new RegExp(startLabel.split(' ')[0]));
+    await expect(chip).toHaveText(new RegExp(startMonth, 'i'));
     expect(await carousel.evaluate((el) => el.scrollLeft)).toBe(startScroll);
   });
 

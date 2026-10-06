@@ -50,7 +50,10 @@ export default function SummaryCard({
     // Полоса лимита рисуется только для месяца: у года и «всего времени»
     // месячный лимит ничего не означает.
     showLimitBar,
-    headlineLabel = 'Расход',
+    // Подпись над суммой: обычный текст или, у активной карточки, кнопка
+    // выбора периода. Она не может лежать внутри Pressable - кнопка в кнопке
+    // невалидна, - поэтому подпись вынесена выше него.
+    headline = 'Расход',
     selectedType,
     onToggleType,
     isActive = true,
@@ -70,80 +73,93 @@ export default function SummaryCard({
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-            <Pressable
-                interactive={isActive}
-                onClick={() => onToggleType('expense')}
-                ariaPressed={selectedType === 'expense'}
-                ariaLabel={`Расход: €${formatEuro(expenseAbs)}${withLimitBar ? ` из лимита €${monthlyLimit.toLocaleString('de-DE')}` : ''}`}
-                style={{
-                    alignSelf: withLimitBar ? 'stretch' : 'center',
-                    background: 'transparent',
-                    border: 'none',
-                    // Без бокового отступа шкала встаёт вровень с плитками
-                    // дохода и сальдо под ней.
-                    padding: withLimitBar ? 'var(--space-1) 0' : 'var(--space-1)',
-                    cursor: isActive ? 'pointer' : 'default',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 'var(--space-3)'
-                }}
-            >
-                <div style={{ textAlign: 'center', padding: withLimitBar ? 0 : 'var(--space-2) 0' }}>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-label)', marginBottom: 'var(--space-1)' }}>
-                        {headlineLabel}
-                    </div>
-                    <div data-account-value style={{ fontSize: '2rem', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-main)' }}>
-                        €{formatEuro(expenseAbs)}
-                    </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {/* Верхний отступ - тот, что раньше давали падинги Pressable
+                    и блока суммы вокруг подписи: так подпись и сумма стоят
+                    на прежних местах, хотя подпись теперь вне кнопки. */}
+                <div style={{
+                    textAlign: 'center',
+                    padding: `${withLimitBar ? 'var(--space-1)' : 'calc(var(--space-1) + var(--space-2))'} 0 0`,
+                    marginBottom: 'var(--space-1)',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--color-text-muted)',
+                    fontWeight: 'var(--weight-label)'
+                }}>
+                    {headline}
                 </div>
-                {withLimitBar && (
-                    <div style={{ width: '100%', boxSizing: 'border-box', textAlign: 'left' }}>
-                        <div
-                            aria-hidden="true"
-                            style={{
-                                width: '100%',
-                                height: '8px',
-                                borderRadius: '999px',
-                                background: 'var(--color-surface-sunken)',
-                                overflow: 'hidden'
-                            }}
-                        >
-                            <div
-                                data-account-value
-                                style={{
-                                    width: `${limitBarWidthDisplay}%`,
-                                    height: '100%',
-                                    borderRadius: 'inherit',
-                                    background: isOverLimit ? 'var(--color-negative)' : 'var(--color-primary)',
-                                    transition: 'width 0.4s ease'
-                                }}
-                            />
-                        </div>
-                        <div style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            gap: 'var(--space-2)',
-                            marginTop: 'var(--space-2)',
-                            fontSize: 'var(--text-xs)'
-                        }}>
-                            <span data-account-value style={{ color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: 'var(--weight-label)', whiteSpace: 'nowrap' }}>
-                                {isOverLimit
-                                    ? `сверх лимита €${formatEuro(Math.abs(limitRemaining))}`
-                                    : `осталось €${formatEuro(limitRemaining)}`}
-                            </span>
-                            <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
-                                <span data-account-value>{limitPercentDisplay}%</span> от €{monthlyLimit.toLocaleString('de-DE')}
-                            </span>
+                <Pressable
+                    interactive={isActive}
+                    onClick={() => onToggleType('expense')}
+                    ariaPressed={selectedType === 'expense'}
+                    ariaLabel={`Расход: €${formatEuro(expenseAbs)}${withLimitBar ? ` из лимита €${monthlyLimit.toLocaleString('de-DE')}` : ''}`}
+                    style={{
+                        alignSelf: withLimitBar ? 'stretch' : 'center',
+                        background: 'transparent',
+                        border: 'none',
+                        // Без бокового отступа шкала встаёт вровень с плитками
+                        // дохода и сальдо под ней. Сверху отступа нет: его
+                        // роль играет подпись над кнопкой.
+                        padding: withLimitBar ? '0 0 var(--space-1)' : '0 var(--space-1) var(--space-1)',
+                        cursor: isActive ? 'pointer' : 'default',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 'var(--space-3)'
+                    }}
+                >
+                    <div style={{ textAlign: 'center', padding: withLimitBar ? 0 : '0 0 var(--space-2)' }}>
+                        <div data-account-value style={{ fontSize: '2rem', fontWeight: 'var(--weight-strong)', color: 'var(--color-text-main)' }}>
+                            €{formatEuro(expenseAbs)}
                         </div>
                     </div>
-                )}
-                {isActive && selectedType === 'expense' && (
-                    <span style={{ fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-label)', color: 'var(--color-primary)' }}>
-                        список отфильтрован по расходам
-                    </span>
-                )}
-            </Pressable>
+                    {withLimitBar && (
+                        <div style={{ width: '100%', boxSizing: 'border-box', textAlign: 'left' }}>
+                            <div
+                                aria-hidden="true"
+                                style={{
+                                    width: '100%',
+                                    height: '8px',
+                                    borderRadius: '999px',
+                                    background: 'var(--color-surface-sunken)',
+                                    overflow: 'hidden'
+                                }}
+                            >
+                                <div
+                                    data-account-value
+                                    style={{
+                                        width: `${limitBarWidthDisplay}%`,
+                                        height: '100%',
+                                        borderRadius: 'inherit',
+                                        background: isOverLimit ? 'var(--color-negative)' : 'var(--color-primary)',
+                                        transition: 'width 0.4s ease'
+                                    }}
+                                />
+                            </div>
+                            <div style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                gap: 'var(--space-2)',
+                                marginTop: 'var(--space-2)',
+                                fontSize: 'var(--text-xs)'
+                            }}>
+                                <span data-account-value style={{ color: isOverLimit ? 'var(--color-negative)' : 'var(--color-text-muted)', fontWeight: 'var(--weight-label)', whiteSpace: 'nowrap' }}>
+                                    {isOverLimit
+                                        ? `сверх лимита €${formatEuro(Math.abs(limitRemaining))}`
+                                        : `осталось €${formatEuro(limitRemaining)}`}
+                                </span>
+                                <span style={{ color: 'var(--color-text-muted)', whiteSpace: 'nowrap' }}>
+                                    <span data-account-value>{limitPercentDisplay}%</span> от €{monthlyLimit.toLocaleString('de-DE')}
+                                </span>
+                            </div>
+                        </div>
+                    )}
+                    {isActive && selectedType === 'expense' && (
+                        <span style={{ fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-label)', color: 'var(--color-primary)' }}>
+                            список отфильтрован по расходам
+                        </span>
+                    )}
+                </Pressable>
+            </div>
 
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                 <Pressable

@@ -36,8 +36,7 @@
 .skeleton-brand { display: grid; justify-items: center; gap: var(--space-2); margin-bottom: var(--space-8); }
 .skeleton-account { width: 88%; margin: auto; padding: var(--space-6) var(--space-4); box-sizing: border-box; display: grid; justify-items: center; gap: var(--space-3); background: var(--color-surface-inset); border-radius: var(--radius-xl); }
 .skeleton-dots { display: flex; justify-content: center; gap: var(--space-4); margin-top: var(--space-5); }
-.skeleton-actions { margin-bottom: var(--space-8); }
-.skeleton-period { margin-bottom: var(--space-4); }
+.skeleton-actions { margin-bottom: var(--space-6); }
 
 @keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) {
