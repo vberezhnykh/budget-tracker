@@ -10,9 +10,8 @@
 //
 // Отдельная история - движение. Форма операции просила `slideUp`, но такой
 // анимации в проекте не существовало: лист появлялся рывком. Затемнение
-// проявляется анимацией `overlayIn` - через цвет и размытие, а не через
-// прозрачность (почему - см. index.css). Обе объявлены в index.css и
-// применяются здесь - ко всем листам одинаково.
+// проявляется анимацией `overlayIn` - через цвет и размытие. Обе объявлены
+// в index.css и применяются здесь - ко всем листам одинаково.
 //
 // Прокрутка: скроллится и сам лист (когда содержимое выше экрана), и
 // подложка под ним - иначе на коротком экране до нижней части высокой
@@ -103,14 +102,10 @@ export default function Sheet({
             style={{
                 position: 'fixed',
                 inset: 0,
-                background: 'var(--color-overlay)',
-                backdropFilter: 'blur(8px)',
-                WebkitBackdropFilter: 'blur(8px)',
                 display: 'flex',
                 alignItems: 'flex-end',
                 justifyContent: 'center',
                 zIndex: 1000,
-                animation: 'overlayIn 0.2s ease-out',
                 overflowY: 'auto',
                 overflowX: 'hidden',
                 overscrollBehavior: 'contain',
@@ -119,6 +114,24 @@ export default function Sheet({
                 ...overlayStyle,
             }}
         >
+            {/* Затемнение с размытием - отдельный слой рядом с листом, а не
+                обёртка вокруг него. Пока лист внутри элемента с
+                backdrop-filter выезжал (slideUp), Safari накладывал затемнение
+                дважды: экран темнел сильнее нужного и в конце анимации рывком
+                светлел. Слой fixed, поэтому не уезжает при прокрутке
+                подложки; нажатие на него закрывает лист через onClick
+                обёртки. */}
+            <div
+                aria-hidden="true"
+                style={{
+                    position: 'fixed',
+                    inset: 0,
+                    background: 'var(--color-overlay)',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                    animation: 'overlayIn 0.2s ease-out',
+                }}
+            />
             <div
                 ref={dialogRef}
                 role="dialog"

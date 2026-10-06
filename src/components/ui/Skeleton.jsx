@@ -27,7 +27,7 @@ export function SummarySkeleton({ monthly = true, limitBar = true, analytics = f
   return <LoadingSkeleton label="Загрузка итогов…" className={monthly && !analytics ? 'skeleton-month' : ''}>
     <Card padding="lg" className="skeleton-summary">
       {!withLimitBar && <Skeleton width={112} height={12} />}
-      {analytics ? <div className="skeleton-columns"><Skeleton height={64} /><Skeleton height={64} /><Skeleton height={64} /></div>
+      {analytics ? <div className="skeleton-rows">{[0, 1, 2].map(key => <div key={key} className="skeleton-limit-row"><Skeleton width={70} height={14} /><Skeleton width={110} height={22} /></div>)}</div>
         : withLimitBar ? <div className="skeleton-limit">
           <Skeleton width={56} height={12} />
           <Skeleton width={150} height={40} />

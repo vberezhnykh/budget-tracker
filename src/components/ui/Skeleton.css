@@ -25,6 +25,8 @@
 .skeleton-row-copy { flex: 1; min-width: 0; display: grid; gap: var(--space-2); }
 .skeleton-columns { display: flex; gap: var(--space-3); width: 100%; }
 .skeleton-columns > .skeleton { flex: 1; min-width: 0; }
+.skeleton-rows { width: 100%; display: flex; flex-direction: column; gap: var(--space-4); }
+.skeleton-rows .skeleton-limit-row { align-items: center; }
 .skeleton-summary { display: flex; flex-direction: column; align-items: center; gap: var(--space-5); }
 .skeleton-month { width: 88%; margin: 0 auto; }
 .skeleton-limit { width: 100%; display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }

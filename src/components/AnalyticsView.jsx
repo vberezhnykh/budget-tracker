@@ -57,28 +57,21 @@ export default function AnalyticsView({
                 <h3 style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
                     <PeriodPicker variant="inline" prefix="Сводка за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={onChangePeriod} />
                 </h3>
-                {/* Three equal boxes at phone width leave ~100px each, so the
-                    amounts are sized down and pinned to one line: a wrapped
-                    "+\n€3.400,00" reads as two separate numbers. The sign is
-                    rendered before the € rather than letting toLocaleString
-                    put it after it ("€-281,00"). */}
-                <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
+                {/* Строки «подпись - сумма», а не три плитки в ряд: у плитки
+                    на ширине телефона оставалось ~65px под число, и уже
+                    «€1.145,28» обрезался многоточием. В строке сумме
+                    достаётся вся ширина карточки. Знак ставится перед €, а
+                    не как у toLocaleString («€-281,00»). */}
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {[
                         { label: 'Расход', value: expenseAbs, color: 'var(--color-text-main)', sign: '' },
                         { label: 'Доход', value: periodStats.income, color: 'var(--color-positive)', sign: '' },
                         { label: 'Сальдо', value: Math.abs(saldo), color: saldo < 0 ? 'var(--color-negative)' : 'var(--color-positive)', sign: saldo < 0 ? '−' : (saldo > 0 ? '+' : '') }
-                    ].map(box => (
-                        <div key={box.label} style={{ flex: 1, minWidth: 0, background: 'var(--color-surface-muted)', border: '1px solid var(--color-border-subtle)', borderRadius: 'var(--radius-lg)', padding: 'var(--space-3) var(--space-3)' }}>
-                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>{box.label}</div>
-                            <div data-account-value style={{
-                                fontSize: 'var(--text-lg)',
-                                fontWeight: 'var(--weight-strong)',
-                                color: box.color,
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis'
-                            }}>
-                                {box.sign}€{formatEuro(box.value)}
+                    ].map((row, index) => (
+                        <div key={row.label} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-2) 0', borderTop: index > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}>
+                            <div style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>{row.label}</div>
+                            <div data-account-value style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-strong)', color: row.color, whiteSpace: 'nowrap' }}>
+                                {row.sign}€{formatEuro(row.value)}
                             </div>
                         </div>
                     ))}
