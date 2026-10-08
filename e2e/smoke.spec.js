@@ -46,6 +46,10 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // Clicking an offscreen account may scroll the page as well as its rail.
     // Compare document positions so that scroll is not mistaken for layout shift.
     const documentTop = locator => locator.evaluate(el => el.getBoundingClientRect().top + window.scrollY);
+    // Веб-шрифт может догрузиться уже после замера и поменять высоту строк
+    // над каруселью. Это не тот сдвиг, который ловит тест, поэтому меряем
+    // после загрузки шрифтов.
+    await page.evaluate(() => document.fonts.ready);
     const before = await documentTop(carousel);
 
     await page.getByRole('button', { name: /^Тинькофф:/ }).click();

@@ -20,6 +20,14 @@ export default defineConfig({
     // so browserName is pinned explicitly, overriding that default.
     ...devices['iPhone 13'],
     browserName: 'chromium',
+    // Облачные сессии Claude Code приходят с заранее поставленным Chromium
+    // другой сборки, чем ждёт наша версия Playwright, а скачивать браузер
+    // там нельзя. Стартовый хук (.claude/hooks/session-start.sh) кладёт путь
+    // к готовому браузеру в эту переменную. Локально и в CI её нет, и
+    // Playwright берёт свой браузер как обычно.
+    ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+      ? { launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } }
+      : {}),
   },
   webServer: {
     command: 'npm run dev -- --port 4173 --strictPort',
