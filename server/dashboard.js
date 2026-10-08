@@ -5,6 +5,7 @@ const {
     computeYearlyData, computeLifetimeStats, computeComparison,
     computeCategoryComparison, computeMonthlySeries, computeCategoryUsage, computeCategoryCounts
 } = require('./analytics');
+const { computeTypicalMonth } = require('./typicalMonth');
 
 function buildDashboard(docs, accounts, { month, timeRange = 'month', account, category, type, today, analytics = true }) {
     const transactions = transformTransactions(docs, accounts);
@@ -23,6 +24,12 @@ function buildDashboard(docs, accounts, { month, timeRange = 'month', account, c
             categoryComparison: computeCategoryComparison(transactions, month, today, account),
             monthlySeries: computeMonthlySeries(transactions, month, timeRange === 'month' ? 6 : 12, account, category),
         } : {}),
+        // «Обычный месяц» нужен Обзору и Аналитике независимо от флага
+        // analytics (его гасит лёгкий повторный запрос итогов), поэтому он вне
+        // блока выше. Для года и «всё время» понятия нет - там полос лимита нет.
+        typicalMonth: timeRange === 'month'
+            ? computeTypicalMonth(transactions, { month, today, account, category })
+            : null,
         categoryUsage: computeCategoryUsage(transactions),
         categoryCounts: {
             expense: computeCategoryCounts(transactions, 'expense', today),

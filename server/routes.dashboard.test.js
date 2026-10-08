@@ -53,8 +53,33 @@ describe('GET /api/stats/dashboard', () => {
         expect(Object.keys(res.body).sort()).toEqual([
             'balances', 'categoryComparison', 'categoryCounts', 'categoryUsage',
             'comparison', 'lifetime', 'month', 'monthlySeries', 'monthlyTotals',
-            'monthlyTotalsByAccount', 'period', 'yearly'
+            'monthlyTotalsByAccount', 'period', 'typicalMonth', 'yearly'
         ]);
+    });
+
+    it('typicalMonth: объект для месяца, null для года и при нехватке истории', async () => {
+        // История в исходных данных начинается с 5 июля: полных месяцев нет.
+        const short = await dashboard();
+        expect(short.body.typicalMonth).toBeNull();
+
+        // Операция 1 марта делает полными март-июль.
+        await Transaction.create([
+            tx({ type: 'income', amount: 10, category: 'Зарплата', account: card._id.toString(), date: '2026-03-01T00:00:00.000Z' }),
+            tx({ type: 'expense', amount: 100, category: 'Продукты', account: card._id.toString(), date: '2026-04-10T00:00:00.000Z' })
+        ]);
+
+        const month = await dashboard();
+        const year = await dashboard('&timeRange=year');
+        const lean = await dashboard('&analytics=0');
+
+        expect(month.body.typicalMonth.months).toEqual(['2026-07', '2026-06', '2026-05', '2026-04', '2026-03']);
+        expect(month.body.typicalMonth.byDay).toHaveLength(31);
+        expect(month.body.typicalMonth.today.day).toBe(15);
+        expect(month.body.typicalMonth.today.spent).toBe(350);
+        expect(year.body).toHaveProperty('typicalMonth', null);
+        // Лёгкий повторный запрос (analytics=0) тоже его отдаёт.
+        expect(lean.body.typicalMonth).not.toBeNull();
+        expect(lean.body.comparison).toBeUndefined();
     });
 
     it('не отдаёт наружу сами операции - ответ не зависит от размера истории', async () => {
