@@ -13,16 +13,16 @@ function mockApi(features) {
     if (url === '/api/settings') return ok({ monthlyLimit: 7000, ...(features === undefined ? {} : { features }) });
     if (url === '/api/banking') return ok({ configured: true, connections: [], pendingReviewCount: 0 });
     if (url === '/api/banking/review') return ok({ items: [], total: 0 });
+    if (url === '/api/trash') return ok([]);
     return ok([]);
   });
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
 
-// Настройки открываются из «Ещё» → «Счета, категории и лимит».
-function openSettingsFromMore() {
+// Строка «Банки» (если модуль включён) лежит в меню «Ещё».
+function openMore() {
   fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
-  fireEvent.click(screen.getByRole('button', { name: /Счета, категории и лимит/ }));
 }
 
 afterEach(() => {
@@ -37,10 +37,11 @@ describe('optional banking module', () => {
     window.history.replaceState({}, '', '/?banking=connected');
     render(<App />);
     await waitFor(() => expect(screen.getByText('Моя карта')).toBeInTheDocument());
-    openSettingsFromMore();
+    openMore();
     expect(screen.queryByRole('button', { name: /^Банки/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Банки', exact: true })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Добавить счёт' })).toBeInTheDocument();
+    // Меню на месте, а строки «Банки» в нём нет.
+    expect(screen.getByRole('button', { name: /^Счета/ })).toBeInTheDocument();
     expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/banking'))).toBe(false);
     expect(window.location.search).toBe('');
   });
@@ -49,10 +50,26 @@ describe('optional banking module', () => {
     const fetchMock = mockApi({ banking: true });
     render(<App />);
     await waitFor(() => expect(screen.getByText('Моя карта')).toBeInTheDocument());
-    openSettingsFromMore();
+    openMore();
     fireEvent.click(screen.getByRole('button', { name: /^Банки/ }));
     expect(await screen.findByRole('dialog', { name: 'Банки', exact: true })).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/banking/review', undefined));
     expect(screen.getByRole('button', { name: 'Подключить Bank of Cyprus' })).toBeInTheDocument();
+  });
+
+  it('shows the pending proposals count on the «Банки» row while «Ещё» is open', async () => {
+    const fetchMock = mockApi({ banking: true });
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((url, options) => (
+      url === '/api/banking' ? ok({ configured: true, connections: [], pendingReviewCount: 3 }) : base(url, options)
+    ));
+    render(<App />);
+    await waitFor(() => expect(screen.getByText('Моя карта')).toBeInTheDocument());
+    // Пока меню не открывали, банки не читаются.
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/api/banking'))).toBe(false);
+
+    openMore();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Банки/ })).toHaveTextContent('предложений: 3'));
   });
 });

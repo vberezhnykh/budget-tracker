@@ -121,11 +121,19 @@ async function openHistory() {
   await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
 }
 
-// Корзина - строка на экране «Ещё».
+// Корзина - строка на экране «Ещё», открывается внутренним экраном.
+const nav = () => within(screen.getByRole('navigation', { name: 'Основная навигация' }));
+
 async function openTrash() {
-  fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+  fireEvent.click(nav().getByRole('button', { name: 'Ещё' }));
   fireEvent.click(await screen.findByRole('button', { name: /^Корзина/ }));
-  return screen.findByRole('dialog', { name: 'Корзина операций' });
+  await screen.findByRole('heading', { level: 1, name: 'Корзина' });
+  return screen.getByRole('main');
+}
+
+// Назад из внутреннего экрана: кнопка в шапке подписана «Ещё».
+function backToMore() {
+  fireEvent.click(within(screen.getByRole('main')).getByRole('button', { name: 'Ещё' }));
 }
 
 describe('App phase 2 flows', () => {
@@ -219,7 +227,7 @@ describe('App phase 2 flows', () => {
     expect(screen.getByRole('button', { name: 'Отменить' })).toBeInTheDocument();
   });
 
-  it('loads persisted trash after a remount, restores one group and permanently deletes another', async () => {
+  it('loads persisted trash after a remount, counts it on «Ещё», restores one group and permanently deletes another', async () => {
     const deletedA = { _id: 'old-a', title: 'Старый расход', amount: 20, type: 'expense', account: 'card', category: 'Еда', date: '2026-08-01' };
     const deletedB = { _id: 'old-b', title: 'Связанный расход', amount: 30, type: 'expense', account: 'card', category: 'Еда', date: '2026-08-02' };
     const api = makeApi({
@@ -236,22 +244,61 @@ describe('App phase 2 flows', () => {
 
     render(<App />);
     await screen.findByTestId('accounts-row');
-    const trashDialog = await openTrash();
-    expect(within(trashDialog).getByText('Старый расход')).toBeInTheDocument();
-    expect(within(trashDialog).getByText('Связанный расход')).toBeInTheDocument();
+    // Пока «Ещё» не открывали, корзину никто не читал.
+    expect(api.fetch.mock.calls.some(([url]) => url === '/api/trash')).toBe(false);
 
-    const oldA = within(trashDialog).getByText('Старый расход').closest('article');
+    // Счётчик на строке меню появляется после чтения корзины.
+    fireEvent.click(nav().getByRole('button', { name: 'Ещё' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Корзина/ })).toHaveTextContent(/2$/));
+
+    const trash = await openTrash();
+    expect(window.location.hash).toBe('#more/trash');
+    expect(within(trash).getByText('Старый расход')).toBeInTheDocument();
+    expect(within(trash).getByText('Связанный расход')).toBeInTheDocument();
+
+    const oldA = within(trash).getByText('Старый расход').closest('article');
     fireEvent.click(within(oldA).getByRole('button', { name: 'Восстановить' }));
     await waitFor(() => expect(api.state.trash).toHaveLength(1));
+    await waitFor(() => expect(within(screen.getByRole('main')).queryByText('Старый расход')).not.toBeInTheDocument());
 
-    const oldB = within(screen.getByRole('dialog', { name: 'Корзина операций' })).getByText('Связанный расход').closest('article');
-    fireEvent.click(within(oldB).getByRole('button', { name: 'Удалить навсегда' }));
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('вернётся в ожидающие'));
+    // Удаление навсегда подтверждается в карточке; системный confirm не нужен.
+    const oldB = within(screen.getByRole('main')).getByText('Связанный расход').closest('article');
+    fireEvent.click(within(oldB).getByRole('button', { name: /^Удалить навсегда/ }));
+    expect(api.state.trash).toHaveLength(1);
+    const confirmation = within(oldB).getByRole('group', { name: /^Подтверждение удаления/ });
+    expect(confirmation).toHaveTextContent('Связанный оплаченный план, если он есть, снова станет ожидающим');
+    fireEvent.click(within(confirmation).getByRole('button', { name: 'Удалить' }));
     await waitFor(() => expect(api.state.trash).toHaveLength(0));
+    expect(confirm).not.toHaveBeenCalled();
     expect(api.state.planned[0].status).toBe('pending');
+    expect(await within(screen.getByRole('main')).findByText('Корзина пуста')).toBeInTheDocument();
+
+    // Счётчик в меню следует за корзиной.
+    backToMore();
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Корзина/ })).toHaveTextContent(/0$/));
   });
 
-  it('ignores a delayed trash body after the sheet is closed and reopened', async () => {
+  it('labels a deleted transfer «A → B» with the account names', async () => {
+    const api = makeApi({
+      accounts: [
+        { _id: 'card', name: 'Карта', type: 'card', icon: '💳', order: 0 },
+        { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', order: 1 },
+      ],
+      trash: [{
+        id: 'tr', deletionBatchId: 'batch-tr', deletedAt: '2026-09-04T10:00:00.000Z', count: 1,
+        transactions: [{ _id: 'tr', title: 'Снятие', amount: 100, type: 'transfer', account: 'card', toAccount: 'cash', date: '2026-09-04' }],
+      }],
+    });
+    vi.stubGlobal('fetch', api.fetch);
+    render(<App />);
+    await screen.findByTestId('accounts-row');
+
+    const trash = await openTrash();
+
+    expect(await within(trash).findByText(/Карта → Наличные/)).toBeInTheDocument();
+  });
+
+  it('ignores a delayed trash body after the screen is closed and reopened', async () => {
     let resolveOldBody;
     const oldBody = new Promise(resolve => { resolveOldBody = resolve; });
     let trashGets = 0;
@@ -268,15 +315,24 @@ describe('App phase 2 flows', () => {
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
     await screen.findByTestId('accounts-row');
-    await openTrash();
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть корзину' }));
-    const reopened = await openTrash();
-    expect(await within(reopened).findByText('Свежая операция')).toBeInTheDocument();
+    // Первое чтение стартует при заходе на «Ещё» и зависает; второе - при
+    // открытии самого экрана.
+    const trash = await openTrash();
+    expect(await within(trash).findByText('Свежая операция')).toBeInTheDocument();
+    backToMore();
+    fireEvent.click(await screen.findByRole('button', { name: /^Корзина/ }));
+    expect(await within(await screen.findByRole('main')).findByText('Свежая операция')).toBeInTheDocument();
 
     await act(async () => {
-      resolveOldBody([{ id: 'stale', deletedAt: '2026-09-01T10:00:00Z', count: 1, transactions: [{ _id: 'stale', title: 'Чужая старая операция', amount: 1 }] }]);
+      resolveOldBody([
+        { id: 'stale-1', deletedAt: '2026-09-01T10:00:00Z', count: 1, transactions: [{ _id: 'stale-1', title: 'Чужая старая операция', amount: 1 }] },
+        { id: 'stale-2', deletedAt: '2026-09-01T11:00:00Z', count: 1, transactions: [{ _id: 'stale-2', title: 'Вторая чужая операция', amount: 1 }] },
+      ]);
     });
-    expect(within(reopened).queryByText('Чужая старая операция')).not.toBeInTheDocument();
-    expect(within(reopened).getByText('Свежая операция')).toBeInTheDocument();
+    const main = within(screen.getByRole('main'));
+    expect(main.queryByText('Чужая старая операция')).not.toBeInTheDocument();
+    expect(main.getByText('Свежая операция')).toBeInTheDocument();
+    backToMore();
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Корзина/ })).toHaveTextContent(/1$/));
   });
 });

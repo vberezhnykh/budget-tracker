@@ -32,8 +32,12 @@ test.describe('Navigation, transfers and trash (mobile)', () => {
     await page.setViewportSize({ width: 320, height: 700 });
     await page.clock.setFixedTime(new Date(2026, 8, 5, 12));
     const deleted = { _id: 'deleted-expense', __v: 0, title: 'Удалённый расход', amount: 45, type: 'expense', account: accounts[0]._id, category: categories[0].name, date: '2026-09-02T00:00:00.000Z' };
+    const purged = { _id: 'purged-expense', __v: 0, title: 'Лишний расход', amount: 12, type: 'expense', account: accounts[0]._id, category: categories[0].name, date: '2026-09-01T00:00:00.000Z' };
     const state = await mockPhase2Api(page, {
-      trash: [{ id: deleted._id, deletionBatchId: 'batch-deleted', deletedAt: '2026-09-04T10:00:00.000Z', count: 1, transactions: [deleted] }],
+      trash: [
+        { id: deleted._id, deletionBatchId: 'batch-deleted', deletedAt: '2026-09-04T10:00:00.000Z', count: 1, transactions: [deleted] },
+        { id: purged._id, deletionBatchId: 'batch-purged', deletedAt: '2026-09-03T10:00:00.000Z', count: 1, transactions: [purged] },
+      ],
     });
     await page.goto('/');
     await expect(page.getByTestId('accounts-row')).toBeVisible();
@@ -61,18 +65,31 @@ test.describe('Navigation, transfers and trash (mobile)', () => {
       expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth);
     }
 
-    // Корзина - строка на экране «Ещё».
+    // Корзина - строка на экране «Ещё» с числом групп, внутренний экран.
     await nav.getByRole('button', { name: 'Ещё' }).click();
+    await expect(page.getByRole('button', { name: /^Корзина/ })).toHaveText(/2$/);
     await page.getByRole('button', { name: /^Корзина/ }).click();
-    const trashDialog = page.getByRole('dialog', { name: 'Корзина операций' });
-    await expect(trashDialog.getByText('Удалённый расход')).toBeVisible();
+    await expect(page).toHaveURL(/#more\/trash$/);
+    const trash = page.getByRole('main');
+    await expect(trash.getByText('Удалённый расход')).toBeVisible();
     const trashScreenshot = testInfo.outputPath('trash-320.png');
     await page.waitForTimeout(400);
     await page.screenshot({ path: trashScreenshot, animations: 'disabled' });
     await testInfo.attach('trash-320', { path: trashScreenshot, contentType: 'image/png' });
-    await trashDialog.getByRole('button', { name: 'Восстановить' }).click();
-    await expect(trashDialog.getByText('Корзина пуста.')).toBeVisible();
-    expect(state.trash).toHaveLength(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+    await trash.locator('article', { hasText: 'Удалённый расход' }).getByRole('button', { name: 'Восстановить' }).click();
+    await expect(trash.getByText('Удалённый расход')).toHaveCount(0);
     expect(state.transactions.some(transaction => transaction._id === deleted._id)).toBe(true);
+
+    // Удаление навсегда подтверждается в карточке: без системного окна
+    // (Playwright закрыл бы его отказом, и корзина осталась бы нетронутой).
+    page.on('dialog', dialog => dialog.dismiss());
+    const card = trash.locator('article', { hasText: 'Лишний расход' });
+    await card.getByRole('button', { name: /^Удалить навсегда/ }).click();
+    expect(state.trash).toHaveLength(1);
+    await card.getByRole('group', { name: /^Подтверждение удаления/ }).getByRole('button', { name: 'Удалить' }).click();
+    await expect(trash.getByText('Корзина пуста')).toBeVisible();
+    expect(state.trash).toHaveLength(0);
   });
 });

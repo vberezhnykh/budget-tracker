@@ -231,7 +231,7 @@ function appFetch(override = () => undefined) {
     // These integration scenarios exercise an explicitly enabled bank module.
     // Disabled/missing feature flags are covered in App.bankingFeature.test.jsx.
     if (url === '/api/settings') return response({ monthlyLimit: 7000, features: { banking: true } });
-    if (url === '/api/planned-payments' || url === '/api/transactions') return response([]);
+    if (url === '/api/planned-payments' || url === '/api/transactions' || url === '/api/trash') return response([]);
     if (url === '/api/banking') return response(bankData);
     if (url === '/api/banking/review') return response({ items: [proposal], total: 1 });
     throw new Error(`Unexpected mock URL ${url}`);
@@ -240,15 +240,14 @@ function appFetch(override = () => undefined) {
   return fetchMock;
 }
 
-// Настройки открываются из «Ещё» → «Счета, категории и лимит».
-function openSettingsFromMore() {
+// Строка «Банки» (при включённом модуле) лежит в меню «Ещё».
+function openMore() {
   fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
-  fireEvent.click(screen.getByRole('button', { name: /Счета, категории и лимит/ }));
 }
 
 async function openBankSheetInApp() {
   await screen.findByTestId('accounts-row');
-  openSettingsFromMore();
+  openMore();
   fireEvent.click(await screen.findByRole('button', { name: /^Банки/ }));
   await screen.findByRole('heading', { name: 'Предложения из банков (1)' });
 }
@@ -309,13 +308,12 @@ describe('App banking integration', () => {
     expect(fetchMock).toHaveBeenCalledTimes(before);
   });
 
-  it('opens one bank sheet from settings and keeps proposals out of the budget', async () => {
+  it('opens one bank sheet from «Ещё» and keeps proposals out of the budget', async () => {
     const fetchMock = appFetch();
     render(<App />);
     await openBankSheetInApp();
-    expect(screen.queryByRole('dialog', { name: 'Настройки' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
-    // Настройки открывались из «Ещё»; итоги лежат на Обзоре.
+    // Банки открывались из «Ещё»; итоги лежат на Обзоре.
     fireEvent.click(screen.getByRole('button', { name: 'Обзор' }));
     expect(screen.getByTestId('accounts-row')).toHaveTextContent('0,00');
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
@@ -372,7 +370,7 @@ describe('App banking integration', () => {
     });
     render(<App />);
     await screen.findByTestId('accounts-row');
-    openSettingsFromMore();
+    openMore();
     await waitFor(() => expect(finishBanking).toBeTypeOf('function'));
     fireEvent.click(screen.getByRole('button', { name: /^Банки/ }));
     expect(await screen.findByRole('button', { name: 'Войти' })).toBeInTheDocument();

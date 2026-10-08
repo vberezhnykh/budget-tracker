@@ -118,10 +118,31 @@ function goTo(name) {
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('button', { name }));
 }
 
-// Настройки открываются из «Ещё» → «Счета, категории и лимит».
-function openSettings() {
-    fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
-    fireEvent.click(screen.getByRole('button', { name: /Счета, категории и лимит/ }));
+// Строка меню «Ещё» по названию: /^Счета/, /^Категории/, /^Корзина/, /^Лимит/.
+function openMoreRow(name) {
+    goTo('Ещё');
+    fireEvent.click(screen.getByRole('button', { name }));
+}
+
+// Содержимое экрана без нижней навигации: на внутренних экранах кнопка
+// «назад» подписана «Ещё», как и вкладка внизу.
+const inMain = () => within(screen.getByRole('main'));
+
+// Вкладка «Ещё» в нижней панели.
+const moreTab = () => within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('button', { name: 'Ещё' });
+
+// «Назад» в приложении: кнопка в шапке внутреннего экрана вызывает
+// history.back(), в jsdom это асинхронный popstate.
+function goBackFromInner() {
+    fireEvent.click(inMain().getByRole('button', { name: 'Ещё' }));
+}
+
+// Заполняет и сохраняет лист нового счёта.
+function addAccountThroughSheet(name) {
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
+    const sheet = screen.getByRole('dialog', { name: 'Новый счёт' });
+    fireEvent.change(within(sheet).getByLabelText('Название'), { target: { value: name } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }));
 }
 
 // Разбивка по категориям живёт на вкладке «Аналитика»: на главной её больше
@@ -337,14 +358,17 @@ describe('App Integration Tests', () => {
         await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     });
 
-    it('keeps settings out of the overview header and opens them from «Ещё»', async () => {
+    it('keeps settings out of the overview header and opens the accounts screen from «Ещё»', async () => {
         render(<App />);
         await waitForOverview();
         expect(screen.queryByTitle('Настройки')).not.toBeInTheDocument();
 
-        openSettings();
+        openMoreRow(/^Счета/);
 
-        expect(screen.getByRole('dialog', { name: 'Настройки' })).toBeInTheDocument();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Счета' })).toBeInTheDocument();
+        expect(window.location.hash).toBe('#more/accounts');
+        // Внутренний экран подсвечивает «Ещё» в нижней панели.
+        expect(moreTab()).toHaveAttribute('aria-current', 'page');
     });
 
     it('opens and closes the add transaction modal', async () => {
@@ -1181,13 +1205,75 @@ describe('App Integration Tests', () => {
         expect(recent.queryByText('Не удалось загрузить операции')).not.toBeInTheDocument();
     });
 
-    it('opens the accounts settings from «Настроить» in the accounts section', async () => {
+    it('opens the accounts screen from «Настроить» and Back returns to the overview', async () => {
         render(<App />);
         await waitForOverview();
 
         fireEvent.click(within(screen.getByRole('region', { name: 'Счета' })).getByRole('button', { name: 'Настроить' }));
 
-        expect(screen.getByRole('dialog', { name: 'Настройки' })).toBeInTheDocument();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Счета' })).toBeInTheDocument();
+        expect(window.location.hash).toBe('#more/accounts');
+        expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
+
+        goBackFromInner();
+
+        // Запись в истории добавлена openInner, поэтому «назад» возвращает на
+        // Обзор, а не на «Ещё»: хэш снова пустой.
+        expect(await screen.findByTestId('accounts-row')).toBeInTheDocument();
+        expect(window.location.hash).toBe('');
+        expect(screen.queryByRole('heading', { level: 1, name: 'Счета' })).not.toBeInTheDocument();
+    });
+
+    it('opens an inner screen from «Ещё» and closes it with the system Back (popstate)', async () => {
+        render(<App />);
+        await waitForOverview();
+        goTo('Ещё');
+        fireEvent.click(screen.getByRole('button', { name: /^Категории/ }));
+        expect(await screen.findByRole('heading', { level: 1, name: 'Категории' })).toBeInTheDocument();
+        expect(window.location.hash).toBe('#more/categories');
+
+        // Системный жест «назад»: браузер возвращает прежнюю запись и шлёт popstate.
+        act(() => {
+            window.history.replaceState(null, '', '/#more');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+        });
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
+        expect(screen.queryByRole('heading', { level: 1, name: 'Категории' })).not.toBeInTheDocument();
+        expect(moreTab()).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('opens an inner screen directly after a reload on #more/categories, and Back replaces it with #more', async () => {
+        window.history.replaceState(null, '', '/#more/categories');
+        render(<App />);
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'Категории' })).toBeInTheDocument();
+        expect(moreTab()).toHaveAttribute('aria-current', 'page');
+        const entries = window.history.length;
+
+        fireEvent.click(inMain().getByRole('button', { name: 'Ещё' }));
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
+        expect(window.location.hash).toBe('#more');
+        expect(window.history.length).toBe(entries);
+    });
+
+    it('replaces an inner screen with the tapped tab instead of stacking history', async () => {
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Корзина/);
+        expect(await screen.findByRole('heading', { level: 1, name: 'Корзина' })).toBeInTheDocument();
+
+        goTo('История');
+        expect(await screen.findByTestId('history-scroll')).toBeInTheDocument();
+        expect(window.location.hash).toBe('#history');
+
+        openMoreRow(/^Категории/);
+        expect(await screen.findByRole('heading', { level: 1, name: 'Категории' })).toBeInTheDocument();
+        // «Ещё» из внутреннего экрана - обратно в меню.
+        goTo('Ещё');
+        expect(await screen.findByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
+        expect(window.location.hash).toBe('#more');
     });
 
     it('scrolls the selected card into view when the row is mounted again after switching tabs', async () => {
@@ -1217,7 +1303,7 @@ describe('App Integration Tests', () => {
             { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true },
             { _id: 'wallet', name: 'Кошелёк', type: 'cash', icon: '👛', isDefault: false }
         ];
-        window.confirm = vi.fn(() => true);
+        const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true);
 
         render(<App />);
         await waitForOverview();
@@ -1228,23 +1314,226 @@ describe('App Integration Tests', () => {
             expect(accountCard('Кошелёк')).toHaveAttribute('aria-pressed', 'true');
         });
 
-        // Delete it via the accounts settings panel.
-        openSettings();
-        const deleteButtons = await screen.findAllByRole('button', { name: 'Удалить' });
-        fireEvent.click(deleteButtons[deleteButtons.length - 1]);
+        // Delete it through the account sheet: the confirmation is inline.
+        openMoreRow(/^Счета/);
+        fireEvent.click(await screen.findByRole('button', { name: /^Кошелёк/ }));
+        const sheet = await screen.findByRole('dialog', { name: 'Счёт' });
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Удалить счёт' }));
+        expect(fetchMock).not.toHaveBeenCalledWith('/api/accounts/wallet', expect.objectContaining({ method: 'DELETE' }));
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Удалить' }));
 
-        expect(window.confirm).toHaveBeenCalled();
+        expect(confirmSpy).not.toHaveBeenCalled();
 
         // The filter pointed at an id that no longer exists - it must be reset
-        // and the selection taken back to «Все счета». Настройки
-        // открыты поверх «Ещё», поэтому на Обзор возвращаемся, закрыв их.
+        // and the selection taken back to «Все счета». Экран счетов лежит под
+        // «Ещё», поэтому на Обзор переходим вкладкой.
         await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/accounts/wallet', expect.objectContaining({ method: 'DELETE' })));
-        fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Счёт' })).not.toBeInTheDocument());
+        expect(screen.queryByRole('button', { name: /^Кошелёк/ })).not.toBeInTheDocument();
         goTo('Обзор');
         await waitFor(() => {
             expect(accountCard('Все счета')).toHaveAttribute('aria-pressed', 'true');
         });
         expect(screen.queryByRole('button', { name: /^Кошелёк: / })).not.toBeInTheDocument();
+    });
+
+    it('adds an account through the sheet, shows it in the list and on the overview', async () => {
+        const baseFetch = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/accounts' && options?.method === 'POST') {
+                const body = JSON.parse(options.body);
+                currentAccounts = [...currentAccounts, { _id: 'revolut', ...body }];
+                return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(currentAccounts[currentAccounts.length - 1]) });
+            }
+            return baseFetch(url, options);
+        });
+
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Счета/);
+        await screen.findByRole('heading', { level: 1, name: 'Счета' });
+
+        addAccountThroughSheet('Revolut');
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/accounts', expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ name: 'Revolut', type: 'card', icon: 'credit-card', excludeFromTotal: false }),
+        })));
+        // Лист закрылся только после успешного ответа, список перечитан.
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Новый счёт' })).not.toBeInTheDocument());
+        expect(inMain().getByRole('button', { name: /^Revolut/ })).toBeInTheDocument();
+
+        goTo('Обзор');
+        expect(await screen.findByLabelText(/^Revolut: /)).toBeInTheDocument();
+    });
+
+    it('edits an account through the sheet: the type is fixed, the name and the frozen flag are saved', async () => {
+        const baseFetch = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/accounts/card' && options?.method === 'PUT') {
+                const body = JSON.parse(options.body);
+                currentAccounts = currentAccounts.map(a => (a._id === 'card' ? { ...a, ...body } : a));
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+            }
+            return baseFetch(url, options);
+        });
+
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Счета/);
+        fireEvent.click(await screen.findByRole('button', { name: /^Карта/ }));
+
+        const sheet = await screen.findByRole('dialog', { name: 'Счёт' });
+        expect(within(sheet).getByLabelText('Название')).toHaveValue('Карта');
+        // У существующего счёта тип показывается строкой, а не переключателем.
+        expect(within(sheet).queryByRole('radiogroup', { name: 'Тип счёта' })).not.toBeInTheDocument();
+        fireEvent.change(within(sheet).getByLabelText('Название'), { target: { value: 'Основная карта' } });
+        fireEvent.click(within(sheet).getByRole('switch', { name: 'Не учитывать в общем капитале' }));
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/accounts/card', expect.objectContaining({
+            method: 'PUT',
+            body: JSON.stringify({ name: 'Основная карта', icon: 'credit-card', excludeFromTotal: true }),
+        })));
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Счёт' })).not.toBeInTheDocument());
+        expect(inMain().getByRole('button', { name: /^Основная карта/ })).toBeInTheDocument();
+    });
+
+    it('keeps the account sheet open and shows the server reason when the save is refused', async () => {
+        const baseFetch = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/accounts' && options?.method === 'POST') {
+                return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ message: 'Счёт с таким названием уже есть' }) });
+            }
+            return baseFetch(url, options);
+        });
+
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Счета/);
+        addAccountThroughSheet('Карта');
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Счёт с таким названием уже есть');
+        expect(screen.getByRole('dialog', { name: 'Новый счёт' })).toBeInTheDocument();
+    });
+
+    it('closes the account sheet when the system Back leaves the accounts screen', async () => {
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Счета/);
+        fireEvent.click(await screen.findByRole('button', { name: 'Добавить счёт' }));
+        expect(screen.getByRole('dialog', { name: 'Новый счёт' })).toBeInTheDocument();
+
+        act(() => {
+            window.history.replaceState(null, '', '/#more');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+        });
+
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Новый счёт' })).not.toBeInTheDocument());
+        expect(screen.getByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
+    });
+
+    it('adds a category from the categories screen', async () => {
+        currentCategories = [{ _id: 'c1', name: 'Продукты', type: 'expense', order: 1 }];
+        const baseFetch = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/categories' && options?.method === 'POST') {
+                const body = JSON.parse(options.body);
+                const saved = { _id: 'c2', order: 2, ...body };
+                currentCategories = [...currentCategories, saved];
+                return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(saved) });
+            }
+            return baseFetch(url, options);
+        });
+
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Категории/);
+        fireEvent.click(await screen.findByRole('button', { name: 'Новая категория' }));
+        fireEvent.change(screen.getByLabelText('Новая категория', { selector: 'input' }), { target: { value: 'Кафе' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/categories', expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({ name: 'Кафе', type: 'expense' }),
+        })));
+        expect(await screen.findByLabelText('Действия: Кафе')).toBeInTheDocument();
+        // Поле закрылось только после успеха.
+        expect(screen.queryByRole('button', { name: 'Добавить' })).not.toBeInTheDocument();
+    });
+
+    it('keeps the new-category field open and reports the server reason when the add is refused', async () => {
+        const baseFetch = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/categories' && options?.method === 'POST') {
+                return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ message: 'Категория уже существует' }) });
+            }
+            return baseFetch(url, options);
+        });
+
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Категории/);
+        fireEvent.click(await screen.findByRole('button', { name: 'Новая категория' }));
+        fireEvent.change(screen.getByLabelText('Новая категория', { selector: 'input' }), { target: { value: 'Еда' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Категория уже существует');
+        expect(screen.getByLabelText('Новая категория', { selector: 'input' })).toHaveValue('Еда');
+    });
+
+    it('saves the monthly limit from the sheet, shows the notice and updates the row in «Ещё»', async () => {
+        let savedLimit = 7000;
+        const baseFetch = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/settings' && options?.method === 'PUT') {
+                savedLimit = JSON.parse(options.body).monthlyLimit;
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ monthlyLimit: savedLimit }) });
+            }
+            if (url === '/api/settings') {
+                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ monthlyLimit: savedLimit }) });
+            }
+            return baseFetch(url, options);
+        });
+
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Лимит трат/);
+
+        const sheet = await screen.findByRole('dialog', { name: 'Лимит трат в месяц' });
+        // График «за последние 6 месяцев» - из месячных итогов приложения.
+        expect(within(sheet).getByTestId('limit-chart')).toBeInTheDocument();
+        fireEvent.change(within(sheet).getByLabelText('Сумма лимита в евро'), { target: { value: '1500' } });
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }));
+
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/settings', expect.objectContaining({
+            method: 'PUT',
+            body: JSON.stringify({ monthlyLimit: 1500 }),
+        })));
+        expect(await screen.findByText('Лимит обновлён')).toBeInTheDocument();
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Лимит трат в месяц' })).not.toBeInTheDocument());
+        expect(screen.getByRole('button', { name: /^Лимит трат/ })).toHaveTextContent('€1.500');
+    });
+
+    it('keeps the limit sheet open and reports the reason when the server rejects the limit', async () => {
+        const baseFetch = fetchMock.getMockImplementation();
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/settings' && options?.method === 'PUT') {
+                return Promise.resolve({ ok: false, status: 400, json: () => Promise.resolve({ message: 'Лимит должен быть положительным' }) });
+            }
+            return baseFetch(url, options);
+        });
+
+        render(<App />);
+        await waitForOverview();
+        openMoreRow(/^Лимит трат/);
+        const sheet = await screen.findByRole('dialog', { name: 'Лимит трат в месяц' });
+        fireEvent.change(within(sheet).getByLabelText('Сумма лимита в евро'), { target: { value: '1500' } });
+        fireEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }));
+
+        expect(await screen.findByText('Лимит должен быть положительным')).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Лимит трат в месяц' })).toBeInTheDocument();
+        expect(screen.queryByText('Лимит обновлён')).not.toBeInTheDocument();
     });
 
     it('держит замороженный счёт вне общего капитала и подписывает сумму отдельно', async () => {
@@ -1276,7 +1565,7 @@ describe('App Integration Tests', () => {
             { _id: '1', title: 'Netflix', amount: 20, type: 'expense', account: 'card', date: '2026-01-05T00:00:00Z', category: 'Подписки' },
         ];
 
-        window.confirm = vi.fn(() => true);
+        const confirmSpy = vi.spyOn(window, 'confirm').mockImplementation(() => true);
 
         render(<App />);
         await screen.findByRole('button', { name: 'Ещё' });
@@ -1287,15 +1576,24 @@ describe('App Integration Tests', () => {
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
         expect(await screen.findByText('Категория:')).toBeInTheDocument();
 
-        openSettings();
-        fireEvent.click(await screen.findByLabelText('Удалить категорию: Подписки'));
+        openMoreRow(/^Категории/);
+        fireEvent.click(await screen.findByLabelText('Действия: Подписки'));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Удалить' }));
 
-        expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('операций: 1'));
+        // Подтверждение встроено в строку и называет число операций; запроса
+        // на удаление до него нет, системный confirm не вызывается.
+        const confirmation = screen.getByRole('group', { name: 'Удаление категории: Подписки' });
+        expect(confirmation).toHaveTextContent(/1 операци/);
+        expect(fetchMock).not.toHaveBeenCalledWith('/api/categories/c2', expect.objectContaining({ method: 'DELETE' }));
+        fireEvent.click(within(confirmation).getByRole('button', { name: 'Удалить' }));
+
         await waitFor(() => {
             expect(fetchMock).toHaveBeenCalledWith('/api/categories/c2', expect.objectContaining({ method: 'DELETE' }));
         });
+        expect(confirmSpy).not.toHaveBeenCalled();
+        await waitFor(() => expect(screen.queryByLabelText('Действия: Подписки')).not.toBeInTheDocument());
+        expect(screen.getByLabelText('Действия: Продукты')).toBeInTheDocument();
         // Фильтр указывал на исчезнувшую категорию - его нужно снять.
-        fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
         await openHistory();
         expect(screen.queryByText('Категория:')).not.toBeInTheDocument();
     });
@@ -1319,10 +1617,12 @@ describe('App Integration Tests', () => {
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
         expect(await screen.findByText('Категория:')).toBeInTheDocument();
 
-        openSettings();
-        fireEvent.click(await screen.findByLabelText('Переименовать категорию: Подписки'));
-        fireEvent.change(screen.getByLabelText('Название категории: Подписки'), { target: { value: 'Сервисы' } });
-        fireEvent.click(screen.getByLabelText('Сохранить название категории: Подписки'));
+        openMoreRow(/^Категории/);
+        fireEvent.click(await screen.findByLabelText('Действия: Подписки'));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
+        // Подпись поля называет, сколько операций затронет переименование.
+        fireEvent.change(screen.getByLabelText(/^Новое название · изменится в 1 операци/), { target: { value: 'Сервисы' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
 
         await waitFor(() => {
             expect(fetchMock).toHaveBeenCalledWith('/api/categories/c2', expect.objectContaining({
@@ -1331,10 +1631,10 @@ describe('App Integration Tests', () => {
             }));
         });
         // Список категорий перечитан - строка уже под новым именем.
-        expect(await screen.findByLabelText('Переименовать категорию: Сервисы')).toBeInTheDocument();
+        expect(await screen.findByLabelText('Действия: Сервисы')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Действия: Подписки')).not.toBeInTheDocument();
 
         // Итоги перечитаны: разбивка расхода знает только новое имя.
-        fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
         await openAnalytics();
         expect(await screen.findByRole('button', { name: /^Сервисы: €/ })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /^Подписки: €/ })).not.toBeInTheDocument();
@@ -1719,12 +2019,13 @@ describe('Authentication flow', () => {
         render(<App />);
         await waitFor(() => screen.getByText('Начальный счёт'));
 
-        openSettings();
-        fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Сохранённый счёт' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
+        openMoreRow(/^Счета/);
+        addAccountThroughSheet('Сохранённый счёт');
         await waitFor(() => expect(accountGets).toBe(2));
 
-        fireEvent.click(within(screen.getByRole('dialog', { name: 'Настройки' })).getByRole('button', { name: 'Выйти' }));
+        // Выход живёт в меню «Ещё»: на вкладку возвращаемся из экрана счетов.
+        goTo('Ещё');
+        fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
         await waitFor(() => screen.getByLabelText('Пароль'));
         expect(screen.queryByText('Начальный счёт')).not.toBeInTheDocument();
 
@@ -1833,9 +2134,8 @@ describe('Authentication flow', () => {
         // Any authenticated-looking screen still needs a live session for
         // further calls - saving a new account here is what hits /api/accounts
         // again and discovers the session is gone.
-        openSettings();
-        fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Новый счёт' } });
-        fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
+        openMoreRow(/^Счета/);
+        addAccountThroughSheet('Новый счёт');
 
         await waitFor(() => {
             expect(screen.getByLabelText('Пароль')).toBeInTheDocument();

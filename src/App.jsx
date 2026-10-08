@@ -2,10 +2,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { X } from 'lucide-react'
 import AddTransactionForm from './components/AddTransactionForm'
 import LoginScreen from './components/LoginScreen'
-import AccountsSettingsModal from './components/AccountsSettingsModal'
 import BottomNav, { NAV_OFFSET } from './components/BottomNav'
 import { AppSkeleton } from './components/ui/Skeleton'
-import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
 import Button from './components/ui/Button'
 import Card from './components/ui/Card'
@@ -13,6 +11,11 @@ import OverviewScreen from './screens/OverviewScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import AnalyticsScreen from './screens/AnalyticsScreen'
 import MoreScreen from './screens/MoreScreen'
+import AccountsScreen from './screens/settings/AccountsScreen'
+import AccountEditSheet from './screens/settings/AccountEditSheet'
+import CategoriesScreen from './screens/settings/CategoriesScreen'
+import LimitSheet from './screens/settings/LimitSheet'
+import TrashScreen from './screens/settings/TrashScreen'
 import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput, formatSyncStatus } from './utils/period'
 import { transformTransactions } from './utils/finance'
 import { formatMoney } from './utils/money'
@@ -55,7 +58,9 @@ function App() {
   const [trashGroups, setTrashGroups] = useState([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashError, setTrashError] = useState('');
-  const [showTrash, setShowTrash] = useState(false);
+  // Корзина читалась хотя бы раз: до этого счётчик на «Ещё» неизвестен (null),
+  // а не «0», и экран корзины показывает загрузку, а не пустое состояние.
+  const [trashLoaded, setTrashLoaded] = useState(false);
   const [showBanking, setShowBanking] = useState(false);
   const [bankingEnabled, setBankingEnabled] = useState(false);
   const [banking, setBanking] = useState(null);
@@ -86,8 +91,10 @@ function App() {
   const [historyMonth, setHistoryMonth] = useState(selectedMonth);
   // Какой экран открыт: 'overview' | 'history' | 'analytics' | 'more'. Живёт
   // в location.hash (см. utils/useHashScreen), поэтому обновление страницы
-  // остаётся на той же вкладке.
-  const [screen, setScreen] = useHashScreen();
+  // остаётся на той же вкладке. Внутренний экран ('accounts' | 'categories' |
+  // 'trash' | null) лежит под «Ещё» и открывается записью в истории: системное
+  // «назад» закрывает его.
+  const { screen, inner, setScreen, openInner, closeInner } = useHashScreen();
   const [timeRange, setTimeRange] = useState('month'); // 'month' or 'lifetime'
 
   // Accounts state
@@ -96,7 +103,9 @@ function App() {
   useEffect(() => {
     accountsRef.current = accounts;
   }, [accounts]);
-  const [showAccountsSettings, setShowAccountsSettings] = useState(false);
+  // Лист счёта: null - закрыт, 'new' - новый счёт, объект - правка этого счёта.
+  const [accountSheet, setAccountSheet] = useState(null);
+  const [showLimit, setShowLimit] = useState(false);
 
   // Monthly spending limit, driving the limit progress bar in the stats
   // panel. Shared across devices via GET/PUT /api/settings rather than
@@ -176,7 +185,7 @@ function App() {
     setTrashGroups([]);
     setTrashError('');
     setTrashLoading(false);
-    setShowTrash(false);
+    setTrashLoaded(false);
     setShowBanking(false);
     setBankingEnabled(false);
     setBanking(null);
@@ -198,7 +207,8 @@ function App() {
     setSearchQuery('');
     setEditingTransaction(null);
     setShowAddTransaction(false);
-    setShowAccountsSettings(false);
+    setAccountSheet(null);
+    setShowLimit(false);
     setScreen('overview');
     setLastSuccessfulSync(null);
     setSyncWarning(null);
@@ -446,7 +456,6 @@ function App() {
 
   const openBanking = () => {
     if (!bankingEnabled) return;
-    setShowAccountsSettings(false);
     setShowBanking(true);
   };
 
@@ -464,21 +473,23 @@ function App() {
     const result = bankingCallbackRef.current;
     bankingCallbackRef.current = null;
     if (!bankingEnabled) return;
-    setShowAccountsSettings(false);
     setShowBanking(true);
     showNotice(result === 'connected' ? 'Банк подключён. Проверьте привязку счетов и новые операции.' : 'Подключение банка не завершено. Попробуйте ещё раз.', result === 'connected' ? 'success' : 'error');
     // The callback is consumed once, after the app session has been loaded.
   }, [isAuthenticated, bankingEnabled]);
 
+  // Бейдж «Банки» живёт в меню «Ещё»: статус подключений читается, пока оно
+  // на экране (отзыв операций - только при открытом листе).
+  const onMoreMenu = screen === 'more' && !inner;
   useEffect(() => {
-    if (!bankingEnabled || !isAuthenticated || (!showBanking && !showAccountsSettings)) return;
+    if (!bankingEnabled || !isAuthenticated || (!showBanking && !onMoreMenu)) return;
     fetchBanking({ includeReview: showBanking });
     // Poll only our server's status while the bank sheet is visible. The
     // server, not a browser timer, owns the bank synchronization schedule.
     const timer = showBanking ? setInterval(() => fetchBanking({ includeReview: true, background: true }), 15_000) : null;
     return () => { if (timer) clearInterval(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, bankingEnabled, showBanking, showAccountsSettings]);
+  }, [isAuthenticated, bankingEnabled, showBanking, onMoreMenu]);
 
   const mutateBanking = async (path, method, body, { refreshBudget = false, resolvedEntryId } = {}) => {
     if (!bankingEnabled) return { ok: false, error: 'Банковский импорт отключён' };
@@ -550,6 +561,31 @@ function App() {
       console.error('Add category error:', err);
       return { error: err.message };
     }
+  };
+
+  // Экран «Категории» ждёт от добавления Promise<boolean>, а форма операции -
+  // сохранённую категорию или { error } (см. handleAddCategory), поэтому здесь
+  // тонкая обёртка: причина отказа уходит в уведомление.
+  const handleAddCategoryFromScreen = async (name, type) => {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      showNotice('Название категории не может быть пустым');
+      return false;
+    }
+    const saved = await handleAddCategory(trimmed, type);
+    if (!saved || 'error' in saved) {
+      showNotice((saved && saved.error) || 'Не удалось добавить категорию');
+      return false;
+    }
+    showNotice('Категория добавлена', 'success');
+    return true;
+  };
+
+  // Лимит из листа: при успехе, как в прежнем окне, - уведомление.
+  const handleSaveLimit = async (limit) => {
+    const ok = await handleSaveSettings(limit);
+    if (ok) showNotice('Лимит обновлён', 'success');
+    return ok;
   };
 
   // Calculate current balances (Total lifetime) - stays persistent
@@ -624,6 +660,25 @@ function App() {
     income: monthlyTotals[month]?.income || 0,
     expense: Math.abs(monthlyTotals[month]?.expense || 0),
   }));
+
+  // График в листе лимита: лимит один на все счета, поэтому ряд берётся из
+  // итогов «по всем счетам», а не из выбранного на Обзоре счёта.
+  const limitSeries = allAccountsTotals
+    ? periodMonths.map(month => ({ month, expense: Math.abs(allAccountsTotals[month]?.expense || 0) }))
+    : monthlySeries;
+
+  // Корзина для экрана: у переводов в ней лежат только id счетов, названия
+  // подкладываются здесь, чтобы подпись была «A → B». Счёт, которого больше
+  // нет, названия не получает, и экран пишет просто «Перевод».
+  const trashGroupsWithNames = useMemo(() => {
+    const nameOf = (id) => accounts.find(a => a._id === id)?.name;
+    return trashGroups.map(group => ({
+      ...group,
+      transactions: (group.transactions || []).map(tx => (tx.type === 'transfer'
+        ? { ...tx, accountName: nameOf(tx.account), toAccountName: nameOf(tx.toAccount) }
+        : tx)),
+    }));
+  }, [trashGroups, accounts]);
 
   const isActualCurrentMonth = useMemo(() => {
     return selectedMonth === getCurrentMonth();
@@ -801,6 +856,7 @@ function App() {
         throw new DataLoadError((data && data.message) || 'Не удалось загрузить корзину');
       }
       setTrashGroups(data);
+      setTrashLoaded(true);
       return true;
     } catch (err) {
       if (!isCurrent()) return false;
@@ -812,11 +868,21 @@ function App() {
     }
   };
 
-  const openTrash = () => {
-    setShowAccountsSettings(false);
-    setShowTrash(true);
-    fetchTrash();
-  };
+  // Лист счёта принадлежит экрану «Счета»: уйти с него (системное «назад»,
+  // вкладка) значит закрыть и лист, иначе он завис бы поверх чужого экрана.
+  useEffect(() => {
+    if (inner !== 'accounts') setAccountSheet(null);
+  }, [inner]);
+
+  // Корзина читается при каждом заходе на «Ещё» (ради счётчика в меню; заодно
+  // подхватывает операции, удалённые на других вкладках) и при открытии самого
+  // экрана корзины. Пока не вошли, ходить за ней рано.
+  const trashScreenOpen = inner === 'trash';
+  useEffect(() => {
+    if (screen === 'more' && isAuthenticated === true) fetchTrash();
+    // fetchTrash пересоздаётся на каждый рендер; важны только эти условия.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, trashScreenOpen, isAuthenticated]);
 
   const refreshAfterTrashMutation = async () => {
     await Promise.all([loadData({ initial: false }), fetchTrash()]);
@@ -944,11 +1010,10 @@ function App() {
     }
   };
 
-  // formName/formType/formIcon/editingAccountId are local UI state owned by
-  // AccountsSettingsModal now - it passes them in as arguments rather than
-  // this function reading them off App state, since App only owns the
-  // accounts data and the API mutation itself. Returns whether the save
-  // succeeded so the modal knows whether to reset its form.
+  // Поля формы (имя, тип, значок, editingAccountId) хранит AccountEditSheet и
+  // передаёт их аргументами: App владеет только данными счетов и самим
+  // запросом. Возвращает, удалось ли сохранение, - лист закрывается только
+  // при true.
   const handleSaveAccount = async ({ name, type, icon, excludeFromTotal, editingAccountId }) => {
     const session = sessionGenerationRef.current;
     try {
@@ -982,21 +1047,25 @@ function App() {
     }
   };
 
-  const handleDeleteAccount = async (id, name) => {
-    if (!confirm(`Вы уверены, что хотите удалить счёт "${name}"?`)) return;
-
+  // Подтверждение удаления встроено в лист счёта (никакого confirm()), сюда
+  // приходит уже решённое. Ответ сервера с причиной отказа (например, у счёта
+  // есть операции) показывается уведомлением; лист закрывается только при true.
+  const handleDeleteAccount = async (account) => {
     const session = sessionGenerationRef.current;
     try {
-      const res = await apiFetch(`${ACCOUNTS_URL}/${id}`, { method: 'DELETE' });
-      if (session !== sessionGenerationRef.current) return;
+      const res = await apiFetch(`${ACCOUNTS_URL}/${account._id}`, { method: 'DELETE' });
+      if (session !== sessionGenerationRef.current) return false;
       if (res.ok) {
         await loadData({ initial: false });
-      } else {
-        const err = await res.json();
-        showNotice(err.message || 'Не удалось удалить счёт');
+        return true;
       }
+      const err = await res.json().catch(() => null);
+      showNotice((err && err.message) || 'Не удалось удалить счёт');
+      return false;
     } catch (err) {
       console.error('Delete account error:', err);
+      showNotice('Не удалось удалить счёт');
+      return false;
     }
   };
 
@@ -1042,34 +1111,32 @@ function App() {
   // Удаление категории. История от этого не страдает: операция хранит
   // категорию строкой, поэтому строки в списке и разбивка по категориям
   // остаются как были - исчезает только чип в форме. Но раз операции всё же
-  // осиротеют, счётчик показывается прямо в подтверждении.
-  const handleDeleteCategory = async (category, usedCount) => {
-    const warning = usedCount > 0
-      ? `\n\nЭту категорию используют операций: ${usedCount}. Они останутся в истории с прежним названием, но выбрать категорию заново будет нельзя.`
-      : '';
-    if (!confirm(`Удалить категорию "${category.name}"?${warning}`)) return;
-
+  // осиротеют, счётчик показывается прямо в подтверждении - оно встроено в
+  // строку экрана «Категории», поэтому сюда приходит уже решённое.
+  const handleDeleteCategory = async (category) => {
     const session = sessionGenerationRef.current;
     try {
       const res = await apiFetch(`${CATEGORIES_URL}/${category._id}`, { method: 'DELETE' });
-      if (session !== sessionGenerationRef.current) return;
+      if (session !== sessionGenerationRef.current) return false;
       if (res.ok) {
         // Фильтр мог стоять на только что удалённой категории - иначе экран
         // остался бы отфильтрованным по тому, чего больше нет в списке.
         setHistoryCategory(prev => prev === category.name ? null : prev);
         await loadData({ initial: false });
-      } else {
-        const err = await res.json().catch(() => null);
-        showNotice((err && err.message) || 'Не удалось удалить категорию');
+        return true;
       }
+      const err = await res.json().catch(() => null);
+      showNotice((err && err.message) || 'Не удалось удалить категорию');
+      return false;
     } catch (err) {
       console.error('Delete category error:', err);
       showNotice('Не удалось удалить категорию');
+      return false;
     }
   };
 
   // Saves the shared monthlyLimit to the server. Returns whether it
-  // succeeded so the modal knows whether to surface a success notice.
+  // succeeded so the limit sheet knows whether to close.
   const handleSaveSettings = async (newLimit) => {
     const session = sessionGenerationRef.current;
     try {
@@ -1097,8 +1164,8 @@ function App() {
     }
   };
 
-  // Logout lives in the "Настройки" settings modal rather than as
-  // new chrome on the main screen. The POST clears the httpOnly cookie
+  // Logout lives in the «Ещё» menu rather than as new chrome on the main
+  // screen. The POST clears the httpOnly cookie
   // server-side. Only drop to the login screen once that's actually
   // confirmed (an ok response) - if the request fails or errors, the cookie
   // is still valid, so switching the UI to "logged out" would be a lie: the
@@ -1345,7 +1412,7 @@ function App() {
             slides={slides}
             selectedAccount={selectedAccount}
             onSelectAccount={handleSelectAccount}
-            onOpenAccountsSettings={() => setShowAccountsSettings(true)}
+            onOpenAccountsSettings={() => openInner('accounts')}
             summaryFrame={summaryFrame}
             timeRange={timeRange}
             selectedMonth={selectedMonth}
@@ -1404,16 +1471,55 @@ function App() {
             onOpenCategory={openHistoryOfCategory}
           />
         )}
-        {screen === 'more' && (
+        {screen === 'more' && !inner && (
           <MoreScreen
+            monthlyLimit={monthlyLimit}
+            accountsCount={accounts.length}
+            categoriesCount={categories.length}
+            trashCount={trashLoaded ? trashGroups.length : null}
             lastSyncLabel={lastSyncLabel}
             isRefreshing={isRefreshing}
             isExporting={isExporting}
-            onOpenSettings={() => setShowAccountsSettings(true)}
-            onOpenTrash={openTrash}
+            onOpenLimit={() => setShowLimit(true)}
+            onOpenAccounts={() => openInner('accounts')}
+            onOpenCategories={() => openInner('categories')}
+            onOpenTrash={() => openInner('trash')}
+            onOpenBanking={bankingEnabled ? openBanking : undefined}
+            pendingBankingCount={banking?.pendingReviewCount || 0}
             onRefresh={() => loadData({ initial: false })}
             onExport={exportToCSV}
             onLogout={handleLogout}
+          />
+        )}
+        {screen === 'more' && inner === 'accounts' && (
+          <AccountsScreen
+            accounts={accounts}
+            balances={balances}
+            onBack={closeInner}
+            onAdd={() => setAccountSheet('new')}
+            onEdit={setAccountSheet}
+            onDragEnd={onAccountDragEnd}
+          />
+        )}
+        {screen === 'more' && inner === 'categories' && (
+          <CategoriesScreen
+            categories={categories}
+            categoryUsage={categoryUsage}
+            onBack={closeInner}
+            onAdd={handleAddCategoryFromScreen}
+            onRename={handleRenameCategory}
+            onDelete={handleDeleteCategory}
+          />
+        )}
+        {screen === 'more' && inner === 'trash' && (
+          <TrashScreen
+            groups={trashGroupsWithNames}
+            loading={trashLoading && !trashLoaded}
+            error={trashError}
+            onBack={closeInner}
+            onRetry={fetchTrash}
+            onRestore={handleRestoreTrash}
+            onPurge={handlePurgeTrash}
           />
         )}
       </main>
@@ -1440,24 +1546,22 @@ function App() {
       )}
       {editingTransaction && <AddTransactionForm apiFetch={apiFetch} initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} categoryCounts={dashboard?.data.categoryCounts} />}
 
-      {showAccountsSettings && (
-        <AccountsSettingsModal
-          accounts={accounts}
+      {accountSheet && (
+        <AccountEditSheet
+          key={accountSheet === 'new' ? 'new' : accountSheet._id}
+          account={accountSheet === 'new' ? null : accountSheet}
+          onClose={() => setAccountSheet(null)}
+          onSave={handleSaveAccount}
+          onDelete={handleDeleteAccount}
+        />
+      )}
+      {showLimit && (
+        <LimitSheet
           monthlyLimit={monthlyLimit}
-          onClose={() => setShowAccountsSettings(false)}
-          onSaveAccount={handleSaveAccount}
-          onDeleteAccount={handleDeleteAccount}
-          categories={categories}
-          categoryUsage={categoryUsage}
-          onDeleteCategory={handleDeleteCategory}
-          onRenameCategory={handleRenameCategory}
-          onDragEnd={onAccountDragEnd}
-          onSaveSettings={handleSaveSettings}
-          onOpenTrash={openTrash}
-          onOpenBanking={bankingEnabled ? openBanking : undefined}
-          pendingBankingCount={banking?.pendingReviewCount || 0}
-          onLogout={handleLogout}
-          showNotice={showNotice}
+          series={limitSeries}
+          currentMonth={getCurrentMonth()}
+          onClose={() => setShowLimit(false)}
+          onSave={handleSaveLimit}
         />
       )}
       {bankingEnabled && showBanking && (
@@ -1480,20 +1584,6 @@ function App() {
           onSync={id => mutateBanking(`/connections/${encodeURIComponent(id)}/sync`, 'POST', null, { refreshBudget: true })}
           onDisconnect={id => mutateBanking(`/connections/${encodeURIComponent(id)}`, 'DELETE')}
           onResolve={(id, fields) => mutateBanking(`/review/${encodeURIComponent(id)}/resolve`, 'POST', fields, { refreshBudget: true, resolvedEntryId: id })}
-        />
-      )}
-      {showTrash && (
-        <TrashSheet
-          groups={trashGroups}
-          loading={trashLoading}
-          error={trashError}
-          onRetry={fetchTrash}
-          onRestore={handleRestoreTrash}
-          onPurge={handlePurgeTrash}
-          onClose={() => {
-            trashGenerationRef.current += 1;
-            setShowTrash(false);
-          }}
         />
       )}
     </div>

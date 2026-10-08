@@ -7,10 +7,10 @@ const goToTab = (page, name) => page
   .getByRole('button', { name, exact: true })
   .click();
 
-// Настройки живут за строкой «Счета, категории и лимит» на экране «Ещё».
-async function openSettings(page) {
+// Настройки живут строками на экране «Ещё»: Счета, Категории, Корзина, Лимит.
+async function openMoreRow(page, name) {
   await goToTab(page, 'Ещё');
-  await page.getByRole('button', { name: /Счета, категории и лимит/ }).click();
+  await page.getByRole('button', { name }).click();
 }
 
 // Real-browser smoke suite. Three real bugs shipped this month and every one
@@ -154,41 +154,36 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
-  test('account rows stay on one line in the accounts modal', async ({ page }) => {
+  test('account rows stay inside the row on the accounts screen', async ({ page }) => {
+    // Название счёта и баланс не должны вылезать за правый край строки:
+    // элементы flex-строки без minWidth: 0 отказываются сжиматься ниже
+    // ширины своего содержимого, и длинное название уезжает вбок (так было с
+    // ручкой перетаскивания, добавленной к строкам счетов). Строка может
+    // перенести название на вторую строку, но выйти за край не вправе.
+    await page.setViewportSize({ width: 320, height: 700 });
     await mockApi(page);
     await page.goto('/');
     await expect(page.getByTestId('accounts-row')).toBeVisible();
 
-    await openSettings(page);
+    await openMoreRow(page, /^Счета/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Счета' })).toBeVisible();
 
-    // The name/type divs both set white-space: nowrap, so removing
-    // minWidth: 0 can never make this text break onto a visible second
-    // line - nowrap forbids that outright. What actually happens without
-    // minWidth: 0 is that the flex item refuses to shrink below its
-    // content's natural width, so a long name overflows sideways past the
-    // row's right edge (verified by reproducing the mutation below: the
-    // rendered name element's width jumped from ~120px, matching every
-    // other row, to ~360px, well past the 298px-wide row). Every row's
-    // name element staying within its own row's right edge is exactly the
-    // rendered-geometry signal for "one line, not spilling out" in this
-    // component; a hardcoded row height wouldn't catch the actual failure
-    // mode here, since the row's height never changes.
-    const one = accounts[0].name;
-    const row0 = page.locator(`[aria-label="Изменить порядок: ${one}"]`).locator('xpath=../..');
+    const main = page.getByRole('main');
+    const row0 = main.getByRole('button', { name: `Переместить: ${accounts[0].name}` }).locator('xpath=..');
     const rowBox0 = await row0.boundingBox();
     for (const acc of accounts) {
-      const grip = page.locator(`[aria-label="Изменить порядок: ${acc.name}"]`);
-      const row = grip.locator('xpath=../..');
-      const nameEl = grip.locator('xpath=../div/div[1]');
-      await expect(nameEl).toBeVisible();
+      const row = main.getByRole('button', { name: `Переместить: ${acc.name}` }).locator('xpath=..');
+      await expect(row).toBeVisible();
       const rowBox = await row.boundingBox();
-      const nameBox = await nameEl.boundingBox();
+      const nameBox = await row.getByText(acc.name, { exact: true }).first().boundingBox();
+      const balanceBox = await row.getByText(/€/).last().boundingBox();
 
-      // Every row is the same width in this layout - pin that assumption
-      // down too, since it's what makes "stays within the row" meaningful.
+      // Все строки одной ширины - на этом допущении и держится «в пределах строки».
       expect(Math.abs(rowBox.width - rowBox0.width)).toBeLessThanOrEqual(2);
       expect(nameBox.x + nameBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 2);
+      expect(balanceBox.x + balanceBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 2);
     }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
   test('the overview has no quick-action buttons: adding goes through the «+» in the bottom navigation', async ({ page }) => {
@@ -292,13 +287,16 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(free.position).toBe('');
     expect(free.overflow).not.toBe('hidden');
 
-    // Настройки из «Ещё» открываются с экрана, где уже нет ни выбора периода,
-    // ни ленты счетов Обзора, - поэтому они последние в списке.
+    // Листы настроек открываются с «Ещё», где уже нет ни выбора периода, ни
+    // ленты счетов Обзора, - поэтому они последние в списке.
     for (const open of [
       () => page.getByRole('button', { name: /^Период:/ }).click(),
       () => page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: 'Добавить операцию' }).click(),
-      () => page.getByRole('button', { name: 'Настроить' }).click(),
-      () => openSettings(page),
+      () => openMoreRow(page, /^Лимит трат/),
+      async () => {
+        await openMoreRow(page, /^Счета/);
+        await page.getByRole('button', { name: 'Добавить счёт' }).click();
+      },
     ]) {
       await open();
       await expect(page.getByRole('dialog').first()).toBeVisible();
@@ -527,5 +525,62 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // Обновление страницы остаётся на той же вкладке.
     await page.reload();
     await current('Аналитика');
+  });
+
+  test('inner screens open through history: Back closes them, a reload opens them directly', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
+    const nav = page.getByRole('navigation', { name: 'Основная навигация' });
+    const more = nav.getByRole('button', { name: 'Ещё', exact: true });
+    const entries = () => page.evaluate(() => history.length);
+    const startEntries = await entries();
+
+    // «Настроить» на Обзоре кладёт экран счетов в историю, «назад» возвращает на Обзор.
+    await page.getByRole('region', { name: 'Счета' }).getByRole('button', { name: 'Настроить' }).click();
+    await expect(page).toHaveURL(/#more\/accounts$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Счета' })).toBeVisible();
+    await expect(more).toHaveAttribute('aria-current', 'page');
+    expect(await entries()).toBe(startEntries + 1);
+    await page.goBack();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
+    await expect(page).not.toHaveURL(/#/);
+    await page.goForward();
+    await expect(page.getByRole('heading', { level: 1, name: 'Счета' })).toBeVisible();
+    await page.goBack();
+
+    // Из «Ещё»: вкладка ложится в запись заменой, экран - новой записью.
+    await goToTab(page, 'Ещё');
+    await page.getByRole('button', { name: /^Категории/ }).click();
+    await expect(page).toHaveURL(/#more\/categories$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Категории' })).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/#more$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Ещё' })).toBeVisible();
+
+    // Кнопка «назад» в шапке экрана - тот же путь по истории.
+    await page.getByRole('button', { name: /^Корзина/ }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Корзина' })).toBeVisible();
+    await page.getByRole('main').getByRole('button', { name: 'Ещё', exact: true }).click();
+    await expect(page).toHaveURL(/#more$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Ещё' })).toBeVisible();
+
+    // Нажатие на вкладку внизу уводит с внутреннего экрана без новой записи.
+    await page.getByRole('button', { name: /^Категории/ }).click();
+    const before = await entries();
+    await goToTab(page, 'История');
+    await expect(page).toHaveURL(/#history$/);
+    expect(await entries()).toBe(before);
+
+    // Обновление страницы на внутреннем экране открывает его сразу; «назад» в
+    // шапке заменяет хэш на #more и не уводит из приложения.
+    await page.goto('/#more/categories');
+    await expect(page.getByRole('heading', { level: 1, name: 'Категории' })).toBeVisible();
+    await expect(more).toHaveAttribute('aria-current', 'page');
+    const afterLoad = await entries();
+    await page.getByRole('main').getByRole('button', { name: 'Ещё', exact: true }).click();
+    await expect(page).toHaveURL(/#more$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Ещё' })).toBeVisible();
+    expect(await entries()).toBe(afterLoad);
   });
 });
