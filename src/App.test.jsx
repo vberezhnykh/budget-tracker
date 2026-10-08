@@ -33,7 +33,6 @@ let currentAccounts = [
     { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
 ];
 let currentCategories = [];
-let currentPlannedPayments = [];
 
 // Setup fetch mock. Stubbed fresh in the describe block's beforeEach (rather
 // than assigned once at module scope) so it can be paired with
@@ -89,13 +88,6 @@ function createFetchMock() {
                 json: () => Promise.resolve({ monthlyLimit: 7000 }),
             });
         }
-        if (typeof url === 'string' && url.includes('/api/planned-payments')) {
-            return Promise.resolve({
-                ok: true,
-                status: 200,
-                json: () => Promise.resolve(currentPlannedPayments),
-            });
-        }
         return Promise.resolve({
             ok: true,
             json: () => Promise.resolve(currentTransactions),
@@ -149,7 +141,6 @@ describe('App Integration Tests', () => {
             { _id: 'cash', name: 'Наличные', type: 'cash', icon: '💵', isDefault: true }
         ];
         currentCategories = [];
-        currentPlannedPayments = [];
         fetchMock = createFetchMock();
         vi.stubGlobal('fetch', fetchMock);
         vi.useFakeTimers({ toFake: ['Date'] });

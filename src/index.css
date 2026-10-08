@@ -1,5 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Onest:wght@400;600;700&display=swap');
 
 :root {
   /* =====================================================================
@@ -10,8 +9,9 @@
      двумя именами - см. --color-border-strong и --color-control-off.
      ===================================================================== */
 
-  --font-main: 'Inter', sans-serif;
-  --font-heading: 'Outfit', sans-serif;
+  /* Один шрифт на всё: заголовки отличаются весом и кеглем, а не гарнитурой. */
+  --font-main: 'Onest', system-ui, sans-serif;
+  --font-heading: 'Onest', system-ui, sans-serif;
 
   /* ---- Кегли ----------------------------------------------------------
      Шкала собрана из значений, уже сложившихся в интерфейсе; близкие
@@ -28,6 +28,11 @@
   --text-xl: 1rem;
   --text-2xl: 1.1rem;
   --text-3xl: 1.25rem;
+  /* Заголовок экрана (24px) и единственное главное число экрана (40px).
+     Оба существуют в одном экземпляре на экран, поэтому в основную шкалу
+     выше не входят. */
+  --text-title: 1.5rem;
+  --text-display: 2.5rem;
 
   /* ---- Отступы --------------------------------------------------------
      Сетка 4px. Ступени 2 и 6 - половинные шаги, они нужны только плотным
@@ -54,7 +59,7 @@
        strong 700 - заголовки, суммы и другие ключевые числа, кнопки,
                     выделение через <strong>.
 
-     Других весов нет. Inter и Outfit подключены только как 400-700 (см.
+     Других весов нет. Onest подключён только с весами 400, 600 и 700 (см.
      @import выше), поэтому 800 всё равно рисуется как 700, а 500 мы не
      используем: на экране телефона он неотличим от 400 и 600, зато
      добавляет четвёртую «почти такую же» ступень. */
@@ -63,66 +68,80 @@
   --weight-strong: 700;
 
   /* ---- Поверхности ---- */
-  --color-bg: #f0f9ff;
-  /* Sky 50 */
+  --color-bg: #f2f3f5;
   --color-surface: #ffffff;
-  --color-surface-glass: rgba(255, 255, 255, 0.82);
+  /* Стекла больше нет: карточки плоские и белые. Токен оставлен ради
+     компонентов, которые на него ссылаются. */
+  --color-surface-glass: #ffffff;
   /* Подложки внутри карточек: muted - самая светлая (строка списка),
-     sunken - заметнее (блок статистики), inset - фон кнопки-иконки. */
-  --color-surface-muted: rgba(0, 0, 0, 0.02);
-  --color-surface-sunken: rgba(0, 0, 0, 0.03);
-  --color-surface-inset: rgba(0, 0, 0, 0.05);
+     sunken - заметнее (блок статистики), inset - фон кнопки-иконки.
+     Теперь это сплошные цвета, а не прозрачные чёрные: так они одинаково
+     читаются и на белой карточке, и на сером фоне экрана. */
+  --color-surface-muted: #f5f6f8;
+  --color-surface-sunken: #eceef2;
+  --color-surface-inset: #f2f3f5;
 
   /* ---- Границы ---- */
-  --color-border-subtle: rgba(0, 0, 0, 0.05);
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-border-strong: rgba(0, 0, 0, 0.15);
+  --color-border-subtle: #eceef2;
+  --color-border: #e4e6ea;
+  --color-border-strong: #dadde3;
   /* Тот же цвет, что и border-strong, но другая роль: выключенное
      состояние контрола - неактивная точка карусели, дорожка тумблера,
      полоска-ручка шторки. Разъезжаются они независимо. */
-  --color-control-off: rgba(0, 0, 0, 0.15);
+  --color-control-off: #c9cdd4;
 
   /* ---- Фирменный ---- */
-  --color-primary: #2563eb;
-  /* Blue 600 */
-  --color-primary-soft: rgba(37, 99, 235, 0.05);
-  --color-primary-tint: rgba(37, 99, 235, 0.08);
-  --color-primary-glow: rgba(37, 99, 235, 0.2);
+  --color-primary: #3346d3;
+  --color-primary-soft: #f3f4fd;
+  --color-primary-tint: #eceefc;
+  --color-primary-glow: rgba(51, 70, 211, 0.2);
   /* Фирменная рамка: поле и чип «+ Новая» рядом с чипами категорий. */
-  --color-primary-border: rgba(37, 99, 235, 0.3);
+  --color-primary-border: rgba(51, 70, 211, 0.3);
   /* Едва заметная фирменная рамка плашки активного фильтра в шторке. */
-  --color-primary-border-soft: rgba(37, 99, 235, 0.1);
-  --color-primary-gradient: linear-gradient(135deg, #2563eb, #3b82f6);
+  --color-primary-border-soft: rgba(51, 70, 211, 0.1);
+  /* Градиента больше нет: заливка плоская. Токен оставлен, чтобы
+     ui/Button продолжал работать без правок. */
+  --color-primary-gradient: #3346d3;
 
   /* ---- Смысловые ------------------------------------------------------
      positive - доход и «стало лучше»; expense - расход как категория
-     операции (роза, не красный); negative - число ушло в минус, лимит
-     превышен; danger - деструктивное действие (удалить, выйти).
-     negative и danger сегодня одного цвета, но это разные роли. */
-  --color-positive: #10b981;
-  --color-positive-strong: #059669;
-  --color-positive-gradient: linear-gradient(135deg, #10b981, #059669);
+     операции (чернила, не цвет: расход - обычное дело, а не тревога);
+     negative - число ушло в минус, лимит превышен (оранжевый: «внимание»,
+     но не «авария»); danger - деструктивное действие (удалить, выйти),
+     красный. negative и danger - разные цвета и разные роли: превышение
+     лимита не должно выглядеть как кнопка удаления. */
+  --color-positive: #0f7a55;
+  --color-positive-strong: #0b5e42;
+  /* Градиентов нет: заливки плоские. Токены -gradient оставлены ради
+     ui/Button, который читает заливку по имени тона. */
+  --color-positive-gradient: #0f7a55;
   /* Подложка и рамка «доходного» состояния: выбранная плитка дохода,
      плашка фильтра «Тип: Доходы». Расходный аналог - danger-soft. */
-  --color-positive-soft: rgba(16, 185, 129, 0.08);
-  --color-positive-border-soft: rgba(16, 185, 129, 0.2);
+  --color-positive-soft: rgba(15, 122, 85, 0.08);
+  --color-positive-border-soft: rgba(15, 122, 85, 0.2);
 
-  --color-expense: #f43f5e;
-  --color-expense-strong: #e11d48;
-  --color-expense-gradient: linear-gradient(135deg, #f43f5e, #e11d48);
+  --color-expense: #15171c;
+  --color-expense-strong: #000000;
+  --color-expense-gradient: #15171c;
 
-  --color-negative: #ef4444;
-  --color-danger: var(--color-negative);
-  --color-danger-soft: rgba(239, 68, 68, 0.08);
+  --color-negative: #b4470e;
+  --color-danger: #b42318;
+  --color-danger-soft: #fceeec;
+  /* Текст на danger-soft: сам danger на этой подложке читается хуже. */
+  --color-danger-text: #7a1d13;
   /* Включённая «опасная» настройка (строка «Не считать в статистике») и
      кнопка удаления: едва заметная подложка и две рамки разной густоты. */
-  --color-danger-faint: rgba(239, 68, 68, 0.03);
-  --color-danger-border: rgba(239, 68, 68, 0.3);
+  --color-danger-faint: rgba(180, 35, 24, 0.03);
+  --color-danger-border: #e7b9b3;
   /* Самая тонкая красная рамка: плашка фильтра «Тип: Расходы». */
-  --color-danger-border-faint: rgba(239, 68, 68, 0.1);
+  --color-danger-border-faint: rgba(180, 35, 24, 0.1);
 
-  --color-success: #22c55e;
+  --color-success: #0f7a55;
   --color-warning: #fbbf24;
+  /* Предупреждение без тревоги: «данные устарели», пояснение к прогнозу.
+     Подложка и текст на ней; сам warning для текста слишком светлый. */
+  --color-warning-soft: #fdf0e7;
+  --color-warning-text: #8a3409;
 
   /* Category avatars and the bundled merchant marks in transaction rows. */
   --color-icon-green: #15803d;
@@ -151,11 +170,12 @@
   --color-brand-spotify: #1ed760;
 
   /* ---- Текст ---- */
-  --color-text-main: #1e293b;
-  /* Slate 800 */
-  --color-text-muted: #64748b;
-  /* Slate 500 */
+  --color-text-main: #15171c;
+  --color-text-muted: #5d6370;
   --color-text-inverse: #ffffff;
+  /* Только для шевронов и ручек перетаскивания. Контраст с белым ниже
+     нормы для текста, поэтому на подписи и числа его не ставить. */
+  --color-text-subtle: #9aa0ab;
 
   /* ---- Палитра диаграмм -----------------------------------------------
      Цвета категорий в «Расходах по категориям», по порядку убывания суммы.
@@ -172,16 +192,16 @@
   --color-chart-9: #f97316; /* orange */
 
   /* ---- Радиусы ---- */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
   --radius-xl: 24px;
   /* Скругление «во всю высоту»: чипы, дорожки тумблеров. Заведомо
      больше половины высоты, поэтому браузер сам ограничит его. */
   --radius-pill: 999px;
 
   /* Затемнение под модальным листом и его собственная тень. */
-  --color-overlay: rgba(15, 23, 42, 0.4);
+  --color-overlay: rgba(21, 23, 28, 0.45);
   --shadow-sheet: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 
   /* Нижняя шторка со списком операций: тень уходит вверх, на ленту. */
@@ -198,10 +218,15 @@
   --shadow-thumb: 0 1px 3px rgba(0, 0, 0, 0.2);
   /* Круглая кнопка, приподнятая над строками (смена счетов местами). */
   --shadow-float: 0 1px 4px rgba(0, 0, 0, 0.08);
-  /* Цветные тени заливных кнопок ui/Button: в тон заливке каждого тона. */
-  --shadow-primary: 0 4px 12px rgba(37, 99, 235, 0.3);
-  --shadow-positive: 0 4px 15px rgba(16, 185, 129, 0.3);
-  --shadow-expense: 0 4px 15px rgba(244, 63, 94, 0.3);
+  /* Тени заливных кнопок ui/Button сняты: кнопки плоские. Токены
+     оставлены, Button читает их по имени тона. */
+  --shadow-primary: none;
+  --shadow-positive: none;
+  --shadow-expense: none;
+  /* Тост поверх всего экрана и всплывающее меню: тёмная мягкая тень
+     в цвет чернил, чтобы отрыв был виден и на светлом, и на сером. */
+  --shadow-toast: 0 12px 32px rgba(21, 23, 28, 0.25);
+  --shadow-menu: 0 12px 32px rgba(21, 23, 28, 0.18);
   /* Липкий футер формы: тонкая линия сверху и мягкий отрыв от контента. */
   --shadow-sticky-footer: 0 -1px 0 var(--color-border-subtle), 0 -8px 12px -6px rgba(0, 0, 0, 0.06);
 }
@@ -217,10 +242,6 @@ body {
   font-family: var(--font-main);
   background-color: var(--color-bg);
   color: var(--color-text-main);
-  background-image:
-    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.15) 0px, transparent 50%);
-  background-attachment: fixed;
   min-height: 100vh;
   width: 100%;
   overflow-x: hidden;
@@ -275,13 +296,14 @@ button {
 }
 
 /* Utilities */
+/* Имя осталось от стеклянной панели, но панель теперь плоская белая
+   карточка: ни рамки, ни тени, ни размытия. Имя держит Card tone="glass",
+   и e2e находят основные панели экрана именно по этому классу. */
 .glass-panel {
-  background: var(--color-surface-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  background: var(--color-surface);
+  border: none;
+  border-radius: var(--radius-xl);
+  box-shadow: none;
 }
 
 .layout-container {
