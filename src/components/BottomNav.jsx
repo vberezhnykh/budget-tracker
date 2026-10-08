@@ -5,10 +5,16 @@ import { ChartNoAxesCombined, Ellipsis, House, List, Plus } from 'lucide-react';
 // закрыла бы конец страницы.
 export const NAV_HEIGHT = 64;
 
-// Полная высота, которую панель занимает у нижнего края, с учётом выреза
-// под жест «домой». Готовая строка для CSS: calc здесь нужен, потому что
-// env() в px заранее не посчитать.
-export const NAV_OFFSET = `calc(${NAV_HEIGHT}px + env(safe-area-inset-bottom))`;
+// Отступ под панелью: зона жеста «домой» на iPhone (её размер браузер
+// сообщает только при viewport-fit=cover в index.html), но не меньше 8px -
+// на телефонах без такой зоны иначе кнопки стояли бы вплотную к краю, где
+// живут системные жесты.
+const NAV_BOTTOM_GAP = 'max(env(safe-area-inset-bottom, 0px), 8px)';
+
+// Полная высота, которую панель занимает у нижнего края, с учётом отступа
+// снизу. Готовая строка для CSS: calc здесь нужен, потому что env() в px
+// заранее не посчитать.
+export const NAV_OFFSET = `calc(${NAV_HEIGHT}px + ${NAV_BOTTOM_GAP})`;
 
 const ADD_BUTTON_SIZE = 56;
 // Насколько кнопка «+» приподнята над верхней гранью панели.
@@ -54,7 +60,7 @@ export default function BottomNav({ active, onChange, onAdd }) {
         borderTop: '1px solid var(--color-border)',
         // Отступ под системную полосу лежит под ячейками: иначе подписи
         // уехали бы под жест «домой».
-        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingBottom: NAV_BOTTOM_GAP,
         display: 'grid',
         gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
       }}

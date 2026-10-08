@@ -6,7 +6,12 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- viewport-fit=cover: без него iPhone не сообщает странице размер зоны
+         жеста «домой» (env(safe-area-inset-bottom) равен 0), и нижняя панель
+         навигации вставала вплотную к этой зоне. Строка состояния при
+         status-bar-style=default остаётся непрозрачной, сверху страница под
+         неё не заезжает. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 
     <!-- Установка на домашний экран. Без манифеста мета-теги ниже ничего не
          делали: mobile-web-app-capable сам по себе окно приложения не даёт.
