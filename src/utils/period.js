@@ -2,7 +2,7 @@
 // offer, kept free of React so it can be unit-tested directly.
 //
 // The lower bound is the app's own start of history: the initial balances
-// are dated 2025-11-09 (see getLifetimeStats' default startDate), so there
+// are dated 2025-11-09 (the server's lifetime stats start from the same date), so there
 // is nothing meaningful to show before that month. The upper bound is the
 // current month - the app never shows a future period.
 
@@ -51,7 +51,7 @@ export const listPeriodYears = (maxMonth = getCurrentMonth()) =>
   [...new Set(listPeriodMonths(maxMonth).map(m => m.split('-')[0]))];
 
 // Picking a year has to land on a concrete month, because the yearly
-// aggregation derives its year from selectedMonth (see getYearlyData). The
+// aggregation derives its year from selectedMonth (see the server's yearly stats). The
 // latest selectable month of that year is the natural landing spot: it
 // keeps "switch to Год, then back to Месяц" on the most recent data rather
 // than throwing the user back to January.

@@ -231,7 +231,7 @@ function appFetch(override = () => undefined) {
     // These integration scenarios exercise an explicitly enabled bank module.
     // Disabled/missing feature flags are covered in App.bankingFeature.test.jsx.
     if (url === '/api/settings') return response({ monthlyLimit: 7000, features: { banking: true } });
-    if (url === '/api/planned-payments' || url === '/api/transactions' || url === '/api/trash') return response([]);
+    if (url === '/api/transactions' || url === '/api/trash') return response([]);
     if (url === '/api/banking') return response(bankData);
     if (url === '/api/banking/review') return response({ items: [proposal], total: 1 });
     throw new Error(`Unexpected mock URL ${url}`);

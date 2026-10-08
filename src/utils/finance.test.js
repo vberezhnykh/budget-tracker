@@ -2,7 +2,6 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
     transformTransactions,
     calculateBalances,
-    getMonthlyData,
     getMonthlyTotals,
     getPeriodData,
     getPeriodPrefix,
@@ -110,7 +109,7 @@ describe('Finance Utilities', () => {
 
     it('filters monthly data correctly', () => {
         const transformed = transformTransactions(mockData);
-        const result = getMonthlyData(transformed, '2026-01');
+        const result = getPeriodData(transformed, '2026-01');
 
         // Income (Salary: 500)
         // Expense (Food: 200)
@@ -208,13 +207,13 @@ describe('Finance Utilities', () => {
         const transformed = transformTransactions(mockData);
 
         // Card account: initial 1000, expense 200, transfer 100
-        const cardResult = getMonthlyData(transformed, '2026-01', 'card');
+        const cardResult = getPeriodData(transformed, '2026-01', 'card');
         expect(cardResult.expense).toBe(-200);
         expect(cardResult.income).toBe(0); // Salary is cash
         expect(Object.keys(cardResult.transactions)).toHaveLength(3); // initial (Jan 1), expense (Jan 10), transfer (Jan 15)
 
         // Cash account: income 500, transfer 100
-        const cashResult = getMonthlyData(transformed, '2026-01', 'cash');
+        const cashResult = getPeriodData(transformed, '2026-01', 'cash');
         expect(cashResult.income).toBe(500);
         expect(cashResult.expense).toBe(0);
         expect(Object.keys(cashResult.transactions)).toHaveLength(2); // income (Jan 5), transfer (Jan 15)
@@ -222,7 +221,7 @@ describe('Finance Utilities', () => {
 
     it('filters monthly data by category correctly', () => {
         const transformed = transformTransactions(mockData);
-        const result = getMonthlyData(transformed, '2026-01', null, 'Salary');
+        const result = getPeriodData(transformed, '2026-01', null, 'Salary');
         expect(result.income).toBe(500);
         expect(Object.keys(result.transactions)).toHaveLength(1);
         expect(result.transactions['2026-01-05'].items[0].category).toBe('Salary');
@@ -243,7 +242,7 @@ describe('Finance Utilities', () => {
         it('handles empty transaction list', () => {
             const transformed = transformTransactions([]);
             const balances = calculateBalances(transformed);
-            const monthly = getMonthlyData(transformed, '2026-01');
+            const monthly = getPeriodData(transformed, '2026-01');
 
             expect(balances.total).toBe(0);
             expect(monthly.income).toBe(0);
@@ -254,7 +253,7 @@ describe('Finance Utilities', () => {
         it('handles transactions with missing categories', () => {
             const dirtyData = [{ _id: '1', amount: '100', type: 'expense', account: 'card', date: '2026-01-01' }];
             const transformed = transformTransactions(dirtyData);
-            const result = getMonthlyData(transformed, '2026-01');
+            const result = getPeriodData(transformed, '2026-01');
 
             expect(result.categoryTotals['Другое']).toBe(100);
         });
@@ -266,8 +265,8 @@ describe('Finance Utilities', () => {
             ];
             const transformed = transformTransactions(multiYearData);
 
-            const res2025 = getMonthlyData(transformed, '2025-01');
-            const res2026 = getMonthlyData(transformed, '2026-01');
+            const res2025 = getPeriodData(transformed, '2025-01');
+            const res2026 = getPeriodData(transformed, '2026-01');
 
             expect(res2025.income).toBe(100);
             expect(res2026.income).toBe(200);
@@ -685,10 +684,9 @@ describe('getCategoryUsage', () => {
 });
 
 describe('getMonthlyTotals', () => {
-    // Карусель месяцев рисует карточку на каждый месяц, и её числа обязаны
-    // совпадать с тем, что показывает панель за выбранный месяц. Поэтому
-    // главная проверка - не «какие-то суммы посчитались», а «ровно те же,
-    // что у getMonthlyData».
+    // Итоги по месяцам обязаны совпадать с тем, что считается за выбранный
+    // месяц. Поэтому главная проверка - не «какие-то суммы посчитались», а
+    // «ровно те же, что у getPeriodData».
     const tx = [
         { id: '1', date: '2026-01-05', type: 'expense', visualAmount: -100, account: 'card', accountType: 'card', category: 'Еда' },
         { id: '2', date: '2026-01-20', type: 'income', visualAmount: 3000, account: 'card', accountType: 'card', category: 'Зарплата' },
@@ -698,10 +696,10 @@ describe('getMonthlyTotals', () => {
         { id: '6', date: '2025-11-09', type: 'initial', visualAmount: 1000, account: 'card', accountType: 'card' },
     ];
 
-    it('считает доход и расход по месяцам так же, как getMonthlyData', () => {
+    it('считает доход и расход по месяцам так же, как getPeriodData', () => {
         const totals = getMonthlyTotals(tx);
         for (const month of ['2025-11', '2026-01', '2026-02']) {
-            const expected = getMonthlyData(tx, month);
+            const expected = getPeriodData(tx, month);
             expect(totals[month]?.income ?? 0).toBe(expected.income);
             expect(totals[month]?.expense ?? 0).toBe(expected.expense);
         }
@@ -722,8 +720,8 @@ describe('getMonthlyTotals', () => {
         const byCategory = getMonthlyTotals(tx, null, 'Зарплата');
         expect(byCategory['2026-01']).toEqual({ income: 3000, expense: 0 });
 
-        // И то же самое, но проверенное через getMonthlyData - чтобы правила
+        // И то же самое, но проверенное через getPeriodData - чтобы правила
         // фильтрации не разъехались между двумя реализациями.
-        expect(byCategory['2026-01'].income).toBe(getMonthlyData(tx, '2026-01', null, 'Зарплата').income);
+        expect(byCategory['2026-01'].income).toBe(getPeriodData(tx, '2026-01', null, 'Зарплата').income);
     });
 });

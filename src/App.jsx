@@ -649,8 +649,8 @@ function App() {
   // Calculate current balances (Total lifetime) - stays persistent
   const balances = dashboard?.data.balances || EMPTY_BALANCES;
   const summary = dashboardCache[statsKey]?.data || (dashboard?.key === statsKey ? dashboard.data : null);
-  // Month cards already have totals for every month. Keep them visible while
-  // a swipe refreshes the selected month's details in the background.
+  // Monthly totals are already known for every month. Keep them visible while
+  // switching the month refreshes its details in the background.
   const matchingTotals = dashboard?.filterKey === summaryFilterKey;
   const accountMonthlyTotals = dashboard?.data.monthlyTotalsByAccount?.[selectedAccount || ''];
   const statsReady = Boolean(summary || ((accountMonthlyTotals || matchingTotals) && screen !== 'analytics' && timeRange === 'month'));
@@ -795,7 +795,7 @@ function App() {
 
   // Both halves of "which period am I looking at" move together, from the
   // one PeriodPicker trigger - picking a year has to land on a concrete month
-  // too, because getYearlyData derives its year from selectedMonth.
+  // too, because the yearly stats derive their year from selectedMonth.
   const handlePeriodChange = ({ timeRange: nextRange, selectedMonth: nextMonth }) => {
     setTimeRange(nextRange);
     setSelectedMonth(nextMonth);
@@ -1292,7 +1292,7 @@ function App() {
   }, [timeRange, monthlyData, yearlyData, lifetimeStats]);
 
   // Expense of this month vs the same stretch of the previous one. For the
-  // current month getComparisonData cuts the previous month at today's day
+  // current month the server (comparisonData) cuts the previous month at today's day
   // number (comparing like with like); for a past month it compares whole
   // months, and the wording below follows that split.
   const expenseComparison = useMemo(() => {
@@ -1309,7 +1309,7 @@ function App() {
   }, [comparisonData, monthlyData.expense, isActualCurrentMonth]);
 
   // "к 15 января" / "к декабрю" - подпись над изменениями по категориям.
-  // Reuses the fields getComparisonData already derived rather than
+  // Reuses the fields comparisonData already carries rather than
   // recomputing the same "current vs past month" split. prevMonthDayLabel is
   // already in the genitive the day form needs, while the bare month name
   // arrives nominative and has to be declined.

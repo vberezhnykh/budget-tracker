@@ -7,8 +7,8 @@ import { readApi } from '../server/test/readApi.mjs';
 // below must answer 200 or the app falls back to the login screen instead
 // of the main UI.
 
-// At least 4 accounts, per the task: the carousel needs enough slides to
-// swipe through meaningfully. One name is deliberately long - long enough to
+// At least 4 accounts, per the task: the accounts strip needs enough cards
+// to scroll through meaningfully. One name is deliberately long - long enough to
 // wrap onto a second line at a 390px-wide viewport if the account row's
 // flex item doesn't shrink (the minWidth: 0 defect), which is exactly what
 // the "account rows stay on one line" test is trying to catch.
@@ -31,13 +31,8 @@ export const transactions = [
   { _id: 'tx-4', title: 'Пополнение', amount: 500, type: 'income', account: 'acc-wallet', date: '2026-01-07T00:00:00Z', category: 'Зарплата' },
 ];
 
-export const plannedPayments = [
-  { _id: 'plan-overdue', __v: 0, title: 'Интернет', amount: 35, dueDate: '2026-09-01T00:00:00.000Z', account: 'acc-card-1', category: 'Еда', description: 'Домашний тариф', status: 'pending' },
-  { _id: 'plan-upcoming', __v: 0, title: 'Аренда квартиры', amount: 850, dueDate: '2026-09-20T00:00:00.000Z', account: 'acc-card-2', category: 'Еда', description: '', status: 'pending' },
-];
-
-// Больше счетов, чем в основном наборе: ряд точек-индикаторов карусели при
-// восьми счетах перестал помещаться в ширину телефона и переносился на
+// Больше счетов, чем в основном наборе: лента счетов при восьми карточках не
+// помещается в ширину телефона и должна прокручиваться, а не переноситься на
 // вторую строку. Отдельный набор, а не расширение основного, - остальные
 // тесты рассчитаны на четыре счёта и их геометрию.
 export const manyAccounts = [
@@ -58,7 +53,6 @@ export async function mockApi(page, overrides = {}) {
   const transactionsData = overrides.transactions || transactions;
   const categoriesData = overrides.categories || categories;
   const settingsData = overrides.settings || { monthlyLimit: 7000 };
-  const plannedPaymentsData = overrides.plannedPayments || plannedPayments;
   await page.route('**/api/**', (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
@@ -78,9 +72,6 @@ export async function mockApi(page, overrides = {}) {
     if (method === 'GET' && pathname === '/api/settings') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(settingsData) });
     }
-    if (method === 'GET' && pathname === '/api/planned-payments') {
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(plannedPaymentsData) });
-    }
     if (method === 'GET' && pathname === '/api/trash') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(overrides.trash || []) });
     }
@@ -94,7 +85,6 @@ export async function mockPhase2Api(page, overrides = {}) {
     accounts: structuredClone(overrides.accounts || accounts),
     categories: structuredClone(overrides.categories || categories),
     transactions: structuredClone(overrides.transactions || transactions),
-    plannedPayments: structuredClone(overrides.plannedPayments || plannedPayments),
     trash: structuredClone(overrides.trash || []),
   };
   const fulfill = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -105,47 +95,12 @@ export async function mockPhase2Api(page, overrides = {}) {
     const method = request.method();
     const data = method === 'GET' ? readApi(request.url(), state.transactions, state.accounts) : undefined;
     if (data !== undefined) return fulfill(route, data);
-    const input = request.postData() ? request.postDataJSON() : {};
 
     if (method === 'GET' && pathname === '/api/accounts') return fulfill(route, state.accounts);
     if (method === 'GET' && pathname === '/api/transactions') return fulfill(route, state.transactions);
     if (method === 'GET' && pathname === '/api/categories') return fulfill(route, state.categories);
     if (method === 'GET' && pathname === '/api/settings') return fulfill(route, { monthlyLimit: 7000 });
-    if (method === 'GET' && pathname === '/api/planned-payments') return fulfill(route, state.plannedPayments);
     if (method === 'GET' && pathname === '/api/trash') return fulfill(route, state.trash);
-
-    if (method === 'POST' && pathname === '/api/planned-payments') {
-      const saved = { _id: `plan-${state.plannedPayments.length + 1}`, __v: 0, status: 'pending', ...input, dueDate: `${input.dueDate}T00:00:00.000Z` };
-      state.plannedPayments.push(saved);
-      return fulfill(route, saved, 201);
-    }
-
-    const payMatch = pathname.match(/^\/api\/planned-payments\/([^/]+)\/pay$/);
-    if (method === 'POST' && payMatch) {
-      const payment = state.plannedPayments.find(item => item._id === payMatch[1]);
-      const transaction = input.transactionId
-        ? state.transactions.find(item => item._id === input.transactionId)
-        : {
-          _id: `paid-${payment._id}`,
-          __v: 0,
-          title: payment.title,
-          description: payment.description,
-          amount: input.amount,
-          type: 'expense',
-          account: input.account,
-          category: input.category,
-          date: `${input.date}T00:00:00.000Z`,
-        };
-      if (!input.transactionId) state.transactions.push(transaction);
-      Object.assign(payment, {
-        __v: payment.__v + 1,
-        status: 'paid',
-        transactionId: transaction._id,
-        paidAt: transaction.date,
-        transactionSummary: { amount: transaction.amount, date: transaction.date, account: transaction.account, category: transaction.category },
-      });
-      return fulfill(route, { payment, transaction, replayed: false });
-    }
 
     const transactionMatch = pathname.match(/^\/api\/transactions\/([^/]+)$/);
     if (method === 'DELETE' && transactionMatch) {
@@ -153,9 +108,6 @@ export async function mockPhase2Api(page, overrides = {}) {
       const [transaction] = state.transactions.splice(index, 1);
       const group = { id: transaction._id, deletionBatchId: `batch-${transaction._id}`, deletedAt: new Date().toISOString(), count: 1, transactions: [transaction] };
       state.trash.push(group);
-      state.plannedPayments.forEach(payment => {
-        if (payment.transactionId === transaction._id) payment.transactionDeleted = true;
-      });
       return fulfill(route, { trashId: transaction._id, count: 1 });
     }
 
@@ -164,9 +116,6 @@ export async function mockPhase2Api(page, overrides = {}) {
       const index = state.trash.findIndex(group => group.id === restoreMatch[1]);
       const [group] = state.trash.splice(index, 1);
       state.transactions.push(...group.transactions);
-      state.plannedPayments.forEach(payment => {
-        if (group.transactions.some(transaction => transaction._id === payment.transactionId)) payment.transactionDeleted = false;
-      });
       return fulfill(route, { count: group.count });
     }
 
@@ -174,11 +123,6 @@ export async function mockPhase2Api(page, overrides = {}) {
     if (method === 'DELETE' && purgeMatch) {
       const index = state.trash.findIndex(group => group.id === purgeMatch[1]);
       const [group] = state.trash.splice(index, 1);
-      state.plannedPayments.forEach(payment => {
-        if (group.transactions.some(transaction => transaction._id === payment.transactionId)) {
-          Object.assign(payment, { status: 'pending', transactionId: undefined, paidAt: undefined, transactionDeleted: false, transactionSummary: undefined, __v: payment.__v + 1 });
-        }
-      });
       return fulfill(route, { count: group.count });
     }
 

@@ -1,11 +1,11 @@
 import './Skeleton.css';
 import Card from './Card';
 
-export function Skeleton({ width = '100%', height = 16, className = '' }) {
+function Skeleton({ width = '100%', height = 16, className = '' }) {
   return <div aria-hidden="true" className={`skeleton ${className}`} style={{ width, height }} />;
 }
 
-export function LoadingSkeleton({ label, className = '', children }) {
+function LoadingSkeleton({ label, className = '', children }) {
   return <div role="status" aria-label={label} className={`loading-skeleton ${className}`}>
     <span className="skeleton-label">{label}</span>
     <div aria-hidden="true">{children}</div>

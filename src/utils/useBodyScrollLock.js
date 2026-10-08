@@ -23,13 +23,9 @@ import { useEffect } from 'react';
 let lockCount = 0;
 let lockedScrollY = 0;
 
-// active: у листа блокировка живёт ровно столько, сколько сам лист, и
-// параметр не нужен. Он остался от шторки истории, которая из дерева не
-// исчезала и блокировала страницу только раскрытой.
-export default function useBodyScrollLock(active = true) {
+// Блокировка живёт ровно столько, сколько смонтирован вызывающий компонент.
+export default function useBodyScrollLock() {
     useEffect(() => {
-        if (!active) return undefined;
-
         const { body } = document;
         if (lockCount === 0) {
             lockedScrollY = window.scrollY;
@@ -58,5 +54,5 @@ export default function useBodyScrollLock(active = true) {
                 window.scrollTo(0, lockedScrollY);
             }
         };
-    }, [active]);
+    }, []);
 }

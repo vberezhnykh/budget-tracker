@@ -67,6 +67,17 @@ describe('Манифест', () => {
         expect(meta).not.toBeNull();
         expect(meta[1]).toBe(manifest.theme_color);
     });
+
+    it('цвета темы и заставки совпадают с фоном страницы', async () => {
+        // Строка состояния и заставка при запуске должны сливаться с серым
+        // фоном экрана (--color-bg), а не выделяться прежним синим.
+        const css = read(REPO_ROOT, 'src', 'index.css');
+        const background = css.match(/--color-bg:\s*(#[0-9a-fA-F]{6})\s*;/);
+
+        expect(background).not.toBeNull();
+        expect(manifest.theme_color.toLowerCase()).toBe(background[1].toLowerCase());
+        expect(manifest.background_color.toLowerCase()).toBe(background[1].toLowerCase());
+    });
 });
 
 describe('index.html', () => {

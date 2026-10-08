@@ -13,7 +13,7 @@ const cardCount = manyAccounts.length + 1;
 test('eight accounts fit in one scrollable row at 320px, and a tap selects each card', async ({ page }) => {
   await page.setViewportSize({ width: WIDTH, height: 700 });
   await page.clock.setFixedTime(new Date(2026, 8, 12, 12));
-  await mockApi(page, { accounts: manyAccounts, plannedPayments: [] });
+  await mockApi(page, { accounts: manyAccounts });
   await page.goto('/');
 
   const row = page.getByTestId('accounts-row');

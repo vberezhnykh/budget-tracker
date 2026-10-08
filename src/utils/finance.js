@@ -1,5 +1,10 @@
 /**
- * Finance utility functions for transforming API data and calculating balances.
+ * Клиентские помощники для данных операций. В приложении живыми остаются
+ * transformTransactions, getDescriptionSuggestions, splitCategoriesByUsage и
+ * categoryUsageKey. Остальное (балансы, итоги по периодам, сравнения, ряд по
+ * месяцам, поиск) теперь считает сервер; эти версии сохранены как эталон, с
+ * которым server/*.test.js сверяют серверные порты на одних данных, и из
+ * кода интерфейса не вызываются.
  */
 
 export const transformTransactions = (data, accounts = []) => {
@@ -129,8 +134,7 @@ export const getPeriodPrefix = (timeRange, selectedMonth) => {
 };
 
 // The grouped transaction list plus its totals for an arbitrary period,
-// not just one month: the drawer's history shows whatever range the period
-// picker is on.
+// not just one month: month, year or the whole history.
 export const getPeriodData = (transactions, periodPrefix, accountFilter = null, categoryFilter = null, typeFilter = null) => {
     let filtered = periodPrefix
         ? transactions.filter(t => t.date.startsWith(periodPrefix))
@@ -220,12 +224,11 @@ export const getPeriodData = (transactions, periodPrefix, accountFilter = null, 
 
 // Итоги по каждому месяцу сразу - тем же правилам, что и getPeriodData
 // выше, но за один проход по истории и без группировки операций по дням.
-// Нужны карусели месяцев: она рисует карточку на каждый выбираемый месяц,
-// и звать getPeriodData по разу на месяц значило бы строить эти группы
+// Звать getPeriodData по разу на месяц значило бы строить группы по дням
 // десятки раз впустую.
 //
-// Фильтр по типу здесь намеренно отсутствует: доход и расход в карточках
-// от него не зависят и в getPeriodData тоже считаются до его применения -
+// Фильтр по типу здесь намеренно отсутствует: доход и расход в итогах от
+// него не зависят и в getPeriodData тоже считаются до его применения -
 // иначе, включив фильтр «доход», пользователь увидел бы нулевой расход.
 export const getMonthlyTotals = (transactions, accountFilter = null, categoryFilter = null) => {
     const totals = {};
@@ -248,11 +251,6 @@ export const getMonthlyTotals = (transactions, accountFilter = null, categoryFil
 
     return totals;
 };
-
-// The month-shaped view of the same aggregation - what the monthly limit
-// and pace forecast are computed from, whatever period is on screen.
-export const getMonthlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null, typeFilter = null) =>
-    getPeriodData(transactions, selectedMonth, accountFilter, categoryFilter, typeFilter);
 
 // The rule shared by every "this month vs last month" comparison: a month
 // still in progress is compared against the previous month cut off at

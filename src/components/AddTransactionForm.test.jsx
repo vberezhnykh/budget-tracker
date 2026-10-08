@@ -461,7 +461,7 @@ describe('AddTransactionForm Component', () => {
     it('starts a transfer from the active account when presetAccountId is passed', () => {
         render(<AddTransactionForm type="transfer" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        // "Откуда" is the account that was active on the balance carousel, so
+        // "Откуда" is the account that was active on the overview, so
         // the only thing left to choose is where the money goes - and "Куда"
         // must not land on the same account.
         expect(selectedIn('Откуда')).toEqual(['Карта']);

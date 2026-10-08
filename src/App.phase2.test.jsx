@@ -17,7 +17,6 @@ function makeApi(overrides = {}) {
       { _id: 'income', __v: 0, title: 'Доход', amount: 1000, type: 'income', account: 'card', category: 'Доход', date: '2026-09-01T00:00:00.000Z' },
       { _id: 'expense', __v: 0, title: 'Кофе', description: 'Кофе утром', amount: 50, type: 'expense', account: 'card', category: 'Еда', date: '2026-09-03T00:00:00.000Z' },
     ],
-    planned: [{ _id: 'plan', __v: 0, title: 'Интернет', amount: 30, dueDate: '2026-09-20T00:00:00.000Z', account: 'card', category: 'Еда', description: '', status: 'pending' }],
     trash: [],
     ...overrides,
   };
@@ -30,49 +29,7 @@ function makeApi(overrides = {}) {
     if (url === '/api/categories' && method === 'GET') return ok(copy(state.categories));
     if (url === '/api/settings' && method === 'GET') return ok({ monthlyLimit: 7000 });
     if (url === '/api/transactions' && method === 'GET') return ok(copy(state.transactions));
-    if (url === '/api/planned-payments' && method === 'GET') return ok(copy(state.planned));
     if (url === '/api/trash' && method === 'GET') return ok(copy(state.trash));
-
-    if (url === '/api/planned-payments' && method === 'POST') {
-      const input = JSON.parse(options.body);
-      const saved = { _id: `plan-${state.planned.length + 1}`, __v: 0, status: 'pending', ...input, dueDate: `${input.dueDate}T00:00:00.000Z` };
-      state.planned.push(saved);
-      return ok(saved, 201);
-    }
-    if (url.startsWith('/api/planned-payments/') && url.endsWith('/pay') && method === 'POST') {
-      const id = url.split('/')[3];
-      const payment = state.planned.find(item => item._id === id);
-      if (!payment) return missing('Платёж не найден');
-      const input = JSON.parse(options.body);
-      let transaction;
-      if (input.transactionId) {
-        transaction = state.transactions.find(item => item._id === input.transactionId);
-      } else {
-        transaction = {
-          _id: `paid-${id}`, __v: 0, title: payment.title, description: payment.description,
-          amount: input.amount, type: 'expense', account: input.account, category: input.category,
-          date: `${input.date}T00:00:00.000Z`,
-        };
-        state.transactions.push(transaction);
-      }
-      Object.assign(payment, {
-        __v: payment.__v + 1,
-        status: 'paid',
-        transactionId: transaction._id,
-        paidAt: transaction.date,
-        transactionSummary: { amount: transaction.amount, date: transaction.date, account: transaction.account, category: transaction.category },
-      });
-      return ok({ payment, transaction, replayed: false });
-    }
-    if (url.startsWith('/api/planned-payments/') && method === 'PUT') {
-      const id = url.split('/')[3];
-      const payment = state.planned.find(item => item._id === id);
-      if (!payment) return missing('Платёж не найден');
-      const input = JSON.parse(options.body);
-      delete input.__v;
-      Object.assign(payment, input, { __v: payment.__v + 1 });
-      return ok(payment);
-    }
 
     if (url.startsWith('/api/transactions/') && method === 'DELETE') {
       const id = url.split('/')[3].split('?')[0];
@@ -81,9 +38,6 @@ function makeApi(overrides = {}) {
       const [transaction] = state.transactions.splice(index, 1);
       const group = { id, deletionBatchId: `batch-${id}`, deletedAt: new Date().toISOString(), count: 1, transactions: [transaction] };
       state.trash.push(group);
-      state.planned.forEach(payment => {
-        if (payment.transactionId === id) payment.transactionDeleted = true;
-      });
       return ok({ trashId: id, count: 1 });
     }
     if (url.startsWith('/api/trash/') && url.endsWith('/restore') && method === 'POST') {
@@ -92,9 +46,6 @@ function makeApi(overrides = {}) {
       if (index < 0) return missing('Группа не найдена');
       const [group] = state.trash.splice(index, 1);
       state.transactions.push(...group.transactions);
-      state.planned.forEach(payment => {
-        if (group.transactions.some(transaction => transaction._id === payment.transactionId)) payment.transactionDeleted = false;
-      });
       return ok({ count: group.count });
     }
     if (url.startsWith('/api/trash/') && method === 'DELETE') {
@@ -102,11 +53,6 @@ function makeApi(overrides = {}) {
       const index = state.trash.findIndex(group => group.id === id);
       if (index < 0) return missing('Группа не найдена');
       const [group] = state.trash.splice(index, 1);
-      state.planned.forEach(payment => {
-        if (group.transactions.some(transaction => transaction._id === payment.transactionId)) {
-          Object.assign(payment, { status: 'pending', transactionId: undefined, paidAt: undefined, transactionDeleted: false, transactionSummary: undefined, __v: payment.__v + 1 });
-        }
-      });
       return ok({ count: group.count });
     }
     if (url === '/api/logout') return ok({ ok: true });
@@ -304,7 +250,6 @@ describe('App phase 2 flows', () => {
     const deletedA = { _id: 'old-a', title: 'Старый расход', amount: 20, type: 'expense', account: 'card', category: 'Еда', date: '2026-08-01' };
     const deletedB = { _id: 'old-b', title: 'Связанный расход', amount: 30, type: 'expense', account: 'card', category: 'Еда', date: '2026-08-02' };
     const api = makeApi({
-      planned: [{ _id: 'paid-plan', __v: 1, title: 'Интернет', amount: 30, dueDate: '2026-08-02', account: 'card', category: 'Еда', status: 'paid', transactionId: 'old-b', transactionDeleted: true, transactionSummary: { amount: 30, date: '2026-08-02', account: 'card', category: 'Еда' } }],
       trash: [
         { id: 'old-a', deletionBatchId: 'batch-a', deletedAt: '2026-09-01T10:00:00.000Z', count: 1, transactions: [deletedA] },
         { id: 'old-b', deletionBatchId: 'batch-b', deletedAt: '2026-09-02T10:00:00.000Z', count: 1, transactions: [deletedB] },
@@ -343,7 +288,6 @@ describe('App phase 2 flows', () => {
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Удалить' }));
     await waitFor(() => expect(api.state.trash).toHaveLength(0));
     expect(confirm).not.toHaveBeenCalled();
-    expect(api.state.planned[0].status).toBe('pending');
     expect(await within(screen.getByRole('main')).findByText('Корзина пуста')).toBeInTheDocument();
 
     // Счётчик в меню следует за корзиной.

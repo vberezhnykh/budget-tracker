@@ -8,7 +8,7 @@ import { SummarySkeleton } from '../components/ui/Skeleton';
 //
 // pending/ready считает App - от них зависят и другие части экрана, а не
 // только эта обёртка. Пока pending, цифры внутри (data-account-value) размыты
-// фиксированно: размытие по прогрессу свайпа ушло вместе с каруселью счетов.
+// фиксированно.
 export default function SummaryFrame({ pending, ready, syncWarning, isRefreshing, skeleton, children }) {
   return (
     <div

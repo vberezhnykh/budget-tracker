@@ -19,7 +19,7 @@ const monthlyTransactions = [
 async function openAnalytics(page, width = 390) {
   await page.setViewportSize({ width, height: 1000 });
   await page.clock.setFixedTime(new Date(2026, 8, 12, 12));
-  await mockApi(page, { transactions: monthlyTransactions, plannedPayments: [] });
+  await mockApi(page, { transactions: monthlyTransactions });
   await page.goto('/');
   await page.getByRole('navigation', { name: 'Основная навигация' })
     .getByRole('button', { name: /Аналитика/ }).click();
@@ -198,7 +198,7 @@ test.describe('Analytics screen (mobile)', () => {
   test('a month without enough history says so instead of drawing the pace chart', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 1000 });
     await page.clock.setFixedTime(new Date(2026, 8, 12, 12));
-    await mockApi(page, { transactions: monthlyTransactions.filter(t => t._id.startsWith('2026-09')), plannedPayments: [] });
+    await mockApi(page, { transactions: monthlyTransactions.filter(t => t._id.startsWith('2026-09')) });
     await page.goto('/#analytics');
 
     await expect(page.getByText('Для сравнения с обычным месяцем нужно хотя бы три полных месяца истории.')).toBeVisible();

@@ -21,10 +21,11 @@ async function openMoreRow(page, name) {
 //      wrong account. (The carousel is gone - accounts are a plain row of
 //      tap-to-select cards - but the lesson stands: selection is checked
 //      against the real rendered row.)
-//   2. The drawer's travel distance was derived from window.innerHeight
+//   2. The history sheet's travel distance was derived from window.innerHeight
 //      while its resting position came from a `calc(88vh - ...)` CSS
 //      transform. On iOS Safari those differ, so the sheet came to rest in
-//      the wrong place.
+//      the wrong place. (History is a screen now; its geometry is checked
+//      below on the real layout.)
 //   3. Adding a drag grip to the account rows pushed the name/type text into
 //      wrapping, because no flex item declared minWidth: 0.
 //

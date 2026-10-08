@@ -828,8 +828,8 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitForOverview();
-        // Операции живут в шторке, и её содержимое существует только когда
-        // она раскрыта - открываем, как это делает пользователь.
+        // Полный список операций живёт на экране «История» - открываем его,
+        // как это делает пользователь.
         await openHistory();
 
         // Check for the transaction with description (Rent)
@@ -854,7 +854,7 @@ describe('App Integration Tests', () => {
         await openHistory();
 
         // Each editable row exposes a full-row button (see the accessible
-        // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
+        // stretched-overlay restructuring in TransactionList.jsx) rather
         // than the row div itself carrying the click handler, so it's found
         // by its accessible name instead of the inner text node.
         const rentTx = screen.getByRole('button', { name: /Monthly flat rent/ });
@@ -902,7 +902,7 @@ describe('App Integration Tests', () => {
         await openHistory();
 
         // Open split sub-item via its full-row button (see the accessible
-        // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
+        // stretched-overlay restructuring in TransactionList.jsx) rather
         // than clicking its amount text directly.
         await waitFor(() => screen.getAllByText('€50,00'));
         fireEvent.click(screen.getByRole('button', { name: /Grouped \(Разделено\)/ }));

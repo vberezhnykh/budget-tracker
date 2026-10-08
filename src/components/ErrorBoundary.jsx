@@ -4,8 +4,8 @@ import { TriangleAlert } from 'lucide-react';
 import CenteredCardScreen from './CenteredCardScreen';
 import Button from './ui/Button';
 
-// Catches render-time exceptions anywhere below it in the tree (the
-// carousel, the drawer, the transaction list, ...) and shows a fallback
+// Catches render-time exceptions anywhere below it in the tree (a
+// screen, a sheet, the transaction list, ...) and shows a fallback
 // instead of letting React unmount the whole tree to a blank white screen.
 // This has to be a class component - React has no hook equivalent for
 // componentDidCatch/getDerivedStateFromError yet.

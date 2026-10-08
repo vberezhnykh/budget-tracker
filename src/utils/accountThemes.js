@@ -8,7 +8,7 @@ function hashId(id) {
   return hash >>> 0;
 }
 
-// Assign by identity, never carousel position or account name. Sorting before
+// Assign by identity, never list position or account name. Sorting before
 // resolving palette collisions keeps colors unchanged after drag-and-drop,
 // renaming, balance updates, and moving an account outside the total capital.
 export function getAccountThemes(accounts) {

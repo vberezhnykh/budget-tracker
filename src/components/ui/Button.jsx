@@ -10,9 +10,6 @@
 //
 //   primary   - главное действие экрана или диалога: сохранить, добавить,
 //               повторить загрузку. На экране оно одно.
-//   positive  - быстрое действие «Доход» на главном экране.
-//   expense   - быстрое действие «Расход» там же. Это отдельные тоны, а не
-//               цвет в style: градиент и тень у них заведены токенами.
 //   secondary - второстепенное рядом с главным: отмена, «Изменить», «Банки…».
 //               Лежит на серой подложке и не спорит с заливкой.
 //   soft      - лёгкое акцентное действие: «Отменить» в плашке удаления,
@@ -43,16 +40,6 @@ const TONES = {
         background: 'var(--color-primary-gradient)',
         color: 'var(--color-text-inverse)',
         boxShadow: 'var(--shadow-primary)',
-    },
-    positive: {
-        background: 'var(--color-positive-gradient)',
-        color: 'var(--color-text-inverse)',
-        boxShadow: 'var(--shadow-positive)',
-    },
-    expense: {
-        background: 'var(--color-expense-gradient)',
-        color: 'var(--color-text-inverse)',
-        boxShadow: 'var(--shadow-expense)',
     },
     secondary: { background: 'var(--color-surface-inset)', color: 'var(--color-text-main)' },
     soft: { background: 'var(--color-primary-tint)', color: 'var(--color-primary)' },
