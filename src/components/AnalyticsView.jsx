@@ -1,4 +1,5 @@
 import CategoryBars from './CategoryBars';
+import CategoryBarsEmpty from './CategoryBarsEmpty';
 import MonthlyTrend from './MonthlyTrend';
 import PaceCard from './PaceCard';
 import Card from './ui/Card';
@@ -73,6 +74,8 @@ export default function AnalyticsView({
                     comparisonLabel={comparisonLabel}
                     onSelectCategory={onOpenCategory}
                 />
+            ) : timeRange === 'month' ? (
+                <CategoryBarsEmpty selectedMonth={selectedMonth} onSelectMonth={onSelectMonth} />
             ) : (
                 <Card padding="lg" style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
                     <span data-account-value>За выбранный период трат нет</span>

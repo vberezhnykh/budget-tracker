@@ -104,7 +104,7 @@ Element.prototype.scrollIntoView = vi.fn();
 const waitForOverview = () => screen.findByTestId('accounts-row');
 
 // Карточка счёта в ленте Обзора: <button aria-pressed>, имя вида «Карта: €…».
-const accountCard = name => screen.getByRole('button', { name: new RegExp(`^${name}: €`) });
+const accountCard = name => screen.getByRole('button', { name: new RegExp(`^${name}: −?€`) });
 
 // История - отдельная вкладка нижней навигации. Её содержимое (поиск, фильтры,
 // полная история) существует в дереве только пока вкладка открыта.
@@ -196,12 +196,65 @@ describe('App Integration Tests', () => {
 
         expect(await screen.findByRole('heading', { name: 'Не удалось загрузить данные' })).toBeInTheDocument();
         expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
+        // Причина, подсказка про интернет и успокоение: данные на сервере.
+        expect(screen.getByRole('alert')).toHaveTextContent(
+            'Не удалось подключиться к серверу. Проверьте интернет и попробуйте ещё раз. Операции хранятся на сервере и никуда не пропали.'
+        );
 
         offline = false;
         fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
 
         await waitFor(() => expect(screen.getByTestId('accounts-row')).toBeInTheDocument());
         expect(screen.getByText(/^Обновлено \d{2}:\d{2}$/)).toBeInTheDocument();
+        consoleSpy.mockRestore();
+    });
+
+    it('shows the time of the last failed attempt and keeps the error screen with a disabled «Повтор…» while retrying', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const onlineFetch = createFetchMock();
+        let mode = 'offline';
+        let releaseRetry;
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/accounts' && mode === 'offline') return Promise.reject(new Error('offline'));
+            if (url === '/api/accounts' && mode === 'hanging') {
+                return new Promise(resolve => { releaseRetry = () => resolve(onlineFetch(url, options)); });
+            }
+            return onlineFetch(url, options);
+        });
+        vi.setSystemTime(new Date(2026, 0, 15, 9, 5));
+
+        render(<App />);
+        await screen.findByRole('heading', { name: 'Не удалось загрузить данные' });
+        expect(screen.getByText('Последняя попытка в 09:05')).toBeInTheDocument();
+
+        mode = 'hanging';
+        fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+        // Экран ошибки остаётся, а не подменяется скелетоном; кнопка занята.
+        expect(await screen.findByRole('button', { name: 'Повтор…' })).toBeDisabled();
+        expect(screen.getByRole('heading', { name: 'Не удалось загрузить данные' })).toBeInTheDocument();
+
+        await act(async () => releaseRetry());
+        await waitFor(() => expect(screen.getByTestId('accounts-row')).toBeInTheDocument());
+        expect(screen.queryByText(/Последняя попытка/)).not.toBeInTheDocument();
+
+        consoleSpy.mockRestore();
+    });
+
+    it('updates the time of the last attempt when a retry fails again', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        fetchMock.mockImplementation(url => (url === '/api/accounts'
+            ? Promise.reject(new Error('offline'))
+            : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) })));
+        vi.setSystemTime(new Date(2026, 0, 15, 9, 5));
+
+        render(<App />);
+        await screen.findByText('Последняя попытка в 09:05');
+
+        vi.setSystemTime(new Date(2026, 0, 15, 9, 12));
+        fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+        expect(await screen.findByText('Последняя попытка в 09:12')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Повторить' })).toBeEnabled();
+
         consoleSpy.mockRestore();
     });
 
@@ -523,17 +576,130 @@ describe('App Integration Tests', () => {
         fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
         fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
-        expect(await screen.findByText('Не удалось обновить данные')).toBeInTheDocument();
-        expect(screen.getByText(/Показана синхронизация:/)).toBeInTheDocument();
+        // Тонкая полоса вверху <main> вместо красной карточки: статус, а не alert.
+        const strip = await screen.findByText(/^Не удалось обновить\. Показаны данные на /);
+        expect(within(screen.getByRole('main')).getByRole('status')).toContainElement(strip);
+        expect(screen.getByRole('main').firstElementChild).toContainElement(strip);
+        expect(screen.queryByText('Не удалось обновить данные')).not.toBeInTheDocument();
         expect(screen.getAllByText(/4\.000/)[0]).toBeInTheDocument();
 
         vi.setSystemTime(new Date('2026-01-15T13:30:00Z'));
         fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
 
-        await waitFor(() => expect(screen.queryByText('Не удалось обновить данные')).not.toBeInTheDocument());
+        await waitFor(() => expect(screen.queryByText(/^Не удалось обновить\./)).not.toBeInTheDocument());
         expect(screen.getByText(/^Обновлено /).textContent).not.toBe(firstSyncLabel);
         expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions' && options?.method === 'POST')).toHaveLength(1);
         consoleSpy.mockRestore();
+    });
+
+    describe('sync warning strip', () => {
+        // Общая подготовка: данные загружены, дальше обновление падает.
+        const renderWithFailingRefresh = async ({ holdRetry = false } = {}) => {
+            const normalFetch = createFetchMock();
+            let failAccountsGets = false;
+            let releaseRetry;
+            fetchMock.mockImplementation((url, options) => {
+                if (url === '/api/accounts' && !options?.method && failAccountsGets) {
+                    if (holdRetry && failAccountsGets === 'retry') {
+                        return new Promise(resolve => { releaseRetry = () => resolve(normalFetch(url, options)); });
+                    }
+                    return Promise.reject(new Error('offline'));
+                }
+                return normalFetch(url, options);
+            });
+            render(<App />);
+            await waitForOverview();
+            return {
+                failRefresh: () => { failAccountsGets = true; },
+                holdNextRetry: () => { failAccountsGets = 'retry'; },
+                recover: () => { failAccountsGets = false; },
+                release: () => releaseRetry(),
+            };
+        };
+
+        // Обёртка полосы: прямой ребёнок <main> с плашкой role=status внутри.
+        const isStrip = element => element.parentElement?.tagName === 'MAIN'
+            && element.firstElementChild?.getAttribute('role') === 'status';
+
+        const failRefreshFromMore = async control => {
+            control.failRefresh();
+            goTo('Ещё');
+            fireEvent.click(screen.getByRole('button', { name: /Обновить/ }));
+            return screen.findByText(/^Не удалось обновить\. Показаны данные на /);
+        };
+
+        it('shows the strip on every screen and exposes its height as --status-strip-height on <main>', async () => {
+            const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const rect = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function () {
+                const height = isStrip(this) ? 52.4 : 0;
+                return { height, width: 0, top: 0, left: 0, right: 0, bottom: height, x: 0, y: 0, toJSON() {} };
+            });
+            const control = await renderWithFailingRefresh();
+            expect(screen.getByRole('main').style.getPropertyValue('--status-strip-height')).toBe('0px');
+
+            await failRefreshFromMore(control);
+            const main = screen.getByRole('main');
+            expect(main.style.getPropertyValue('--status-strip-height')).toBe('53px');
+
+            // Аналитика запрашивает свои итоги заново и успешной загрузкой
+            // сама снимает предупреждение, поэтому здесь её нет.
+            for (const tab of ['Обзор', 'История']) {
+                goTo(tab);
+                expect(within(screen.getByRole('main')).getByText(/^Не удалось обновить\./)).toBeInTheDocument();
+            }
+
+            control.recover();
+            fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+            await waitFor(() => expect(screen.queryByText(/^Не удалось обновить\./)).not.toBeInTheDocument());
+            expect(screen.getByRole('main').style.getPropertyValue('--status-strip-height')).toBe('0px');
+            rect.mockRestore();
+            consoleSpy.mockRestore();
+        });
+
+        it('follows the strip height when it changes (ResizeObserver)', async () => {
+            const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            let height = 40;
+            const rect = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function () {
+                const value = isStrip(this) ? height : 0;
+                return { height: value, width: 0, top: 0, left: 0, right: 0, bottom: value, x: 0, y: 0, toJSON() {} };
+            });
+            const observers = [];
+            vi.stubGlobal('ResizeObserver', class {
+                constructor(callback) { this.callback = callback; this.disconnect = vi.fn(); observers.push(this); }
+                observe() {}
+            });
+            const control = await renderWithFailingRefresh();
+            await failRefreshFromMore(control);
+            expect(screen.getByRole('main').style.getPropertyValue('--status-strip-height')).toBe('40px');
+
+            height = 76;
+            await act(async () => observers.at(-1).callback());
+            expect(screen.getByRole('main').style.getPropertyValue('--status-strip-height')).toBe('76px');
+
+            control.recover();
+            fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+            await waitFor(() => expect(screen.queryByText(/^Не удалось обновить\./)).not.toBeInTheDocument());
+            expect(observers.at(-1).disconnect).toHaveBeenCalled();
+            rect.mockRestore();
+            consoleSpy.mockRestore();
+        });
+
+        it('disables the action and says «Обновление…» while the retry is in flight', async () => {
+            const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            const control = await renderWithFailingRefresh({ holdRetry: true });
+            await failRefreshFromMore(control);
+            // На «Ещё» своя кнопка «Обновить» с тем же текстом занятости.
+            goTo('Обзор');
+
+            control.holdNextRetry();
+            fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+            expect(await screen.findByRole('button', { name: 'Обновление…' })).toBeDisabled();
+
+            control.recover();
+            await act(async () => control.release());
+            await waitFor(() => expect(screen.queryByText(/^Не удалось обновить\./)).not.toBeInTheDocument());
+            consoleSpy.mockRestore();
+        });
     });
 
     // Нажатие на категорию в Аналитике ведёт в Историю с фильтром по ней, а не
@@ -1143,6 +1309,33 @@ describe('App Integration Tests', () => {
         expect(fetchMock.mock.calls.some(([url]) => url === '/api/history?month=2026-01&continuous=1&limit=5&account=cash')).toBe(true);
     });
 
+    it('в начале месяца показывает итог прошлого и по нажатию открывает этот месяц', async () => {
+        currentTransactions = [{
+            _id: 'd1', title: 'Rent', amount: 6890, type: 'expense', account: 'card',
+            date: '2025-12-02T00:00:00Z', category: 'Food',
+        }];
+
+        render(<App />);
+        await waitForOverview();
+
+        expect(await screen.findByText('Месяц только начался, весь лимит впереди')).toBeInTheDocument();
+        fireEvent.click(await screen.findByRole('button', { name: /Декабрь закрыт/ }));
+
+        expect(await screen.findByText(/Расход за декабрь/)).toBeInTheDocument();
+    });
+
+    it('в пустых «Последних операциях» кнопка «Добавить расход» открывает форму расхода', async () => {
+        currentTransactions = [];
+
+        render(<App />);
+        await waitForOverview();
+
+        const recent = within(screen.getByRole('region', { name: 'Последние операции' }));
+        fireEvent.click(await recent.findByRole('button', { name: 'Добавить расход' }));
+
+        expect(await screen.findByRole('dialog', { name: /Новый расход/ })).toBeInTheDocument();
+    });
+
     it('shows the five newest operations, opens one for editing and has a link to the whole history', async () => {
         currentTransactions = Array.from({ length: 7 }, (_, index) => ({
             _id: `t${index + 1}`,
@@ -1713,6 +1906,82 @@ describe('App Integration Tests', () => {
         vi.unstubAllGlobals();
     });
 
+    // Сообщения об ошибке и успехе - тосты над нижней панелью.
+    describe('notice toast', () => {
+        // Прячет таймер автозакрытия на 5 секунд, чтобы сработал сразу.
+        const captureAutoDismiss = () => {
+            const real = globalThis.setTimeout;
+            const fired = [];
+            const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay, ...rest) => {
+                if (delay === 5000) { fired.push(callback); return 0; }
+                return real(callback, delay, ...rest);
+            });
+            return { fired, restore: () => spy.mockRestore() };
+        };
+
+        const failLogout = async () => {
+            const baseMock = fetchMock;
+            vi.stubGlobal('fetch', vi.fn((url, options) => {
+                if (typeof url === 'string' && url.includes('/api/logout')) {
+                    return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+                }
+                return baseMock(url, options);
+            }));
+            goTo('Ещё');
+            fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
+            return screen.findByRole('alert');
+        };
+
+        it('shows an error as an alert toast above the bottom bar, closable, and dismisses itself after 5 seconds', async () => {
+            render(<App />);
+            await waitForOverview();
+            const timer = captureAutoDismiss();
+
+            const toast = await failLogout();
+            expect(toast).toHaveTextContent('Не удалось выйти. Попробуйте ещё раз.');
+            // Над панелью: высота панели, минимальный зазор под ней и 16px.
+            expect(toast.style.bottom).toBe('88px');
+            expect(within(toast).getByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
+
+            expect(timer.fired).toHaveLength(1);
+            act(() => timer.fired[0]());
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            timer.restore();
+        });
+
+        it('closes with the close button', async () => {
+            render(<App />);
+            await waitForOverview();
+
+            const toast = await failLogout();
+            fireEvent.click(within(toast).getByRole('button', { name: 'Закрыть' }));
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        });
+
+        it('shows a success as a polite status toast, not an alert', async () => {
+            const baseFetch = fetchMock.getMockImplementation();
+            fetchMock.mockImplementation((url, options) => {
+                if (url === '/api/settings' && options?.method === 'PUT') {
+                    return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ monthlyLimit: 1500 }) });
+                }
+                return baseFetch(url, options);
+            });
+            render(<App />);
+            await waitForOverview();
+            openMoreRow(/^Лимит трат/);
+            const sheet = await screen.findByRole('dialog', { name: 'Лимит трат в месяц' });
+            fireEvent.change(within(sheet).getByLabelText('Сумма лимита в евро'), { target: { value: '1500' } });
+            fireEvent.click(within(sheet).getByRole('button', { name: 'Сохранить' }));
+
+            const message = await screen.findByText('Лимит обновлён');
+            const toast = message.closest('[role]');
+            expect(toast).toHaveAttribute('role', 'status');
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            fireEvent.click(within(toast).getByRole('button', { name: 'Закрыть' }));
+            expect(screen.queryByText('Лимит обновлён')).not.toBeInTheDocument();
+        });
+    });
+
     // Finding 1: logout must only switch the UI to the logged-out state once
     // the server has actually confirmed the session cookie is cleared. This
     // is nested here (rather than a sibling describe) so it inherits the
@@ -2063,9 +2332,12 @@ describe('Authentication flow', () => {
         await waitFor(() => {
             expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
         });
-        // The login screen has its own "BudgetTracker" heading, so assert on
-        // something that only exists in the authenticated main UI instead.
+        // На экране входа нет ничего из авторизованного интерфейса.
         expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
+        // Первый запуск, а не потеря сессии: обычный подзаголовок.
+        expect(screen.getByRole('heading', { level: 1, name: 'Бюджет' })).toBeInTheDocument();
+        expect(screen.getByText('Введите пароль, чтобы продолжить')).toBeInTheDocument();
+        expect(screen.queryByText(/Сессия закончилась/)).not.toBeInTheDocument();
     });
 
     it('reveals the app after a successful login', async () => {
@@ -2099,10 +2371,13 @@ describe('Authentication flow', () => {
         fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'family-secret' } });
         fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
 
+        // Название приложения есть только на экране входа, поэтому признак
+        // открывшегося приложения - его собственные данные (лента счетов).
         await waitFor(() => {
-            expect(screen.getByText('BudgetTracker')).toBeInTheDocument();
+            expect(screen.getByTestId('accounts-row')).toBeInTheDocument();
         }, { timeout: 3000 });
         expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument();
+        expect(screen.queryByText('Бюджет', { selector: 'h1' })).not.toBeInTheDocument();
     });
 
     it('returns to the login screen when a mid-session request comes back 401 (expired/cleared session)', async () => {
@@ -2140,5 +2415,76 @@ describe('Authentication flow', () => {
         await waitFor(() => {
             expect(screen.getByLabelText('Пароль')).toBeInTheDocument();
         });
+        // Данные уже были, значит сессия закончилась посреди работы.
+        expect(screen.getByText('Сессия закончилась. Войдите снова, данные на месте.')).toBeInTheDocument();
+        expect(screen.queryByText('Введите пароль, чтобы продолжить')).not.toBeInTheDocument();
+    });
+
+    it('does not claim the session expired after the user logged out on purpose', async () => {
+        vi.stubGlobal('fetch', vi.fn((url) => {
+            const data = readApi(url, currentTransactions, currentAccounts);
+            if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
+            if (typeof url === 'string' && url.includes('/api/logout')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+            }
+            if (typeof url === 'string' && url.includes('/api/accounts')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(authAccounts) });
+            }
+            if (typeof url === 'string' && url.includes('/api/settings')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ monthlyLimit: 7000 }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }));
+
+        render(<App />);
+        await waitForOverview();
+        goTo('Ещё');
+        fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
+
+        await screen.findByLabelText('Пароль');
+        expect(screen.getByText('Введите пароль, чтобы продолжить')).toBeInTheDocument();
+        expect(screen.queryByText(/Сессия закончилась/)).not.toBeInTheDocument();
+    });
+
+    it('goes back to the plain subtitle after signing in again', async () => {
+        let authenticated = true;
+        vi.stubGlobal('fetch', vi.fn((url) => {
+            const data = readApi(url, currentTransactions, currentAccounts);
+            if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
+            if (typeof url === 'string' && url.includes('/api/login')) {
+                authenticated = true;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+            }
+            if (typeof url === 'string' && url.includes('/api/logout')) {
+                authenticated = false;
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
+            }
+            if (typeof url === 'string' && url.includes('/api/accounts')) {
+                if (!authenticated) return Promise.resolve({ ok: false, status: 401, json: () => Promise.resolve({}) });
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(authAccounts) });
+            }
+            if (typeof url === 'string' && url.includes('/api/settings')) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ monthlyLimit: 7000 }) });
+            }
+            return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+        }));
+
+        render(<App />);
+        await waitForOverview();
+        // Сессия пропала на сервере: следующий запрос к счетам отвечает 401.
+        authenticated = false;
+        openMoreRow(/^Счета/);
+        addAccountThroughSheet('Новый счёт');
+        await screen.findByText('Сессия закончилась. Войдите снова, данные на месте.');
+
+        fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'family-secret' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
+        await waitForOverview();
+
+        // Выходим сами: объяснение про истёкшую сессию не должно вернуться.
+        goTo('Ещё');
+        fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
+        await screen.findByLabelText('Пароль');
+        expect(screen.getByText('Введите пароль, чтобы продолжить')).toBeInTheDocument();
     });
 });

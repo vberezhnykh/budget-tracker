@@ -326,7 +326,9 @@ describe('App banking integration', () => {
     expect(await screen.findByRole('dialog', { name: 'Банки' })).toBeInTheDocument();
     expect(window.location.search).toBe('?view=budget');
     expect(window.location.hash).toBe('#anchor');
-    expect(screen.getByRole('alert')).toHaveTextContent('Банк подключён');
+    // Успех - тост с role="status": читалка объявляет его, не перебивая.
+    // Ошибки остаются role="alert" (см. ниже).
+    expect(screen.getByText(/^Банк подключён/).closest('[role="status"]')).not.toBeNull();
   });
 
   it('removes an approved proposal even when refreshing the bank queue fails', async () => {

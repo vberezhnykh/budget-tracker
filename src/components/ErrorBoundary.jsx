@@ -1,7 +1,8 @@
 import { Component } from 'react';
 import { reportClientError } from '../utils/clientErrorReporter';
+import { TriangleAlert } from 'lucide-react';
+import CenteredCardScreen from './CenteredCardScreen';
 import Button from './ui/Button';
-import Card from './ui/Card';
 
 // Catches render-time exceptions anywhere below it in the tree (the
 // carousel, the drawer, the transaction list, ...) and shows a fallback
@@ -28,19 +29,14 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 'var(--space-5)' }}>
-          <Card padding="lg" style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', textAlign: 'center' }}>
-            <h1 style={{ fontSize: '1.4rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>
-              Что-то пошло не так
-            </h1>
-            <p style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
-              Приложение столкнулось с ошибкой. Попробуйте перезагрузить страницу.
-            </p>
-            <Button block onClick={() => window.location.reload()}>
-              Перезагрузить
-            </Button>
-          </Card>
-        </div>
+        <CenteredCardScreen icon={<TriangleAlert size={26} />} title="Что-то пошло не так">
+          <p style={{ margin: 0, fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
+            Приложение столкнулось с ошибкой. Попробуйте перезагрузить страницу.
+          </p>
+          <Button block onClick={() => window.location.reload()}>
+            Перезагрузить
+          </Button>
+        </CenteredCardScreen>
       );
     }
 

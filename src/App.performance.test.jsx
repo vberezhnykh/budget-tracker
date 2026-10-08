@@ -8,7 +8,7 @@ const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }, { _id: 'cas
 const response = body => ({ ok: true, status: 200, json: async () => body });
 let transactions, request;
 const statsCalls = () => request.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?'));
-const select = name => fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}: €`) }));
+const select = name => fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}: −?€`) }));
 const skeleton = () => screen.queryByRole('status', { name: 'Загрузка итогов…' });
 // Лента счетов - только на Обзоре, поэтому к
 // Аналитике ходим туда и обратно через нижнюю навигацию.

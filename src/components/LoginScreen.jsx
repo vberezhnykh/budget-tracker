@@ -1,13 +1,18 @@
 import { useState } from 'react';
+import { CircleAlert, Wallet } from 'lucide-react';
+import CenteredCardScreen from './CenteredCardScreen'
 import Field from './ui/Field'
 import Button from './ui/Button'
-import Card from './ui/Card'
 
 // Single shared-password login screen. Shown whenever the app detects an
 // unauthenticated state (a 401 from the API) - see App.jsx. There is no
 // user account here, just one family password, so this is intentionally the
 // simplest possible form.
-function LoginScreen({ onSuccess }) {
+//
+// sessionExpired - вход показан не при первом запуске, а потому что сессия
+// закончилась посреди работы: подзаголовок тогда успокаивает, что данные на
+// месте, а не просит «продолжить» с нуля.
+function LoginScreen({ onSuccess, sessionExpired = false }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,42 +46,57 @@ function LoginScreen({ onSuccess }) {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 'var(--space-5)' }}>
-      <Card padding="lg" style={{ width: '100%', maxWidth: '360px', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
-        <h1 style={{ fontSize: '1.6rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0, textAlign: 'center' }}>
-          BudgetTracker
-        </h1>
-        <p style={{ margin: 0, textAlign: 'center', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-          Введите пароль, чтобы продолжить
-        </p>
+    <CenteredCardScreen
+      icon={<Wallet size={24} />}
+      tileTone="primary"
+      tileSize={48}
+      title="Бюджет"
+    >
+      <p style={{ margin: 0, fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+        {sessionExpired
+          ? 'Сессия закончилась. Войдите снова, данные на месте.'
+          : 'Введите пароль, чтобы продолжить'}
+      </p>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-          <label style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-label)' }}>
-            Пароль
-            <Field
-              type="password"
-              size="lg"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-              placeholder="Введите пароль"
-              aria-label="Пароль"
-              style={{ width: '100%', marginTop: 'var(--space-2)' }}
-            />
-          </label>
+      <form onSubmit={handleSubmit} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', textAlign: 'left' }}>
+        <label style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-label)' }}>
+          Пароль
+          <Field
+            type="password"
+            size="lg"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoFocus
+            placeholder="Введите пароль"
+            aria-label="Пароль"
+            aria-invalid={error ? 'true' : undefined}
+            aria-describedby={error ? 'login-error' : undefined}
+            style={{
+              width: '100%',
+              minHeight: '50px',
+              marginTop: 'var(--space-2)',
+              // Ошибка - красная рамка потолще; Field сам рисует тонкую серую.
+              ...(error ? { border: '1.5px solid var(--color-danger)' } : null),
+            }}
+          />
+        </label>
 
-          {error && (
-            <div role="alert" style={{ color: 'var(--color-negative)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-label)' }}>
-              {error}
-            </div>
-          )}
+        {error && (
+          <div
+            id="login-error"
+            role="alert"
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', color: 'var(--color-danger)', fontSize: 'var(--text-base)', fontWeight: 'var(--weight-label)' }}
+          >
+            <CircleAlert size={16} aria-hidden="true" style={{ flexShrink: 0 }} />
+            <span>{error}</span>
+          </div>
+        )}
 
-          <Button type="submit" block disabled={isSubmitting}>
-            {isSubmitting ? 'Вход...' : 'Войти'}
-          </Button>
-        </form>
-      </Card>
-    </div>
+        <Button type="submit" block disabled={isSubmitting} style={{ minHeight: '54px', fontSize: 'var(--text-lg)' }}>
+          {isSubmitting ? 'Вход…' : 'Войти'}
+        </Button>
+      </form>
+    </CenteredCardScreen>
   );
 }
 

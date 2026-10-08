@@ -306,3 +306,21 @@ describe('split group', () => {
         expect(row(container, 'split-1').firstElementChild.querySelector('button')).toBeNull();
     });
 });
+
+describe('empty list', () => {
+    it('shows the text with the optional icon and action', () => {
+        renderTransactions([], {
+            emptyText: 'Пусто',
+            emptyIcon: <svg data-testid="empty-icon" />,
+            emptyAction: <button type="button">Сбросить</button>,
+        });
+        expect(screen.getByText('Пусто')).toBeInTheDocument();
+        expect(screen.getByTestId('empty-icon')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Сбросить' })).toBeInTheDocument();
+    });
+
+    it('falls back to «Нет операций»', () => {
+        renderTransactions([]);
+        expect(screen.getByText('Нет операций')).toBeInTheDocument();
+    });
+});

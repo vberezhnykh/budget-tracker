@@ -14,7 +14,7 @@ test('account limit bars and visited analytics work with subsequent summary requ
   const skeleton = page.getByRole('status', { name: 'Загрузка итогов…' });
   const summaries = () => requested.filter(path => path === '/api/stats/dashboard').length;
   for (const [name, amount] of [['Наличные', '5,00'], ['Тинькофф', '120,00'], ['Все счета', '125,00']]) {
-    await page.getByRole('button', { name: new RegExp(`^${name}: €`) }).click();
+    await page.getByRole('button', { name: new RegExp(`^${name}: −?€`) }).click();
     await expect(page.getByRole('button', { name: `Расход: €${amount}`, exact: false })).toBeVisible();
     await expect(skeleton).toHaveCount(0);
   }
@@ -26,7 +26,7 @@ test('account limit bars and visited analytics work with subsequent summary requ
   await goTo('Аналитика');
   await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible();
   await goTo('Обзор');
-  await page.getByRole('button', { name: /^Наличные: €/ }).click();
+  await page.getByRole('button', { name: /^Наличные: −?€/ }).click();
   await goTo('Аналитика');
   await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible();
   await expect(skeleton).toHaveCount(0);
@@ -35,7 +35,7 @@ test('account limit bars and visited analytics work with subsequent summary requ
   await page.route('**/api/stats/dashboard?*', route => route.abort());
   for (const name of ['Все счета', 'Наличные']) {
     await goTo('Обзор');
-    await page.getByRole('button', { name: new RegExp(`^${name}: €`) }).click();
+    await page.getByRole('button', { name: new RegExp(`^${name}: −?€`) }).click();
     await expect(page.getByRole('button', { name: /^Расход:/ })).toBeVisible();
     await expect(skeleton).toHaveCount(0);
     await goTo('Аналитика');

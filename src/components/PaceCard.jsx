@@ -2,6 +2,7 @@ import Card from './ui/Card';
 import PaceChart from './PaceChart';
 import { formatMoney } from '../utils/money';
 import { formatDayMonth, formatMonthName } from '../utils/period';
+import { monthLocative } from '../utils/monthNames';
 import { formatRemainingSpan, getForecastVerdict } from '../utils/latePlaque';
 
 // Карточка «Темп трат»: график, две плитки «обычно» против «сейчас» и, для
@@ -66,6 +67,10 @@ export default function PaceCard({ typicalMonth, selectedMonth, monthlyLimit }) 
   const actualNow = today ? today.spent : (actualByDay[actualByDay.length - 1] ?? 0);
   const typicalNow = today ? today.typicalToDate : monthTotal;
 
+  // Идущий месяц без единой траты: плитки «0 против обычного» и прогноз
+  // «обычное - с нуля» ничего не говорят, вместо них короткое объяснение.
+  const isEmptyMonth = Boolean(today) && today.spent === 0;
+
   const forecastVerdict = today
     ? getForecastVerdict({
         forecast: today.forecast,
@@ -101,34 +106,47 @@ export default function PaceCard({ typicalMonth, selectedMonth, monthlyLimit }) 
 
       <PaceChart typicalMonth={typicalMonth} selectedMonth={selectedMonth} limit={monthlyLimit} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
-        <Tile
-          label={today ? `Обычно к ${formatDayMonth(selectedMonth, today.day)}` : 'Обычно за месяц'}
-          value={formatMoney(typicalNow)}
-        />
-        <Tile
-          label={today ? 'Сейчас' : 'Факт'}
-          value={formatMoney(actualNow)}
-          note={compareNote(actualNow, typicalNow)}
-        />
-      </div>
-
-      {today && (
-        <div style={{ marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-border-subtle)' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
-            <span style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-              Прогноз на {formatDayMonth(selectedMonth, lastDay)}
-            </span>
-            <strong data-account-value style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-strong)', whiteSpace: 'nowrap' }}>
-              ≈ {formatMoney(today.forecast, { whole: true })}
-            </strong>
+      {isEmptyMonth ? (
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <div style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-strong)' }}>
+            Трат {monthLocative(selectedMonth)} пока нет
           </div>
-          {explanation && (
-            <p data-account-value style={{ margin: 'var(--space-2) 0 0', fontSize: 'var(--text-sm)', lineHeight: 1.5, color: 'var(--color-text-muted)' }}>
-              {explanation}
-            </p>
-          )}
+          <p data-account-value style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-sm)', lineHeight: 1.5, color: 'var(--color-text-muted)' }}>
+            Прогноз появится после первых трат. Обычно за месяц уходит около {formatMoney(monthTotal, { whole: true })}, серая линия показывает, как они распределяются.
+          </p>
         </div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
+            <Tile
+              label={today ? `Обычно к ${formatDayMonth(selectedMonth, today.day)}` : 'Обычно за месяц'}
+              value={formatMoney(typicalNow)}
+            />
+            <Tile
+              label={today ? 'Сейчас' : 'Факт'}
+              value={formatMoney(actualNow)}
+              note={compareNote(actualNow, typicalNow)}
+            />
+          </div>
+
+          {today && (
+            <div style={{ marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--color-border-subtle)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+                <span style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+                  Прогноз на {formatDayMonth(selectedMonth, lastDay)}
+                </span>
+                <strong data-account-value style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-strong)', whiteSpace: 'nowrap' }}>
+                  ≈ {formatMoney(today.forecast, { whole: true })}
+                </strong>
+              </div>
+              {explanation && (
+                <p data-account-value style={{ margin: 'var(--space-2) 0 0', fontSize: 'var(--text-sm)', lineHeight: 1.5, color: 'var(--color-text-muted)' }}>
+                  {explanation}
+                </p>
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <p style={{ margin: 'var(--space-3) 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>

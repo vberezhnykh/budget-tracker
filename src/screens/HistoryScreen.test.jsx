@@ -137,9 +137,88 @@ describe('HistoryScreen', () => {
         expect(setSearchQuery).toHaveBeenLastCalledWith('');
     });
 
-    it('shows the empty-search text when nothing is found', () => {
-        renderScreen({ searchQuery: 'zzz', history: makeHistory({ transactions: {}, count: 0 }) });
-        expect(screen.getByText('Ничего не найдено')).toBeInTheDocument();
+    describe('empty search', () => {
+        const empty = { history: makeHistory({ transactions: {}, count: 0 }), searchQuery: 'zzz' };
+
+        it('shows a centered «Ничего не нашлось» without actions when no filter is active', () => {
+            renderScreen(empty);
+            expect(screen.getByText('Ничего не нашлось')).toBeInTheDocument();
+            expect(screen.getByText('По запросу «zzz» операций нет.')).toBeInTheDocument();
+            expect(screen.queryByText('Ничего не найдено')).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: /Искать/ })).not.toBeInTheDocument();
+        });
+
+        it('describes the active filters and hints at them', () => {
+            renderScreen({ ...empty, historyAccount: 'card', historyCategory: 'Еда', historyType: 'expense' });
+            expect(screen.getByText('По запросу «zzz» на счёте Карта в категории «Еда» среди расходов операций нет. Возможно, мешает фильтр.')).toBeInTheDocument();
+        });
+
+        it('offers one action per active filter and each clears only its own filter', () => {
+            const setHistoryAccount = vi.fn();
+            const setHistoryCategory = vi.fn();
+            const setHistoryType = vi.fn();
+            renderScreen({ ...empty, historyAccount: 'card', historyCategory: 'Еда', historyType: 'income', setHistoryAccount, setHistoryCategory, setHistoryType });
+
+            fireEvent.click(screen.getByRole('button', { name: 'Искать по всем счетам' }));
+            expect(setHistoryAccount).toHaveBeenLastCalledWith(null);
+            fireEvent.click(screen.getByRole('button', { name: 'Искать во всех категориях' }));
+            expect(setHistoryCategory).toHaveBeenLastCalledWith(null);
+            fireEvent.click(screen.getByRole('button', { name: 'Искать среди всех операций' }));
+            expect(setHistoryType).toHaveBeenLastCalledWith(null);
+            expect(setHistoryAccount).toHaveBeenCalledTimes(1);
+            expect(setHistoryCategory).toHaveBeenCalledTimes(1);
+            expect(setHistoryType).toHaveBeenCalledTimes(1);
+        });
+
+        it('shows only the actions of the filters that are on', () => {
+            renderScreen({ ...empty, historyType: 'income' });
+            expect(screen.getAllByRole('button', { name: /^Искать/ }).map(button => button.textContent)).toEqual(['Искать среди всех операций']);
+        });
+
+        it('does not show the empty state while loading or after an error', () => {
+            const { rerender } = renderScreen({ ...empty, history: makeHistory({ transactions: {}, loading: true }) });
+            expect(screen.queryByText('Ничего не нашлось')).not.toBeInTheDocument();
+            rerender(<HistoryScreen {...baseProps} {...empty} history={makeHistory({ transactions: {}, error: 'Сбой' })} />);
+            expect(screen.queryByText('Ничего не нашлось')).not.toBeInTheDocument();
+        });
+    });
+
+    describe('empty month', () => {
+        const emptyMonth = { history: makeHistory({ transactions: {}, count: 0 }) };
+
+        it('shows a quiet line without a reset button when no filter is active', () => {
+            renderScreen(emptyMonth);
+            expect(screen.getByText('В этом месяце нет операций')).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Сбросить фильтры' })).not.toBeInTheDocument();
+        });
+
+        it('resets account, category and type with «Сбросить фильтры»', () => {
+            const setHistoryAccount = vi.fn();
+            const setHistoryCategory = vi.fn();
+            const setHistoryType = vi.fn();
+            renderScreen({ ...emptyMonth, historyAccount: 'card', historyType: 'expense', setHistoryAccount, setHistoryCategory, setHistoryType });
+
+            fireEvent.click(screen.getByRole('button', { name: 'Сбросить фильтры' }));
+            expect(setHistoryAccount).toHaveBeenCalledWith(null);
+            expect(setHistoryCategory).toHaveBeenCalledWith(null);
+            expect(setHistoryType).toHaveBeenCalledWith(null);
+        });
+    });
+
+    it('subtracts the sync status strip from the screen height', () => {
+        const { container } = renderScreen();
+        expect(container.firstChild.getAttribute('style')).toContain('var(--status-strip-height, 0px)');
+    });
+
+    it('disables export only when the list is completely empty', () => {
+        const { rerender } = renderScreen();
+        expect(screen.getByRole('button', { name: /Экспорт/ })).toBeEnabled();
+
+        rerender(<HistoryScreen {...baseProps} history={makeHistory({ transactions: {}, count: 0 })} />);
+        expect(screen.getByRole('button', { name: /Экспорт/ })).toBeDisabled();
+
+        rerender(<HistoryScreen {...baseProps} history={makeHistory({ transactions: {}, count: 0, loading: true })} />);
+        expect(screen.getByRole('button', { name: /Экспорт/ })).toBeEnabled();
     });
 
     it('exports through the header button and shows the busy state while exporting', () => {

@@ -42,6 +42,7 @@ export default function Toast({ message, tone = 'neutral', action, onClose, bott
                 <button
                     type="button"
                     onClick={action.onClick}
+                    disabled={action.disabled}
                     style={{
                         flexShrink: 0,
                         minHeight: '44px',
@@ -55,7 +56,8 @@ export default function Toast({ message, tone = 'neutral', action, onClose, bott
                         borderRadius: 'var(--radius-md)',
                         fontSize: 'var(--text-md)',
                         fontWeight: 'var(--weight-label)',
-                        cursor: 'pointer',
+                        cursor: action.disabled ? 'not-allowed' : 'pointer',
+                        opacity: action.disabled ? 0.6 : 1,
                     }}
                 >
                     {action.label}

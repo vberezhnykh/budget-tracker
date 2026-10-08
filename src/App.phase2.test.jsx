@@ -176,11 +176,84 @@ describe('App phase 2 flows', () => {
     const dialog = screen.getByRole('dialog', { name: 'Редактировать' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Удалить операцию' }));
 
-    expect(await screen.findByText(/^В корзине/)).toBeInTheDocument();
+    expect(await screen.findByText(/^Операция в корзине/)).toBeInTheDocument();
     expect(api.state.transactions.some(transaction => transaction._id === 'expense')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Отменить' }));
     await waitFor(() => expect(api.state.transactions.some(transaction => transaction._id === 'expense')).toBe(true));
-    expect(screen.queryByText(/^В корзине/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Операция в корзине/)).not.toBeInTheDocument();
+  });
+
+  // Удаляет «Кофе утром» из Истории и возвращает тост с «Отменить», который
+  // после этого висит над нижней панелью.
+  async function deleteCoffee(api) {
+    vi.stubGlobal('fetch', api.fetch);
+    render(<App />);
+    await screen.findByTestId('accounts-row');
+    await openHistory();
+    fireEvent.click(screen.getByRole('button', { name: /Кофе утром/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Редактировать' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Удалить операцию' }));
+    return (await screen.findByRole('button', { name: 'Отменить' })).closest('[role]');
+  }
+
+  it('shows the deletion as a status toast above the bottom bar', async () => {
+    const toast = await deleteCoffee(makeApi());
+    expect(toast).toHaveTextContent('Операция в корзине');
+    expect(toast).toHaveAttribute('role', 'status');
+    expect(toast.style.bottom).toBe('88px');
+    expect(within(toast).getByRole('button', { name: 'Отменить' })).toBeEnabled();
+  });
+
+  it('counts the operations when a whole group went to the trash', async () => {
+    const api = makeApi();
+    const baseFetch = api.fetch.getMockImplementation();
+    api.fetch.mockImplementation((url, options = {}) => {
+      if (url.startsWith('/api/transactions/') && options.method === 'DELETE') {
+        return baseFetch(url, options).then(() => ok({ trashId: 'expense', count: 3 }));
+      }
+      return baseFetch(url, options);
+    });
+    await deleteCoffee(api);
+    expect(screen.getByText('В корзине операций: 3')).toBeInTheDocument();
+  });
+
+  it('turns the toast into a danger alert with the reason when the Undo request fails, and lets retry', async () => {
+    const api = makeApi();
+    const baseFetch = api.fetch.getMockImplementation();
+    let failRestore = true;
+    api.fetch.mockImplementation((url, options = {}) => {
+      if (failRestore && url === '/api/trash/expense/restore' && options.method === 'POST') {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+      }
+      return baseFetch(url, options);
+    });
+    await deleteCoffee(api);
+    fireEvent.click(screen.getByRole('button', { name: 'Отменить' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Не удалось восстановить. Попробуйте ещё раз.');
+    // Кнопка снова доступна: ошибку можно повторить.
+    failRestore = false;
+    fireEvent.click(within(alert).getByRole('button', { name: 'Отменить' }));
+    await waitFor(() => expect(api.state.transactions.some(transaction => transaction._id === 'expense')).toBe(true));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('stacks a notice above the deletion toast instead of covering it', async () => {
+    const api = makeApi();
+    const baseFetch = api.fetch.getMockImplementation();
+    api.fetch.mockImplementation((url, options = {}) => (url === '/api/logout'
+      ? Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+      : baseFetch(url, options)));
+    const undoToast = await deleteCoffee(api);
+
+    fireEvent.click(nav().getByRole('button', { name: 'Ещё' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Выйти' }));
+    const notice = await screen.findByRole('alert');
+
+    expect(notice).toHaveTextContent('Не удалось выйти. Попробуйте ещё раз.');
+    expect(undoToast).toBeInTheDocument();
+    expect(Number.parseInt(notice.style.bottom, 10)).toBe(Number.parseInt(undoToast.style.bottom, 10) + 64);
   });
 
   it('keeps a newer deletion toast when an older Undo request finishes later', async () => {
@@ -212,9 +285,9 @@ describe('App phase 2 flows', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Первый расход/ }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Редактировать' })).getByRole('button', { name: 'Удалить операцию' }));
-    await screen.findByText(/^В корзине/);
+    await screen.findByText(/^Операция в корзине/);
     fireEvent.click(screen.getByRole('button', { name: 'Отменить' }));
-    expect(screen.getByRole('button', { name: 'Восстановление...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Восстановление…' })).toBeDisabled();
 
     fireEvent.click(await screen.findByRole('button', { name: /Второй расход/ }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Редактировать' })).getByRole('button', { name: 'Удалить операцию' }));
@@ -223,7 +296,7 @@ describe('App phase 2 flows', () => {
 
     await act(async () => finishFirstUndo());
     await waitFor(() => expect(api.state.transactions.some(transaction => transaction._id === 'expense-a')).toBe(true));
-    expect(screen.getByText(/^В корзине/)).toBeInTheDocument();
+    expect(screen.getByText(/^Операция в корзине/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отменить' })).toBeInTheDocument();
   });
 

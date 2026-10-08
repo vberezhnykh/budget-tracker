@@ -1,6 +1,7 @@
+import { ChevronRight } from 'lucide-react';
 import Card from './ui/Card';
 import InlineAlert from './ui/InlineAlert';
-import { formatPeriodPhrase } from '../utils/period';
+import { formatMonthName, formatPeriodPhrase, getCurrentMonth } from '../utils/period';
 import { formatMoney } from '../utils/money';
 
 // Главная карточка Обзора: расход за период одним крупным числом, под ним
@@ -38,6 +39,61 @@ const columnAmountStyle = (text) => ({
   textOverflow: 'ellipsis',
 });
 
+// Итог прошлого месяца под полосой в начале нового: «Октябрь закрыт: €6.890
+// из €7.000» и вторая строка «Уложились, запас €110». Суммы в целых евро - это
+// справка, а не учёт. Без пригодного лимита остаётся только первая строка.
+// Есть onOpen - строка кнопка, нет - обычный блок.
+function PreviousMonthRow({ previousMonth, monthlyLimit, onOpen }) {
+  const spent = previousMonth.expense;
+  const hasLimit = Number.isFinite(monthlyLimit) && monthlyLimit > 0;
+  const isOver = hasLimit && spent > monthlyLimit;
+  const title = `${formatMonthName(previousMonth.month)} закрыт: ${formatMoney(spent, { whole: true })}${hasLimit ? ` из ${formatMoney(monthlyLimit, { whole: true })}` : ''}`;
+  const subtitle = hasLimit
+    ? (isOver
+      ? `Лимит превышен на ${formatMoney(spent - monthlyLimit, { whole: true })}`
+      : `Уложились, запас ${formatMoney(monthlyLimit - spent, { whole: true })}`)
+    : null;
+
+  const content = (
+    <>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-0-5)', minWidth: 0, flex: 1 }}>
+        <span data-account-value style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-main)' }}>
+          {title}
+        </span>
+        {subtitle && (
+          <span data-account-value style={{ fontSize: 'var(--text-sm)', color: isOver ? 'var(--color-negative)' : 'var(--color-text-muted)' }}>
+            {subtitle}
+          </span>
+        )}
+      </span>
+      {onOpen && <ChevronRight size={18} aria-hidden="true" style={{ flexShrink: 0, color: 'var(--color-text-muted)' }} />}
+    </>
+  );
+
+  const rowStyle = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 'var(--space-3)',
+    width: '100%',
+    padding: 'var(--space-3)',
+    borderRadius: 'var(--radius-md)',
+    background: 'var(--color-surface-inset)',
+    textAlign: 'left',
+  };
+
+  if (!onOpen) return <div data-testid="previous-month-row" style={rowStyle}>{content}</div>;
+  return (
+    <button
+      type="button"
+      data-testid="previous-month-row"
+      onClick={() => onOpen(previousMonth.month)}
+      style={{ ...bareButton, ...rowStyle }}
+    >
+      {content}
+    </button>
+  );
+}
+
 export default function OverviewHero({
   timeRange,
   selectedMonth,
@@ -48,6 +104,12 @@ export default function OverviewHero({
   // Плашка конца месяца ({ title, text, tone }) или null - решает
   // utils/latePlaque, здесь она только рисуется.
   plaque = null,
+  // Прошлый месяц для строки «закрыт» ({ month, expense } с положительным
+  // расходом) или null; показывается только в начале нового месяца.
+  previousMonth = null,
+  // Нажатие на эту строку: onOpenPreviousMonth('2026-10'). Нет обработчика -
+  // строка не кнопка.
+  onOpenPreviousMonth,
   // Открывает Историю с фильтром: onOpenHistory('income' | 'expense').
   onOpenHistory,
 }) {
@@ -68,6 +130,9 @@ export default function OverviewHero({
   const percent = Number.isFinite(ratio) ? Math.round(ratio * 100) : 0;
   const barWidth = Number.isFinite(ratio) ? Math.min(ratio * 100, 100) : 0;
   const limitDelta = withLimit ? Math.abs(monthlyLimit - expenseAbs) : 0;
+  // Месяц только начался: идущий месяц, трат ещё нет. Сумма тогда приглушена,
+  // а вместо остатка и процентов - фраза, что весь лимит впереди.
+  const isFreshMonth = timeRange === 'month' && selectedMonth === getCurrentMonth() && expenseAbs === 0;
   const limitText = withLimit ? `€${monthlyLimit.toLocaleString('de-DE')}` : '';
 
   // Для года фраза периода - просто «2026», с «годом» читается как в макете.
@@ -103,7 +168,7 @@ export default function OverviewHero({
                 fontSize: expenseText.length > 10 ? 'calc(var(--text-display) * 0.75)' : 'var(--text-display)',
                 fontWeight: 'var(--weight-strong)',
                 lineHeight: 1.1,
-                color: 'var(--color-text-main)',
+                color: isFreshMonth ? 'var(--color-text-muted)' : 'var(--color-text-main)',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -142,26 +207,36 @@ export default function OverviewHero({
               }}
             />
           </div>
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 'var(--space-2)',
-            marginTop: 'var(--space-2)',
-            fontSize: 'var(--text-base)',
-            color: 'var(--color-text-muted)',
-          }}>
-            <span
-              data-account-value
-              style={{ whiteSpace: 'nowrap', color: isOverLimit ? 'var(--color-negative)' : undefined }}
-            >
-              {isOverLimit ? 'сверх лимита ' : 'осталось '}
-              <strong style={{ fontWeight: 'var(--weight-strong)', color: isOverLimit ? 'inherit' : 'var(--color-text-main)' }}>
-                {formatMoney(limitDelta)}
-              </strong>
-            </span>
-            <span data-account-value style={{ whiteSpace: 'nowrap' }}>{percent}%</span>
-          </div>
+          {isFreshMonth ? (
+            <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+              Месяц только начался, весь лимит впереди
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              gap: 'var(--space-2)',
+              marginTop: 'var(--space-2)',
+              fontSize: 'var(--text-base)',
+              color: 'var(--color-text-muted)',
+            }}>
+              <span
+                data-account-value
+                style={{ whiteSpace: 'nowrap', color: isOverLimit ? 'var(--color-negative)' : undefined }}
+              >
+                {isOverLimit ? 'сверх лимита ' : 'осталось '}
+                <strong style={{ fontWeight: 'var(--weight-strong)', color: isOverLimit ? 'inherit' : 'var(--color-text-main)' }}>
+                  {formatMoney(limitDelta)}
+                </strong>
+              </span>
+              <span data-account-value style={{ whiteSpace: 'nowrap' }}>{percent}%</span>
+            </div>
+          )}
         </div>
+      )}
+
+      {isFreshMonth && previousMonth && (
+        <PreviousMonthRow previousMonth={previousMonth} monthlyLimit={monthlyLimit} onOpen={onOpenPreviousMonth} />
       )}
 
       {plaque && (

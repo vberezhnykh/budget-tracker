@@ -474,7 +474,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // The fixtures only carry transactions from an earlier month, so the
     // current month is genuinely empty - the tab must say so rather than
     // render nothing at all.
-    await expect(page.getByText('За выбранный период трат нет')).toBeVisible();
+    await expect(page.getByText(/Распределение по категориям появится/)).toBeVisible();
 
     // Widening the range from the chip fills the same tab with category bars.
     await page.getByRole('button', { name: /^Период:/ }).click();

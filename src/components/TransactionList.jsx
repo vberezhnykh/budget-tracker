@@ -157,13 +157,30 @@ export default function TransactionList({
     getAccountDisplay,
     formatDate,
     emptyText = 'Нет операций',
+    // Необязательные: маленькая иконка над строкой и действие под ней
+    // (например, «Сбросить фильтры» в пустом месяце Истории).
+    emptyIcon = null,
+    emptyAction = null,
 }) {
     const dates = Object.keys(groups || {}).sort((a, b) => new Date(b) - new Date(a));
 
     if (dates.length === 0) {
         return (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                {emptyText}
+            <div
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    padding: 'var(--space-8) var(--space-4)',
+                    textAlign: 'center',
+                    fontSize: 'var(--text-md)',
+                    color: 'var(--color-text-muted)',
+                }}
+            >
+                {emptyIcon}
+                <div>{emptyText}</div>
+                {emptyAction}
             </div>
         );
     }

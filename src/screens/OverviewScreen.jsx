@@ -1,12 +1,14 @@
-import { Check } from 'lucide-react';
+import { Check, List } from 'lucide-react';
 import AccountStrip from '../components/AccountStrip';
 import OverviewHero from '../components/OverviewHero';
 import PeriodPicker from '../components/PeriodPicker';
 import TransactionList from '../components/TransactionList';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import EmptyState from '../components/ui/EmptyState';
 import { ListSkeleton } from '../components/ui/Skeleton';
 import { getLatePlaque } from '../utils/latePlaque';
+import { isMonthInHistory, getPreviousMonth } from '../utils/monthNames';
 import { getCurrentMonth } from '../utils/period';
 import useRecentTransactions from '../utils/useRecentTransactions';
 import SummaryFrame from './SummaryFrame';
@@ -62,6 +64,11 @@ export default function OverviewScreen({
   onChangePeriod,
   onOpenHistory,
   onOpenAllHistory,
+  // Необязательные: нет обработчика - соответствующей кнопки на экране нет.
+  // onOpenPreviousMonth(prevMonth) - строка «Октябрь закрыт» в начале месяца;
+  // onAddExpense() - «Добавить расход» в пустом списке операций.
+  onOpenPreviousMonth,
+  onAddExpense,
   // Последние операции: запрос и счётчик обновления - те же, что у Истории
   request,
   historyRevision,
@@ -87,6 +94,14 @@ export default function OverviewScreen({
     limit: monthlyLimit,
     typicalMonth,
   });
+
+  // Итог прошлого месяца для пустого начала нового: только если в прошлом
+  // месяце были траты (и он не раньше начала истории).
+  const prevMonth = getPreviousMonth(selectedMonth);
+  const prevExpense = timeRange === 'month' && isMonthInHistory(prevMonth)
+    ? Math.abs((monthlyTotals[prevMonth] || ZERO_TOTALS).expense)
+    : 0;
+  const previousMonth = prevExpense > 0 ? { month: prevMonth, expense: prevExpense } : null;
 
   const hasRecent = Object.keys(recent.groups).length > 0;
 
@@ -118,6 +133,8 @@ export default function OverviewScreen({
           expense={totals.expense}
           monthlyLimit={monthlyLimit}
           plaque={plaque}
+          previousMonth={previousMonth}
+          onOpenPreviousMonth={onOpenPreviousMonth}
           onOpenHistory={onOpenHistory}
         />
       </SummaryFrame>
@@ -152,9 +169,17 @@ export default function OverviewScreen({
               </div>
             )}
             {!recent.loading && !recent.error && !hasRecent && (
-              <div style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-                Операций пока нет
-              </div>
+              <EmptyState
+                icon={<List size={24} />}
+                title="Операций пока нет"
+                description="Новые расходы и доходы появятся здесь"
+                actions={(
+                  <>
+                    {onAddExpense && <Button size="sm" onClick={onAddExpense}>Добавить расход</Button>}
+                    <Button size="sm" tone="secondary" onClick={onOpenAllHistory}>Открыть историю</Button>
+                  </>
+                )}
+              />
             )}
           </Card>
         )}

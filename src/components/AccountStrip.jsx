@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import AccountIcon from './AccountIcon';
+import { formatMoney } from '../utils/money';
 import './accountThemes.css';
 import './AccountStrip.css';
 
@@ -23,7 +24,8 @@ export default function AccountStrip({ slides, selectedAccount, onSelect }) {
     <div ref={rowRef} data-testid="accounts-row" className="account-strip no-scrollbar">
       {slides.map((slide) => {
         const isActive = slide.filter === selectedAccount;
-        const balanceText = `€${slide.amount.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`;
+        // Минус только у ушедшего в минус баланса: «−€6.890,00», а не «€-6.890,00».
+        const balanceText = formatMoney(slide.amount, { sign: slide.amount < 0 ? 'minus' : 'none' });
         return (
           <button
             key={slide.key}

@@ -89,7 +89,7 @@ describe('AnalyticsView Component', () => {
             render(<AnalyticsView {...baseProps} typicalMonth={typicalMonth} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
 
             expect(screen.getByRole('heading', { name: 'Темп трат' })).toBeInTheDocument();
-            expect(screen.getByText('За выбранный период трат нет')).toBeInTheDocument();
+            expect(screen.getByRole('heading', { name: 'Категории' })).toBeInTheDocument();
         });
     });
 
@@ -116,8 +116,20 @@ describe('AnalyticsView Component', () => {
             expect(onOpenCategory).toHaveBeenCalledWith('Fun');
         });
 
-        it('shows an empty-state card with the exact expected text when there is no spending', () => {
-            render(<AnalyticsView {...baseProps} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
+        it('shows the empty-categories card with a way to the previous month when a month has no spending', () => {
+            const onSelectMonth = vi.fn();
+            render(<AnalyticsView {...baseProps} onSelectMonth={onSelectMonth} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
+
+            expect(screen.getByRole('heading', { name: 'Категории' })).toBeInTheDocument();
+            expect(screen.getByText('Распределение по категориям появится, когда в январе будут расходы.')).toBeInTheDocument();
+            expect(screen.queryByText('За выбранный период трат нет')).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Посмотреть декабрь' }));
+            expect(onSelectMonth).toHaveBeenCalledWith('2025-12');
+        });
+
+        it.each(['year', 'lifetime'])('keeps the simple text when %s has no spending', (timeRange) => {
+            render(<AnalyticsView {...baseProps} timeRange={timeRange} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
 
             expect(screen.getByText('За выбранный период трат нет')).toBeInTheDocument();
             expect(screen.queryByRole('heading', { name: 'Категории' })).not.toBeInTheDocument();

@@ -1,12 +1,14 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { X } from 'lucide-react'
+import { CloudOff } from 'lucide-react'
 import AddTransactionForm from './components/AddTransactionForm'
 import LoginScreen from './components/LoginScreen'
-import BottomNav, { NAV_OFFSET } from './components/BottomNav'
+import BottomNav, { NAV_HEIGHT, NAV_OFFSET } from './components/BottomNav'
+import CenteredCardScreen from './components/CenteredCardScreen'
 import { AppSkeleton } from './components/ui/Skeleton'
 import BankingSheet from './components/BankingSheet'
 import Button from './components/ui/Button'
-import Card from './components/ui/Card'
+import InlineAlert from './components/ui/InlineAlert'
+import Toast from './components/ui/Toast'
 import OverviewScreen from './screens/OverviewScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import AnalyticsScreen from './screens/AnalyticsScreen'
@@ -38,6 +40,13 @@ const DEFAULT_MONTHLY_LIMIT = 7000;
 const EMPTY_TOTALS = { income: 0, expense: 0, categoryTotals: {} };
 const EMPTY_BALANCES = { total: 0, held: 0, byAccount: {} };
 const EMPTY_COMPARISON = { expense: 0, prevMonthName: '', prevMonthDayLabel: '' };
+// Тост стоит над нижней панелью: её высота, минимальный зазор под ней (8px,
+// см. NAV_BOTTOM_GAP в BottomNav) и ещё 16px воздуха. Безопасную зону iPhone
+// не прибавляем: Toast принимает число, а env() в px заранее не посчитать.
+const TOAST_BOTTOM = NAV_HEIGHT + 8 + 16;
+// Второй тост (сообщение об ошибке над тостом «Операция в корзине») встаёт
+// выше первого на его высоту (52px) и зазор.
+const TOAST_STACK_STEP = 64;
 
 class DataLoadError extends Error {
   constructor(message) {
@@ -52,6 +61,15 @@ function App() {
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [initialLoadError, setInitialLoadError] = useState(null);
+  // Время последней неудачной первой загрузки (подпись «Последняя попытка в…»)
+  // и признак того, что «Повторить» сейчас в пути: экран ошибки при этом не
+  // исчезает, кнопка меняется на «Повтор…».
+  const [lastAttemptAt, setLastAttemptAt] = useState(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  // Экран входа показан потому, что сессия закончилась посреди работы (401
+  // после того, как данные уже были), а не потому, что приложение только что
+  // открыли. От этого зависит подзаголовок входа.
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [syncWarning, setSyncWarning] = useState(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastSuccessfulSync, setLastSuccessfulSync] = useState(null);
@@ -113,7 +131,7 @@ function App() {
   // resolves (see loadData below).
   const [monthlyLimit, setMonthlyLimit] = useState(DEFAULT_MONTHLY_LIMIT);
 
-  // In-app notice banner, replacing blocking alert()s for errors raised by
+  // In-app notice toast, replacing blocking alert()s for errors raised by
   // account save/delete/reorder. { type: 'error' | 'success', message } or
   // null when nothing is showing. noticeTimeoutRef holds the auto-dismiss
   // timer so a fresh notice (or unmount) can clear a still-pending one -
@@ -132,6 +150,32 @@ function App() {
       if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
     };
+  }, []);
+
+  // Высота полосы «не удалось обновить» вместе с отступом под ней. Экраны
+  // (История считает свою высоту от окна) вычитают её через переменную
+  // --status-strip-height на <main>, поэтому полосу меряем сами: она
+  // переносится на узком экране и меняет высоту. Полоса то появляется, то
+  // исчезает, так что мерим через callback-ref, а не useLayoutEffect с
+  // фиксированным узлом. ResizeObserver есть не везде (jsdom) - тогда мерим
+  // один раз при появлении.
+  const [statusStripHeight, setStatusStripHeight] = useState(0);
+  const statusStripObserverRef = useRef(null);
+  const statusStripRef = useCallback((node) => {
+    if (statusStripObserverRef.current) {
+      statusStripObserverRef.current.disconnect();
+      statusStripObserverRef.current = null;
+    }
+    if (!node) {
+      setStatusStripHeight(0);
+      return;
+    }
+    const measure = () => setStatusStripHeight(Math.ceil(node.getBoundingClientRect().height));
+    measure();
+    if (typeof ResizeObserver !== 'undefined') {
+      statusStripObserverRef.current = new ResizeObserver(measure);
+      statusStripObserverRef.current.observe(node);
+    }
   }, []);
 
   const onAccountDragEnd = (event) => {
@@ -213,15 +257,22 @@ function App() {
     setLastSuccessfulSync(null);
     setSyncWarning(null);
     setInitialLoadError(null);
+    setLastAttemptAt(null);
     hasSnapshotRef.current = false;
     historyRefreshNeededRef.current = false;
   };
 
-  const markUnauthenticated = () => {
+  // expired: сессия закончилась сама (401), а не пользователь вышел кнопкой.
+  // «Закончилась» только если данные уже были загружены: 401 на самой первой
+  // загрузке - это обычный первый вход, а не потеря сессии. hasSnapshotRef
+  // читаем до clearPrivateData, который его сбрасывает.
+  const markUnauthenticated = ({ expired = hasSnapshotRef.current } = {}) => {
     sessionGenerationRef.current += 1;
     loadGenerationRef.current += 1;
     clearPrivateData();
+    setSessionExpired(expired);
     setIsRefreshing(false);
+    setIsRetrying(false);
     setIsLoading(false);
     setIsAuthenticated(false);
   };
@@ -273,7 +324,7 @@ function App() {
 
   // Summaries contain complete totals, never calculated from a partial page.
   // Loading the first history page does not block the dashboard.
-  const loadData = async ({ initial = !hasSnapshotRef.current, onlyStats = false } = {}) => {
+  const loadData = async ({ initial = !hasSnapshotRef.current, onlyStats = false, retry = false } = {}) => {
     // A filter change during a post-write refresh must still finish the full
     // snapshot, rather than cancel it with a stats-only read.
     onlyStats = onlyStats && !historyRefreshNeededRef.current;
@@ -300,7 +351,11 @@ function App() {
       return true;
     }
 
-    if (initial) {
+    if (retry) {
+      // Повтор с экрана ошибки: сам экран остаётся (кнопка «Повтор…»), а не
+      // подменяется скелетоном и не мигает.
+      setIsRetrying(true);
+    } else if (initial) {
       setIsLoading(true);
       setInitialLoadError(null);
     } else {
@@ -367,6 +422,7 @@ function App() {
         setSyncWarning(message);
       } else {
         setInitialLoadError(message);
+        setLastAttemptAt(new Date());
       }
       return false;
     } finally {
@@ -376,6 +432,7 @@ function App() {
       if (isCurrent()) {
         setIsLoading(false);
         setIsRefreshing(false);
+        setIsRetrying(false);
       }
     }
   };
@@ -384,6 +441,7 @@ function App() {
     sessionGenerationRef.current += 1;
     loadGenerationRef.current += 1;
     clearPrivateData();
+    setSessionExpired(false);
     setIsAuthenticated(null);
     loadData({ initial: true });
   };
@@ -802,6 +860,9 @@ function App() {
         if (candidates.length === 1) {
           const candidate = candidates[0];
           const description = `${candidate.title || 'Операция'} · ${candidate.amount} EUR · ${String(candidate.date || '').slice(0, 10)}`;
+          // Оба window.confirm ниже оставлены намеренно: банковский модуль выключен
+          // для владельца, диалоги заменим вместе с возвратом банковского
+          // интерфейса.
           if (window.confirm(`Похожая операция уже загружена из банка: ${description}. Объединить с ней, сохранив введённые данные?`)) {
             extra = { bankMatchEntryId: candidate.entryId, bankTransactionVersion: candidate.version };
           }
@@ -1179,7 +1240,8 @@ function App() {
       const res = await fetch('/api/logout', { method: 'POST' });
       if (session !== sessionGenerationRef.current) return;
       if (res.ok) {
-        markUnauthenticated();
+        // Вышли сами: «сессия закончилась» тут было бы неправдой.
+        markUnauthenticated({ expired: false });
       } else {
         showNotice('Не удалось выйти. Попробуйте ещё раз.');
       }
@@ -1275,22 +1337,29 @@ function App() {
   // session (expired/cleared cookie) must return the user to the login
   // screen even if data from before is still sitting in state.
   if (isAuthenticated === false) {
-    return <LoginScreen onSuccess={beginAuthenticatedSession} />;
+    return <LoginScreen onSuccess={beginAuthenticatedSession} sessionExpired={sessionExpired} />;
   }
 
   if (initialLoadError && !hasSnapshotRef.current) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', padding: 'var(--space-5)' }}>
-        <Card padding="lg" role="alert" style={{ width: '100%', maxWidth: '380px', textAlign: 'center' }}>
-          <h1 style={{ margin: 0, fontSize: 'var(--text-3xl)', color: 'var(--color-text-main)' }}>Не удалось загрузить данные</h1>
-          <p style={{ margin: 'var(--space-3) 0 var(--space-5)', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
-            {initialLoadError}. Проверьте подключение и попробуйте ещё раз.
+      <CenteredCardScreen role="alert" icon={<CloudOff size={26} />} title="Не удалось загрузить данные">
+        <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
+          {initialLoadError}. Проверьте интернет и попробуйте ещё раз. Операции хранятся на сервере и никуда не пропали.
+        </p>
+        <Button
+          block
+          disabled={isRetrying}
+          onClick={() => loadData({ initial: true, retry: true })}
+          style={{ minHeight: '54px', fontSize: 'var(--text-lg)' }}
+        >
+          {isRetrying ? 'Повтор…' : 'Повторить'}
+        </Button>
+        {lastAttemptAt && (
+          <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>
+            Последняя попытка в {lastAttemptAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
           </p>
-          <Button onClick={() => loadData({ initial: true })}>
-            Повторить
-          </Button>
-        </Card>
-      </div>
+        )}
+      </CenteredCardScreen>
     );
   }
 
@@ -1298,117 +1367,64 @@ function App() {
 
   return (
     <div className="layout-container">
+      {/* Сообщение об ошибке или успехе. Если рядом висит тост «Операция в
+          корзине», сообщение встаёт над ним, а не поверх. */}
       {notice && (
-        <Card
-          role="alert"
-          padding="md"
-          style={{
-            position: 'fixed',
-            top: '16px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 1100,
-            width: 'calc(100% - 40px)',
-            maxWidth: '420px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            borderLeft: `4px solid ${notice.type === 'success' ? 'var(--color-success)' : 'var(--color-negative)'}`,
+        <Toast
+          message={notice.message}
+          tone={notice.type === 'success' ? 'neutral' : 'danger'}
+          bottomOffset={TOAST_BOTTOM + (undoDeletion ? TOAST_STACK_STEP : 0)}
+          onClose={() => {
+            if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
+            setNotice(null);
           }}
-        >
-          <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-label)', color: 'var(--color-text-main)' }}>
-            {notice.message}
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
-              setNotice(null);
-            }}
-            aria-label="Закрыть"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: 'var(--text-2xl)',
-              lineHeight: 1,
-              color: 'var(--color-text-muted)',
-              flexShrink: 0,
-              padding: 0,
-            }}
-          >
-            <X size={18} />
-          </button>
-        </Card>
+        />
       )}
       {undoDeletion && (
-        <Card
-          role={undoDeletion.error ? 'alert' : 'status'}
-          padding="sm"
-          style={{
-            position: 'fixed',
-            left: '50%',
-            bottom: `calc(${NAV_OFFSET} + var(--space-4))`,
-            transform: 'translateX(-50%)',
-            zIndex: 950,
-            width: 'calc(100% - 40px)',
-            maxWidth: '420px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            borderLeft: `4px solid ${undoDeletion.error ? 'var(--color-negative)' : 'var(--color-primary)'}`,
+        <Toast
+          message={undoDeletion.error || (undoDeletion.count > 1 ? `В корзине операций: ${undoDeletion.count}` : 'Операция в корзине')}
+          tone={undoDeletion.error ? 'danger' : 'neutral'}
+          bottomOffset={TOAST_BOTTOM}
+          action={{
+            label: undoDeletion.pending ? 'Восстановление…' : 'Отменить',
+            onClick: handleUndoDeletion,
+            disabled: undoDeletion.pending,
           }}
-        >
-          <span style={{ color: undoDeletion.error ? 'var(--color-negative)' : 'var(--color-text-main)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)' }}>
-            {undoDeletion.error || `В корзине.${undoDeletion.count > 1 ? ` Операций: ${undoDeletion.count}.` : ''}`}
-          </span>
-          <Button tone="soft" size="sm" onClick={handleUndoDeletion} disabled={undoDeletion.pending} style={{ flexShrink: 0 }}>
-            {undoDeletion.pending ? 'Восстановление...' : 'Отменить'}
-          </Button>
-        </Card>
-      )}
-      {syncWarning && (
-        <Card
-          role="alert"
-          padding="sm"
-          style={{
-            marginBottom: 'var(--space-3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 'var(--space-3)',
-            borderLeft: '4px solid var(--color-negative)',
-          }}
-        >
-          <div>
-            <div style={{ color: 'var(--color-text-main)', fontWeight: 'var(--weight-strong)', fontSize: 'var(--text-base)' }}>
-              Не удалось обновить данные
-            </div>
-            <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-1)' }}>
-              Показана синхронизация: {lastSyncLabel}. {syncWarning}
-            </div>
-          </div>
-          <Button
-            size="sm"
-            disabled={isRefreshing}
-            onClick={() => loadData({ initial: false })}
-            style={{ flexShrink: 0 }}
-          >
-            {isRefreshing ? 'Обновление...' : 'Повторить'}
-          </Button>
-        </Card>
+        />
       )}
       {/* Ровно один экран за раз. Состояние и обработчики остаются здесь, экраны
           получают их пропсами. Внизу страницы - запас под нижнюю навигацию
           (она fixed и из потока выпала); у Истории запаса нет, потому что её
           высота уже посчитана под панель и страница на этой вкладке не
           листается. */}
-      <main style={{ paddingBottom: screen === 'history' ? 0 : `calc(${NAV_OFFSET} + var(--space-4))` }}>
+      <main style={{
+        paddingBottom: screen === 'history' ? 0 : `calc(${NAV_OFFSET} + var(--space-4))`,
+        '--status-strip-height': `${syncWarning ? statusStripHeight : 0}px`,
+      }}>
+        {/* Данные загружены, но обновить не вышло: тонкая полоса на любом
+            экране, без красной карточки. Отступ под ней сделан padding, а не
+            margin, чтобы он входил в измеренную высоту. */}
+        {syncWarning && (
+          <div ref={statusStripRef} style={{ paddingBottom: 'var(--space-3)' }}>
+            <InlineAlert
+              tone="warning"
+              action={{
+                label: isRefreshing ? 'Обновление…' : 'Повторить',
+                disabled: isRefreshing,
+                onClick: () => loadData({ initial: false }),
+              }}
+            >
+              {lastSyncLabel
+                ? `Не удалось обновить. Показаны данные на ${lastSyncLabel}`
+                : 'Не удалось обновить.'}
+            </InlineAlert>
+          </div>
+        )}
         {screen === 'overview' && (
           <OverviewScreen
-            syncStatus={syncStatus}
+            // При неудачном обновлении о свежести данных говорит строка
+            // сверху, и галочка «Обновлено» рядом с ней противоречила бы ей.
+            syncStatus={syncWarning ? null : syncStatus}
             slides={slides}
             selectedAccount={selectedAccount}
             onSelectAccount={handleSelectAccount}
@@ -1423,6 +1439,8 @@ function App() {
             onChangePeriod={handlePeriodChange}
             onOpenHistory={openHistoryOfType}
             onOpenAllHistory={() => setScreen('history')}
+            onOpenPreviousMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
+            onAddExpense={() => openAddModal('expense')}
             request={apiFetch}
             historyRevision={historyRevision}
             openEditModal={openEditModal}

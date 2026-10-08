@@ -20,6 +20,16 @@ describe('Toast', () => {
         expect(onClick).toHaveBeenCalledTimes(1);
     });
 
+    it('disables the action while it is busy', () => {
+        const onClick = vi.fn();
+        render(<Toast message="Операция в корзине" action={{ label: 'Восстановление…', onClick, disabled: true }} />);
+
+        const button = screen.getByRole('button', { name: 'Восстановление…' });
+        expect(button).toBeDisabled();
+        fireEvent.click(button);
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
     it('shows a labelled close button only when onClose is given', () => {
         const onClose = vi.fn();
         const { rerender } = render(<Toast message="Готово" />);

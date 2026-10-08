@@ -4,9 +4,11 @@ import HistoryTimeline from '../components/HistoryTimeline';
 import { NAV_OFFSET } from '../components/BottomNav';
 import Field from '../components/ui/Field';
 import Button from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
 import Chip from '../components/ui/Chip';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import { describeEmptySearch, hasActiveFilters } from '../utils/historyEmpty';
 
 // Вкладка «История». Раньше это была шторка, выезжавшая снизу; теперь обычный
 // экран, и от шторки остался только её список со всей механикой прокрутки.
@@ -159,6 +161,20 @@ export default function HistoryScreen({
   const toggleCategory = name => setHistoryCategory(historyCategory === name ? null : name);
   const isIncome = historyType === 'income';
 
+  const searching = Boolean(searchQuery.trim());
+  const filtersActive = hasActiveFilters({ account: historyAccount, category: historyCategory, type: historyType });
+  const resetFilters = () => {
+    setHistoryAccount(null);
+    setHistoryCategory(null);
+    setHistoryType(null);
+  };
+  const rowsLoaded = Object.keys(groups || {}).length > 0;
+  // Список пуст целиком: ничего не загружено и ничего не грузится. Тогда
+  // выгружать нечего, а поиск без результатов показывает своё пустое состояние.
+  const listEmpty = !rowsLoaded && !historyLoading;
+  const searchEmpty = searching && listEmpty && !historyError;
+  const accountName = accounts.find(account => account._id === historyAccount)?.name;
+
   return (
     <div
       style={{
@@ -167,7 +183,9 @@ export default function HistoryScreen({
         // Экран минус нижняя панель минус отступы layout-container сверху и
         // снизу. dvh, а не vh: в мобильном Safari vh считается по большому
         // окну (адресная строка убрана) и список уехал бы под панель.
-        height: `calc(100dvh - ${NAV_OFFSET} - 2 * var(--space-5))`,
+        // Полоса состояния синхронизации (если App её показывает) занимает
+        // --status-strip-height над экранами; без неё переменная равна 0.
+        height: `calc(100dvh - ${NAV_OFFSET} - 2 * var(--space-5) - var(--status-strip-height, 0px))`,
         minHeight: 0,
       }}
     >
@@ -175,7 +193,7 @@ export default function HistoryScreen({
         <ScreenHeader
           title={searchQuery ? `Результаты поиска (${history.count})` : 'История'}
           actions={(
-            <Button tone="secondary" size="sm" onClick={exportToCSV} disabled={isExporting}>
+            <Button tone="secondary" size="sm" onClick={exportToCSV} disabled={isExporting || listEmpty}>
               <Download size={16} strokeWidth={1.8} aria-hidden="true" /> {isExporting ? 'Экспорт…' : 'Экспорт'}
             </Button>
           )}
@@ -287,11 +305,30 @@ export default function HistoryScreen({
             </Button>
             {historyError && historyDirection === 'newer' && <div role="alert">{historyError}</div>}
           </div>}
-          {((!historyLoading && !historyError) || Object.keys(groups || {}).length > 0) && <HistoryTimeline
+          {searchEmpty && (
+            <EmptyState
+              icon={<Search size={24} strokeWidth={1.8} aria-hidden="true" />}
+              title="Ничего не нашлось"
+              description={describeEmptySearch({ query: searchQuery, accountName, category: historyCategory, type: historyType })}
+              actions={filtersActive ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', width: '100%', minWidth: '240px' }}>
+                  {[
+                    historyAccount && ['Искать по всем счетам', () => setHistoryAccount(null)],
+                    historyCategory && ['Искать во всех категориях', () => setHistoryCategory(null)],
+                    historyType && ['Искать среди всех операций', () => setHistoryType(null)],
+                  ].filter(Boolean).map(([label, onClick], index) => (
+                    <Button key={label} block tone={index === 0 ? 'primary' : 'secondary'} onClick={onClick}>{label}</Button>
+                  ))}
+                </div>
+              ) : null}
+            />
+          )}
+          {!searchEmpty && ((!historyLoading && !historyError) || rowsLoaded) && <HistoryTimeline
             groups={groups}
             initialMonth={initialMonth}
             onSelectMonth={selectMonth}
-            searching={Boolean(searchQuery.trim())}
+            searching={searching}
+            onResetFilters={filtersActive ? resetFilters : undefined}
             emptyText={searchQuery ? 'Ничего не найдено' : 'Нет операций'}
             selectedCategory={historyCategory}
             toggleCategoryFilter={toggleCategory}

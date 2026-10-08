@@ -160,4 +160,35 @@ describe('PaceCard', () => {
             expect(screen.getByText('«Обычно» — медиана по 4 прошлым месяцам, ноябрь 2025 — февраль 2026')).toBeInTheDocument();
         });
     });
+
+    describe('current month without spending', () => {
+        const empty = () => monthInProgress({ day: 8, spent: 0, forecast: 400 }, { actualByDay: Array(8).fill(0) });
+
+        it('keeps the chart and the caption but replaces tiles and forecast with an explanation', () => {
+            render(<PaceCard typicalMonth={empty()} selectedMonth="2026-11" monthlyLimit={7000} />);
+
+            expect(screen.getByRole('img')).toBeInTheDocument();
+            expect(screen.getByText('Трат в ноябре пока нет')).toBeInTheDocument();
+            expect(screen.getByText(/^Прогноз появится после первых трат\. Обычно за месяц уходит около €400, серая линия/)).toBeInTheDocument();
+            expect(screen.getByText(/^«Обычно» — медиана по 6 прошлым месяцам/)).toBeInTheDocument();
+            expect(screen.queryByText('Сейчас')).not.toBeInTheDocument();
+            expect(screen.queryByText(/^Обычно к /)).not.toBeInTheDocument();
+            expect(screen.queryByText(/^Прогноз на /)).not.toBeInTheDocument();
+        });
+
+        it('takes the typical month total in whole euros', () => {
+            const typicalMonth = { ...empty(), monthTotal: 6890.6 };
+            render(<PaceCard typicalMonth={typicalMonth} selectedMonth="2026-05" monthlyLimit={7000} />);
+
+            expect(screen.getByText('Трат в мае пока нет')).toBeInTheDocument();
+            expect(screen.getByText(/уходит около €6\.891,/)).toBeInTheDocument();
+        });
+
+        it('still shows tiles and forecast as soon as something is spent', () => {
+            render(<PaceCard typicalMonth={monthInProgress({ spent: 0.01 })} selectedMonth="2026-10" monthlyLimit={7000} />);
+
+            expect(screen.queryByText(/пока нет/)).not.toBeInTheDocument();
+            expect(screen.getByText('Сейчас')).toBeInTheDocument();
+        });
+    });
 });

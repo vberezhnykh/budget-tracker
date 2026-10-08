@@ -40,6 +40,18 @@ describe('ErrorBoundary Component', () => {
         expect(screen.getByRole('button', { name: 'Перезагрузить' })).toBeInTheDocument();
     });
 
+    it('shows the fallback as a titled card with the explanation and a full-width reload button', () => {
+        render(
+            <ErrorBoundary>
+                <Bomb />
+            </ErrorBoundary>
+        );
+
+        expect(screen.getByRole('heading', { level: 1, name: 'Что-то пошло не так' })).toBeInTheDocument();
+        expect(screen.getByText('Приложение столкнулось с ошибкой. Попробуйте перезагрузить страницу.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Перезагрузить' }).style.width).toBe('100%');
+    });
+
     it('logs that a render error was caught without copying the stack', () => {
         render(
             <ErrorBoundary>

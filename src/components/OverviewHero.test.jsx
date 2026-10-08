@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import OverviewHero from './OverviewHero';
 
 const monthProps = {
@@ -128,5 +128,95 @@ describe('OverviewHero history links', () => {
             expect(button).not.toHaveAttribute('aria-pressed');
         }
         expect(screen.queryByText(/список отфильтрован/)).not.toBeInTheDocument();
+    });
+});
+
+describe('OverviewHero start of the month', () => {
+    // «Текущий месяц» берётся из часов, поэтому они зафиксированы на ноябре.
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date(2026, 10, 3, 12));
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    const freshProps = {
+        ...monthProps,
+        selectedMonth: '2026-11',
+        expense: 0,
+        income: 0,
+        monthlyLimit: 7000,
+        previousMonth: { month: '2026-10', expense: 6890 },
+    };
+
+    it('mutes the zero, empties the bar and says the whole limit is ahead instead of the remainder', () => {
+        render(<OverviewHero {...freshProps} />);
+
+        expect(within(screen.getByRole('button', { name: /^Расход:/ })).getByText('€0,00')).toHaveStyle({ color: 'var(--color-text-muted)' });
+        expect(screen.getByTestId('limit-bar-fill')).toHaveStyle({ width: '0%' });
+        expect(screen.getByText('Месяц только начался, весь лимит впереди')).toBeInTheDocument();
+        expect(screen.queryByText(/осталось/)).not.toBeInTheDocument();
+        expect(screen.queryByText('0%')).not.toBeInTheDocument();
+    });
+
+    it('summarises the previous month that fit the limit and opens it on tap', () => {
+        const onOpenPreviousMonth = vi.fn();
+        render(<OverviewHero {...freshProps} onOpenPreviousMonth={onOpenPreviousMonth} />);
+
+        const row = screen.getByTestId('previous-month-row');
+        expect(row.tagName).toBe('BUTTON');
+        expect(row).toHaveTextContent('Октябрь закрыт: €6.890 из €7.000');
+        expect(row).toHaveTextContent('Уложились, запас €110');
+        fireEvent.click(row);
+        expect(onOpenPreviousMonth).toHaveBeenCalledWith('2026-10');
+    });
+
+    it('counts the overrun in the negative colour when the previous month went over', () => {
+        render(<OverviewHero {...freshProps} previousMonth={{ month: '2026-10', expense: 7250 }} onOpenPreviousMonth={() => { }} />);
+
+        expect(screen.getByText('Лимит превышен на €250')).toHaveStyle({ color: 'var(--color-negative)' });
+        expect(screen.queryByText(/Уложились/)).not.toBeInTheDocument();
+    });
+
+    it('shows only the total of the previous month when there is no usable limit', () => {
+        render(<OverviewHero {...freshProps} monthlyLimit={null} onOpenPreviousMonth={() => { }} />);
+
+        const row = screen.getByTestId('previous-month-row');
+        expect(row).toHaveTextContent('Октябрь закрыт: €6.890');
+        expect(row).not.toHaveTextContent('из');
+        expect(row).not.toHaveTextContent(/Уложились|превышен/);
+    });
+
+    it('renders the row as a plain block when nobody listens', () => {
+        render(<OverviewHero {...freshProps} />);
+
+        const row = screen.getByTestId('previous-month-row');
+        expect(row.tagName).toBe('DIV');
+        expect(screen.queryByRole('button', { name: /закрыт/ })).not.toBeInTheDocument();
+    });
+
+    it('has no row without a previous month to report', () => {
+        render(<OverviewHero {...freshProps} previousMonth={null} />);
+
+        expect(screen.queryByTestId('previous-month-row')).not.toBeInTheDocument();
+        expect(screen.getByText('Месяц только начался, весь лимит впереди')).toBeInTheDocument();
+    });
+
+    it('goes back to the normal card once something is spent', () => {
+        render(<OverviewHero {...freshProps} expense={-35} onOpenPreviousMonth={() => { }} />);
+
+        expect(screen.queryByText('Месяц только начался, весь лимит впереди')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('previous-month-row')).not.toBeInTheDocument();
+        expect(screen.getByText(/^осталось/)).toHaveTextContent('осталось €6.965,00');
+    });
+
+    it('is not the start of a month for a past month with no expenses', () => {
+        render(<OverviewHero {...freshProps} selectedMonth="2026-09" previousMonth={{ month: '2026-08', expense: 100 }} />);
+
+        expect(screen.queryByText('Месяц только начался, весь лимит впереди')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('previous-month-row')).not.toBeInTheDocument();
+        expect(screen.getByText(/^осталось/)).toBeInTheDocument();
     });
 });
