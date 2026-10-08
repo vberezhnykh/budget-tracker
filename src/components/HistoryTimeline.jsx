@@ -14,9 +14,12 @@ export default function HistoryTimeline({ groups, initialMonth, onSelectMonth, s
   if (!Object.keys(months).length) return <TransactionList groups={{}} {...listProps} />;
 
   return Object.keys(months).sort().reverse().map(month => (
-    <section key={month} data-history-month={month} aria-label={formatPeriodLabel('month', month)}>
+    <section key={month} data-history-month={month} aria-label={formatPeriodLabel('month', month)} style={{ marginBottom: 'var(--space-4)' }}>
+      {/* Заголовок месяца - просто полоса цвета страницы: белых карточек
+          дней под ним достаточно, чтобы месяц читался отдельной группой.
+          Фон нужен, чтобы дни, уезжающие под липкий заголовок, не просвечивали. */}
       <div data-testid="history-month-heading" style={{ position: 'sticky', top: 0, zIndex: 2,
-        padding: 'var(--space-2) var(--space-6)', background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
+        padding: 'var(--space-2) 0', marginBottom: 'var(--space-2)', background: 'var(--color-bg)' }}>
         {searching || !onSelectMonth
           ? <h4 style={{ margin: 0, padding: 'var(--space-3) 0' }}>{formatPeriodLabel('month', month)}</h4>
           : <PeriodPicker monthsOnly timeRange="month" selectedMonth={month}

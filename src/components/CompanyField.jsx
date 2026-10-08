@@ -126,7 +126,7 @@ export default function CompanyField({ item, transactions, onChange, onLogoChang
           {canChoose
             ? <button type="button" className="company-field__icon" aria-label={panelOpen ? 'Закрыть выбор иконки' : 'Выбрать иконку'} aria-expanded={panelOpen} aria-controls={panelId} onClick={togglePanel}>{icon}</button>
             : <span className="company-field__icon">{icon}</span>}
-          <Field id={id} value={item.companyName || ''} onChange={event => changeName(event.target.value)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.parentElement.parentElement.contains(event.relatedTarget)) setFocused(false); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); setFocused(false); } if (event.key === 'Escape') setFocused(false); }} maxLength={120} placeholder="Название магазина или сервиса" autoComplete="off" style={{ width: '100%', paddingLeft: '46px' }} />
+          <Field id={id} value={item.companyName || ''} onChange={event => changeName(event.target.value)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.parentElement.parentElement.contains(event.relatedTarget)) setFocused(false); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); setFocused(false); } if (event.key === 'Escape') setFocused(false); }} maxLength={120} placeholder="Название магазина или сервиса" autoComplete="off" style={{ width: '100%', minHeight: '48px', paddingLeft: '46px' }} />
         </div>
         {item.companyName && <button type="button" onClick={() => { setPanelOpen(false); changeName(''); }} aria-label="Убрать компанию">×</button>}
       </div>

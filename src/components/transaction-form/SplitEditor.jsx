@@ -4,6 +4,8 @@ import Chip from '../ui/Chip';
 import Field from '../ui/Field';
 import IconButton from '../ui/IconButton';
 import { splitCategoriesByUsage } from '../../utils/finance';
+import { formatMoney } from '../../utils/money';
+import { FORM_CHIP_STYLE } from './chipStyle';
 
 // Блок разделения: сколько осталось распределить и по строке на часть -
 // категория (чипы) и сумма. `split` - результат useSplits.
@@ -20,7 +22,8 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-md)' }}>
                 <span>Осталось распределить:</span>
                 <span style={{ color: isBalanced ? 'var(--color-positive)' : ((remaining < 0) ? 'var(--color-negative)' : 'var(--color-warning)'), fontWeight: 'var(--weight-strong)' }}>
-                    €{(isBalanced ? 0 : remaining).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {/* Минус только у перебора: недораспределённый остаток - просто сумма */}
+                    {formatMoney(isBalanced ? 0 : remaining, { sign: remaining < 0 ? 'auto' : 'none' })}
                 </span>
             </div>
 
@@ -40,14 +43,10 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
                             return (
                                 <Chip
                                     key={cat._id}
+                                    shape="block"
                                     selected={part.category === cat.name}
                                     onClick={() => update(part.id, 'category', cat.name)}
-                                    style={{
-                                        padding: 'var(--space-1-5) var(--space-3)',
-                                        borderRadius: 'var(--radius-lg)',
-                                        whiteSpace: 'nowrap',
-                                        fontSize: 'var(--text-sm)',
-                                    }}
+                                    style={{ ...FORM_CHIP_STYLE, flexShrink: 0, whiteSpace: 'nowrap' }}
                                 >
                                     {cat.name}
                                 </Chip>
@@ -58,14 +57,13 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
                     <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                         <Field
                             type="number"
-                            tone="muted"
-                            radius="var(--radius-sm)"
+                            tone="outline"
                             inputMode="decimal"
                             step="0.01"
                             placeholder="Сумма"
                             value={part.amount}
                             onChange={e => update(part.id, 'amount', e.target.value)}
-                            style={{ flex: 1, padding: 'var(--space-3)' }}
+                            style={{ flex: 1, minHeight: '48px', padding: 'var(--space-3)' }}
                         />
                     </div>
                 </div>

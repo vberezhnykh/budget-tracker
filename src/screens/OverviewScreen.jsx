@@ -135,33 +135,37 @@ export default function OverviewScreen({
           <h2 id="overview-recent" style={SECTION_TITLE_STYLE}>Последние операции</h2>
           <Button tone="text" onClick={onOpenAllHistory} style={SECTION_ACTION_STYLE}>Вся история</Button>
         </div>
-        <Card padding="none" style={{ overflow: 'hidden' }}>
-          {recent.loading && (
-            <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
-              <ListSkeleton label="Загрузка операций…" rows={3} />
-            </div>
-          )}
-          {recent.error && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-              <span role="alert">Не удалось загрузить операции</span>
-              <Button tone="text" onClick={recent.retry} style={SECTION_ACTION_STYLE}>Повторить</Button>
-            </div>
-          )}
-          {!recent.loading && !recent.error && !hasRecent && (
-            <div style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-              Операций пока нет
-            </div>
-          )}
-          {hasRecent && (
-            <TransactionList
-              groups={recent.groups}
-              openEditModal={openEditModal}
-              getAccountDisplay={getAccountDisplay}
-              formatDate={formatDate}
-              rowPadding="var(--space-3) var(--space-4)"
-            />
-          )}
-        </Card>
+        {/* Состояния «загрузка / ошибка / пусто» живут в своей белой
+            карточке, а у самого списка внешней карточки нет: карточки в нём -
+            это дни. */}
+        {(recent.loading || recent.error || !hasRecent) && (
+          <Card padding="none" style={{ overflow: 'hidden' }}>
+            {recent.loading && (
+              <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                <ListSkeleton label="Загрузка операций…" rows={3} />
+              </div>
+            )}
+            {recent.error && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+                <span role="alert">Не удалось загрузить операции</span>
+                <Button tone="text" onClick={recent.retry} style={SECTION_ACTION_STYLE}>Повторить</Button>
+              </div>
+            )}
+            {!recent.loading && !recent.error && !hasRecent && (
+              <div style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+                Операций пока нет
+              </div>
+            )}
+          </Card>
+        )}
+        {hasRecent && (
+          <TransactionList
+            groups={recent.groups}
+            openEditModal={openEditModal}
+            getAccountDisplay={getAccountDisplay}
+            formatDate={formatDate}
+          />
+        )}
       </section>
     </>
   );

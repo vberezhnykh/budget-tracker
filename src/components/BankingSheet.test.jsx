@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BankingSheet from './BankingSheet';
 import App from '../App';
+import { SAVE_BUTTON_NAME } from '../test/queries';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card', icon: '💳' }, { _id: 'cash', name: 'Наличные', type: 'cash' }, { _id: 'other', name: 'Второй банк', type: 'card' }];
 const categories = [{ _id: 'food', name: 'Продукты', type: 'expense' }, { _id: 'salary', name: 'Зарплата', type: 'income' }];
@@ -255,10 +256,10 @@ async function openBankSheetInApp() {
 async function submitManualExpense() {
   await screen.findByTestId('accounts-row');
   fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
-  fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '12.34' } });
+  fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '12.34' } });
   fireEvent.click(screen.getByText('Продукты'));
   fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
-  fireEvent.click(screen.getByText('Сохранить'));
+  fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 }
 
 describe('App banking integration', () => {
@@ -423,15 +424,15 @@ describe('App banking integration', () => {
     render(<App />);
     await screen.findByTestId('accounts-row');
     fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
-    fireEvent.click(screen.getByText('Разделить на несколько категорий'));
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
     const amounts = screen.getAllByPlaceholderText('Сумма');
     fireEvent.change(amounts[0], { target: { value: '10' } });
     fireEvent.change(amounts[1], { target: { value: '20' } });
     fireEvent.click(screen.getAllByText('Продукты')[0]);
     fireEvent.click(screen.getAllByText('Транспорт')[1]);
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
-    fireEvent.click(screen.getByText('Сохранить'));
+    fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
     await waitFor(() => expect(payloads).toHaveLength(2));
     expect(payloads[1]).toHaveLength(2);
     expect(payloads[1][0]).toEqual({ ...payloads[0][0], bankMatchEntryId: 'entry', bankTransactionVersion: 4 });

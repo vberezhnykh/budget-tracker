@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { ChevronDown, Trash2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronDown, X } from 'lucide-react';
 import CompanyField from './CompanyField';
 import Field, { FormLabel } from './ui/Field'
 import Sheet from './ui/Sheet'
 import Button from './ui/Button'
 import IconButton from './ui/IconButton'
+import InlineAlert from './ui/InlineAlert'
 import SegmentedControl from './ui/SegmentedControl'
 import Switch from './ui/Switch'
 import AccountPicker from './transaction-form/AccountPicker'
@@ -15,10 +16,32 @@ import SplitEditor from './transaction-form/SplitEditor'
 import useSplits from './transaction-form/useSplits'
 import useDescriptionSuggestions from './transaction-form/useDescriptionSuggestions'
 import { buildSubmission } from './transaction-form/buildSubmission'
+import { getLimitHint } from './transaction-form/limitHint'
 import { saveCompanySelection } from '../utils/companies';
 import { toLocalDateInput } from '../utils/period';
+import './AddTransactionForm.css';
 
-export default function AddTransactionForm({ type = 'expense', initialData = null, categories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], categoryCounts, apiFetch }) {
+// Заголовок и подпись кнопки по типу операции.
+const TYPE_TITLES = { expense: 'Расход', income: 'Доход', transfer: 'Перевод' };
+const SAVE_LABELS = { expense: 'Сохранить расход', income: 'Сохранить доход', transfer: 'Сохранить перевод' };
+
+// Поля формы: высота 48px и тот же радиус, что у чипов (задаёт сам Field).
+const FORM_FIELD_STYLE = { width: '100%', minHeight: '48px' };
+
+// Сообщение об ошибке заканчивается точкой, чтобы за ним можно было
+// дописать следующую фразу.
+const withPeriod = (message) => (/[.!?…]$/.test(message) ? message : `${message}.`);
+
+// monthlyLimit и monthExpense (расход текущего месяца по всем счетам, число
+// без знака) нужны только подсказке «после него можно потратить»: нет любого
+// из них - подсказки нет.
+//
+// onSubmit сообщает исход сохранения. Результат false или { error } - не
+// сохранилось: лист остаётся открытым со всем введённым, над кнопкой встаёт
+// плашка с причиной. { cancelled: true } - пользователь сам отказался
+// (например, от слияния с банковской записью): лист остаётся, плашки нет.
+// Любое другое значение (включая undefined у простых вызывающих) - успех.
+export default function AddTransactionForm({ type = 'expense', initialData = null, categories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], categoryCounts, apiFetch, monthlyLimit, monthExpense }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
     const defaultToAccount = accounts.find(a => a.type === 'card' && a._id !== defaultAccount)?._id || accounts.find(a => a._id !== defaultAccount)?._id || '';
 
@@ -61,7 +84,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     });
 
     const [companyLogoChanged, setCompanyLogoChanged] = useState(false);
-    const [companyError, setCompanyError] = useState('');
+    // Не сохранилось: причина и слепок формы на тот момент. Пока форма не
+    // изменилась, плашка стоит над кнопкой, а кнопка зовёт «ещё раз»; любая
+    // правка (поле, часть разделения, режим) снимает и то и другое.
+    const [failure, setFailure] = useState(null);
     // Обычная категория выбранной компании и признак того, что текущую
     // категорию подставили мы, а не выбрал пользователь: такую можно молча
     // заменить при смене компании, выбранную руками - только предложить.
@@ -74,6 +100,16 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const [isSplit, setIsSplit] = useState(false);
     const split = useSplits(formData.amount);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Свежее состояние формы для слепка ошибки: правка во время запроса
+    // не должна спрятать причину, по которой он провалился.
+    const latestRef = useRef({ formData, splits: split.splits, isSplit });
+    useEffect(() => {
+        latestRef.current = { formData, splits: split.splits, isSplit };
+    });
+    const activeFailure = failure
+        && failure.formData === formData && failure.splits === split.splits && failure.isSplit === isSplit
+        ? failure : null;
 
     // «Дополнительно»: свёрнуто, если у редактируемой операции там нет ничего
     // нестандартного (исключение из статистики). Без содержимого (перевод,
@@ -101,21 +137,28 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         if (isSaveDisabled) return;
 
         setIsSubmitting(true);
-        setCompanyError('');
+        setFailure(null);
+        const fail = (message) => setFailure({ message, ...latestRef.current });
         try {
             const savedForm = formData.type === 'expense' && formData.companyName?.trim() && (!formData.companyId || companyLogoChanged)
                 ? await saveCompanySelection(formData, { request: apiFetch || fetch, logoChanged: companyLogoChanged })
                 : formData;
             const submission = onSubmit(buildSubmission({ formData, savedForm, splits: split.splits, isSplit, initialData }));
-            const succeeded = submission && typeof submission.then === 'function'
+            const result = submission && typeof submission.then === 'function'
                 ? await submission
                 : submission;
             // Existing embedders that do not return a result retain the old
-            // close-on-submit contract; App returns false on an API failure
-            // so the user's entered values stay available for a retry.
-            if (succeeded !== false) onClose();
+            // close-on-submit contract; App reports an API failure so the
+            // user's entered values stay available for a retry.
+            if (result === false) {
+                fail(initialData ? 'Не удалось сохранить изменения' : 'Не удалось сохранить операцию');
+            } else if (typeof result?.error === 'string') {
+                fail(result.error || 'Не удалось сохранить операцию');
+            } else if (!result?.cancelled) {
+                onClose();
+            }
         } catch (error) {
-            setCompanyError(error.message || 'Не удалось сохранить операцию. Попробуйте ещё раз.');
+            fail(error.message || 'Не удалось сохранить операцию. Попробуйте ещё раз.');
         } finally {
             setIsSubmitting(false);
         }
@@ -166,7 +209,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const suggestedCategory = usualCategoryAvailable && formData.category && formData.category !== usualCategory ? usualCategory : '';
     const chooseCompany = ({ usualCategory: usual = '', ...choice }) => {
         setCompanyLogoChanged(false);
-        setCompanyError('');
         setUsualCategory(usual);
         const fill = formData.type === 'expense' && !isSplit && usual
             && categories.some(c => c.type === 'expense' && c.name === usual)
@@ -182,91 +224,131 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     });
 
 
+    const limitHint = getLimitHint({
+        type: formData.type,
+        isEditing: Boolean(initialData),
+        excludeFromStats: Boolean(formData.excludeFromStats),
+        date: formData.date,
+        monthlyLimit,
+        monthExpense,
+        amount: formData.amount,
+    });
+
+    // «Разделить» предлагается, когда есть что делить; уже начатое разделение
+    // можно отменить всегда, иначе очистка суммы заперла бы форму в нём.
+    const canToggleSplit = isSplit || (!initialData && formData.amount && parseFloat(formData.amount) > 0);
+
+    // Ширина поля суммы следует за введённым: так «€» стоит вплотную к числу,
+    // а группа остаётся по центру листа.
+    const amountWidth = `${Math.min(Math.max(String(formData.amount).length, 4), 10) + 1}ch`;
+
     return (
         <Sheet ariaLabel={getTitle()} onClose={requestClose}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <h3 style={{ margin: 0 }}>{getTitle()}</h3>
+                {/* Шапка: у новой операции слева переключатель типа, у
+                    правки - заголовок с типом; крестик всегда справа. Во
+                    время разделения тип менять нельзя, и слева пусто. */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)' }}>
+                    {initialData ? (
+                        <h2 style={{ margin: 0, fontSize: 'var(--text-3xl)', fontWeight: 'var(--weight-strong)' }}>{TYPE_TITLES[formData.type] || 'Операция'}</h2>
+                    ) : !isSplit ? (
+                        <SegmentedControl
+                            ariaLabel="Тип операции"
+                            style={{ flex: 1, background: 'var(--color-surface-inset)' }}
+                            options={[
+                                { id: 'expense', label: 'Расход' },
+                                { id: 'income', label: 'Доход' },
+                                ...(accounts.length >= 2 ? [{ id: 'transfer', label: 'Перевод' }] : [])
+                            ]}
+                            value={formData.type}
+                            onChange={changeType}
+                        />
+                    ) : <span />}
                     <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть"><X size={20} strokeWidth={1.8} aria-hidden="true" /></IconButton>
                 </div>
 
-                {/* Type Toggle - Hide if splitting or editing */}
-                {!initialData && !isSplit && (
-                    <SegmentedControl
-                        ariaLabel="Тип операции"
-                        style={{ background: 'var(--color-surface-inset)' }}
-                        options={[
-                            { id: 'expense', label: 'Расход' },
-                            { id: 'income', label: 'Доход' },
-                            ...(accounts.length >= 2 ? [{ id: 'transfer', label: 'Перевод' }] : [])
-                        ]}
-                        value={formData.type}
-                        onChange={changeType}
-                    />
-                )}
-
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
 
-                    {/* Main Amount Input */}
-                    <div>
-                        <FormLabel>
+                    {/* Сумма: крупное число по центру без рамки */}
+                    <div style={{ textAlign: 'center' }}>
+                        <FormLabel htmlFor="transaction-amount" style={{ textAlign: 'center' }}>
                             {isSplit ? 'Общая сумма' : 'Сумма'}
                         </FormLabel>
-                        <div style={{ position: 'relative' }}>
-                            <span style={{
-                                position: 'absolute',
-                                left: '16px',
-                                top: '50%',
-                                transform: 'translateY(-50%)',
-                                color: 'var(--color-text-muted)',
-                                fontSize: 'var(--text-3xl)'
-                            }}>€</span>
+                        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'baseline', gap: 'var(--space-1)' }}>
+                            <span
+                                aria-hidden="true"
+                                style={{ color: 'var(--color-text-muted)', fontSize: '2rem', fontWeight: 'var(--weight-strong)', lineHeight: 1.2 }}
+                            >€</span>
                             <Field
+                                id="transaction-amount"
+                                className="transaction-amount-input"
                                 type="number"
-                                tone="sunken"
-                                size="xl"
                                 inputMode="decimal"
                                 step="0.01"
-                                placeholder="0.00"
+                                placeholder="0"
                                 value={formData.amount}
                                 onChange={e => setFormData({ ...formData, amount: e.target.value })}
                                 style={{
-                                    width: '100%',
-                                    // слева оставлено место под знак валюты,
-                                    // который лежит поверх поля
-                                    padding: 'var(--space-4) var(--space-4) var(--space-4) 36px',
-                                    fontSize: '1.5rem',
+                                    width: amountWidth,
+                                    maxWidth: 'calc(100% - 3rem)',
+                                    padding: 0,
+                                    border: 'none',
+                                    background: 'transparent',
+                                    textAlign: 'center',
+                                    fontSize: '3rem',
                                     fontWeight: 'var(--weight-strong)',
+                                    letterSpacing: '-1.5px',
+                                    lineHeight: 1.2,
                                 }}
                             />
                         </div>
+                        {limitHint && (
+                            <p
+                                data-testid="limit-hint"
+                                style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-sm)', textAlign: 'center', color: limitHint.exceeded ? 'var(--color-negative)' : 'var(--color-text-muted)' }}
+                            >
+                                {limitHint.text}
+                            </p>
+                        )}
                     </div>
 
                     {!isTransfer && (
                         <>
-                            {/* Split Toggle */}
-                            {!initialData && formData.amount && parseFloat(formData.amount) > 0 && (
-                                <Switch checked={isSplit} onChange={setIsSplit} label="Разделить на несколько категорий" />
-                            )}
+                            {/* Категория: справа от подписи - переключатель разделения */}
+                            <div>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', minHeight: '28px', marginBottom: 'var(--space-2)' }}>
+                                    <FormLabel style={{ margin: 0 }}>Категория</FormLabel>
+                                    {canToggleSplit && (
+                                        <Button
+                                            tone="text"
+                                            aria-pressed={isSplit}
+                                            onClick={() => setIsSplit(v => !v)}
+                                            style={{ minHeight: '28px', padding: '0 var(--space-1)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)' }}
+                                        >
+                                            {isSplit ? 'Не разделять' : 'Разделить'}
+                                        </Button>
+                                    )}
+                                </div>
 
-                            {!isSplit ? (
-                                <CategoryPicker
-                                    categories={categories}
-                                    transactions={transactions}
-                                    type={formData.type}
-                                    categoryCounts={categoryCounts}
-                                    value={formData.category}
-                                    onChange={category => { setCategoryAutoFilled(false); setFormData(prev => ({ ...prev, category })); }}
-                                    onAddCategory={onAddCategory}
-                                />
-                            ) : (
-                                <SplitEditor
-                                    split={split}
-                                    categories={categories}
-                                    transactions={transactions}
-                                    type={formData.type}
-                                    categoryCounts={categoryCounts}
-                                />
-                            )}
+                                {!isSplit ? (
+                                    <CategoryPicker
+                                        categories={categories}
+                                        transactions={transactions}
+                                        type={formData.type}
+                                        categoryCounts={categoryCounts}
+                                        value={formData.category}
+                                        onChange={category => { setCategoryAutoFilled(false); setFormData(prev => ({ ...prev, category })); }}
+                                        onAddCategory={onAddCategory}
+                                    />
+                                ) : (
+                                    <SplitEditor
+                                        split={split}
+                                        categories={categories}
+                                        transactions={transactions}
+                                        type={formData.type}
+                                        categoryCounts={categoryCounts}
+                                    />
+                                )}
+                            </div>
 
                             {/* Account Selector (общий и для обычного режима, и для разделения) */}
                             <div>
@@ -314,16 +396,16 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         </CompanyField>
                     )}
 
-                    {/* Description */}
+                    {/* Comment */}
                     <div>
-                        <FormLabel>Описание (опц.)</FormLabel>
+                        <FormLabel htmlFor="transaction-comment">Комментарий</FormLabel>
                         <Field
+                            id="transaction-comment"
                             type="text"
-                            tone="sunken"
-                            placeholder="Комментарий..."
+                            placeholder="Необязательно"
                             value={formData.description}
                             onChange={e => setFormData({ ...formData, description: e.target.value })}
-                            style={{ width: '100%' }}
+                            style={FORM_FIELD_STYLE}
                         />
                         {visibleSuggestions.length > 0 && (
                             <div
@@ -407,27 +489,37 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             )}
                         </div>
                     )}
-                    {companyError && <p role="alert" style={{ color: 'var(--color-danger)', fontSize: 'var(--text-sm)', margin: 0 }}>{companyError}</p>}
 
                     {/* Футер прилипает к низу листа, пока форма прокручивается.
                         Лист даёт нижний отступ 24px + safe-area, поэтому bottom
-                        компенсирует его, а paddingBottom возвращает воздух. */}
+                        компенсирует его, а paddingBottom возвращает воздух.
+                        Плашка ошибки лежит прямо над кнопкой, в футере: так
+                        причину видно, даже когда форма прокручена вверх. */}
                     <div style={{
                         position: 'sticky',
                         bottom: 'calc(-24px - env(safe-area-inset-bottom, 0px))',
                         zIndex: 1,
                         display: 'flex',
+                        flexDirection: 'column',
                         gap: 'var(--space-3)',
                         padding: 'var(--space-3) 0 calc(var(--space-3) + env(safe-area-inset-bottom, 0px))',
                         background: 'var(--color-surface)',
                         boxShadow: 'var(--shadow-sticky-footer)'
                     }}>
+                        {activeFailure && (
+                            <InlineAlert tone="danger" title="Не сохранилось.">
+                                {`${withPeriod(activeFailure.message)} Все введённое осталось в форме.`}
+                            </InlineAlert>
+                        )}
+                        <Button type="submit" size="lg" block disabled={isSaveDisabled} style={{ minHeight: '54px' }}>
+                            {isSubmitting ? 'Сохранение...' : activeFailure ? 'Сохранить ещё раз' : initialData ? 'Сохранить' : (SAVE_LABELS[formData.type] || 'Сохранить')}
+                        </Button>
                         {initialData && (
                             <Button
-                                tone="danger"
-                                size="lg"
-                                aria-label="Удалить операцию"
+                                tone="text"
+                                block
                                 disabled={isSubmitting}
+                                style={{ minHeight: '44px', color: 'var(--color-danger)' }}
                                 onClick={async () => {
                                     if (isSubmitting) return;
                                     // Без confirm: App переносит запись в корзину
@@ -444,12 +536,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     }
                                 }}
                             >
-                                <Trash2 size={22} strokeWidth={1.8} aria-hidden="true" />
+                                Удалить операцию
                             </Button>
                         )}
-                        <Button type="submit" size="lg" disabled={isSaveDisabled} style={{ flex: 1 }}>
-                            {isSubmitting ? 'Сохранение...' : 'Сохранить'}
-                        </Button>
                     </div>
                 </form>
         </Sheet>

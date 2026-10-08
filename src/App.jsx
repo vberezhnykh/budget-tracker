@@ -603,6 +603,16 @@ function App() {
     return [...base, ...spendable, ...held];
   }, [accounts, balances]);
 
+  // Расход текущего месяца по всем счетам для подсказки лимита в форме
+  // операции. Берётся из итогов «по всем счетам» (ключ ''), и только если
+  // панель загружена без фильтра по категории: иначе в сумму вошла бы одна
+  // категория, и остаток лимита вышел бы завышенным. Месяца без операций в
+  // итогах нет - это нулевой расход. Нет итогов - undefined, подсказки нет.
+  const allAccountsTotals = dashboard?.categoryKey === '' ? dashboard.data.monthlyTotalsByAccount?.[''] : undefined;
+  const formMonthExpense = allAccountsTotals
+    ? Math.abs(allAccountsTotals[getCurrentMonth()]?.expense || 0)
+    : undefined;
+
   const monthlyData = summary?.month || EMPTY_TOTALS;
   const yearlyData = summary?.yearly || EMPTY_TOTALS;
   const lifetimeStats = summary?.lifetime;
@@ -737,7 +747,10 @@ function App() {
           }
         }
         if (!extra && window.confirm('В банке уже есть похожие записи. Добавить отдельную операцию?')) extra = { bankDuplicateAction: 'separate' };
-        if (!extra || session !== sessionGenerationRef.current) return false;
+        if (session !== sessionGenerationRef.current) return false;
+        // Отказ от слияния - решение пользователя, а не ошибка: форма
+        // остаётся открытой, но плашки «не сохранилось» не будет.
+        if (!extra) return { cancelled: true };
         // A split purchase is one candidate by its total. Only the first row
         // carries the user's resolution; the server validates the whole group.
         const payload = Array.isArray(newTx) ? newTx.map((tx, index) => index === 0 ? { ...tx, ...extra } : tx) : { ...newTx, ...extra };
@@ -753,12 +766,12 @@ function App() {
         await loadData({ initial: false });
         return true;
       }
-      showNotice((data && data.message) || 'Не удалось сохранить операцию');
-      return false;
+      // Причину показывает сама форма плашкой над кнопкой, поэтому общего
+      // уведомления нет: два сообщения об одном и том же только мешали бы.
+      return { error: (data && data.message) || 'Не удалось сохранить операцию' };
     } catch (err) {
       console.error('Add error:', err);
-      showNotice('Не удалось сохранить операцию');
-      return false;
+      return { error: 'Не удалось сохранить операцию' };
     }
   };
 
@@ -887,20 +900,17 @@ function App() {
       });
       if (session !== sessionGenerationRef.current) return false;
       if (res.status === 409) {
-        showNotice('Операция уже изменена. Обновите данные и повторите попытку.');
-        return false;
+        return { error: 'Операция уже изменена. Обновите данные и повторите попытку.' };
       }
       if (res.ok) {
         await loadData({ initial: false });
         return true;
       }
       const data = await res.json().catch(() => null);
-      showNotice((data && data.message) || 'Не удалось сохранить изменения');
-      return false;
+      return { error: (data && data.message) || 'Не удалось сохранить изменения' };
     } catch (err) {
       console.error('Update error:', err);
-      showNotice('Не удалось сохранить изменения');
-      return false;
+      return { error: 'Не удалось сохранить изменения' };
     }
   };
 
@@ -1424,6 +1434,8 @@ function App() {
           onSubmit={handleAddTransaction}
           accounts={accounts}
           categoryCounts={dashboard?.data.categoryCounts}
+          monthlyLimit={monthlyLimit}
+          monthExpense={formMonthExpense}
           // Only a real account id preselects - the total-capital slide
           // (null) and any residual type:* filter value must fall through
           // to no preset, forcing an explicit choice.

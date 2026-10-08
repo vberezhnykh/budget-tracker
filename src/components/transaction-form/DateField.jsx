@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Chip from '../ui/Chip';
+import { FORM_CHIP_STYLE } from './chipStyle';
 import Field, { FormLabel } from '../ui/Field';
 import { MIN_DATE, toLocalDateInput } from '../../utils/period';
 
@@ -51,25 +52,28 @@ export default function DateField({ value, onChange }) {
             <FormLabel htmlFor="transaction-date">Дата</FormLabel>
             <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 <Chip
+                    shape="block"
                     selected={!showInput && value === today}
                     onClick={() => pick(today)}
-                    style={{ padding: 'var(--space-2) var(--space-4)' }}
+                    style={FORM_CHIP_STYLE}
                 >
                     Сегодня
                 </Chip>
                 {showYesterday && (
                     <Chip
+                        shape="block"
                         selected={!showInput && value === yesterday}
                         onClick={() => pick(yesterday)}
-                        style={{ padding: 'var(--space-2) var(--space-4)' }}
+                        style={FORM_CHIP_STYLE}
                     >
                         Вчера
                     </Chip>
                 )}
                 <Chip
+                    shape="block"
                     selected={showInput}
                     onClick={openCustom}
-                    style={{ padding: 'var(--space-2) var(--space-4)' }}
+                    style={FORM_CHIP_STYLE}
                 >
                     {showInput && value ? formatShortDate(value) : 'Другая…'}
                 </Chip>
@@ -79,13 +83,14 @@ export default function DateField({ value, onChange }) {
                     id="transaction-date"
                     ref={inputRef}
                     type="date"
-                    tone="sunken"
+                    tone="outline"
                     value={value}
                     min={MIN_DATE}
                     max={today}
                     onChange={e => onChange(e.target.value)}
                     style={{
                         width: '100%',
+                        minHeight: '48px',
                         display: 'block',
                         margin: 'var(--space-3) 0 0',
                         // родное оформление поля даты в iOS/Safari

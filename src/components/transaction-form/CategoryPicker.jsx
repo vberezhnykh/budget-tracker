@@ -2,12 +2,16 @@ import { useMemo, useState } from 'react';
 import { Check, LoaderCircle, Plus, X } from 'lucide-react';
 import Chip from '../ui/Chip';
 import Button from '../ui/Button';
-import Field, { FormLabel } from '../ui/Field';
+import Field from '../ui/Field';
 import { splitCategoriesByUsage } from '../../utils/finance';
+import { FORM_CHIP_STYLE } from './chipStyle';
 
+// «Ещё N» и «+ Новая» - пунктирные кнопки того же размера (40px) и
+// скругления, что и чипы категорий, в том же ряду.
 const chipButton = {
-    padding: 'var(--space-2) var(--space-4)',
-    borderRadius: 'var(--radius-pill)',
+    height: '40px',
+    padding: '0 var(--space-4)',
+    borderRadius: 'var(--radius-md)',
     background: 'transparent',
     color: 'var(--color-primary)',
     fontSize: 'var(--text-base)',
@@ -16,7 +20,9 @@ const chipButton = {
 };
 
 // Выбор категории: частые наверху, хвост под «Ещё N», в конце ряда -
-// «+ Новая» с созданием категории прямо здесь.
+// «+ Новая» с созданием категории прямо здесь. Подпись «Категория» и кнопка
+// «Разделить» рядом с ней принадлежат форме: она же решает, показывать этот
+// блок или разделение.
 export default function CategoryPicker({ categories, transactions, type, categoryCounts, value, onChange, onAddCategory }) {
     // Категорий стало два десятка, и списком в один экран они уже не читаются.
     // Наверх поднимаем то, чем реально пользуются, хвост прячем под "Ещё N" -
@@ -67,14 +73,14 @@ export default function CategoryPicker({ categories, transactions, type, categor
 
     return (
         <div>
-            <FormLabel>Категория</FormLabel>
             <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                 {visible.map(cat => (
                     <Chip
                         key={cat._id}
+                        shape="block"
                         selected={value === cat.name}
                         onClick={() => onChange(cat.name)}
-                        style={{ padding: 'var(--space-2) var(--space-4)' }}
+                        style={FORM_CHIP_STYLE}
                     >
                         {cat.name}
                     </Chip>

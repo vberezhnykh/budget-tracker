@@ -1,6 +1,7 @@
 import Card from './ui/Card';
 import InlineAlert from './ui/InlineAlert';
 import { formatPeriodPhrase } from '../utils/period';
+import { formatMoney } from '../utils/money';
 
 // Главная карточка Обзора: расход за период одним крупным числом, под ним
 // (для месяца) полоса лимита и остаток, затем доход и сальдо. Заменила
@@ -10,8 +11,6 @@ import { formatPeriodPhrase } from '../utils/period';
 // Расход и доход открывают Историю с фильтром по типу. Это переход, а не
 // переключатель: нажатого состояния у кнопок нет (ни aria-pressed, ни
 // подсветки), а историю фильтр только открывает.
-
-const formatEuro = (value) => value.toLocaleString('de-DE', { minimumFractionDigits: 2 });
 
 // Кнопка без вида кнопки: то, что нажимается, выглядит текстом карточки. Фон
 // и рамка убраны, шрифт и цвет наследуются, а обводку фокуса отдаёт
@@ -54,9 +53,10 @@ export default function OverviewHero({
 }) {
   const expenseAbs = Math.abs(expense);
   const saldo = income + expense;
-  const expenseText = `€${formatEuro(expenseAbs)}`;
-  const incomeText = `+€${formatEuro(income)}`;
-  const saldoText = `${saldo > 0 ? '+' : saldo < 0 ? '−' : ''}€${formatEuro(Math.abs(saldo))}`;
+  const expenseText = formatMoney(expenseAbs);
+  // Доход всегда с «+», даже нулевой: sign: 'auto' нуль оставил бы без знака.
+  const incomeText = `+${formatMoney(income)}`;
+  const saldoText = formatMoney(saldo, { sign: 'auto' });
 
   // Лимит месячный, поэтому полоса есть только у месяца; у года и «всего
   // времени» он ничего не значит. Негодный лимит (0, NaN) полосу тоже
@@ -91,7 +91,7 @@ export default function OverviewHero({
           <button
             type="button"
             onClick={() => onOpenHistory('expense')}
-            aria-label={`Расход: €${formatEuro(expenseAbs)}${withLimit ? ` из лимита ${limitText}` : ''}, открыть историю расходов`}
+            aria-label={`Расход: ${formatMoney(expenseAbs)}${withLimit ? ` из лимита ${limitText}` : ''}, открыть историю расходов`}
             style={bareButton}
           >
             <span
@@ -156,7 +156,7 @@ export default function OverviewHero({
             >
               {isOverLimit ? 'сверх лимита ' : 'осталось '}
               <strong style={{ fontWeight: 'var(--weight-strong)', color: isOverLimit ? 'inherit' : 'var(--color-text-main)' }}>
-                €{formatEuro(limitDelta)}
+                {formatMoney(limitDelta)}
               </strong>
             </span>
             <span data-account-value style={{ whiteSpace: 'nowrap' }}>{percent}%</span>
@@ -180,7 +180,7 @@ export default function OverviewHero({
         <button
           type="button"
           onClick={() => onOpenHistory('income')}
-          aria-label={`Доход: €${formatEuro(income)}, открыть историю доходов`}
+          aria-label={`Доход: ${formatMoney(income)}, открыть историю доходов`}
           style={{ ...bareButton, minWidth: 0 }}
         >
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>Доход</div>

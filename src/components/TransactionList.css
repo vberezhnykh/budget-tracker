@@ -1,0 +1,23 @@
+/* Категория в строке операции - переключатель фильтра. Подчёркивание только
+   по наведению и фокусу: в покое строка читается как обычная подпись, а не
+   россыпь ссылок. Псевдоклассы инлайном не задать, поэтому они здесь. */
+.tx-category-link {
+  cursor: pointer;
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .tx-category-link:hover {
+    text-decoration: underline dotted;
+  }
+}
+
+.tx-category-link:focus-visible {
+  text-decoration: underline dotted;
+  /* Обводка внутрь: подпись обрезается по двум строкам (overflow: hidden),
+     и внешняя обводка была бы срезана. */
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  border-radius: 2px;
+}

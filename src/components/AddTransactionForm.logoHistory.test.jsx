@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AddTransactionForm from './AddTransactionForm';
+import { SAVE_BUTTON_NAME } from '../test/queries';
 
 const categories = [{ _id: 'beauty', name: 'Красота', type: 'expense' }, { _id: 'services', name: 'Услуги', type: 'expense' }];
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }, { _id: 'cash', name: 'Наличные', type: 'cash' }];
@@ -18,17 +19,17 @@ function renderForm({ transactions = [], initialData = null, companies = [], cre
   });
   render(<AddTransactionForm type="expense" initialData={initialData} categories={categories} accounts={accounts} presetAccountId="card" transactions={transactions} apiFetch={apiFetch} onClose={vi.fn()} onSubmit={onSubmit} />);
   if (!initialData) {
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '34' } });
     fireEvent.click(screen.getByRole('button', { name: 'Красота', exact: true }));
   }
   return { onSubmit, apiFetch };
 }
 
 const typeCompany = value => fireEvent.change(screen.getByPlaceholderText('Название магазина или сервиса'), { target: { value } });
-const typeDescription = value => fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value } });
+const typeDescription = value => fireEvent.change(screen.getByPlaceholderText('Необязательно'), { target: { value } });
 const iconButton = () => screen.getByRole('button', { name: 'Выбрать иконку' });
 const logoStatus = () => screen.getByRole('status');
-const submit = () => fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));
+const submit = () => fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 async function loadPreview(pathname) {
   const preview = iconButton();
   await waitFor(() => {
@@ -90,7 +91,7 @@ describe('separate company selection and transaction comments', () => {
     fireEvent.focus(screen.getByPlaceholderText('Название магазина или сервиса'));
     fireEvent.click(screen.getByRole('button', { name: /Chop Chop.*Из истории/ }));
     expect(screen.getByPlaceholderText('Название магазина или сервиса')).toHaveValue('Chop Chop');
-    expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('');
+    expect(screen.getByPlaceholderText('Необязательно')).toHaveValue('');
     expect(iconButton().querySelector('img')).toBeNull();
     expect(logoStatus()).toHaveTextContent('Иконка категории');
 
@@ -142,7 +143,7 @@ describe('separate company selection and transaction comments', () => {
     expect(preview).toHaveTextContent('Логотип: originalbarber.com');
     expect(preview).not.toHaveTextContent('Из истории');
 
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '35' } });
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '35' } });
     submit();
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ id: 'editing', amount: 35, description: 'Chop Chop', logoMode: 'domain', merchantDomain: 'originalbarber.com' }));
     expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('companyName');
@@ -183,8 +184,8 @@ describe('separate company selection and transaction comments', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Компания сейчас не сохраняется');
     expect(onSubmit).not.toHaveBeenCalled();
     expect(screen.getByPlaceholderText('Название магазина или сервиса')).toHaveValue('Chop Chop');
-    expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('Стрижка');
-    expect(screen.getByRole('button', { name: 'Сохранить', exact: true })).toBeEnabled();
+    expect(screen.getByPlaceholderText('Необязательно')).toHaveValue('Стрижка');
+    expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeEnabled();
   });
 });
 
@@ -198,7 +199,7 @@ describe('company field logo status and actions', () => {
       return { ok: true, json: async () => ({ merchants: [] }) };
     });
     render(<AddTransactionForm type="expense" categories={categories} accounts={accounts} presetAccountId="card" apiFetch={apiFetch} onClose={vi.fn()} onSubmit={onSubmit} />);
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '34' } });
     fireEvent.click(screen.getByRole('button', { name: 'Красота', exact: true }));
     return { onSubmit, apiFetch };
   }

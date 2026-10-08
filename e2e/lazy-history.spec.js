@@ -16,7 +16,7 @@ test('history loads another page near the bottom of the list on its own screen',
   await expect(rows).toHaveCount(40);
   await page.getByTestId('history-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
   await expect(rows).toHaveCount(80);
-  await expect(page.getByText('-850.00€')).toHaveCount(1);
+  await expect(page.getByText('\u2212€850,00')).toHaveCount(1);
   expect(requested.some(url => new URL(url).pathname === '/api/transactions')).toBe(false);
   expect(requested.some(url => new URL(url).searchParams.has('cursor'))).toBe(true);
 });

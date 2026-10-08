@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import AddTransactionForm from './AddTransactionForm';
+import { SAVE_BUTTON_NAME } from '../test/queries';
 
 const mockCategories = [
     { _id: '1', name: 'Продукты', type: 'expense', order: 1 },
@@ -41,24 +42,56 @@ describe('AddTransactionForm Component', () => {
     const mockOnClose = vi.fn();
     const mockOnDelete = vi.fn();
 
-    it('renders with correct title for income', () => {
+    it('puts the type switch in the header of a new operation, without a separate title', () => {
         render(<AddTransactionForm type="income" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
-        expect(screen.getByText('Новый доход')).toBeInTheDocument();
+        const dialog = screen.getByRole('dialog', { name: 'Новый доход' });
+        const types = within(within(dialog).getByRole('group', { name: 'Тип операции' }));
+        expect(types.getByRole('button', { name: 'Доход', pressed: true })).toBeInTheDocument();
+        expect(types.getByRole('button', { name: 'Расход', pressed: false })).toBeInTheDocument();
+        expect(types.getByRole('button', { name: 'Перевод', pressed: false })).toBeInTheDocument();
+        expect(within(dialog).queryByRole('heading')).not.toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
     });
 
-    it('renders with correct title for expense', () => {
+    it('labels a new expense dialog «Новый расход» and saves with a typed button label', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
-        expect(screen.getByText('Новый расход')).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Новый расход' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Сохранить расход' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Доход' }));
+        expect(screen.getByRole('button', { name: 'Сохранить доход' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Перевод' }));
+        expect(screen.getByRole('button', { name: 'Сохранить перевод' })).toBeInTheDocument();
+    });
+
+    it('shows the type as a title instead of the switch when editing', () => {
+        const editData = { id: 'test-id', __v: 0, amount: 100, category: 'Продукты', type: 'income', account: 'cash' };
+        render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} onDelete={mockOnDelete} />);
+        const dialog = screen.getByRole('dialog', { name: 'Редактировать' });
+        expect(within(dialog).getByRole('heading', { level: 2, name: 'Доход' })).toBeInTheDocument();
+        expect(within(dialog).queryByRole('group', { name: 'Тип операции' })).not.toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
+        // у правки кнопка называется просто «Сохранить»; удаление - текстовая кнопка под ней
+        expect(within(dialog).getByRole('button', { name: 'Сохранить' })).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { name: 'Удалить операцию' })).toBeInTheDocument();
+    });
+
+    it('hides the type switch while splitting a new operation', () => {
+        render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '10' } });
+        expect(screen.getByRole('group', { name: 'Тип операции' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
+        expect(screen.queryByRole('group', { name: 'Тип операции' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
     });
 
     it('validates required fields before enabling save button', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
-        const saveButton = screen.getByText('Сохранить');
+        const saveButton = screen.getByRole('button', { name: SAVE_BUTTON_NAME });
 
         expect(saveButton).toBeDisabled();
 
         // Fill amount
-        const amountInput = screen.getByPlaceholderText('0.00');
+        const amountInput = screen.getByPlaceholderText('0');
         fireEvent.change(amountInput, { target: { value: '100' } });
         expect(saveButton).toBeDisabled(); // Still need category and account
 
@@ -78,11 +111,11 @@ describe('AddTransactionForm Component', () => {
 
         // Amount + category alone are enough to save - the account came
         // preselected from presetAccountId, without clicking an account button.
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '30' } });
         fireEvent.click(screen.getByText('Продукты'));
-        expect(screen.getByText('Сохранить')).not.toBeDisabled();
+        expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).not.toBeDisabled();
 
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash' }));
     });
@@ -90,7 +123,7 @@ describe('AddTransactionForm Component', () => {
     it('requires an explicit account choice when no presetAccountId is given', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '30' } });
         fireEvent.click(screen.getByText('Продукты'));
 
         // Neither account button is preselected - обе рамки нейтральные,
@@ -98,22 +131,22 @@ describe('AddTransactionForm Component', () => {
         // живёт в src/index.css, и тест не должен ломаться от смены палитры.
         // (toHaveStyle тут не годится: он сверяет вычисленный стиль, а
         // var() в jsdom никто не раскрывает - смотрим на сам инлайн-стиль.)
-        expect(screen.getByRole('button', { name: 'Карта', exact: true }).style.borderColor).toBe('var(--color-border)');
-        expect(screen.getByRole('button', { name: 'Наличные', exact: true }).style.borderColor).toBe('var(--color-border)');
+        expect(screen.getByRole('button', { name: 'Карта', exact: true }).style.borderColor).toBe('var(--color-border-strong)');
+        expect(screen.getByRole('button', { name: 'Наличные', exact: true }).style.borderColor).toBe('var(--color-border-strong)');
         // ...and saving is blocked until one is picked.
-        expect(screen.getByText('Сохранить')).toBeDisabled();
+        expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeDisabled();
     });
 
     it('enables the save button once an account is picked', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '30' } });
         fireEvent.click(screen.getByText('Продукты'));
-        expect(screen.getByText('Сохранить')).toBeDisabled();
+        expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeDisabled();
 
         fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
-        expect(screen.getByText('Сохранить')).not.toBeDisabled();
+        expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).not.toBeDisabled();
     });
 
     it('keeps an edited transaction on its own account, even if presetAccountId is passed', () => {
@@ -123,8 +156,8 @@ describe('AddTransactionForm Component', () => {
 
         // Saving without touching the account field must keep the
         // transaction's own account ('cash'), not the preset ('card').
-        expect(screen.getByText('Сохранить')).not.toBeDisabled();
-        fireEvent.click(screen.getByText('Сохранить'));
+        expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).not.toBeDisabled();
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash', __v: 7 }));
     });
@@ -132,11 +165,11 @@ describe('AddTransactionForm Component', () => {
     it('submits correct data for an expense', async () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50.5' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '50.5' } });
         fireEvent.click(screen.getByText('Транспорт'));
         fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({
             amount: 50.5,
@@ -152,15 +185,236 @@ describe('AddTransactionForm Component', () => {
         const onClose = vi.fn();
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={onClose} onSubmit={onSubmit} />);
 
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50.5' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '50.5' } });
         fireEvent.click(screen.getByText('Транспорт'));
         fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
         expect(onClose).not.toHaveBeenCalled();
-        expect(screen.getByPlaceholderText('0.00')).toHaveValue(50.5);
-        expect(screen.getByText('Сохранить')).toBeEnabled();
+        expect(screen.getByPlaceholderText('0')).toHaveValue(50.5);
+        expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeEnabled();
+    });
+
+    describe('save failure', () => {
+        const fillExpense = () => {
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '50.5' } });
+            fireEvent.click(screen.getByText('Транспорт'));
+            fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
+            fireEvent.change(screen.getByPlaceholderText('Необязательно'), { target: { value: 'Билеты' } });
+        };
+
+        it('shows a danger alert above the save button, keeps every value and offers «Сохранить ещё раз»', async () => {
+            const onSubmit = vi.fn().mockResolvedValue({ error: 'База временно недоступна' });
+            const onClose = vi.fn();
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={onClose} onSubmit={onSubmit} />);
+            fillExpense();
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
+
+            const alert = await screen.findByRole('alert');
+            expect(alert).toHaveTextContent('Не сохранилось.');
+            expect(alert).toHaveTextContent('База временно недоступна. Все введённое осталось в форме.');
+            expect(onClose).not.toHaveBeenCalled();
+
+            // всё введённое на месте
+            expect(screen.getByPlaceholderText('0')).toHaveValue(50.5);
+            expect(screen.getByPlaceholderText('Необязательно')).toHaveValue('Билеты');
+            expect(screen.getByRole('button', { name: 'Транспорт' })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByRole('button', { name: 'Карта', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+            // плашка лежит прямо над кнопкой, и кнопка зовёт повторить
+            const retry = screen.getByRole('button', { name: 'Сохранить ещё раз' });
+            expect(retry).toBeEnabled();
+            expect(alert.parentElement).toBe(retry.parentElement);
+            expect(alert.nextElementSibling).toBe(retry);
+        });
+
+        it('uses a generic reason when the embedder just returns false, and does not double the period', async () => {
+            const onSubmit = vi.fn().mockResolvedValue(false);
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={vi.fn()} onSubmit={onSubmit} />);
+            fillExpense();
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
+            expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить операцию. Все введённое осталось в форме.');
+
+            onSubmit.mockResolvedValue({ error: 'Слишком много запросов.' });
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить ещё раз' }));
+            await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Слишком много запросов. Все введённое осталось в форме.'));
+        });
+
+        it('shows a thrown error the same way', async () => {
+            const onSubmit = vi.fn().mockRejectedValue(new Error('Сеть недоступна'));
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={vi.fn()} onSubmit={onSubmit} />);
+            fillExpense();
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
+            expect(await screen.findByRole('alert')).toHaveTextContent('Сеть недоступна. Все введённое осталось в форме.');
+            expect(screen.getByRole('button', { name: 'Сохранить ещё раз' })).toBeInTheDocument();
+        });
+
+        it('returns the usual label and drops the alert as soon as the form changes', async () => {
+            const onSubmit = vi.fn().mockResolvedValue(false);
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={vi.fn()} onSubmit={onSubmit} />);
+            fillExpense();
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
+            await screen.findByRole('alert');
+
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '51' } });
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Сохранить расход' })).toBeEnabled();
+        });
+
+        it('retries with the same values and closes on success', async () => {
+            const onSubmit = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+            const onClose = vi.fn();
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={onClose} onSubmit={onSubmit} />);
+            fillExpense();
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
+            fireEvent.click(await screen.findByRole('button', { name: 'Сохранить ещё раз' }));
+
+            await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+            expect(onSubmit).toHaveBeenCalledTimes(2);
+            expect(onSubmit.mock.calls[1][0]).toEqual(expect.objectContaining({ amount: 50.5, category: 'Транспорт', description: 'Билеты' }));
+        });
+
+        it('stays open without an alert when the user declines on their own (cancelled)', async () => {
+            const onSubmit = vi.fn().mockResolvedValue({ cancelled: true });
+            const onClose = vi.fn();
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={onClose} onSubmit={onSubmit} />);
+            fillExpense();
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
+            await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+            await waitFor(() => expect(screen.getByRole('button', { name: 'Сохранить расход' })).toBeEnabled());
+            expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+            expect(onClose).not.toHaveBeenCalled();
+        });
+
+        it('keeps the split rows and the failure alert when a split fails', async () => {
+            const onSubmit = vi.fn().mockResolvedValue({ error: 'Не вышло' });
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" onClose={vi.fn()} onSubmit={onSubmit} />);
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
+            const inputs = screen.getAllByPlaceholderText('Сумма');
+            fireEvent.change(inputs[0], { target: { value: '40' } });
+            fireEvent.change(inputs[1], { target: { value: '60' } });
+            const chips = screen.getAllByText('Продукты');
+            fireEvent.click(chips[0]);
+            fireEvent.click(within(screen.getAllByText('Категория 2')[0].parentElement.parentElement).getByText('Транспорт'));
+            fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
+
+            expect(await screen.findByRole('alert')).toHaveTextContent('Не вышло. Все введённое осталось в форме.');
+            expect(screen.getAllByPlaceholderText('Сумма')[0]).toHaveValue(40);
+            expect(screen.getAllByPlaceholderText('Сумма')[1]).toHaveValue(60);
+        });
+    });
+
+    describe('«Разделить»', () => {
+        it('is a text button in the category row that appears once there is an amount', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+            expect(screen.queryByRole('button', { name: 'Разделить' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
+            const toggle = screen.getByRole('button', { name: 'Разделить' });
+            expect(toggle).toHaveAttribute('aria-pressed', 'false');
+            // стоит в одной строке с подписью «Категория»
+            expect(toggle.parentElement).toContainElement(screen.getByText('Категория'));
+        });
+
+        it('toggles split mode and reads «Не разделять» while splitting', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
+
+            fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
+            expect(screen.getByText('Осталось распределить:')).toBeInTheDocument();
+            expect(screen.getByText('Общая сумма')).toBeInTheDocument();
+            const back = screen.getByRole('button', { name: 'Не разделять' });
+            expect(back).toHaveAttribute('aria-pressed', 'true');
+
+            fireEvent.click(back);
+            expect(screen.queryByText('Осталось распределить:')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Разделить' })).toHaveAttribute('aria-pressed', 'false');
+        });
+
+        it('stays available to leave split mode even if the amount is cleared', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '' } });
+            expect(screen.getByRole('button', { name: 'Не разделять' })).toBeInTheDocument();
+        });
+
+        it('is not offered when editing or for transfers', () => {
+            const editData = { id: 'test-id', __v: 0, amount: 100, category: 'Продукты', type: 'expense', account: 'cash' };
+            const { unmount } = render(<AddTransactionForm initialData={editData} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+            expect(screen.queryByRole('button', { name: 'Разделить' })).not.toBeInTheDocument();
+            unmount();
+            render(<AddTransactionForm type="transfer" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
+            expect(screen.queryByRole('button', { name: 'Разделить' })).not.toBeInTheDocument();
+        });
+    });
+
+    describe('amount and limit hint', () => {
+        const today = localDate();
+        const hint = () => screen.queryByTestId('limit-hint');
+
+        it('names the large amount input «Сумма» and parses the entered number as before', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+            const input = screen.getByLabelText('Сумма');
+            expect(input).toBe(screen.getByPlaceholderText('0'));
+            expect(input).toHaveAttribute('inputmode', 'decimal');
+            fireEvent.change(input, { target: { value: '12.34' } });
+            fireEvent.click(screen.getByText('Продукты'));
+            fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
+            expect(mockOnSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ amount: 12.34 }));
+        });
+
+        it('shows what can still be spent and updates it as the amount is typed', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} monthlyLimit={2000} monthExpense={1500} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+            expect(hint()).toHaveTextContent('После него можно потратить €500,00');
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '24.9' } });
+            expect(hint()).toHaveTextContent('После него можно потратить €475,10');
+            expect(hint().style.color).toBe('var(--color-text-muted)');
+        });
+
+        it('warns in the negative color when the limit would be exceeded, also while splitting', () => {
+            render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} monthlyLimit={2000} monthExpense={1500} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '620.5' } });
+            expect(hint()).toHaveTextContent('Лимит будет превышен на €120,50');
+            expect(hint().style.color).toBe('var(--color-negative)');
+
+            fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
+            expect(hint()).toHaveTextContent('Лимит будет превышен на €120,50');
+        });
+
+        it('is hidden for income, transfer, editing, other months and without limit data', () => {
+            const props = { categories: mockCategories, accounts: mockAccounts, onClose: mockOnClose, onSubmit: mockOnSubmit };
+            const { unmount } = render(<AddTransactionForm type="expense" {...props} monthlyLimit={2000} monthExpense={1500} />);
+            expect(hint()).not.toBeNull();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Доход' }));
+            expect(hint()).toBeNull();
+            fireEvent.click(screen.getByRole('button', { name: 'Перевод' }));
+            expect(hint()).toBeNull();
+            fireEvent.click(screen.getByRole('button', { name: 'Расход' }));
+            expect(hint()).not.toBeNull();
+
+            // дата не в текущем месяце
+            fireEvent.click(screen.getByRole('button', { name: 'Другая…' }));
+            fireEvent.change(screen.getByDisplayValue(today), { target: { value: '2020-01-15' } });
+            expect(hint()).toBeNull();
+            unmount();
+
+            const edit = { id: 'e', __v: 0, amount: 10, category: 'Продукты', type: 'expense', account: 'cash', date: today };
+            const second = render(<AddTransactionForm initialData={edit} {...props} monthlyLimit={2000} monthExpense={1500} />);
+            expect(hint()).toBeNull();
+            second.unmount();
+
+            const third = render(<AddTransactionForm type="expense" {...props} monthlyLimit={2000} />);
+            expect(hint()).toBeNull();
+            third.unmount();
+            render(<AddTransactionForm type="expense" {...props} monthExpense={1500} />);
+            expect(hint()).toBeNull();
+        });
     });
 
     it('blocks duplicate submits and closing while a save is pending', async () => {
@@ -169,10 +423,10 @@ describe('AddTransactionForm Component', () => {
         const onClose = vi.fn();
         const { container } = render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={onClose} onSubmit={onSubmit} />);
 
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '20' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '20' } });
         fireEvent.click(screen.getByText('Продукты'));
         fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         const pendingButton = await screen.findByText('Сохранение...');
         fireEvent.click(pendingButton);
@@ -189,13 +443,13 @@ describe('AddTransactionForm Component', () => {
     it('handles transfer type correctly', () => {
         render(<AddTransactionForm type="transfer" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        expect(screen.getByText('Перевод', { selector: 'h3' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Перевод', pressed: true })).toBeInTheDocument();
         expect(side('Откуда')).toBeInTheDocument();
         expect(side('Куда')).toBeInTheDocument();
 
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '200' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '200' } });
 
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({
             amount: 200,
@@ -213,8 +467,8 @@ describe('AddTransactionForm Component', () => {
         expect(selectedIn('Откуда')).toEqual(['Карта']);
         expect(selectedIn('Куда')).toEqual(['Наличные']);
 
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '50' } });
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '50' } });
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({
             type: 'transfer',
@@ -260,8 +514,8 @@ describe('AddTransactionForm Component', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Поменять счета местами' }));
         expect(selectedIn('Откуда')).toEqual(['Наличные']);
         expect(selectedIn('Куда')).toEqual(['Сбережения']);
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '25' } });
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ account: 'cash', toAccount: 'savings', amount: 25 }));
     });
 
@@ -300,9 +554,9 @@ describe('AddTransactionForm Component', () => {
     it('does not submit a transfer when only one account exists', () => {
         mockOnSubmit.mockClear();
         render(<AddTransactionForm type="transfer" accounts={[mockAccounts[0]]} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
-        expect(screen.getByText('Сохранить')).toBeDisabled();
-        fireEvent.submit(screen.getByText('Сохранить').closest('form'));
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '25' } });
+        expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeDisabled();
+        fireEvent.submit(screen.getByRole('button', { name: SAVE_BUTTON_NAME }).closest('form'));
         expect(mockOnSubmit).not.toHaveBeenCalled();
     });
 
@@ -330,10 +584,10 @@ describe('AddTransactionForm Component', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         // Enter amount to enable split toggle
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
 
         // Toggle split
-        const splitToggle = screen.getByText('Разделить на несколько категорий');
+        const splitToggle = screen.getByRole('button', { name: 'Разделить' });
         fireEvent.click(splitToggle);
 
         expect(screen.getByText('Осталось распределить:')).toBeInTheDocument();
@@ -346,10 +600,10 @@ describe('AddTransactionForm Component', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         // Enter total amount
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
 
         // Toggle split
-        fireEvent.click(screen.getByText('Разделить на несколько категорий'));
+        fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
 
         // Fill split 1
         const splitInputs = screen.getAllByPlaceholderText('Сумма');
@@ -368,7 +622,7 @@ describe('AddTransactionForm Component', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
         // Submit
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(mockOnSubmit).toHaveBeenCalledWith(expect.arrayContaining([
             expect.objectContaining({ amount: 40, category: 'Продукты' }),
@@ -380,8 +634,8 @@ describe('AddTransactionForm Component', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         fireEvent.click(screen.getByRole('button', { name: 'Доход' }));
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '100' } });
-        fireEvent.click(screen.getByText('Разделить на несколько категорий'));
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
 
         expect(screen.getByText('Зачислить на')).toBeInTheDocument();
         expect(screen.queryByText('Списать с')).not.toBeInTheDocument();
@@ -390,8 +644,8 @@ describe('AddTransactionForm Component', () => {
     it('treats float-noisy splits (0.1 + 0.2 of 0.3) as balanced', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '0.3' } });
-        fireEvent.click(screen.getByText('Разделить на несколько категорий'));
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '0.3' } });
+        fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
 
         const splitInputs = screen.getAllByPlaceholderText('Сумма');
         fireEvent.change(splitInputs[0], { target: { value: '0.1' } });
@@ -401,7 +655,7 @@ describe('AddTransactionForm Component', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
         expect(screen.getByText('€0,00')).toBeInTheDocument();
-        expect(screen.getByText('Сохранить')).not.toBeDisabled();
+        expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).not.toBeDisabled();
     });
 
     const mockTransactions = [
@@ -434,7 +688,7 @@ describe('AddTransactionForm Component', () => {
         fireEvent.click(screen.getByText('Продукты'));
         fireEvent.click(screen.getByText('Wolt'));
 
-        expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('Wolt');
+        expect(screen.getByPlaceholderText('Необязательно')).toHaveValue('Wolt');
         // Выбранная подсказка больше не предлагается, остальные остаются.
         expect(screen.queryByText('Lidl')).not.toBeInTheDocument();
     });
@@ -443,7 +697,7 @@ describe('AddTransactionForm Component', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} transactions={mockTransactions} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
         fireEvent.click(screen.getByText('Продукты'));
-        fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value: 'li' } });
+        fireEvent.change(screen.getByPlaceholderText('Необязательно'), { target: { value: 'li' } });
 
         expect(screen.getByText('Lidl')).toBeInTheDocument();
         expect(screen.queryByText('Wolt')).not.toBeInTheDocument();
@@ -467,9 +721,9 @@ describe('AddTransactionForm Component', () => {
             expect(screen.getByRole('button', { name: 'Вчера' })).toHaveAttribute('aria-pressed', 'true');
             expect(screen.getByRole('button', { name: 'Сегодня' })).toHaveAttribute('aria-pressed', 'false');
 
-            fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '10' } });
             fireEvent.click(screen.getByText('Продукты'));
-            fireEvent.click(screen.getByText('Сохранить'));
+            fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
             expect(mockOnSubmit).toHaveBeenCalledWith(expect.objectContaining({ date: localDate(-1) }));
         });
 
@@ -556,8 +810,8 @@ describe('AddTransactionForm Component', () => {
         it('скрыта целиком в режиме разделения', () => {
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
 
-            fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '10' } });
-            fireEvent.click(screen.getByRole('switch', { name: 'Разделить на несколько категорий' }));
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '10' } });
+            fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
             expect(screen.queryByRole('button', { name: /Дополнительно/ })).not.toBeInTheDocument();
         });
 
@@ -680,10 +934,10 @@ describe('transaction logo selection in the expense form', () => {
                 return { ok: true, json: async () => ({ merchants: [{ name: 'Chop Chop Barber Shop', domain: 'chopchop.com' }] }) };
             });
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
-            fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '34' } });
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '34' } });
             fireEvent.click(screen.getByText('Красота'));
             fireEvent.change(screen.getByPlaceholderText('Название магазина или сервиса'), { target: { value: 'Chop Chop' } });
-            fireEvent.change(screen.getByPlaceholderText('Комментарий...'), { target: { value: 'Стрижка' } });
+            fireEvent.change(screen.getByPlaceholderText('Необязательно'), { target: { value: 'Стрижка' } });
 
             // превью видно в поле компании без открытия каких-либо панелей
             const preview = screen.getByRole('button', { name: 'Выбрать иконку' });
@@ -701,9 +955,9 @@ describe('transaction logo selection in the expense form', () => {
             expect(screen.getByRole('status')).toHaveTextContent('Логотип: chopchop.com · запомним для «Chop Chop Barber Shop»');
             expect(onSubmit).not.toHaveBeenCalled();
             expect(screen.getByPlaceholderText('Название магазина или сервиса')).toHaveValue('Chop Chop Barber Shop');
-            expect(screen.getByPlaceholderText('Комментарий...')).toHaveValue('Стрижка');
+            expect(screen.getByPlaceholderText('Необязательно')).toHaveValue('Стрижка');
 
-            fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));
+            fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
             await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ companyId: 'company-chop', companyName: 'Chop Chop Barber Shop', description: 'Стрижка', amount: 34, category: 'Красота', logoMode: 'domain', merchantDomain: 'chopchop.com' })));
             await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
         } finally { vi.unstubAllEnvs(); }
@@ -730,7 +984,7 @@ describe('transaction logo selection in the expense form', () => {
             expect(screen.getByRole('status')).toHaveTextContent('Иконка категории · запомним для «Wolt»');
             expect(onSubmit).not.toHaveBeenCalled();
 
-            fireEvent.click(screen.getByRole('button', { name: 'Сохранить', exact: true }));
+            fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
             await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ id: 'edit-logo', companyId: 'company-wolt', companyName: 'Wolt', description: 'Ужин', logoMode: 'category', merchantDomain: '' })));
             const update = apiFetch.mock.calls.find(([, options]) => options?.method === 'PUT');
             expect(JSON.parse(update[1].body)).toEqual({ name: 'Wolt', logoMode: 'category', merchantDomain: '', __v: 0 });

@@ -2,6 +2,7 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { readApi } from '../server/test/readApi.mjs';
 import App from './App';
+import { SAVE_BUTTON_NAME } from './test/queries';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }, { _id: 'cash', name: 'Наличные', type: 'cash' }];
 const response = body => ({ ok: true, status: 200, json: async () => body });
@@ -131,8 +132,8 @@ describe('instant account summaries', () => {
     select('Все счета');
     goTo('История');
     fireEvent.click(await screen.findByRole('button', { name: /^Кофе,/ }));
-    fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '75' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+    fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '75' } });
+    fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Редактировать' })).not.toBeInTheDocument());
     goTo('Обзор');
     select('Наличные');

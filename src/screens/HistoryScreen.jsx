@@ -5,7 +5,6 @@ import { NAV_OFFSET } from '../components/BottomNav';
 import Field from '../components/ui/Field';
 import Button from '../components/ui/Button';
 import Chip from '../components/ui/Chip';
-import Card from '../components/ui/Card';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import { ListSkeleton } from '../components/ui/Skeleton';
 
@@ -277,39 +276,39 @@ export default function HistoryScreen({
         onScroll={handleScroll}
         data-testid="history-scroll"
         className="no-scrollbar"
-        style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', overflowAnchor: 'none' }}
+        style={{ flex: 1, minHeight: 0, overflowY: 'auto', overscrollBehavior: 'contain', overflowAnchor: 'none', background: 'var(--color-bg)' }}
       >
-        <Card padding="none" style={{ overflow: 'visible' }}>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            {hasNewer && <div style={{ padding: 'var(--space-4) var(--space-6)', textAlign: 'center' }}>
-              <Button disabled={historyLoading} onClick={requestNewer}>
-                {historyLoading && historyDirection === 'newer' ? 'Загрузка…' : 'Загрузить более новые'}
+        {/* Своей белой карточки у списка нет: карточки - это дни внутри него,
+           а серый фон под ними даёт сам контейнер. */}
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {hasNewer && <div style={{ padding: 'var(--space-4) 0', textAlign: 'center' }}>
+            <Button disabled={historyLoading} onClick={requestNewer}>
+              {historyLoading && historyDirection === 'newer' ? 'Загрузка…' : 'Загрузить более новые'}
+            </Button>
+            {historyError && historyDirection === 'newer' && <div role="alert">{historyError}</div>}
+          </div>}
+          {((!historyLoading && !historyError) || Object.keys(groups || {}).length > 0) && <HistoryTimeline
+            groups={groups}
+            initialMonth={initialMonth}
+            onSelectMonth={selectMonth}
+            searching={Boolean(searchQuery.trim())}
+            emptyText={searchQuery ? 'Ничего не найдено' : 'Нет операций'}
+            selectedCategory={historyCategory}
+            toggleCategoryFilter={toggleCategory}
+            openEditModal={openEditModal}
+            getAccountDisplay={getAccountDisplay}
+            formatDate={formatDate}
+          />}
+          <div ref={moreRef} style={{ padding: 'var(--space-4) 0', textAlign: 'center' }}>
+            {historyLoading && historyDirection !== 'newer' && <ListSkeleton label="Загрузка операций…" rows={Object.keys(groups || {}).length > 0 ? 2 : 5} />}
+            {historyError && historyDirection !== 'newer' && <div role="alert">{historyError}</div>}
+            {!historyLoading && (hasMore || (historyError && historyDirection !== 'newer')) && (
+              <Button onClick={loadMore}>
+                {historyError ? 'Повторить загрузку' : 'Загрузить еще'}
               </Button>
-              {historyError && historyDirection === 'newer' && <div role="alert">{historyError}</div>}
-            </div>}
-            {((!historyLoading && !historyError) || Object.keys(groups || {}).length > 0) && <HistoryTimeline
-              groups={groups}
-              initialMonth={initialMonth}
-              onSelectMonth={selectMonth}
-              searching={Boolean(searchQuery.trim())}
-              emptyText={searchQuery ? 'Ничего не найдено' : 'Нет операций'}
-              selectedCategory={historyCategory}
-              toggleCategoryFilter={toggleCategory}
-              openEditModal={openEditModal}
-              getAccountDisplay={getAccountDisplay}
-              formatDate={formatDate}
-            />}
-            <div ref={moreRef} style={{ padding: 'var(--space-4) var(--space-6)', textAlign: 'center' }}>
-              {historyLoading && historyDirection !== 'newer' && <ListSkeleton label="Загрузка операций…" rows={Object.keys(groups || {}).length > 0 ? 2 : 5} />}
-              {historyError && historyDirection !== 'newer' && <div role="alert">{historyError}</div>}
-              {!historyLoading && (hasMore || (historyError && historyDirection !== 'newer')) && (
-                <Button onClick={loadMore}>
-                  {historyError ? 'Повторить загрузку' : 'Загрузить еще'}
-                </Button>
-              )}
-            </div>
+            )}
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );

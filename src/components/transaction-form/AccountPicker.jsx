@@ -39,6 +39,7 @@ export default function AccountPicker({ accounts, value, onChange, scrollAlways 
                         justifyContent: 'center',
                         gap: 'var(--space-2)',
                         minWidth: scrolls && !scrollAlways ? '120px' : 'auto',
+                        minHeight: '48px',
                         padding: scrollAlways ? 'var(--space-3) var(--space-3)' : 'var(--space-3)',
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',

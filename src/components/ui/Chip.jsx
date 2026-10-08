@@ -9,7 +9,10 @@
 // будущее, а сняты с того, что уже есть на экранах:
 //
 //   soft  - выбор внутри формы: подсветка, а не заливка. Форма и так пёстрая,
-//           залитые чипы в ней спорят с кнопкой «Сохранить».
+//           залитые чипы в ней спорят с кнопкой «Сохранить». Невыбранный -
+//           белый с заметной рамкой, выбранный - фирменная подложка и рамка
+//           полуторной толщины (1px рамка + 0.5px тени внутрь: размер чипа
+//           от выбора не меняется).
 //   solid - фильтр в шторке: залит фирменным. Он один на всю ленту и должен
 //           читаться как «сейчас включено», а не как «можно нажать».
 //   quiet - ячейка периода: невыбранная лежит на подложке и остаётся
@@ -23,8 +26,8 @@
 
 const TONES = {
     soft: {
-        on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary-soft)', color: 'var(--color-primary)', fontWeight: 'var(--weight-label)' },
-        off: { borderColor: 'var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text-muted)', fontWeight: 'var(--weight-text)' },
+        on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary-tint)', color: 'var(--color-primary)', fontWeight: 'var(--weight-label)', boxShadow: 'inset 0 0 0 0.5px var(--color-primary)' },
+        off: { borderColor: 'var(--color-border-strong)', background: 'var(--color-surface)', color: 'var(--color-text-main)', fontWeight: 'var(--weight-text)' },
     },
     solid: {
         on: { borderColor: 'var(--color-primary)', background: 'var(--color-primary)', color: 'var(--color-text-inverse)', fontWeight: 'var(--weight-label)' },

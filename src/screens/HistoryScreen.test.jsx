@@ -422,9 +422,36 @@ describe('HistoryScreen', () => {
         renderScreen({ history });
 
         expect(screen.getByText(
-            (_, el) => el?.textContent.replace(/\s+/g, ' ') === 'Наличные Карта • Перевод',
+            (_, el) => el?.textContent.replace(/\s+/g, ' ') === 'Перевод · Наличные Карта',
             { selector: 'div' }
         )).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /Наличные → Карта/ })).toBeInTheDocument();
+    });
+
+    it('lays the days out on the gray page background: no outer card, plain month bar', () => {
+        renderScreen();
+
+        const scroll = screen.getByTestId('history-scroll');
+        expect(scroll.style.background).toBe('var(--color-bg)');
+        expect(scroll.querySelector('.glass-panel')).toBeNull();
+
+        const heading = screen.getByTestId('history-month-heading');
+        expect(heading.style.background).toBe('var(--color-bg)');
+        expect(heading.style.position).toBe('sticky');
+        expect(heading.style.borderBottom).toBe('');
+
+        const days = scroll.querySelectorAll('[data-history-date]');
+        expect(days).toHaveLength(2);
+        expect(days[0].children[1].style.background).toBe('var(--color-surface)');
+    });
+
+    it('hides the category in every row subtitle while the list is filtered by it', () => {
+        renderScreen({ historyCategory: 'Food' });
+        const scroll = screen.getByTestId('history-scroll');
+        const coffee = scroll.querySelector('[data-history-item="cash-1"] [data-testid="transaction-subtitle"]');
+        expect(coffee).toHaveTextContent('Наличные');
+        expect(coffee).not.toHaveTextContent('Food');
+        const salary = scroll.querySelector('[data-history-item="card-1"] [data-testid="transaction-subtitle"]');
+        expect(salary).toHaveTextContent('Job · Карта');
     });
 });

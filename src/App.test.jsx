@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act, within } from '@testing-librar
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
 import { computeAccountReorder, handleAccountDragEnd } from './utils/accountReorder';
+import { SAVE_BUTTON_NAME } from './test/queries';
 
 // Mock the API response
 const mockTransactions = [
@@ -356,14 +357,60 @@ describe('App Integration Tests', () => {
         expect(screen.queryByRole('button', { name: 'Добавить перевод' })).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
 
-        expect(screen.getByText(/Новый расход/)).toBeInTheDocument();
+        expect(screen.getByRole('dialog', { name: 'Новый расход' })).toBeInTheDocument();
 
         const closeBtn = screen.getByRole('button', { name: 'Закрыть', exact: true });
         fireEvent.click(closeBtn);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Новый расход/)).not.toBeInTheDocument();
+            expect(screen.queryByRole('dialog', { name: 'Новый расход' })).not.toBeInTheDocument();
         });
+    });
+
+    it('shows what is left of the monthly limit under the amount of a new expense', async () => {
+        const normalFetch = createFetchMock();
+        fetchMock.mockImplementation(async (url, options) => {
+            const res = await normalFetch(url, options);
+            if (typeof url !== 'string' || !url.startsWith('/api/stats/dashboard')) return res;
+            // Расход месяца по всем счетам - ровно то, из чего форма считает остаток
+            const data = await res.json();
+            data.monthlyTotalsByAccount = { ...data.monthlyTotalsByAccount, '': { '2026-01': { income: 5000, expense: -2500 } } };
+            return { ...res, json: async () => data };
+        });
+        render(<App />);
+        await waitForOverview();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
+        const dialog = screen.getByRole('dialog', { name: 'Новый расход' });
+        // лимит в тестовых настройках - 7000
+        expect(within(dialog).getByTestId('limit-hint')).toHaveTextContent('После него можно потратить €4.500,00');
+
+        fireEvent.change(within(dialog).getByPlaceholderText('0'), { target: { value: '4620.5' } });
+        expect(within(dialog).getByTestId('limit-hint')).toHaveTextContent('Лимит будет превышен на €120,50');
+
+        // доход лимит не трогает
+        fireEvent.click(within(dialog).getByRole('button', { name: 'Доход' }));
+        expect(within(dialog).queryByTestId('limit-hint')).not.toBeInTheDocument();
+    });
+
+    it('takes the month expense for the limit hint from the real dashboard totals', async () => {
+        render(<App />);
+        await waitForOverview();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
+        // в январе потрачено 1000 из 7000
+        expect(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByTestId('limit-hint'))
+            .toHaveTextContent('После него можно потратить €6.000,00');
+    });
+
+    it('does not offer the limit hint when editing an existing expense', async () => {
+        render(<App />);
+        await waitForOverview();
+        await openHistory();
+
+        fireEvent.click(screen.getByRole('button', { name: /Monthly flat rent/ }));
+        const dialog = await screen.findByRole('dialog', { name: 'Редактировать' });
+        expect(within(dialog).queryByTestId('limit-hint')).not.toBeInTheDocument();
     });
 
     it('keeps the transaction form open and reports an API save failure', async () => {
@@ -383,14 +430,14 @@ describe('App Integration Tests', () => {
 
         await waitForOverview();
         fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '25' } });
         fireEvent.click(screen.getByText('Продукты'));
         fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('База временно недоступна');
         expect(screen.getByRole('dialog', { name: 'Новый расход' })).toBeInTheDocument();
-        expect(screen.getByPlaceholderText('0.00')).toHaveValue(25);
+        expect(screen.getByPlaceholderText('0')).toHaveValue(25);
         expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions' && options?.method === 'POST')).toHaveLength(1);
     });
 
@@ -411,7 +458,7 @@ describe('App Integration Tests', () => {
 
         await openHistory();
         fireEvent.click(screen.getByRole('button', { name: /Monthly flat rent/ }));
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('Операция уже изменена');
         expect(screen.getByRole('dialog', { name: 'Редактировать' })).toBeInTheDocument();
@@ -446,10 +493,10 @@ describe('App Integration Tests', () => {
         const firstSyncLabel = screen.getByText(/^Обновлено /).textContent;
 
         fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
-        fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '25' } });
         fireEvent.click(screen.getByText('Продукты'));
         fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
-        fireEvent.click(screen.getByText('Сохранить'));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
 
         expect(await screen.findByText('Не удалось обновить данные')).toBeInTheDocument();
         expect(screen.getByText(/Показана синхронизация:/)).toBeInTheDocument();
@@ -559,7 +606,7 @@ describe('App Integration Tests', () => {
         // Open split sub-item via its full-row button (see the accessible
         // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
         // than clicking its amount text directly.
-        await waitFor(() => screen.getAllByText('€50.00'));
+        await waitFor(() => screen.getAllByText('€50,00'));
         fireEvent.click(screen.getByRole('button', { name: /Grouped \(Разделено\)/ }));
 
         // Wait for modal to open (find delete button)
@@ -697,7 +744,7 @@ describe('App Integration Tests', () => {
         await waitForOverview();
 
         // Default is monthly income (Salary = 5000)
-        expect(await screen.findByText(/\+€5\.000/)).toBeInTheDocument();
+        expect(await screen.findByRole('button', { name: /^Доход: €5\.000,00/ })).toBeInTheDocument();
 
         // Switch to lifetime. "Всё время" has nothing further to pick, so it
         // applies and closes the sheet on the spot.
@@ -705,7 +752,7 @@ describe('App Integration Tests', () => {
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Всё время' }));
 
         // Should show lifetime stats (same as monthly in this mock since all are in Jan 2026)
-        expect(await screen.findByText(/\+€5\.000/)).toBeInTheDocument();
+        expect(await screen.findByRole('button', { name: /^Доход: €5\.000,00/ })).toBeInTheDocument();
 
         // Progress bar (Limit) should be gone
         expect(screen.queryByText(/Лимит €/)).not.toBeInTheDocument();
@@ -983,6 +1030,14 @@ describe('App Integration Tests', () => {
         expect(recent.getByText('Покупка 3')).toBeInTheDocument();
         expect(recent.queryByText('Покупка 2')).not.toBeInTheDocument();
         expect(recent.queryByText('Покупка 1')).not.toBeInTheDocument();
+
+        // Список лежит прямо на сером фоне: белые карточки в нём - это дни,
+        // внешней карточки вокруг всего списка нет.
+        const region = screen.getByRole('region', { name: 'Последние операции' });
+        expect(region.querySelector('.glass-panel')).toBeNull();
+        const dayCard = region.querySelector('[data-history-date]').children[1];
+        expect(dayCard.style.background).toBe('var(--color-surface)');
+        expect(region.querySelector('[data-history-date]').parentElement.style.background).toBe('');
 
         fireEvent.click(recent.getByRole('button', { name: /^Покупка 7/ }));
         expect(await screen.findByRole('dialog', { name: 'Редактировать' })).toBeInTheDocument();

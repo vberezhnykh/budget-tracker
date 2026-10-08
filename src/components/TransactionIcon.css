@@ -8,7 +8,9 @@
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
-  border-radius: var(--radius-pill);
+  /* Плитка со скруглёнными углами, а не круг: так иконка читается в строке
+     списка рядом с карточкой дня. */
+  border-radius: 12px;
   color: var(--transaction-icon-color);
   background: var(--transaction-icon-bg);
   pointer-events: none;

@@ -63,13 +63,14 @@ export default function Field({ tone = 'outline', size = 'md', radius, style, ..
     );
 }
 
-// Подпись над полем или рядом чипов в форме. Одна и та же строка стиля
-// раньше повторялась у каждого блока формы операции.
+// Подпись над полем или рядом чипов в форме: мелкая, серая, но с весом
+// label, чтобы читаться над белым полем. Одна и та же строка стиля раньше
+// повторялась у каждого блока формы операции.
 export function FormLabel({ style, ...props }) {
     return (
         <label
             {...props}
-            style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontSize: 'var(--text-base)', ...style }}
+            style={{ display: 'block', color: 'var(--color-text-muted)', marginBottom: 'var(--space-2)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)', ...style }}
         />
     );
 }

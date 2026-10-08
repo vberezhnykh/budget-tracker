@@ -45,19 +45,19 @@ describe('lazy budget reads', () => {
     expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);
     const history = await openHistory();
     expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(40);
-    expect(history.getByText('-850.00€')).toBeInTheDocument();
+    expect(history.getByText('\u2212€850,00')).toBeInTheDocument();
     expect(request.mock.calls.some(([url]) => url === '/api/transactions')).toBe(false);
     expect(request.mock.calls.some(([url]) => url.includes('analytics=1'))).toBe(false);
 
     fireEvent.click(history.getByRole('button', { name: 'Загрузить еще' }));
     await waitFor(() => expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(80));
-    expect(history.getByText('-850.00€')).toBeInTheDocument();
+    expect(history.getByText('\u2212€850,00')).toBeInTheDocument();
     fireEvent.click(history.getByRole('button', { name: 'Загрузить еще' }));
     await waitFor(() => expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(85));
     expect(history.queryByRole('button', { name: 'Загрузить еще' })).not.toBeInTheDocument();
     fireEvent.click(history.getByRole('button', { name: /^Покупка 0,/ }));
     expect(screen.getByRole('dialog', { name: 'Редактировать' })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('0.00')).toHaveValue(10);
+    expect(screen.getByPlaceholderText('0')).toHaveValue(10);
     // Подгрузка страниц итоги не трогает.
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Обзор' }));

@@ -1,0 +1,29 @@
+/* Поле суммы в форме операции: крупное число посреди листа без рамки.
+   Псевдоэлементы инлайном не задать, поэтому они здесь. */
+.transaction-amount-input {
+  font-family: inherit;
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Стрелки number-поля при кегле 3rem занимали бы пол-поля. */
+.transaction-amount-input::-webkit-outer-spin-button,
+.transaction-amount-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.transaction-amount-input::placeholder {
+  color: var(--color-text-subtle);
+  opacity: 1;
+}
+
+/* Где поддерживается, поле растёт по содержимому точно: ширина из «ch» в
+   JSX - запасной вариант и с точкой в числе даёт лишний зазор у «€». */
+@supports (field-sizing: content) {
+  .transaction-amount-input {
+    field-sizing: content;
+    width: auto !important;
+    min-width: 4ch;
+  }
+}
