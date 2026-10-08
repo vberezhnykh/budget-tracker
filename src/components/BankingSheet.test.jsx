@@ -239,9 +239,15 @@ function appFetch(override = () => undefined) {
   return fetchMock;
 }
 
+// Настройки открываются из «Ещё» → «Счета, категории и лимит».
+function openSettingsFromMore() {
+  fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+  fireEvent.click(screen.getByRole('button', { name: /Счета, категории и лимит/ }));
+}
+
 async function openBankSheetInApp() {
   await screen.findByText('BudgetTracker');
-  fireEvent.click(screen.getByTitle('Настройки'));
+  openSettingsFromMore();
   fireEvent.click(await screen.findByRole('button', { name: /^Банки/ }));
   await screen.findByRole('heading', { name: 'Предложения из банков (1)' });
 }
@@ -308,6 +314,8 @@ describe('App banking integration', () => {
     await openBankSheetInApp();
     expect(screen.queryByRole('dialog', { name: 'Настройки' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    // Настройки открывались из «Ещё»; итоги лежат на Обзоре.
+    fireEvent.click(screen.getByRole('button', { name: 'Обзор' }));
     expect(screen.getByTestId('balance-carousel')).toHaveTextContent('0,00');
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
   });
@@ -363,7 +371,7 @@ describe('App banking integration', () => {
     });
     render(<App />);
     await screen.findByText('BudgetTracker');
-    fireEvent.click(screen.getByTitle('Настройки'));
+    openSettingsFromMore();
     await waitFor(() => expect(finishBanking).toBeTypeOf('function'));
     fireEvent.click(screen.getByRole('button', { name: /^Банки/ }));
     expect(await screen.findByRole('button', { name: 'Войти' })).toBeInTheDocument();

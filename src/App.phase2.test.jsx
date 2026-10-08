@@ -116,16 +116,15 @@ function makeApi(overrides = {}) {
   return { state, fetch };
 }
 
-async function openDrawer() {
-  const handle = screen.getByRole('button', { name: 'Открыть список операций' });
-  fireEvent.pointerDown(handle, { pointerId: 1, clientY: 200 });
-  fireEvent.pointerUp(handle, { pointerId: 1, clientY: 200 });
+async function openHistory() {
+  fireEvent.click(screen.getByRole('button', { name: 'История' }));
   await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
 }
 
+// Корзина - строка на экране «Ещё».
 async function openTrash() {
-  fireEvent.click(screen.getByTitle('Настройки'));
-  fireEvent.click(await screen.findByRole('button', { name: /Корзина операций/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+  fireEvent.click(await screen.findByRole('button', { name: /^Корзина/ }));
   return screen.findByRole('dialog', { name: 'Корзина операций' });
 }
 
@@ -141,17 +140,18 @@ describe('App phase 2 flows', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows only home and analytics and does not load planned payments', async () => {
+  it('shows four tabs and the add button, and does not load planned payments', async () => {
     const api = makeApi();
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
     await screen.findByTestId('balance-carousel');
     const nav = screen.getByRole('navigation', { name: 'Основная навигация' });
-    expect(within(nav).getAllByRole('button')).toHaveLength(2);
+    expect(within(nav).getAllByRole('button').map(button => button.getAttribute('aria-label') || button.textContent))
+      .toEqual(['Обзор', 'История', 'Добавить операцию', 'Аналитика', 'Ещё']);
     expect(within(nav).queryByRole('button', { name: /Платежи/ })).not.toBeInTheDocument();
     fireEvent.click(within(nav).getByRole('button', { name: /Аналитика/ }));
     expect(within(nav).getByRole('button', { name: /Аналитика/ })).toHaveAttribute('aria-current', 'page');
-    fireEvent.click(within(nav).getByRole('button', { name: /Главная/ }));
+    fireEvent.click(within(nav).getByRole('button', { name: 'Обзор' }));
     expect(screen.getByRole('button', { name: 'Добавить перевод' })).toBeInTheDocument();
     expect(api.fetch.mock.calls.some(([url]) => url.startsWith('/api/planned-payments'))).toBe(false);
   });
@@ -161,7 +161,7 @@ describe('App phase 2 flows', () => {
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
     await screen.findByTestId('balance-carousel');
-    await openDrawer();
+    await openHistory();
     fireEvent.click(screen.getByRole('button', { name: /Кофе утром/ }));
     const dialog = screen.getByRole('dialog', { name: 'Редактировать' });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Удалить операцию' }));
@@ -198,7 +198,7 @@ describe('App phase 2 flows', () => {
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
     await screen.findByTestId('balance-carousel');
-    await openDrawer();
+    await openHistory();
 
     fireEvent.click(screen.getByRole('button', { name: /Первый расход/ }));
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Редактировать' })).getByRole('button', { name: 'Удалить операцию' }));

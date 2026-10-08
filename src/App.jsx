@@ -1,28 +1,26 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
-import { ArrowRightLeft, Check, Minus, Plus, Settings, X } from 'lucide-react'
-import AccountIcon from './components/AccountIcon'
+import { X } from 'lucide-react'
 import AddTransactionForm from './components/AddTransactionForm'
-import AnalyticsView from './components/AnalyticsView'
 import LoginScreen from './components/LoginScreen'
-import TransactionsDrawer, { PEEK_HEIGHT } from './components/TransactionsDrawer'
 import AccountsSettingsModal from './components/AccountsSettingsModal'
-import BottomTabs, { TAB_BAR_RESERVED_HEIGHT } from './components/BottomTabs'
-import PeriodPicker from './components/PeriodPicker'
-import SummaryCard from './components/SummaryCard'
-import { AppSkeleton, SummarySkeleton } from './components/ui/Skeleton'
+import BottomNav, { NAV_OFFSET } from './components/BottomNav'
+import { AppSkeleton } from './components/ui/Skeleton'
 import TrashSheet from './components/TrashSheet'
 import BankingSheet from './components/BankingSheet'
-import IconButton from './components/ui/IconButton'
 import Button from './components/ui/Button'
 import Card from './components/ui/Card'
-import { formatPeriodPhrase, toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput } from './utils/period'
+import OverviewScreen from './screens/OverviewScreen'
+import HistoryScreen from './screens/HistoryScreen'
+import AnalyticsScreen from './screens/AnalyticsScreen'
+import MoreScreen from './screens/MoreScreen'
+import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput } from './utils/period'
 import { transformTransactions, getPaceForecast } from './utils/finance'
 import usePagedHistory from './utils/usePagedHistory'
+import useHashScreen from './utils/useHashScreen'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
 import useSnapCarousel from './utils/useSnapCarousel'
-import './components/AccountCards.css'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -86,10 +84,10 @@ function App() {
   // State for selected. Defaults to current month YYYY-MM
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonth);
   const [historyMonth, setHistoryMonth] = useState(selectedMonth);
-  // Which of the two bottom tabs is showing. 'stats' is the default screen
-  // (spending ring, income/saldo, top categories); 'analytics' is the
-  // category breakdown donut.
-  const [summaryView, setSummaryView] = useState('stats'); // 'stats' or 'analytics'
+  // Какой экран открыт: 'overview' | 'history' | 'analytics' | 'more'. Живёт
+  // в location.hash (см. utils/useHashScreen), поэтому обновление страницы
+  // остаётся на той же вкладке.
+  const [screen, setScreen] = useHashScreen();
   const [timeRange, setTimeRange] = useState('month'); // 'month' or 'lifetime'
 
   // Accounts state
@@ -151,20 +149,17 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [selectedType, setSelectedType] = useState(null);
 
-  // Bottom drawer (transaction history) - collapsed by default, App owns
-  // the expanded/collapsed state since the drawer is a controlled component.
-  const [historyDrawerExpanded, setHistoryDrawerExpanded] = useState(false);
-
-  // Прокрутку под раскрытой шторкой истории здесь больше не трогаем: этим
-  // занимается сама шторка (useBodyScrollLock в utils/), тем же замком, что
-  // и модальные листы. Владелец у стилей body должен быть один - иначе,
-  // когда шторка и лист открыты одновременно, закрытие любого из них
-  // затирало бы замок другого. Раньше отсюда выставлялся только
-  // `overflow: hidden`, а его в мобильном Safari мало: касание он не
-  // останавливает, и палец, ведущий по размытому фону, продолжал двигать
-  // страницу под шторкой.
+  // Фильтры Истории отделены от выбора на Обзоре: счёт и категория, выбранные
+  // там, влияют только на сводку (selectedAccount / selectedCategory идут в
+  // запрос итогов), а список операций фильтруется своим состоянием. Поиск и
+  // месяц (searchQuery / historyMonth) и так относились только к Истории.
+  const [historyAccount, setHistoryAccount] = useState(null);
+  const [historyCategory, setHistoryCategory] = useState(null);
+  const [historyType, setHistoryType] = useState(null);
+  // Положение прокрутки списка Истории. Экран размонтируется вместе с
+  // вкладкой, а вернуться на неё должно туда же, где ушли.
+  const historyPositionRef = useRef({ key: null, top: 0, pending: true });
 
   const clearPrivateData = () => {
     if (noticeTimeoutRef.current) clearTimeout(noticeTimeoutRef.current);
@@ -197,12 +192,14 @@ function App() {
     setMonthlyLimit(DEFAULT_MONTHLY_LIMIT);
     setSelectedAccount(null);
     setSelectedCategory(null);
-    setSelectedType(null);
+    setHistoryAccount(null);
+    setHistoryCategory(null);
+    setHistoryType(null);
     setSearchQuery('');
     setEditingTransaction(null);
     setShowAddTransaction(false);
     setShowAccountsSettings(false);
-    setHistoryDrawerExpanded(false);
+    setScreen('overview');
     setLastSuccessfulSync(null);
     setSyncWarning(null);
     setInitialLoadError(null);
@@ -249,16 +246,16 @@ function App() {
   const statsParams = new URLSearchParams({
     month: selectedMonth, timeRange,
     today: todayKey,
-    analytics: summaryView === 'analytics' ? '1' : '0',
+    analytics: screen === 'analytics' ? '1' : '0',
   });
   if (selectedAccount) statsParams.set('account', selectedAccount);
   if (selectedCategory) statsParams.set('category', selectedCategory);
   const statsKey = statsParams.toString();
   const summaryFilterKey = JSON.stringify([selectedAccount, selectedCategory]);
   const historyParams = new URLSearchParams({ month: historyMonth, continuous: '1', limit: '40' });
-  if (selectedAccount) historyParams.set('account', selectedAccount);
-  if (selectedCategory) historyParams.set('category', selectedCategory);
-  if (selectedType) historyParams.set('type', selectedType);
+  if (historyAccount) historyParams.set('account', historyAccount);
+  if (historyCategory) historyParams.set('category', historyCategory);
+  if (historyType) historyParams.set('type', historyType);
   if (searchQuery.trim()) historyParams.set('q', searchQuery.trim());
   const history = usePagedHistory({
     url: `/api/history?${historyParams}`, enabled: isAuthenticated === true,
@@ -284,7 +281,7 @@ function App() {
 
     const cached = dashboardReads.get(statsKey);
     const fresh = timestamp => Date.now() - timestamp < DASHBOARD_FRESH_MS;
-    const hasFastTotals = summaryView === 'stats' && timeRange === 'month'
+    const hasFastTotals = screen !== 'analytics' && timeRange === 'month'
       && dashboard?.categoryKey === (selectedCategory || '')
       && dashboard.data.monthlyTotalsByAccount?.[selectedAccount || '']
       && fresh(dashboard.updatedAt);
@@ -566,7 +563,7 @@ function App() {
   const matchingTotals = dashboard?.filterKey === summaryFilterKey;
   const accountMonthlyTotals = dashboard?.categoryKey === (selectedCategory || '')
     ? dashboard.data.monthlyTotalsByAccount?.[selectedAccount || ''] : undefined;
-  const statsReady = Boolean(summary || ((accountMonthlyTotals || matchingTotals) && summaryView === 'stats' && timeRange === 'month'));
+  const statsReady = Boolean(summary || ((accountMonthlyTotals || matchingTotals) && screen !== 'analytics' && timeRange === 'month'));
 
   // Declarative slide list for the header balance carousel: total capital,
   // then one slide per individual account. The type-group slides
@@ -674,9 +671,22 @@ function App() {
     setSelectedCategory(prev => prev === category ? null : category);
   };
 
-  const toggleTypeFilter = (type) => {
-    setSelectedType(prev => prev === type ? null : type);
+  // Плитки «Доход» и «Расход» в сводке Обзора ведут в Историю с фильтром по
+  // типу. Выбранная ранее категория другого типа в этом списке дала бы пустой
+  // результат (чипы категорий фильтруются по типу, а она бы осталась
+  // включённой), поэтому такую категорию сбрасываем.
+  const openHistoryOfType = (type) => {
+    const selected = categories.find(c => c.name === historyCategory);
+    if (selected && selected.type !== type) setHistoryCategory(null);
+    setHistoryType(type);
+    setScreen('history');
   };
+
+  // Счёт, выбранный в фильтре Истории, могли удалить из настроек: фильтр
+  // остался бы на несуществующем счёте и список был бы пуст без объяснений.
+  useEffect(() => {
+    if (historyAccount && !accounts.some(a => a._id === historyAccount)) setHistoryAccount(null);
+  }, [historyAccount, accounts]);
 
   // Both halves of "which period am I looking at" move together, from the
   // one PeriodPicker trigger - picking a year has to land on a concrete month
@@ -1028,6 +1038,7 @@ function App() {
       // snapshot arrived; after a refresh failure keep the old snapshot
       // usable by clearing this one stale filter until Retry succeeds.
       setSelectedCategory(prev => prev === category.name ? (refreshed ? trimmed : null) : prev);
+      setHistoryCategory(prev => prev === category.name ? (refreshed ? trimmed : null) : prev);
       showNotice('Категория переименована', 'success');
       return true;
     } catch (err) {
@@ -1055,6 +1066,7 @@ function App() {
         // Фильтр мог стоять на только что удалённой категории - иначе экран
         // остался бы отфильтрованным по тому, чего больше нет в списке.
         setSelectedCategory(prev => prev === category.name ? null : prev);
+        setHistoryCategory(prev => prev === category.name ? null : prev);
         await loadData({ initial: false });
       } else {
         const err = await res.json().catch(() => null);
@@ -1147,19 +1159,6 @@ function App() {
     return 'Неизвестно';
   };
 
-  // Single source of truth for the "Счет" account-filter label, shared by
-  // the active-filter chip and the drawer's contextual title so they can
-  // never disagree.
-  const getAccountFilterLabel = (accountFilter) => {
-    if (accountFilter === 'type:card') return 'Все карты';
-    if (accountFilter === 'type:cash') return 'Все наличные';
-    return accounts.find(a => a._id === accountFilter)?.name || accountFilter;
-  };
-
-  const historyDrawerTitle = selectedAccount
-    ? `Список операций «${getAccountFilterLabel(selectedAccount)}»`
-    : 'Список операций';
-
   // Defensive against a bad stored monthlyLimit (0, negative, or non-finite -
   // the server now rejects saving those, but an old/unmigrated value could
   // still be sitting in the settings document). Dividing by such a limit
@@ -1235,6 +1234,17 @@ function App() {
       minute: '2-digit',
     })
     : null;
+
+  // Общие для Обзора и Аналитики пропсы обёртки сводки (см.
+  // screens/SummaryFrame): ожидание данных считается здесь, потому что от
+  // него зависит и сама карусель счетов.
+  const summaryFrame = {
+    frameRef: accountSummaryRef,
+    pending: accountStatsPending,
+    ready: statsReady,
+    syncWarning,
+    isRefreshing,
+  };
 
   // isAuthenticated === false is the one state that always wins: a 401 mid-
   // session (expired/cleared cookie) must return the user to the login
@@ -1314,7 +1324,7 @@ function App() {
           style={{
             position: 'fixed',
             left: '50%',
-            bottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px`,
+            bottom: `calc(${NAV_OFFSET} + var(--space-4))`,
             transform: 'translateX(-50%)',
             zIndex: 950,
             width: 'calc(100% - 40px)',
@@ -1365,315 +1375,91 @@ function App() {
           </Button>
         </Card>
       )}
-      {/* Premium Header */}
-      <Card as="header" padding="lg" style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-8)' }}>
-          <div style={{ width: '24px' }}></div>
-          <div style={{ textAlign: 'center' }}>
-            <h1 style={{ fontSize: '1.8rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
-            {lastSyncLabel && (
-              <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-2xs)', marginTop: 'var(--space-1)' }}>
-                Синхронизировано: {lastSyncLabel}
-              </div>
-            )}
-          </div>
-          <IconButton
-            tone="neutral"
-            round
-            size={38}
-            onClick={() => setShowAccountsSettings(true)}
-            title="Настройки"
-            style={{ fontSize: 'var(--text-3xl)', transition: 'all 0.2s ease', outline: 'none' }}
-          >
-            <Settings size={21} />
-          </IconButton>
-        </div>
-
-        {/* Balance Carousel: total capital, type groups, then one slide per account */}
-        <style>{`
-          div::-webkit-scrollbar { display: none; }
-        `}</style>
-        <div
-          ref={accountCarousel.setContainer}
-          onScroll={accountCarousel.handleScroll}
-          data-testid="balance-carousel"
-          style={{
-            display: 'flex',
-            overflowX: 'auto',
-            scrollSnapType: 'x mandatory',
-            WebkitOverflowScrolling: 'touch',
-            gap: 'var(--space-3)',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none'
-          }}
-        >
-          {/* Leading spacer: with center snap-alignment there is no slack before
-              slide 0, so its centre snap position would need a negative scroll
-              offset (impossible). This spacer supplies that slack so slide 0
-              can still reach centre alignment at scrollLeft 0. Not a slide, so
-              no data-carousel-slide - getCarouselSlideElements() must not see it. */}
-          <div
-            aria-hidden="true"
-            style={{
-              flexGrow: 0,
-              flexShrink: 0,
-              flexBasis: 'max(0px, 6% - 12px)',
-              pointerEvents: 'none'
-            }}
+      {/* Ровно один экран за раз. Состояние и обработчики остаются здесь, экраны
+          получают их пропсами. Внизу страницы - запас под нижнюю навигацию
+          (она fixed и из потока выпала); у Истории запаса нет, потому что её
+          высота уже посчитана под панель и страница на этой вкладке не
+          листается. */}
+      <main style={{ paddingBottom: screen === 'history' ? 0 : `calc(${NAV_OFFSET} + var(--space-4))` }}>
+        {screen === 'overview' && (
+          <OverviewScreen
+            lastSyncLabel={lastSyncLabel}
+            setAccountContainer={accountCarousel.setContainer}
+            onAccountScroll={accountCarousel.handleScroll}
+            slides={slides}
+            selectedAccount={selectedAccount}
+            onSlideClick={handleSlideClick}
+            onAdd={openAddModal}
+            summaryFrame={summaryFrame}
+            timeRange={timeRange}
+            setMonthContainer={monthCarousel.setContainer}
+            onMonthScroll={monthCarousel.handleScroll}
+            carouselMonths={carouselMonths}
+            monthlyTotals={monthlyTotals}
+            selectedMonth={selectedMonth}
+            monthlyLimit={monthlyLimit}
+            periodStats={periodStats}
+            onChangePeriod={handlePeriodChange}
+            onOpenHistory={openHistoryOfType}
           />
-          {slides.map((slide, index) => {
-            const isActive = slide.filter === selectedAccount;
-            const balanceText = `€${slide.amount.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`;
-            return (
-              <div
-                key={slide.key}
-                data-carousel-slide
-                className="account-card"
-                data-account-theme={slide.theme}
-                role="button"
-                tabIndex={0}
-                aria-label={slide.note ? `${slide.name}: ${balanceText}, ${slide.note}` : `${slide.name}: ${balanceText}`}
-                aria-current={isActive}
-                aria-pressed={isActive}
-                onClick={() => handleSlideClick(slide, index)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleSlideClick(slide, index);
-                  }
-                }}
-              >
-                {/* The account symbol sits in the card's top-right corner instead of
-                    taking a full row of its own, so the card stays compact. It is
-                    absolutely positioned and non-interactive: the name/amount block
-                    below keeps the card's height, and centred text is unaffected. */}
-                <div
-                  aria-hidden="true"
-                  className="account-card__symbol"
-                >
-                  <AccountIcon icon={slide.icon} type={slide.type} size={22} />
-                </div>
-                {isActive && <span aria-hidden="true" className="account-card__selection"><Check size={13} /></span>}
-                <div className="account-card__name">
-                  {slide.name}
-                </div>
-                <div className="balance-amount">
-                  {balanceText}
-                </div>
-                {slide.note && (
-                  <div className="account-card__note">
-                    {slide.note}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {/* Trailing spacer: mirrors the leading one so the last slide has
-              equal slack after it and can also reach centre snap alignment. */}
-          <div
-            aria-hidden="true"
-            style={{
-              flexGrow: 0,
-              flexShrink: 0,
-              flexBasis: 'max(0px, 6% - 12px)',
-              pointerEvents: 'none'
-            }}
+        )}
+        {screen === 'history' && (
+          <HistoryScreen
+            history={history}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            initialMonth={historyMonth}
+            positionKey={selectedMonth}
+            onSelectMonth={setHistoryMonth}
+            accounts={accounts}
+            categories={categories}
+            historyAccount={historyAccount}
+            setHistoryAccount={setHistoryAccount}
+            historyCategory={historyCategory}
+            setHistoryCategory={setHistoryCategory}
+            historyType={historyType}
+            setHistoryType={setHistoryType}
+            exportToCSV={exportToCSV}
+            isExporting={isExporting}
+            openEditModal={openEditModal}
+            getAccountDisplay={getAccountDisplay}
+            formatDate={formatDate}
+            positionRef={historyPositionRef}
           />
-        </div>
-
-        {/* Carousel dot indicators */}
-        <div style={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center', marginTop: 'var(--space-3)' }}>
-          {slides.map((slide, index) => {
-            const isActive = slide.filter === selectedAccount;
-            return (
-              <button
-                key={slide.key}
-                type="button"
-                onClick={() => handleSlideClick(slide, index)}
-                aria-label={`Показать ${slide.name}`}
-                aria-current={isActive}
-                className="account-carousel-button"
-                data-account-theme={slide.theme}
-                style={{
-                  // Hit target wants to be 40x40 for touch, but with many
-                  // accounts a row of fixed 40px boxes no longer fits the
-                  // width and used to wrap onto a second line. So the box is
-                  // 40px wide at most and allowed to shrink (flexShrink: 1)
-                  // down to 20px, which keeps every dot on one row up to
-                  // ~16 accounts. The horizontal margin stays at 0 so the
-                  // boxes tile edge-to-edge instead of overlapping (a
-                  // negative horizontal margin here made a wider dot's box
-                  // paint over its neighbour, so taps meant for one dot's
-                  // visible marker landed on the next dot instead); only the
-                  // vertical margin is pulled back, where there are no
-                  // neighbours to overlap and it keeps the row from growing
-                  // taller.
-                  flexShrink: 1,
-                  flexGrow: 0,
-                  flexBasis: '40px',
-                  maxWidth: '40px',
-                  minWidth: '20px',
-                  height: '40px',
-                  margin: '-9px 0',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                <span className="account-carousel-dot" aria-hidden="true">
-                  <svg width="18" height="8" viewBox="0 0 18 8" focusable="false">
-                    <rect x={isActive ? 0 : 5} y="0" width={isActive ? 18 : 8} height="8" rx="4" fill="currentColor" />
-                  </svg>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-      </Card>
-
-      <main style={{ paddingBottom: `${PEEK_HEIGHT + TAB_BAR_RESERVED_HEIGHT + 16}px` }}>
-        {/* Quick Actions */}
-        <section style={{ marginBottom: 'var(--space-6)' }}>
-          <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-            <Button tone="positive" onClick={() => openAddModal('income')} aria-label="Добавить доход" style={{ flex: 1, whiteSpace: 'nowrap' }}>
-              <Plus size={18} /> Доход
-            </Button>
-            <Button tone="expense" onClick={() => openAddModal('expense')} aria-label="Добавить расход" style={{ flex: 1, whiteSpace: 'nowrap' }}>
-              <Minus size={18} /> Расход
-            </Button>
-            <Button tone="soft" onClick={() => openAddModal('transfer')} aria-label="Добавить перевод" style={{ flex: 1, whiteSpace: 'nowrap' }}>
-              <ArrowRightLeft size={18} /> Перевод
-            </Button>
-          </div>
-        </section>
-
-        {/* Единственный выбор периода на экране - не отдельная строка, а часть
-            подписи сводки: «Расход за сентябрь ⌄» на карточке (месяц, год,
-            всё время) и «Сводка за сентябрь ⌄» на «Аналитике». Он стоит
-            сразу под быстрыми действиями, поэтому у них тот же отступ снизу,
-            что у шапки. */}
-        {/* Summary Card with Budget Limit */}
-        <div ref={accountSummaryRef} data-testid="account-summary" className={accountStatsPending ? 'account-summary account-summary--pending' : 'account-summary'} aria-busy={accountStatsPending} inert={accountStatsPending} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', marginBottom: 'var(--space-6)' }}>
-          {!statsReady && <div style={{ gridArea: '1 / 1', minWidth: 0 }}>
-            {syncWarning && !isRefreshing
-              ? <Card padding="lg" style={{ color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</Card>
-              : <SummarySkeleton monthly={timeRange === 'month'} limitBar={Number.isFinite(monthlyLimit) && monthlyLimit > 0} analytics={summaryView === 'analytics'} />}
-          </div>}
-          {/* Keep the carousel mounted so loading never resets its scroll position. */}
-          <div aria-hidden={!statsReady || undefined} style={{ gridArea: '1 / 1', minWidth: 0, visibility: statsReady ? 'visible' : 'hidden' }}>
-          {summaryView === 'stats' ? (
-            timeRange === 'month' ? (
-              /* Месяцы листаются так же, как счета в шапке: не «жест меняет
-                 данные», а лента карточек, которая едет за пальцем. Соседние
-                 месяцы видно по краям и приглушены, чтобы читалось, какой
-                 сейчас выбран. */
-              <div
-                ref={monthCarousel.setContainer}
-                onScroll={monthCarousel.handleScroll}
-                data-testid="month-carousel"
-                style={{
-                  display: 'flex',
-                  overflowX: 'auto',
-                  scrollSnapType: 'x mandatory',
-                  WebkitOverflowScrolling: 'touch',
-                  gap: 'var(--space-3)',
-                  scrollbarWidth: 'none',
-                  msOverflowStyle: 'none'
-                }}
-              >
-                {/* Отступы по краям: при выравнивании по центру у первого и
-                    последнего слайда иначе не хватает слака, чтобы доехать до
-                    середины. Не слайды - без data-carousel-slide. */}
-                <div aria-hidden="true" style={{ flex: '0 0 max(0px, 6% - 12px)', pointerEvents: 'none' }} />
-                {carouselMonths.map((month) => {
-                  const totals = monthlyTotals[month] || { income: 0, expense: 0 };
-                  const isActive = month === selectedMonth;
-                  return (
-                    <Card
-                      key={month}
-                      data-carousel-slide
-                      padding="lg"
-                      style={{
-                        flex: '0 0 88%',
-                        scrollSnapAlign: 'center',
-                        scrollSnapStop: 'always',
-                        boxSizing: 'border-box',
-                        // сверху отступ на ступень меньше, чем с остальных
-                        // сторон, - высота слайда прежняя; пресет lg дал бы +4px
-                        padding: 'var(--space-5) var(--space-6) var(--space-6)',
-                        opacity: isActive ? 1 : 0.5,
-                        transition: 'opacity 0.2s ease'
-                      }}
-                    >
-                      <SummaryCard
-                        income={totals.income}
-                        expense={totals.expense}
-                        monthlyLimit={monthlyLimit}
-                        showLimitBar
-                        selectedType={selectedType}
-                        onToggleType={toggleTypeFilter}
-                        isActive={isActive}
-                        // Активная карточка - кнопка выбора периода, соседние -
-                        // тот же текст про свой месяц, но обычный: триггер на
-                        // карточке, которая ещё не выбрана, спорил бы с жестом
-                        // выбора по нажатию на неё. Кнопка в DOM ровно одна.
-                        headline={isActive
-                          ? <PeriodPicker variant="inline" prefix="Расход за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />
-                          : `Расход за ${formatPeriodPhrase('month', month)}`}
-                      />
-                    </Card>
-                  );
-                })}
-                <div aria-hidden="true" style={{ flex: '0 0 max(0px, 6% - 12px)', pointerEvents: 'none' }} />
-              </div>
-            ) : (
-              /* Год и «всё время» листать нечем - одна карточка без полосы лимита:
-                 месячный лимит для такого периода ничего не значит. */
-              <Card padding="lg">
-                <SummaryCard
-                  income={periodStats.income}
-                  expense={periodStats.expense}
-                  monthlyLimit={monthlyLimit}
-                  showLimitBar={false}
-                  headline={<PeriodPicker variant="inline" prefix="Расход за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={handlePeriodChange} />}
-                  selectedType={selectedType}
-                  onToggleType={toggleTypeFilter}
-                />
-              </Card>
-            )
-          ) : (
-            /* Analytics tab: same period as the stats tab (periodStats), so
-               switching tabs never silently changes what range you're
-               looking at. AnalyticsView owns its own empty state for a
-               period with no spending - a tab that can go blank would look
-               broken. */
-            <AnalyticsView
-              periodStats={periodStats}
-              timeRange={timeRange}
-              onChangePeriod={handlePeriodChange}
-              pace={paceForecast}
-              monthlyLimit={monthlyLimit}
-              series={monthlySeries}
-              selectedMonth={selectedMonth}
-              onSelectMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
-              expenseComparison={expenseComparison}
-              categoryComparison={categoryComparison}
-              comparisonLabel={comparisonLabel}
-              selectedCategory={selectedCategory}
-              onSelectCategory={toggleCategoryFilter}
-            />
-          )}
-
-          </div>
-        </div>
+        )}
+        {screen === 'analytics' && (
+          <AnalyticsScreen
+            summaryFrame={summaryFrame}
+            periodStats={periodStats}
+            timeRange={timeRange}
+            onChangePeriod={handlePeriodChange}
+            pace={paceForecast}
+            monthlyLimit={monthlyLimit}
+            series={monthlySeries}
+            selectedMonth={selectedMonth}
+            onSelectMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
+            expenseComparison={expenseComparison}
+            categoryComparison={categoryComparison}
+            comparisonLabel={comparisonLabel}
+            selectedCategory={selectedCategory}
+            onSelectCategory={toggleCategoryFilter}
+          />
+        )}
+        {screen === 'more' && (
+          <MoreScreen
+            lastSyncLabel={lastSyncLabel}
+            isRefreshing={isRefreshing}
+            isExporting={isExporting}
+            onOpenSettings={() => setShowAccountsSettings(true)}
+            onOpenTrash={openTrash}
+            onRefresh={() => loadData({ initial: false })}
+            onExport={exportToCSV}
+            onLogout={handleLogout}
+          />
+        )}
       </main>
 
-      <BottomTabs active={summaryView} onChange={setSummaryView} />
+      <BottomNav active={screen} onChange={setScreen} onAdd={() => openAddModal('expense')} />
 
       {showAddTransaction && (
         <AddTransactionForm
@@ -1692,44 +1478,6 @@ function App() {
         />
       )}
       {editingTransaction && <AddTransactionForm apiFetch={apiFetch} initialData={editingTransaction} categories={categories} onAddCategory={handleAddCategory} onClose={() => setEditingTransaction(null)} onSubmit={handleUpdateTransaction} onDelete={(id) => handleDeleteTransaction(id, editingTransaction.splitId)} accounts={accounts} categoryCounts={dashboard?.data.categoryCounts} />}
-
-      {/* Bottom drawer: transaction history, always mounted (collapsed =
-          transformed off-screen, not unmounted) so filters applied elsewhere
-          keep reflecting in it immediately. */}
-      <TransactionsDrawer
-        expanded={historyDrawerExpanded}
-        setExpanded={setHistoryDrawerExpanded}
-        title={historyDrawerTitle}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        searchResults={history}
-        periodData={history}
-        historyLoading={history.loading}
-        historyError={history.error}
-        hasMore={history.nextCursor !== null}
-        loadMore={history.loadMore}
-        historyKey={history.key}
-        initialMonth={historyMonth}
-        positionKey={selectedMonth}
-        onSelectMonth={setHistoryMonth}
-        hasNewer={history.previousCursor !== null}
-        loadNewer={history.loadNewer}
-        historyDirection={history.direction}
-        isExporting={isExporting}
-        categories={categories}
-        selectedCategory={selectedCategory}
-        selectedType={selectedType}
-        selectedAccount={selectedAccount}
-        toggleCategoryFilter={toggleCategoryFilter}
-        setSelectedAccount={setSelectedAccount}
-        setSelectedType={setSelectedType}
-        setSelectedCategory={setSelectedCategory}
-        exportToCSV={exportToCSV}
-        openEditModal={openEditModal}
-        getAccountDisplay={getAccountDisplay}
-        formatDate={formatDate}
-        getAccountFilterLabel={getAccountFilterLabel}
-      />
 
       {showAccountsSettings && (
         <AccountsSettingsModal

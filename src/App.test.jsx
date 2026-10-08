@@ -116,14 +116,22 @@ function stubCarouselGeometry(container, slideWidth = 300, gap = 12, spacerWidth
     return slideEls;
 }
 
-// Ручка шторки слушает pointer-события, а не click, поэтому «открыть» - это
-// pointerDown + pointerUp по ней. Содержимое шторки (поиск, фильтры, полная
-// история) существует в дереве только когда она раскрыта.
-async function openDrawer() {
-    const handle = screen.getByRole('button', { name: 'Открыть список операций' });
-    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 200 });
-    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 200 });
+// История - отдельная вкладка нижней навигации. Её содержимое (поиск, фильтры,
+// полная история) существует в дереве только пока вкладка открыта.
+async function openHistory() {
+    fireEvent.click(screen.getByRole('button', { name: 'История' }));
     await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
+}
+
+// Переход на вкладку нижней навигации по её названию.
+function goTo(name) {
+    fireEvent.click(within(screen.getByRole('navigation', { name: 'Основная навигация' })).getByRole('button', { name }));
+}
+
+// Настройки открываются из «Ещё» → «Счета, категории и лимит».
+function openSettings() {
+    fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+    fireEvent.click(screen.getByRole('button', { name: /Счета, категории и лимит/ }));
 }
 
 // Разбивка по категориям живёт на вкладке «Аналитика»: на главной её больше
@@ -257,31 +265,93 @@ describe('App Integration Tests', () => {
         expect(within(dialog).queryByRole('button', { name: 'Февраль' })).not.toBeInTheDocument();
     });
 
-    it('switches between the stats and analytics tabs from the bottom tab bar', async () => {
+    it('switches between the four screens from the bottom navigation, one screen at a time', async () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        const tabBar = screen.getByRole('navigation', { name: 'Основная навигация' });
-        const analyticsTab = within(tabBar).getByRole('button', { name: /Аналитика/ });
-        const homeTab = within(tabBar).getByRole('button', { name: /Главная/ });
+        const nav = screen.getByRole('navigation', { name: 'Основная навигация' });
+        const tab = name => within(nav).getByRole('button', { name });
+        expect(tab('Обзор')).toHaveAttribute('aria-current', 'page');
+        expect(screen.getByTestId('balance-carousel')).toBeInTheDocument();
 
-        fireEvent.click(analyticsTab);
+        fireEvent.click(tab('Аналитика'));
 
         await waitFor(() => {
             expect(screen.getByText(/Расходы по категориям/)).toBeInTheDocument();
         });
         // The period trigger follows you across tabs (it moves into the
-        // «Сводка» heading) rather than being owned by the stats screen.
+        // «Сводка» heading) rather than being owned by the overview.
         expect(screen.getByRole('button', { name: /^Период:/ })).toHaveTextContent('Сводка за январь');
-        expect(analyticsTab).toHaveAttribute('aria-current', 'page');
+        expect(tab('Аналитика')).toHaveAttribute('aria-current', 'page');
+        expect(tab('Обзор')).not.toHaveAttribute('aria-current');
+        // Шапка со счетами принадлежит Обзору.
+        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
 
-        fireEvent.click(homeTab);
+        fireEvent.click(tab('История'));
+        expect(await screen.findByTestId('history-scroll')).toBeInTheDocument();
+        expect(screen.queryByText(/Расходы по категориям/)).not.toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'История' })).toBeInTheDocument();
 
-        await waitFor(() => {
-            expect(screen.queryByText(/Расходы по категориям/)).not.toBeInTheDocument();
-        });
+        fireEvent.click(tab('Ещё'));
+        expect(await screen.findByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
+        expect(screen.queryByTestId('history-scroll')).not.toBeInTheDocument();
+
+        fireEvent.click(tab('Обзор'));
+        expect(await screen.findByTestId('balance-carousel')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /^Период:/ })).toBeInTheDocument();
+    });
+
+    it('reflects the screen in the hash without piling up browser history, and follows hashchange', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+        const entries = window.history.length;
+
+        fireEvent.click(screen.getByRole('button', { name: 'История' }));
+        expect(window.location.hash).toBe('#history');
+        fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+        expect(window.location.hash).toBe('#more');
+        fireEvent.click(screen.getByRole('button', { name: 'Обзор' }));
+        expect(window.location.hash).toBe('');
+        expect(window.history.length).toBe(entries);
+
+        act(() => {
+            window.history.replaceState(null, '', '/#analytics');
+            window.dispatchEvent(new HashChangeEvent('hashchange'));
+        });
+        expect(await screen.findByText(/Расходы по категориям/)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Аналитика' })).toHaveAttribute('aria-current', 'page');
+    });
+
+    it('opens on the screen named by the hash', async () => {
+        window.history.replaceState(null, '', '/#more');
+        render(<App />);
+
+        expect(await screen.findByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Ещё' })).toHaveAttribute('aria-current', 'page');
+        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+    });
+
+    it('adds an expense from the center button of the bottom navigation', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
+
+        expect(screen.getByRole('dialog', { name: 'Новый расход' })).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Закрыть', exact: true }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+
+    it('keeps settings out of the overview header and opens them from «Ещё»', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+        expect(screen.queryByTitle('Настройки')).not.toBeInTheDocument();
+
+        openSettings();
+
+        expect(screen.getByRole('dialog', { name: 'Настройки' })).toBeInTheDocument();
     });
 
     it('opens and closes the add transaction modal', async () => {
@@ -345,7 +415,7 @@ describe('App Integration Tests', () => {
         render(<App />);
         await waitFor(() => screen.getByTestId('balance-carousel'));
 
-        await openDrawer();
+        await openHistory();
         fireEvent.click(screen.getByRole('button', { name: /Monthly flat rent/ }));
         fireEvent.click(screen.getByText('Сохранить'));
 
@@ -400,7 +470,7 @@ describe('App Integration Tests', () => {
         consoleSpy.mockRestore();
     });
 
-    it('breaks the period expense down by category, and filters the list when one is tapped', async () => {
+    it('breaks the period expense down by category, and applies the tapped one as the summary filter', async () => {
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
 
@@ -421,7 +491,7 @@ describe('App Integration Tests', () => {
         await waitFor(() => screen.getByText('BudgetTracker'));
         // Операции живут в шторке, и её содержимое существует только когда
         // она раскрыта - открываем, как это делает пользователь.
-        await openDrawer();
+        await openHistory();
 
         // Check for the transaction with description (Rent)
         expect(screen.getByText('Monthly flat rent')).toBeInTheDocument();
@@ -442,7 +512,7 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
-        await openDrawer();
+        await openHistory();
 
         // Each editable row exposes a full-row button (see the accessible
         // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
@@ -490,7 +560,7 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
-        await openDrawer();
+        await openHistory();
 
         // Open split sub-item via its full-row button (see the accessible
         // stretched-overlay restructuring in TransactionsDrawer.jsx) rather
@@ -585,7 +655,7 @@ describe('App Integration Tests', () => {
         expect(january.queryByText('€700,00')).not.toBeInTheDocument();
     });
 
-    it('фильтры расхода и дохода живут только на выбранной карточке', async () => {
+    it('кнопки перехода в историю расхода и дохода живут только на выбранной карточке', async () => {
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
 
@@ -632,33 +702,38 @@ describe('App Integration Tests', () => {
 
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
-        await openDrawer();
+        await openHistory();
 
         // December follows January even when the dashboard shows one month.
         expect(await screen.findByText('Подарки')).toBeInTheDocument();
 
+        // Период выбирается на Обзоре, а История открывается уже на нём.
         // "Всё время": every operation, whatever month it falls in.
+        goTo('Обзор');
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Всё время' }));
+        await openHistory();
         expect(await screen.findByText('Подарки')).toBeInTheDocument();
         expect(screen.getByText('Salary')).toBeInTheDocument();
 
         // "Год" 2025 anchors history in December; January is available above.
+        goTo('Обзор');
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Год' }));
         fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '2025 год' }));
+        expect(await screen.findByRole('button', { name: 'Период: 2025 год' })).toBeInTheDocument();
+        await openHistory();
         expect(await screen.findByText('Подарки')).toBeInTheDocument();
         expect(screen.queryByText('Salary')).not.toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: 'Загрузить более новые' }));
         expect(await screen.findByText('Salary')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Период: 2025 год' })).toBeInTheDocument();
     });
 
     it('filters transactions by search query', async () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
-        await openDrawer();
+        await openHistory();
 
         // Initially shows both (Salary and Rent) in January view (since we mocked time)
         expect(screen.getByText('Salary')).toBeInTheDocument();
@@ -668,10 +743,10 @@ describe('App Integration Tests', () => {
         const searchInput = screen.getByPlaceholderText(/Поиск/);
         fireEvent.change(searchInput, { target: { value: 'Rent' } });
 
-        const drawer = within(screen.getByTestId('transactions-drawer'));
+        const list = within(screen.getByTestId('history-scroll'));
         await waitFor(() => {
-            expect(drawer.queryByText('Salary')).not.toBeInTheDocument();
-            expect(drawer.getByText('Monthly flat rent')).toBeInTheDocument();
+            expect(list.queryByText('Salary')).not.toBeInTheDocument();
+            expect(list.getByText('Monthly flat rent')).toBeInTheDocument();
             expect(screen.getByText(/Результаты поиска \(1\)/)).toBeInTheDocument();
         });
 
@@ -681,12 +756,12 @@ describe('App Integration Tests', () => {
 
         // Should show both again.
         await waitFor(() => {
-            expect(drawer.getByText('Salary')).toBeInTheDocument();
-            expect(drawer.getByText('Monthly flat rent')).toBeInTheDocument();
-            expect(screen.getByText('История')).toBeInTheDocument();
+            expect(list.getByText('Salary')).toBeInTheDocument();
+            expect(list.getByText('Monthly flat rent')).toBeInTheDocument();
+            expect(screen.getByRole('heading', { level: 1, name: 'История' })).toBeInTheDocument();
         });
     });
-    it('filters transactions by account when clicking account cards', async () => {
+    it('filters the history by account with the account chips', async () => {
         const cashTx = {
             _id: '3',
             title: 'Coffee',
@@ -702,35 +777,37 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         await waitFor(() => screen.getByText('BudgetTracker'));
-        await openDrawer();
+        await openHistory();
         await waitFor(() => screen.getByText('Coffee'));
         expect((await screen.findAllByText('Salary')).length).toBeGreaterThan(0);
 
-        // The header is a carousel of slides: total capital, then one slide
-        // per account (the type:card/type:cash group slides were dropped -
-        // that split now lives in the stats block instead). Clicking a
-        // slide applies its filter directly (no chevrons/expand step).
-        const cardFilterBtn = screen.getByText('Карта').closest('div');
-        fireEvent.click(cardFilterBtn);
+        // Свой ряд чипов в Истории: «Все счета» и по чипу на счёт.
+        const accountChips = () => within(screen.getByRole('group', { name: 'Фильтр по счёту' }));
+        fireEvent.click(accountChips().getByRole('button', { name: 'Карта' }));
 
         // Should show Salary (card) but NOT Coffee (cash)
         await waitFor(() => {
             expect(screen.queryAllByText('Salary').length).toBeGreaterThan(0);
             expect(screen.queryByText('Coffee')).not.toBeInTheDocument();
         });
+        expect(fetchMock.mock.calls.some(([url]) => typeof url === 'string' && url.startsWith('/api/history?') && url.includes('account=card'))).toBe(true);
 
-        // Click on the "Наличные" account slide.
-        const cashFilterBtn = screen.getByText('Наличные').closest('div');
-        fireEvent.click(cashFilterBtn);
+        fireEvent.click(accountChips().getByRole('button', { name: 'Наличные' }));
 
         // Should show Coffee (cash) but NOT Salary (card)
         await waitFor(() => {
             expect(screen.getByText('Coffee')).toBeInTheDocument();
             expect(screen.queryByText('Salary')).not.toBeInTheDocument();
         });
+
+        fireEvent.click(accountChips().getByRole('button', { name: 'Все счета' }));
+        await waitFor(() => {
+            expect(screen.getByText('Coffee')).toBeInTheDocument();
+            expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
+        });
     });
 
-    it('selects the slide nearest the scroll position once scrolling settles', async () => {
+    it('keeps the history filters separate from the account selected on the overview', async () => {
         const cashTx = {
             _id: '3',
             title: 'Coffee',
@@ -744,8 +821,56 @@ describe('App Integration Tests', () => {
 
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
-        await openDrawer();
+
+        // Счёт выбран на Обзоре...
+        fireEvent.click(screen.getByRole('button', { name: 'Показать Карта' }));
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true'));
+
+        // ...а История его не видит: в ней по-прежнему все счета, и запрос
+        // истории без параметра account.
+        await openHistory();
         await waitFor(() => screen.getByText('Coffee'));
+        expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
+        expect(within(screen.getByRole('group', { name: 'Фильтр по счёту' })).getByRole('button', { name: 'Все счета' })).toHaveAttribute('aria-pressed', 'true');
+        expect(fetchMock.mock.calls.some(([url]) => typeof url === 'string' && url.startsWith('/api/history?') && url.includes('account='))).toBe(false);
+
+        // И наоборот: фильтр Истории не меняет выбранный на Обзоре счёт.
+        fireEvent.click(within(screen.getByRole('group', { name: 'Фильтр по счёту' })).getByRole('button', { name: 'Наличные' }));
+        await waitFor(() => expect(screen.queryByText('Salary')).not.toBeInTheDocument());
+        goTo('Обзор');
+        expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true');
+        expect(screen.getByRole('button', { name: 'Показать Наличные' })).toHaveAttribute('aria-current', 'false');
+    });
+
+    it('opens the history of income from the income tile and the history of expenses from the expense figure', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
+
+        fireEvent.click(screen.getByRole('button', { name: /^Доход: .*открыть историю доходов$/ }));
+
+        expect(window.location.hash).toBe('#history');
+        expect(screen.getByRole('button', { name: 'История' })).toHaveAttribute('aria-current', 'page');
+        expect(await screen.findByText('Тип:')).toBeInTheDocument();
+        expect(screen.getByText('Доходы')).toBeInTheDocument();
+        await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
+        const list = within(screen.getByTestId('history-scroll'));
+        expect(list.getByText('Salary')).toBeInTheDocument();
+        expect(list.queryByText('Monthly flat rent')).not.toBeInTheDocument();
+        expect(fetchMock.mock.calls.some(([url]) => typeof url === 'string' && url.startsWith('/api/history?') && url.includes('type=income'))).toBe(true);
+
+        goTo('Обзор');
+        fireEvent.click(screen.getByRole('button', { name: /^Расход: .*открыть историю расходов$/ }));
+
+        await waitFor(() => expect(screen.getByText('Расходы')).toBeInTheDocument());
+        await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
+        const expenses = within(screen.getByTestId('history-scroll'));
+        expect(expenses.getByText('Monthly flat rent')).toBeInTheDocument();
+        expect(expenses.queryByText('Salary')).not.toBeInTheDocument();
+    });
+
+    it('selects the slide nearest the scroll position once scrolling settles', async () => {
+        render(<App />);
+        await waitFor(() => screen.getByText('BudgetTracker'));
 
         // Slide order: total(0), "Карта" account(1), "Наличные" account(2).
         // Slide 1 is the per-account "Карта" slide - deliberately NOT the
@@ -781,13 +906,11 @@ describe('App Integration Tests', () => {
         // and the settle-debounce has already fired inside the act() above.
         vi.useRealTimers();
 
-        // Selecting slide 3 ("Карта") must filter by the card account, not by
+        // Selecting slide 1 ("Карта") must select the card account, not
         // whatever the last slide happens to be.
-        expect(screen.queryByText('Coffee')).not.toBeInTheDocument();
-        expect((await screen.findAllByText('Salary')).length).toBeGreaterThan(0);
-        // Выбранный счёт виден в заголовке на ручке шторки - чип «Счет:»
-        // лежит в её содержимом, а оно рендерится только у раскрытой.
-        expect(screen.getByText(/^Список операций/)).toHaveTextContent('Карта');
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true'));
+        expect(screen.getByRole('button', { name: 'Показать Наличные' })).toHaveAttribute('aria-current', 'false');
+        expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'false');
         await waitFor(() => expect(screen.getByTestId('account-summary')).not.toHaveClass('account-summary--pending'));
     });
 
@@ -799,36 +922,33 @@ describe('App Integration Tests', () => {
         fireEvent.click(cardDot);
 
         await waitFor(() => {
-            expect(screen.getByText(/^Список операций/)).toHaveTextContent('Карта');
+            expect(screen.getByText('Карта').closest('[data-carousel-slide]')).toHaveAttribute('aria-pressed', 'true');
         });
         expect(cardDot).toHaveAttribute('aria-current', 'true');
+        expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'false');
     });
 
-    it('returns the carousel to the total-capital slide when the filter is reset', async () => {
+    it('puts a remounted carousel back on the selected slide after switching tabs', async () => {
         render(<App />);
         await waitFor(() => screen.getByText('BudgetTracker'));
 
-        const cardSlide = screen.getByText('Карта').closest('[data-carousel-slide]');
-        fireEvent.click(cardSlide);
+        fireEvent.click(screen.getByText('Карта').closest('[data-carousel-slide]'));
         await waitFor(() => {
-            expect(screen.getByText(/^Список операций/)).toHaveTextContent('Карта');
+            expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true');
         });
 
+        // Шапка с каруселью живёт только на Обзоре: с него уходим, и карусель
+        // исчезает из дерева вовсе.
+        goTo('История');
+        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
         Element.prototype.scrollIntoView.mockClear();
 
-        // Сброс фильтра живёт в содержимом шторки - чтобы до него добраться,
-        // её надо раскрыть, как это делает и пользователь.
-        await openDrawer();
-        const resetBtn = screen.getByRole('button', { name: 'Сбросить', exact: true });
-        fireEvent.click(resetBtn);
-
-        await waitFor(() => {
-            expect(screen.queryByText(/Счет:/)).not.toBeInTheDocument();
-        });
-
-        const totalSlide = screen.getByText('Общий капитал').closest('[data-carousel-slide]');
-        expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
-        expect(Element.prototype.scrollIntoView.mock.contexts).toContain(totalSlide);
+        // Вернувшись, она рождается с нулевой прокруткой и должна сама
+        // встать на выбранный слайд, а выбор - остаться прежним.
+        goTo('Обзор');
+        const cardSlide = screen.getByText('Карта').closest('[data-carousel-slide]');
+        expect(Element.prototype.scrollIntoView.mock.contexts).toContain(cardSlide);
+        expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true');
     });
 
     it('clears the selection when the currently selected account is deleted', async () => {
@@ -846,24 +966,26 @@ describe('App Integration Tests', () => {
         const walletSlide = screen.getByText('Кошелёк').closest('[data-carousel-slide]');
         fireEvent.click(walletSlide);
         await waitFor(() => {
-            expect(screen.getByText(/^Список операций/)).toHaveTextContent('Кошелёк');
+            expect(screen.getByRole('button', { name: 'Показать Кошелёк' })).toHaveAttribute('aria-current', 'true');
         });
 
         // Delete it via the accounts settings panel.
-        fireEvent.click(screen.getByTitle('Настройки'));
+        openSettings();
         const deleteButtons = await screen.findAllByRole('button', { name: 'Удалить' });
         fireEvent.click(deleteButtons[deleteButtons.length - 1]);
 
         expect(window.confirm).toHaveBeenCalled();
 
-        // The filter pointed at an id that no longer exists - it must be reset.
-        // Признак сброса - заголовок шторки без имени счёта.
-        await waitFor(() => {
-            expect(screen.getByText(/^Список операций/)).not.toHaveTextContent('Кошелёк');
-        });
+        // The filter pointed at an id that no longer exists - it must be reset
+        // and the selection taken back to total capital. Настройки
+        // открыты поверх «Ещё», поэтому на Обзор возвращаемся, закрыв их.
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/accounts/wallet', expect.objectContaining({ method: 'DELETE' })));
+        fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
+        goTo('Обзор');
         await waitFor(() => {
             expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'true');
         });
+        expect(screen.queryByText('Кошелёк')).not.toBeInTheDocument();
     });
 
     it('держит замороженный счёт вне общего капитала и подписывает сумму отдельно', async () => {
@@ -898,27 +1020,35 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
 
         render(<App />);
-        await screen.findByTitle('Настройки');
+        await screen.findByRole('button', { name: 'Ещё' });
 
         // Ставим фильтр на категорию, которую сейчас удалим - через разбивку
-        // расхода на вкладке «Аналитика».
+        // расхода на вкладке «Аналитика» (фильтр сводки) и чипом в Истории
+        // (отдельный фильтр списка): удаление должно снять оба.
         await openAnalytics();
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
         });
+        await openHistory();
+        fireEvent.click(within(screen.getByRole('group', { name: 'Фильтр по категории' })).getByRole('button', { name: 'Подписки' }));
+        expect(await screen.findByText('Категория:')).toBeInTheDocument();
 
-        fireEvent.click(screen.getByTitle('Настройки'));
+        openSettings();
         fireEvent.click(await screen.findByLabelText('Удалить категорию: Подписки'));
 
         expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('операций: 1'));
         await waitFor(() => {
             expect(fetchMock).toHaveBeenCalledWith('/api/categories/c2', expect.objectContaining({ method: 'DELETE' }));
         });
-        // Фильтр указывал на исчезнувшую категорию - его нужно снять.
+        // Фильтры указывали на исчезнувшую категорию - их нужно снять.
+        fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
+        await openAnalytics();
         await waitFor(() => {
             expect(screen.queryByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'false');
         });
+        await openHistory();
+        expect(screen.queryByText('Категория:')).not.toBeInTheDocument();
     });
 
     it('переименовывает категорию, переписывает историю и переносит фильтр на новое имя', async () => {
@@ -931,16 +1061,21 @@ describe('App Integration Tests', () => {
         ];
 
         render(<App />);
-        await screen.findByTitle('Настройки');
+        await screen.findByRole('button', { name: 'Ещё' });
 
-        // Фильтр стоит на категории, которую сейчас переименуем.
+        // Фильтры стоят на категории, которую сейчас переименуем: в сводке
+        // (разбивка на «Аналитике») и в Истории (чип) - у каждого своё
+        // состояние, и переехать на новое имя должны оба.
         await openAnalytics();
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
         });
+        await openHistory();
+        fireEvent.click(within(screen.getByRole('group', { name: 'Фильтр по категории' })).getByRole('button', { name: 'Подписки' }));
+        expect(await screen.findByText('Категория:')).toBeInTheDocument();
 
-        fireEvent.click(screen.getByTitle('Настройки'));
+        openSettings();
         fireEvent.click(await screen.findByLabelText('Переименовать категорию: Подписки'));
         fireEvent.change(screen.getByLabelText('Название категории: Подписки'), { target: { value: 'Сервисы' } });
         fireEvent.click(screen.getByLabelText('Сохранить название категории: Подписки'));
@@ -956,10 +1091,18 @@ describe('App Integration Tests', () => {
 
         // История перечитана: разбивка расхода знает новое имя, а фильтр
         // переехал на него вместе с ней.
+        fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
+        await openAnalytics();
         await waitFor(() => {
             expect(screen.getByRole('button', { name: /^Сервисы: €/ })).toHaveAttribute('aria-pressed', 'true');
         });
         expect(screen.queryByRole('button', { name: /^Подписки: €/ })).not.toBeInTheDocument();
+
+        // Фильтр Истории переехал на новое имя тоже: список перечитан по нему.
+        await openHistory();
+        expect(screen.getByText('Категория:').parentElement).toHaveTextContent('Сервисы');
+        expect(within(screen.getByRole('group', { name: 'Фильтр по категории' })).getByRole('button', { name: 'Сервисы' })).toHaveAttribute('aria-pressed', 'true');
+        expect(within(screen.getByTestId('history-scroll')).getByText('Netflix')).toBeInTheDocument();
     });
 
     // Finding 3: a non-ok response (or one whose body isn't actually an
@@ -1033,7 +1176,7 @@ describe('App Integration Tests', () => {
     // the server has actually confirmed the session cookie is cleared. This
     // is nested here (rather than a sibling describe) so it inherits the
     // shared beforeEach that renders the ordinary authenticated app and
-    // stubs `fetch` with fetchMock - the "Настройки" panel and its
+    // stubs `fetch` with fetchMock - the «Ещё» screen and its
     // "Выйти" button need that same authenticated state to be reachable.
     describe('Logout', () => {
         it('keeps the authenticated state and reports the failure via the notice banner when /api/logout fails', async () => {
@@ -1048,7 +1191,7 @@ describe('App Integration Tests', () => {
                 return baseMock(url, options);
             }));
 
-            fireEvent.click(screen.getByTitle('Настройки'));
+            goTo('Ещё');
             fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
 
             await waitFor(() => {
@@ -1057,7 +1200,7 @@ describe('App Integration Tests', () => {
             // Still authenticated: the main UI is showing, not the login screen -
             // a stale cookie left over from a failed logout must not look like a
             // successful one.
-            expect(screen.getByTestId('balance-carousel')).toBeInTheDocument();
+            expect(screen.getByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
             expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument();
         });
 
@@ -1065,7 +1208,7 @@ describe('App Integration Tests', () => {
             render(<App />);
             await waitFor(() => screen.getByText('BudgetTracker'));
 
-            fireEvent.click(screen.getByTitle('Настройки'));
+            goTo('Ещё');
             fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
 
             await waitFor(() => {
@@ -1086,13 +1229,14 @@ describe('App Integration Tests', () => {
             }));
             const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-            fireEvent.click(screen.getByTitle('Настройки'));
+            goTo('Ещё');
             fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
 
             await waitFor(() => {
                 expect(screen.getByRole('alert')).toBeInTheDocument();
             });
-            expect(screen.getByTestId('balance-carousel')).toBeInTheDocument();
+            expect(screen.getByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
+            expect(screen.queryByLabelText('Пароль')).not.toBeInTheDocument();
 
             consoleSpy.mockRestore();
         });
@@ -1334,12 +1478,12 @@ describe('Authentication flow', () => {
         render(<App />);
         await waitFor(() => screen.getByText('Начальный счёт'));
 
-        fireEvent.click(screen.getByTitle('Настройки'));
+        openSettings();
         fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Сохранённый счёт' } });
         fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
         await waitFor(() => expect(accountGets).toBe(2));
 
-        fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'Настройки' })).getByRole('button', { name: 'Выйти' }));
         await waitFor(() => screen.getByLabelText('Пароль'));
         expect(screen.queryByText('Начальный счёт')).not.toBeInTheDocument();
 
@@ -1448,7 +1592,7 @@ describe('Authentication flow', () => {
         // Any authenticated-looking screen still needs a live session for
         // further calls - saving a new account here is what hits /api/accounts
         // again and discovers the session is gone.
-        fireEvent.click(screen.getByTitle('Настройки'));
+        openSettings();
         fireEvent.change(screen.getByPlaceholderText(/Имя счёта/), { target: { value: 'Новый счёт' } });
         fireEvent.click(screen.getByRole('button', { name: 'Добавить счёт' }));
 

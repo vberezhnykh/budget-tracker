@@ -9,6 +9,9 @@ let transactions, request;
 const statsCalls = () => request.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?'));
 const select = name => fireEvent.click(screen.getByRole('button', { name: `Показать ${name}` }));
 const skeleton = () => screen.queryByRole('status', { name: 'Загрузка итогов…' });
+// Переключатель счетов (карусель и точки) - только на Обзоре, поэтому к
+// Аналитике ходим туда и обратно через нижнюю навигацию.
+const goTo = name => fireEvent.click(screen.getByRole('button', { name }));
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -50,14 +53,23 @@ describe('instant account summaries', () => {
   it('loads only analytics for a new selection and instantly reuses visited selections', async () => {
     render(<App />);
     await screen.findByTestId('balance-carousel');
-    fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
+    goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    goTo('Обзор');
     select('Наличные');
+    expect(skeleton()).not.toBeInTheDocument();
+    goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
     expect(statsCalls()).toHaveLength(3); // startup + two analytics views
+    goTo('Обзор');
     select('Общий капитал');
     expect(skeleton()).not.toBeInTheDocument();
+    goTo('Аналитика');
+    expect(skeleton()).not.toBeInTheDocument();
+    goTo('Обзор');
     select('Наличные');
+    expect(skeleton()).not.toBeInTheDocument();
+    goTo('Аналитика');
     expect(skeleton()).not.toBeInTheDocument();
     await act(async () => {});
     expect(statsCalls()).toHaveLength(3);
@@ -109,21 +121,25 @@ describe('instant account summaries', () => {
     });
     render(<App />);
     await screen.findByTestId('balance-carousel');
-    fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
+    goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    goTo('Обзор');
     select('Наличные');
+    goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    goTo('Обзор');
     select('Общий капитал');
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Открыть список операций' }), { key: 'Enter' });
+    goTo('История');
     fireEvent.click(await screen.findByRole('button', { name: /^Кофе,/ }));
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '75' } });
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Редактировать' })).not.toBeInTheDocument());
-    fireEvent.keyDown(screen.getByRole('button', { name: 'Закрыть список операций' }), { key: 'Enter' });
+    goTo('Обзор');
     select('Наличные');
+    goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
     expect(statsCalls().filter(([url]) => url.includes('account=cash') && url.includes('analytics=1'))).toHaveLength(2);
-    fireEvent.click(screen.getByRole('button', { name: /Главная/ }));
+    goTo('Обзор');
     expect(screen.getByRole('button', { name: /Расход:.*75/ })).toBeVisible();
   });
 });

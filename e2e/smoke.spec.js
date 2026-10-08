@@ -1,6 +1,18 @@
 import { test, expect } from '@playwright/test';
 import { mockApi, accounts, manyAccounts } from './fixtures.js';
 
+// Переход на вкладку нижней навигации.
+const goToTab = (page, name) => page
+  .getByRole('navigation', { name: 'Основная навигация' })
+  .getByRole('button', { name, exact: true })
+  .click();
+
+// Настройки живут за строкой «Счета, категории и лимит» на экране «Ещё».
+async function openSettings(page) {
+  await goToTab(page, 'Ещё');
+  await page.getByRole('button', { name: /Счета, категории и лимит/ }).click();
+}
+
 // Real-browser smoke suite. Three real bugs shipped this month and every one
 // was found by a human on a phone, never by the (jsdom-based) unit suite:
 //
@@ -108,11 +120,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // ~120ms (see scheduleCarouselSettle in src/App.jsx).
     await page.waitForTimeout(500);
 
-    // Выбранный счёт назван в заголовке на ручке шторки. Чип «Счет:» лежит
-    // в её содержимом, а оно рендерится только у раскрытой шторки.
-    const drawerTitle = page.getByText(/^Список операций/);
-    await expect(drawerTitle).toContainText(targetAccountName);
-    await expect(drawerTitle).not.toContainText(lastAccountName);
+    // Выбранный счёт отмечен текущей точкой-индикатором (aria-current) и на
+    // самом слайде (aria-pressed): ровно тот, до которого доехали, а не
+    // последний.
+    await expect(page.getByRole('button', { name: `Показать ${targetAccountName}` })).toHaveAttribute('aria-current', 'true');
+    await expect(page.getByRole('button', { name: `Показать ${lastAccountName}` })).toHaveAttribute('aria-current', 'false');
+    await expect(page.getByRole('button', { name: new RegExp(`^${targetAccountName}:`) })).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('each carousel slide is a hard scroll-snap stop (one slide per swipe)', async ({ page }) => {
@@ -142,96 +155,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
-  test('drawer closes flush, leaving only the real peek strip visible', async ({ page }) => {
-    // Simulate the iOS Safari large-vs-small viewport mismatch that caused
-    // this bug: window.innerHeight here is deliberately set far from the
-    // viewport's actual height, while CSS `vh` units still resolve against
-    // the real viewport (a real browser has no way to make JS innerHeight
-    // and CSS vh disagree otherwise - that discrepancy is iOS-specific
-    // toolbar behavior Chromium doesn't reproduce on its own). Correct code
-    // derives travel from the sheet's own rendered offsetHeight and must be
-    // unaffected by this override; buggy code derived travel from
-    // window.innerHeight * 0.88 and would rest in the wrong place.
-    await page.addInitScript(() => {
-      Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => 400 });
-    });
-    await mockApi(page);
-    await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
-
-    const handle = page.getByRole('button', { name: /список операций/ });
-    await expect(handle).toBeVisible();
-
-    const drag = async (totalDeltaY, steps = 8, stepDelayMs = 15) => {
-      const box = await handle.boundingBox();
-      const x = box.x + box.width / 2;
-      const y = box.y + box.height / 2;
-      await page.mouse.move(x, y);
-      await page.mouse.down();
-      for (let i = 1; i <= steps; i++) {
-        await page.mouse.move(x, y + (totalDeltaY * i) / steps);
-        await page.waitForTimeout(stepDelayMs);
-      }
-      await page.mouse.up();
-    };
-
-    // Drag open (finger moves up), then drag closed (finger moves down) -
-    // exercising the same imperative drag path as a real touch drag, since
-    // mouse input generates the same pointerdown/move/up events this
-    // handle listens for.
-    await drag(-400);
-    await expect(handle).toHaveAttribute('aria-expanded', 'true');
-    // Let the open snap-transition finish before dragging closed.
-    await page.waitForTimeout(400);
-
-    await drag(500);
-    await expect(handle).toHaveAttribute('aria-expanded', 'false');
-    await page.waitForTimeout(400);
-
-    // A drag that *commits* (crosses the open/closed threshold, as both
-    // drags above did) flips the `expanded` prop, which makes React
-    // re-render and reapply the component's own declarative
-    // `translateY(calc(88vh - ...))` string over whatever getTravel()
-    // wrote imperatively during the drag - so a getTravel() bug can never
-    // survive into the rendered position after a committed drag; the CSS
-    // is always what's left standing regardless of which JS formula ran.
-    // The one place the raw getTravel() pixel value survives into the
-    // final rendered transform is a drag that *fails* to commit: the sheet
-    // "springs back" to the state it started in, setExpanded is called
-    // with an unchanged value, React bails out of re-rendering (same
-    // props), and the imperative style from the drag is never overwritten.
-    // A small, slow nudge on the (currently collapsed) handle - well under
-    // both the 25%-of-travel and velocity commit thresholds - reproduces
-    // exactly that: the sheet springs back down to "collapsed", but the
-    // position it rests at is whatever getTravel() computed, buggy or not.
-    await drag(-60, 10, 40);
-    await expect(handle).toHaveAttribute('aria-expanded', 'false');
-    await page.waitForTimeout(400);
-
-    // Measure the intended peek strip from real rendered geometry - the
-    // handle and edge-guard elements' own boundingBox heights - rather than
-    // importing PEEK_HEIGHT from the component. Importing the app's own
-    // constant would make this test move in lockstep with the very bug it's
-    // supposed to catch.
-    const sheet = page.getByTestId('transactions-drawer');
-    const sheetChildren = sheet.locator(':scope > div');
-    const handleHeight = (await sheetChildren.nth(0).boundingBox()).height;
-    const edgeGuardHeight = (await sheetChildren.nth(1).boundingBox()).height;
-    const expectedPeek = handleHeight + edgeGuardHeight;
-
-    const viewport = page.viewportSize();
-    const sheetBox = await sheet.boundingBox();
-    const visiblePeek = viewport.height - sheetBox.y;
-
-    expect(Math.abs(visiblePeek - expectedPeek)).toBeLessThanOrEqual(3);
-  });
-
   test('account rows stay on one line in the accounts modal', async ({ page }) => {
     await mockApi(page);
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
 
-    await page.getByTitle('Настройки').click();
+    await openSettings(page);
 
     // The name/type divs both set white-space: nowrap, so removing
     // minWidth: 0 can never make this text break onto a visible second
@@ -357,7 +286,8 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // Each dot still selects its own account - shrunken boxes must stay
     // aligned with the slide they stand for.
     await dots.nth(3).click();
-    await expect(page.getByText(/^Список операций/)).toContainText(manyAccounts[2].name);
+    await expect(dots.nth(3)).toHaveAttribute('aria-current', 'true');
+    await expect(page.getByRole('button', { name: `Показать ${manyAccounts[2].name}` })).toHaveAttribute('aria-current', 'true');
   });
 
   test('quick-action buttons (income/expense/transfer) sit on one row, fit the viewport, and are not text-clipped', async ({ page }) => {
@@ -498,10 +428,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(free.position).toBe('');
     expect(free.overflow).not.toBe('hidden');
 
+    // Настройки открываются с экрана «Ещё», где уже нет ни выбора периода, ни
+    // быстрых действий Обзора, - поэтому они последние в списке.
     for (const open of [
-      () => page.getByTitle('Настройки').click(),
       () => page.getByRole('button', { name: /^Период:/ }).click(),
       () => page.getByRole('button', { name: 'Добавить расход' }).click(),
+      () => openSettings(page),
     ]) {
       await open();
       await expect(page.getByRole('dialog').first()).toBeVisible();
@@ -533,71 +465,48 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
-  test('раскрытая шторка истории тоже замораживает страницу под собой', async ({ page }) => {
-    // Палец, ведущий по размытому фону над раскрытой шторкой, прокручивал
-    // главный экран: затемнение жест не съедает, а `overflow: hidden` на
-    // body - единственное, что стояло под шторкой раньше, - в мобильном
-    // Safari касание не останавливает. Теперь шторка запирает страницу тем
-    // же замком, что и модальные листы: position: fixed со сдвигом на
-    // текущую прокрутку.
-    //
-    // Симптом здесь, как и в соседнем тесте про листы, не воспроизводится
-    // (headless Chromium страницу под подложкой не двигает), поэтому
-    // проверяется механизм - и то, что страница не прыгает: ни при
-    // раскрытии, ни при закрытии.
-    await mockApi(page);
+  test('экран Истории не листается целиком: список едет в своём контейнере над нижней панелью', async ({ page }) => {
+    // Раньше история была шторкой, которая запирала страницу под собой (замок
+    // body). Теперь это экран: он занимает высоту окна над нижней панелью, а
+    // листается только список внутри него. Это геометрия, jsdom её не видит.
+    const transactions = Array.from({ length: 60 }, (_, index) => ({
+      _id: `h-${String(index).padStart(3, '0')}`, title: `Покупка ${index}`, amount: 10,
+      type: 'expense', account: 'acc-card-1', date: '2026-01-05T00:00:00Z', category: 'Еда',
+    }));
+    await page.clock.setFixedTime(new Date('2026-01-15T12:00:00Z'));
+    await mockApi(page, { transactions });
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await goToTab(page, 'История');
 
-    const bodyState = () => page.evaluate(() => ({
-      position: document.body.style.position,
-      overflow: document.body.style.overflow,
-      top: document.body.style.top,
-      scrollY: window.scrollY,
+    const scroll = page.getByTestId('history-scroll');
+    await expect(scroll.getByRole('button', { name: /^Покупка \d+,/ }).first()).toBeVisible();
+    const nav = page.getByRole('navigation', { name: 'Основная навигация' });
+
+    // Страница под экраном стоит: документ не выше окна.
+    const page_ = await page.evaluate(() => ({
+      scrollHeight: document.documentElement.scrollHeight,
+      innerHeight: window.innerHeight,
+      bodyPosition: document.body.style.position,
     }));
+    expect(page_.scrollHeight).toBeLessThanOrEqual(page_.innerHeight);
+    // Замка шторки больше нет: body никто не приколачивает.
+    expect(page_.bodyPosition).toBe('');
 
-    // Прокручиваем страницу вниз, насколько она вообще прокручивается: замок
-    // должен запомнить именно эту позицию, а не ноль.
-    const scrolled = await page.evaluate(() => {
-      const max = document.documentElement.scrollHeight - window.innerHeight;
-      window.scrollTo(0, Math.min(120, Math.max(0, max)));
-      return window.scrollY;
-    });
+    // Список прокручивается сам и заканчивается над нижней панелью.
+    expect(await scroll.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
+    expect(await scroll.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    const scrollBox = await scroll.boundingBox();
+    const navBox = await nav.boundingBox();
+    expect(scrollBox.y + scrollBox.height).toBeLessThanOrEqual(navBox.y + 0.5);
 
-    const header = page.getByText('BudgetTracker');
-    const headerTopBefore = (await header.boundingBox()).y;
-
-    const handle = page.getByRole('button', { name: /список операций/ });
-    await handle.click();
-    await expect(handle).toHaveAttribute('aria-expanded', 'true');
-    await page.waitForTimeout(400);
-
-    const locked = await bodyState();
-    expect(locked.position).toBe('fixed');
-    expect(locked.overflow).toBe('hidden');
-    expect(locked.top).toBe(`-${scrolled}px`);
-    // Сдвиг компенсирует вынутый из потока body: страница осталась ровно
-    // там же, где была, - под размытием видно тот же кусок экрана.
-    expect((await header.boundingBox()).y).toBeCloseTo(headerTopBefore, 0);
-
-    // Список внутри шторки при этом листается: замок держит страницу, а не
-    // содержимое шторки.
-    const list = page.getByTestId('transactions-drawer').locator(':scope > div').last();
-    expect(await list.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
-
-    // Бить надо в просвет над шторкой: раскрытая шторка занимает 88vh и
-    // накрывает середину затемнения, куда click целится по умолчанию.
-    await page.getByTestId('drawer-backdrop').click({ position: { x: 200, y: 20 } });
-    await expect(handle).toHaveAttribute('aria-expanded', 'false');
-    await page.waitForTimeout(400);
-
-    // Отпустил страницу - и вернул её на то же место, а не наверх.
-    const released = await bodyState();
-    expect(released.position).toBe('');
-    expect(released.overflow).not.toBe('hidden');
-    expect(released.top).toBe('');
-    expect(released.scrollY).toBe(scrolled);
-    expect((await header.boundingBox()).y).toBeCloseTo(headerTopBefore, 0);
+    // Шапка со строкой поиска остаётся на месте, пока список едет.
+    const search = page.getByPlaceholder(/Поиск/);
+    const searchTop = (await search.boundingBox()).y;
+    await scroll.evaluate((el) => { el.scrollTop = 300; });
+    expect(await scroll.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    expect((await search.boundingBox()).y).toBeCloseTo(searchTop, 0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });
 
   test('карточка сводки - лента месяцев: листается и держит выбранный месяц', async ({ page }) => {
@@ -709,55 +618,65 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
-  test('bottom tab bar sits clear of the drawer peek and never covers page content', async ({ page }) => {
-    // Аналитика moved out of the stats panel into a fixed bottom tab bar.
-    // Being fixed, the bar is out of normal flow: it can overlap the
-    // drawer's peek strip below it, or hide the tail of <main> behind it,
-    // and neither is visible to jsdom (no layout, no vh, no fixed
-    // positioning). Both are checked here from real rendered geometry.
+  test('bottom navigation is pinned to the bottom edge, finger-sized, and never covers the end of a screen', async ({ page }) => {
+    // Панель fixed: из потока она выпала и может закрыть хвост страницы, а
+    // jsdom не знает ни про fixed, ни про раскладку. Проверяется по
+    // реальной геометрии на каждом экране, у которого страница листается.
     await mockApi(page);
     await page.goto('/');
     await expect(page.getByText('BudgetTracker')).toBeVisible();
 
-    const tabBar = page.getByRole('navigation', { name: 'Основная навигация' });
-    await expect(tabBar).toBeVisible();
+    const nav = page.getByRole('navigation', { name: 'Основная навигация' });
+    await expect(nav).toBeVisible();
 
-    const analyticsTab = tabBar.getByRole('button', { name: /Аналитика/ });
-    const homeTab = tabBar.getByRole('button', { name: /Главная/ });
+    const viewport = page.viewportSize();
+    const navBox = await nav.boundingBox();
+    // Прижата к нижнему краю и на всю ширину, высота - 64px плюс (возможный)
+    // отступ под системную полосу.
+    expect(navBox.x).toBeCloseTo(0, 0);
+    expect(navBox.width).toBeCloseTo(viewport.width, 0);
+    expect(navBox.y + navBox.height).toBeCloseTo(viewport.height, 0);
+    expect(navBox.height).toBeGreaterThanOrEqual(64);
 
-    // Both tabs are finger-sized.
-    for (const tab of [homeTab, analyticsTab]) {
-      const box = await tab.boundingBox();
-      expect(box).not.toBeNull();
+    // Все ячейки под палец.
+    for (const name of ['Обзор', 'История', 'Аналитика', 'Ещё']) {
+      const box = await nav.getByRole('button', { name, exact: true }).boundingBox();
       expect(box.height).toBeGreaterThanOrEqual(40);
+      expect(box.width).toBeGreaterThanOrEqual(40);
     }
 
-    // The bar clears the collapsed drawer's peek strip, measured from the
-    // drawer's own rendered position rather than from the app's constants.
-    const tabBarBox = await tabBar.boundingBox();
-    const drawerBox = await page.getByTestId('transactions-drawer').boundingBox();
-    expect(tabBarBox.y + tabBarBox.height).toBeLessThanOrEqual(drawerBox.y + 0.5);
+    // Кнопка добавления 56x56 и приподнята над верхней гранью панели.
+    const add = await nav.getByRole('button', { name: 'Добавить операцию' }).boundingBox();
+    expect(add.width).toBeCloseTo(56, 0);
+    expect(add.height).toBeCloseTo(56, 0);
+    expect(add.y).toBeLessThan(navBox.y);
 
-    // Scrolled to the very bottom, the last card in <main> must still end
-    // above the bar - i.e. <main> reserves enough bottom padding for it.
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    await page.waitForTimeout(150);
-    const lastCardBottom = await page.evaluate(() => {
-      const cards = document.querySelectorAll('main .glass-panel');
-      const last = cards[cards.length - 1];
-      return last.getBoundingClientRect().bottom;
-    });
-    const tabBarTop = (await tabBar.boundingBox()).y;
-    expect(lastCardBottom).toBeLessThanOrEqual(tabBarTop + 0.5);
+    // Текущая вкладка отмечена.
+    await expect(nav.getByRole('button', { name: 'Обзор', exact: true })).toHaveAttribute('aria-current', 'page');
 
-    // Switching tabs swaps the panel while the period chip stays put.
-    await analyticsTab.click();
+    // Пролистанная до конца страница заканчивается выше панели - на Обзоре и
+    // на «Ещё».
+    const lastContentBottom = (selector) => page.evaluate((sel) => {
+      window.scrollTo(0, document.body.scrollHeight);
+      const nodes = document.querySelectorAll(sel);
+      return nodes[nodes.length - 1].getBoundingClientRect().bottom;
+    }, selector);
+    expect(await lastContentBottom('main .glass-panel')).toBeLessThanOrEqual((await nav.boundingBox()).y + 0.5);
+
+    await nav.getByRole('button', { name: 'Ещё', exact: true }).click();
+    await expect(page.getByRole('heading', { level: 1, name: 'Ещё' })).toBeVisible();
+    expect(await lastContentBottom('main button')).toBeLessThanOrEqual((await nav.boundingBox()).y + 0.5);
+
+    // Переключение вкладок меняет экран, а период остаётся.
+    await nav.getByRole('button', { name: 'Аналитика', exact: true }).click();
     await expect(page.getByRole('button', { name: /^Период:/ })).toBeVisible();
+    await expect(nav.getByRole('button', { name: 'Аналитика', exact: true })).toHaveAttribute('aria-current', 'page');
+    // Новая вкладка открывается с начала страницы.
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
     // The fixtures only carry transactions from an earlier month, so the
     // current month is genuinely empty - the tab must say so rather than
-    // render nothing at all (CategoryDonut returns null on an empty
-    // period, which would leave a blank screen).
+    // render nothing at all.
     await expect(page.getByText('За выбранный период трат нет')).toBeVisible();
 
     // Widening the range from the chip fills the same tab with category bars.
@@ -765,7 +684,49 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await page.getByRole('dialog', { name: 'Выбор периода' }).getByRole('button', { name: 'Всё время' }).click();
     await expect(page.getByText('Расходы по категориям')).toBeVisible();
 
-    await homeTab.click();
+    await nav.getByRole('button', { name: 'Обзор', exact: true }).click();
     await expect(page.getByText('Расходы по категориям')).toHaveCount(0);
+  });
+
+  test('switching tabs writes the hash without piling up history, and manual hash changes and back/forward move between screens', async ({ page }) => {
+    await mockApi(page);
+    await page.goto('/');
+    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    const nav = page.getByRole('navigation', { name: 'Основная навигация' });
+    const current = (name) => expect(nav.getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'page');
+    const entries = () => page.evaluate(() => history.length);
+    const startEntries = await entries();
+
+    await nav.getByRole('button', { name: 'История', exact: true }).click();
+    await expect(page).toHaveURL(/#history$/);
+    await nav.getByRole('button', { name: 'Аналитика', exact: true }).click();
+    await expect(page).toHaveURL(/#analytics$/);
+    await nav.getByRole('button', { name: 'Ещё', exact: true }).click();
+    await expect(page).toHaveURL(/#more$/);
+    await nav.getByRole('button', { name: 'Обзор', exact: true }).click();
+    await expect(page).not.toHaveURL(/#/);
+    // Вкладки не копятся в истории браузера.
+    expect(await entries()).toBe(startEntries);
+
+    // Хэш, выставленный снаружи (ссылка, адресная строка), переключает экран...
+    await page.evaluate(() => { location.hash = '#analytics'; });
+    await current('Аналитика');
+    await expect(page.getByText(/Расходы по категориям|За выбранный период трат нет/)).toBeVisible();
+    await page.evaluate(() => { location.hash = '#more'; });
+    await current('Ещё');
+    await expect(page.getByRole('heading', { level: 1, name: 'Ещё' })).toBeVisible();
+
+    // ...а жесты «назад» и «вперёд» ходят по этим записям, и экран следует.
+    await page.goBack();
+    await current('Аналитика');
+    await page.goBack();
+    await current('Обзор');
+    await expect(page.getByTestId('balance-carousel')).toBeVisible();
+    await page.goForward();
+    await current('Аналитика');
+
+    // Обновление страницы остаётся на той же вкладке.
+    await page.reload();
+    await current('Аналитика');
   });
 });

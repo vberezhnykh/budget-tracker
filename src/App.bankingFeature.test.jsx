@@ -19,6 +19,12 @@ function mockApi(features) {
   return fetchMock;
 }
 
+// Настройки открываются из «Ещё» → «Счета, категории и лимит».
+function openSettingsFromMore() {
+  fireEvent.click(screen.getByRole('button', { name: 'Ещё' }));
+  fireEvent.click(screen.getByRole('button', { name: /Счета, категории и лимит/ }));
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -31,7 +37,7 @@ describe('optional banking module', () => {
     window.history.replaceState({}, '', '/?banking=connected');
     render(<App />);
     await waitFor(() => expect(screen.getByText('Моя карта')).toBeInTheDocument());
-    fireEvent.click(screen.getByTitle('Настройки'));
+    openSettingsFromMore();
     expect(screen.queryByRole('button', { name: /^Банки/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Банки', exact: true })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Добавить счёт' })).toBeInTheDocument();
@@ -43,7 +49,7 @@ describe('optional banking module', () => {
     const fetchMock = mockApi({ banking: true });
     render(<App />);
     await waitFor(() => expect(screen.getByText('Моя карта')).toBeInTheDocument());
-    fireEvent.click(screen.getByTitle('Настройки'));
+    openSettingsFromMore();
     fireEvent.click(screen.getByRole('button', { name: /^Банки/ }));
     expect(await screen.findByRole('dialog', { name: 'Банки', exact: true })).toBeInTheDocument();
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/banking/review', undefined));

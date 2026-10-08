@@ -25,7 +25,7 @@ test.describe('Navigation, transfers and trash (mobile)', () => {
     await expect(selected(to)).toHaveText(toName);
   });
 
-  test('two navigation tabs fit at 320px and persisted trash restores after reload', async ({ page }, testInfo) => {
+  test('five navigation cells fit at 320px and persisted trash restores after reload', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 320, height: 700 });
     await page.clock.setFixedTime(new Date(2026, 8, 5, 12));
     const deleted = { _id: 'deleted-expense', __v: 0, title: 'Удалённый расход', amount: 45, type: 'expense', account: accounts[0]._id, category: categories[0].name, date: '2026-09-02T00:00:00.000Z' };
@@ -38,7 +38,8 @@ test.describe('Navigation, transfers and trash (mobile)', () => {
     await expect(page.getByText('BudgetTracker')).toBeVisible();
 
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
-    await expect(nav.getByRole('button')).toHaveCount(2);
+    // Четыре вкладки и кнопка добавления по центру.
+    await expect(nav.getByRole('button')).toHaveCount(5);
     await expect(nav.getByRole('button', { name: /Платежи/ })).toHaveCount(0);
     const geometry = await nav.evaluate((element) => ({
       left: element.getBoundingClientRect().left,
@@ -57,8 +58,9 @@ test.describe('Navigation, transfers and trash (mobile)', () => {
       expect(button.scrollWidth).toBeLessThanOrEqual(button.clientWidth);
     }
 
-    await page.getByTitle('Настройки').click();
-    await page.getByRole('button', { name: /Корзина операций/ }).click();
+    // Корзина - строка на экране «Ещё».
+    await nav.getByRole('button', { name: 'Ещё' }).click();
+    await page.getByRole('button', { name: /^Корзина/ }).click();
     const trashDialog = page.getByRole('dialog', { name: 'Корзина операций' });
     await expect(trashDialog.getByText('Удалённый расход')).toBeVisible();
     const trashScreenshot = testInfo.outputPath('trash-320.png');

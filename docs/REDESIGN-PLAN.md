@@ -28,14 +28,14 @@
 
 ## Этапы
 
-### [~] 0. Основа
+### [x] 0. Основа
 
 Новые токены в `src/index.css` (шрифт Onest, палитра макетов, радиусы) при
 прежних ролевых именах. Примитивы в `src/components/ui/`: строка списка,
 заголовок экрана с кнопкой «назад», пустое состояние, встроенное предупреждение,
 тост. Удаление `PlannedPaymentsView`.
 
-### [ ] 1. Каркас навигации
+### [~] 1. Каркас навигации
 
 Нижняя панель на пять мест (Обзор, История, «+», Аналитика, Ещё); `summaryView`
 заменяется на `screen`, внутренние экраны - через `location.hash`. Разметка из
@@ -79,6 +79,6 @@
 
 ### [ ] 8. Уборка
 
-Удаление `TransactionsDrawer`, `BottomTabs`, `useSnapCarousel`,
-`AccountCards.css`, `CategoryDonut`, `getPaceForecast`; обновление README и
-e2e-фикстур.
+Удаление `useSnapCarousel`, неиспользуемого параметра `active` у
+`useBodyScrollLock`, `AccountCards.css`, `CategoryDonut`, `getPaceForecast`;
+обновление README и e2e-фикстур (в том числе моков `/api/planned-payments`).

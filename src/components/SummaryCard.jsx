@@ -4,10 +4,12 @@
 // истории, и рисовать их надо из одних и тех же данных, а не из состояния
 // экрана.
 //
-// Интерактивна только активная карточка - её расход и доход переключают
-// фильтр списка. У соседних те же цифры показываются обычным текстом, а
-// нажатие на карточку целиком выбирает её месяц: две кнопки-фильтра на
-// карточке, которая ещё даже не выбрана, спорили бы с этим жестом.
+// Интерактивна только активная карточка - её расход и доход открывают
+// Историю с фильтром по типу. Это переход, а не переключатель: нажатого
+// состояния у кнопок нет. У соседних те же цифры показываются обычным
+// текстом, а нажатие на карточку целиком выбирает её месяц: две кнопки
+// перехода на карточке, которая ещё даже не выбрана, спорили бы с этим
+// жестом.
 
 const formatEuro = (value) => value.toLocaleString('de-DE', { minimumFractionDigits: 2 });
 
@@ -32,12 +34,12 @@ const amountStyle = (text) => ({
 // Кнопка на активной карточке и просто блок на соседней. Разметка одна:
 // иначе соседние карточки поехали бы на пиксель-другой относительно
 // активной, и это было бы видно прямо во время свайпа.
-function Pressable({ interactive, onClick, ariaLabel, ariaPressed, style, children }) {
+function Pressable({ interactive, onClick, ariaLabel, style, children }) {
     if (!interactive) {
         return <div style={style}>{children}</div>;
     }
     return (
-        <button type="button" onClick={onClick} aria-label={ariaLabel} aria-pressed={ariaPressed} style={style}>
+        <button type="button" onClick={onClick} aria-label={ariaLabel} style={style}>
             {children}
         </button>
     );
@@ -54,8 +56,8 @@ export default function SummaryCard({
     // выбора периода. Она не может лежать внутри Pressable - кнопка в кнопке
     // невалидна, - поэтому подпись вынесена выше него.
     headline = 'Расход',
-    selectedType,
-    onToggleType,
+    // Открывает Историю с фильтром: onOpenHistory('income' | 'expense').
+    onOpenHistory,
     isActive = true,
 }) {
     const expenseAbs = Math.abs(expense);
@@ -89,9 +91,8 @@ export default function SummaryCard({
                 </div>
                 <Pressable
                     interactive={isActive}
-                    onClick={() => onToggleType('expense')}
-                    ariaPressed={selectedType === 'expense'}
-                    ariaLabel={`Расход: €${formatEuro(expenseAbs)}${withLimitBar ? ` из лимита €${monthlyLimit.toLocaleString('de-DE')}` : ''}`}
+                    onClick={() => onOpenHistory('expense')}
+                    ariaLabel={`Расход: €${formatEuro(expenseAbs)}${withLimitBar ? ` из лимита €${monthlyLimit.toLocaleString('de-DE')}` : ''}, открыть историю расходов`}
                     style={{
                         alignSelf: withLimitBar ? 'stretch' : 'center',
                         background: 'transparent',
@@ -153,26 +154,19 @@ export default function SummaryCard({
                             </div>
                         </div>
                     )}
-                    {isActive && selectedType === 'expense' && (
-                        <span style={{ fontSize: 'var(--text-2xs)', fontWeight: 'var(--weight-label)', color: 'var(--color-primary)' }}>
-                            список отфильтрован по расходам
-                        </span>
-                    )}
                 </Pressable>
             </div>
 
             <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
                 <Pressable
                     interactive={isActive}
-                    onClick={() => onToggleType('income')}
-                    ariaPressed={selectedType === 'income'}
-                    ariaLabel={`Доход: €${formatEuro(income)}`}
+                    onClick={() => onOpenHistory('income')}
+                    ariaLabel={`Доход: €${formatEuro(income)}, открыть историю доходов`}
                     style={{
                         flex: 1,
                         textAlign: 'left',
-                        background: isActive && selectedType === 'income' ? 'var(--color-positive-soft)' : 'var(--color-surface-muted)',
-                        border: '1px solid',
-                        borderColor: isActive && selectedType === 'income' ? 'var(--color-positive)' : 'var(--color-border-subtle)',
+                        background: 'var(--color-surface-muted)',
+                        border: '1px solid var(--color-border-subtle)',
                         borderRadius: 'var(--radius-lg)',
                         padding: 'var(--space-3) var(--space-4)',
                         cursor: isActive ? 'pointer' : 'default',

@@ -19,16 +19,26 @@ test('account limit bars and visited analytics work with subsequent summary requ
     await expect(skeleton).toHaveCount(0);
   }
   expect(summaries()).toBe(1);
-  await page.getByRole('button', { name: /Аналитика/ }).click();
+  // Счета переключаются на Обзоре (карусель и точки), а аналитика лежит на
+  // своей вкладке: к ней ходим туда и обратно через нижнюю навигацию.
+  const nav = page.getByRole('navigation', { name: 'Основная навигация' });
+  const goTo = name => nav.getByRole('button', { name, exact: true }).click();
+  await goTo('Аналитика');
   await expect(page.getByText('Расходы по категориям')).toBeVisible();
+  await goTo('Обзор');
   await page.getByRole('button', { name: 'Показать Наличные' }).click();
+  await goTo('Аналитика');
   await expect(page.getByText('Расходы по категориям')).toBeVisible();
   await expect(skeleton).toHaveCount(0);
   const before = summaries();
   // Any accidental cache miss now fails rather than passing on fast localhost.
   await page.route('**/api/stats/dashboard?*', route => route.abort());
   for (const name of ['Общий капитал', 'Наличные']) {
+    await goTo('Обзор');
     await page.getByRole('button', { name: `Показать ${name}` }).click();
+    await expect(page.getByRole('button', { name: /^Расход:/ })).toBeVisible();
+    await expect(skeleton).toHaveCount(0);
+    await goTo('Аналитика');
     await expect(page.getByText('Расходы по категориям')).toBeVisible();
     await expect(skeleton).toHaveCount(0);
   }

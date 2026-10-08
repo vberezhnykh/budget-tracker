@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { readApi } from '../server/test/readApi.mjs';
 import App from './App';
@@ -28,46 +28,48 @@ beforeEach(() => {
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+// История - вкладка нижней навигации; на ней нет ничего, кроме её списка и
+// шапки, так что запросы идут ко всему экрану.
 async function openHistory() {
   await screen.findByTestId('balance-carousel');
-  const handle = screen.getByRole('button', { name: 'Открыть список операций' });
-  fireEvent.pointerDown(handle, { pointerId: 1, clientY: 200 });
-  fireEvent.pointerUp(handle, { pointerId: 1, clientY: 200 });
+  fireEvent.click(screen.getByRole('button', { name: 'История' }));
   await screen.findByText('Покупка 84');
-  return within(screen.getByTestId('transactions-drawer'));
+  return screen;
 }
 
 describe('lazy budget reads', () => {
   it('loads 40 operations while totals include the whole ledger, then appends on demand', async () => {
     render(<App />);
-    const drawer = await openHistory();
-    expect(drawer.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(40);
+    // Итоги - на Обзоре, они считаются по всей книге, а не по первой странице.
+    await screen.findByTestId('balance-carousel');
     expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);
-    expect(drawer.getByText('-850.00€')).toBeInTheDocument();
+    const history = await openHistory();
+    expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(40);
+    expect(history.getByText('-850.00€')).toBeInTheDocument();
     expect(request.mock.calls.some(([url]) => url === '/api/transactions')).toBe(false);
     expect(request.mock.calls.some(([url]) => url.includes('analytics=1'))).toBe(false);
 
-    fireEvent.click(drawer.getByRole('button', { name: 'Загрузить еще' }));
-    await waitFor(() => expect(drawer.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(80));
-    expect(drawer.getByText('-850.00€')).toBeInTheDocument();
-    expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);
-    fireEvent.click(drawer.getByRole('button', { name: 'Загрузить еще' }));
-    await waitFor(() => expect(drawer.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(85));
-    expect(drawer.queryByRole('button', { name: 'Загрузить еще' })).not.toBeInTheDocument();
-    fireEvent.click(drawer.getByRole('button', { name: /^Покупка 0,/ }));
+    fireEvent.click(history.getByRole('button', { name: 'Загрузить еще' }));
+    await waitFor(() => expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(80));
+    expect(history.getByText('-850.00€')).toBeInTheDocument();
+    fireEvent.click(history.getByRole('button', { name: 'Загрузить еще' }));
+    await waitFor(() => expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(85));
+    expect(history.queryByRole('button', { name: 'Загрузить еще' })).not.toBeInTheDocument();
+    fireEvent.click(history.getByRole('button', { name: /^Покупка 0,/ }));
     expect(screen.getByRole('dialog', { name: 'Редактировать' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('0.00')).toHaveValue(10);
+    // Подгрузка страниц итоги не трогает.
+    fireEvent.click(screen.getByRole('button', { name: 'Закрыть', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Обзор' }));
+    expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);
   });
 
   it('searches older unloaded operations and delays detailed analytics until its tab opens', async () => {
     render(<App />);
-    const drawer = await openHistory();
-    fireEvent.change(drawer.getByPlaceholderText(/Поиск/), { target: { value: 'Старая' } });
-    expect(await drawer.findByText('Старая зарплата')).toBeInTheDocument();
-    expect(drawer.getByText('Результаты поиска (1)')).toBeInTheDocument();
-    const handle = screen.getByRole('button', { name: 'Закрыть список операций' });
-    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 200 });
-    fireEvent.pointerUp(handle, { pointerId: 1, clientY: 200 });
+    const history = await openHistory();
+    fireEvent.change(history.getByPlaceholderText(/Поиск/), { target: { value: 'Старая' } });
+    expect(await history.findByText('Старая зарплата')).toBeInTheDocument();
+    expect(history.getByText('Результаты поиска (1)')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
     await waitFor(() => expect(request.mock.calls.some(([url]) => url.includes('analytics=1'))).toBe(true));
   });
@@ -81,9 +83,9 @@ describe('lazy budget reads', () => {
     });
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     render(<App />);
-    const drawer = await openHistory();
+    const history = await openHistory();
     expect(request.mock.calls.some(([url]) => url === '/api/transactions')).toBe(false);
-    fireEvent.click(drawer.getByRole('button', { name: 'Экспорт' }));
+    fireEvent.click(history.getByRole('button', { name: 'Экспорт' }));
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     const text = await new Promise(resolve => {
       const reader = new FileReader();

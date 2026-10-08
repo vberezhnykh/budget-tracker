@@ -4,9 +4,10 @@ import { manyAccounts, mockApi } from './fixtures.js';
 const dotAccounts = manyAccounts.slice(0, 7);
 
 async function openAccounts(page, width) {
-  // Ниже страницы: без чипа периода главный экран стал короче 900px, и
-  // вертикальной прокрутке, которую проверяет второй тест, негде случиться.
-  await page.setViewportSize({ width, height: 800 });
+  // Окно ниже страницы: главный экран короче 700px (чипа периода нет, а
+  // запас под нижнюю панель всего 64px), и при высоте 800 вертикальной
+  // прокрутке, которую проверяет второй тест, негде случиться.
+  await page.setViewportSize({ width, height: 600 });
   await page.clock.setFixedTime(new Date(2026, 8, 12, 12));
   await mockApi(page, { accounts: dotAccounts, plannedPayments: [] });
   await page.goto('/');
@@ -45,9 +46,11 @@ async function expectSelected(page, dots, carousel, index) {
     const target = slide.getBoundingClientRect();
     return Math.abs(target.x + target.width / 2 - (viewport.x + viewport.width / 2));
   }, index)).toBeLessThanOrEqual(1);
-  const title = page.getByText(/^Список операций/);
-  if (index > 0) await expect(title).toContainText(dotAccounts[index - 1].name);
-  else await expect(title).toHaveText('Список операций');
+  // Выбор дошёл до состояния приложения: выбранный слайд назван своим счётом
+  // (раньше это читалось по заголовку шторки истории, которой больше нет).
+  const slide = carousel.locator('[data-carousel-slide]').nth(index);
+  await expect(slide).toHaveAttribute('aria-pressed', 'true');
+  await expect(slide).toContainText(index > 0 ? dotAccounts[index - 1].name : 'Общий капитал');
 }
 
 async function attachRow(row, testInfo, name) {
