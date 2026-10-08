@@ -1,299 +1,168 @@
-import { ArrowRightLeft, Check, Minus, Plus } from 'lucide-react';
-import AccountIcon from '../components/AccountIcon';
+import { Check } from 'lucide-react';
+import AccountStrip from '../components/AccountStrip';
+import OverviewHero from '../components/OverviewHero';
 import PeriodPicker from '../components/PeriodPicker';
-import SummaryCard from '../components/SummaryCard';
+import TransactionList from '../components/TransactionList';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import { formatPeriodPhrase } from '../utils/period';
+import { ListSkeleton } from '../components/ui/Skeleton';
+import { getLatePlaque } from '../utils/latePlaque';
+import { getCurrentMonth } from '../utils/period';
+import useRecentTransactions from '../utils/useRecentTransactions';
 import SummaryFrame from './SummaryFrame';
-import '../components/AccountCards.css';
 
-// Вкладка «Обзор»: шапка с каруселью счетов, быстрые действия и сводка за
-// период. Разметка вынесена из App.jsx как есть; данные, обработчики и
-// состояние остаются в App и приходят пропсами. Сводка в этот этап не
-// менялась - её переделывает отдельный этап редизайна.
+const ZERO_TOTALS = { income: 0, expense: 0 };
+
+// Заголовок секции экрана: слева название, справа действие-ссылка.
+// Высота строки 44px - кнопка справа остаётся достаточной для пальца, хотя
+// сама она текстовая.
+const SECTION_HEADER_STYLE = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 'var(--space-3)',
+  minHeight: '44px',
+};
+
+const SECTION_TITLE_STYLE = {
+  margin: 0,
+  fontSize: 'var(--text-xl)',
+  fontWeight: 'var(--weight-strong)',
+};
+
+const SECTION_ACTION_STYLE = {
+  minHeight: '44px',
+  padding: '0 var(--space-1)',
+  fontSize: 'var(--text-base)',
+  fontWeight: 'var(--weight-label)',
+};
+
+// Вкладка «Обзор» сверху вниз: выбор периода и статус синхронизации, главная
+// карточка «расход из лимита», лента счетов, последние операции. Данные,
+// обработчики и состояние остаются в App и приходят пропсами; свои здесь
+// только последние операции - им нужен запрос, которого у остальных экранов
+// нет, и жить он должен ровно пока вкладка открыта.
+//
+// Выбранный в ленте счёт относится ко всему Обзору: он фильтрует и итоги в
+// главной карточке (через запрос в App), и список последних операций.
 export default function OverviewScreen({
-  lastSyncLabel,
-  // Карусель счетов в шапке: callback-ref контейнера и обработчик прокрутки
-  // из useSnapCarousel (объект хука целиком не передаётся - в нём ref'ы)
-  setAccountContainer,
-  onAccountScroll,
+  // Готовая строка «Обновлено 14:05» или null, пока синхронизации не было
+  syncStatus,
   slides,
   selectedAccount,
-  onSlideClick,
-  // Быстрые действия
-  onAdd,
-  // Сводка
+  onSelectAccount,
+  onOpenAccountsSettings,
   summaryFrame,
   timeRange,
-  setMonthContainer,
-  onMonthScroll,
-  carouselMonths,
-  monthlyTotals,
   selectedMonth,
-  monthlyLimit,
+  monthlyTotals,
   periodStats,
+  monthlyLimit,
+  typicalMonth,
   onChangePeriod,
   onOpenHistory,
+  onOpenAllHistory,
+  // Последние операции: запрос и счётчик обновления - те же, что у Истории
+  request,
+  historyRevision,
+  openEditModal,
+  getAccountDisplay,
+  formatDate,
 }) {
+  const recent = useRecentTransactions({
+    enabled: true,
+    request,
+    month: getCurrentMonth(),
+    account: selectedAccount,
+    revision: historyRevision,
+  });
+
+  // Месяц берётся из итогов по месяцам, а не из periodStats: они приходят
+  // раньше деталей периода, и карточка не ждёт их лишний раз.
+  const totals = timeRange === 'month' ? (monthlyTotals[selectedMonth] || ZERO_TOTALS) : periodStats;
+  const plaque = getLatePlaque({
+    timeRange,
+    selectedMonth,
+    spent: Math.abs(totals.expense),
+    limit: monthlyLimit,
+    typicalMonth,
+  });
+
+  const hasRecent = Object.keys(recent.groups).length > 0;
+
   return (
     <>
-      {/* Premium Header */}
-      <Card as="header" padding="lg" style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 'var(--weight-strong)', letterSpacing: '-0.8px', color: 'var(--color-primary)', margin: 0 }}>BudgetTracker</h1>
-          {lastSyncLabel && (
-            <div style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-2xs)', marginTop: 'var(--space-1)' }}>
-              Синхронизировано: {lastSyncLabel}
-            </div>
-          )}
-        </div>
+      {/* Заголовок экрана - сам выбор периода; названия приложения здесь нет. */}
+      <header style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        columnGap: 'var(--space-3)',
+        marginBottom: 'var(--space-3)',
+      }}>
+        <PeriodPicker variant="title" timeRange={timeRange} selectedMonth={selectedMonth} onChange={onChangePeriod} />
+        {syncStatus && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', flexShrink: 0, fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+            <Check size={14} aria-hidden="true" style={{ color: 'var(--color-positive)' }} />
+            {syncStatus}
+          </div>
+        )}
+      </header>
 
-        {/* Balance Carousel: total capital, type groups, then one slide per account */}
-        <style>{`
-          div::-webkit-scrollbar { display: none; }
-        `}</style>
-        <div
-          ref={setAccountContainer}
-          onScroll={onAccountScroll}
-          data-testid="balance-carousel"
-          style={{
-            display: 'flex',
-            overflowX: 'auto',
-            scrollSnapType: 'x mandatory',
-            WebkitOverflowScrolling: 'touch',
-            gap: 'var(--space-3)',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none'
-          }}
-        >
-          {/* Leading spacer: with center snap-alignment there is no slack before
-              slide 0, so its centre snap position would need a negative scroll
-              offset (impossible). This spacer supplies that slack so slide 0
-              can still reach centre alignment at scrollLeft 0. Not a slide, so
-              no data-carousel-slide - getCarouselSlideElements() must not see it. */}
-          <div
-            aria-hidden="true"
-            style={{
-              flexGrow: 0,
-              flexShrink: 0,
-              flexBasis: 'max(0px, 6% - 12px)',
-              pointerEvents: 'none'
-            }}
-          />
-          {slides.map((slide, index) => {
-            const isActive = slide.filter === selectedAccount;
-            const balanceText = `€${slide.amount.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`;
-            return (
-              <div
-                key={slide.key}
-                data-carousel-slide
-                className="account-card"
-                data-account-theme={slide.theme}
-                role="button"
-                tabIndex={0}
-                aria-label={slide.note ? `${slide.name}: ${balanceText}, ${slide.note}` : `${slide.name}: ${balanceText}`}
-                aria-current={isActive}
-                aria-pressed={isActive}
-                onClick={() => onSlideClick(slide, index)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onSlideClick(slide, index);
-                  }
-                }}
-              >
-                {/* The account symbol sits in the card's top-right corner instead of
-                    taking a full row of its own, so the card stays compact. It is
-                    absolutely positioned and non-interactive: the name/amount block
-                    below keeps the card's height, and centred text is unaffected. */}
-                <div
-                  aria-hidden="true"
-                  className="account-card__symbol"
-                >
-                  <AccountIcon icon={slide.icon} type={slide.type} size={22} />
-                </div>
-                {isActive && <span aria-hidden="true" className="account-card__selection"><Check size={13} /></span>}
-                <div className="account-card__name">
-                  {slide.name}
-                </div>
-                <div className="balance-amount">
-                  {balanceText}
-                </div>
-                {slide.note && (
-                  <div className="account-card__note">
-                    {slide.note}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {/* Trailing spacer: mirrors the leading one so the last slide has
-              equal slack after it and can also reach centre snap alignment. */}
-          <div
-            aria-hidden="true"
-            style={{
-              flexGrow: 0,
-              flexShrink: 0,
-              flexBasis: 'max(0px, 6% - 12px)',
-              pointerEvents: 'none'
-            }}
-          />
-        </div>
+      <SummaryFrame {...summaryFrame} skeleton={{ monthly: timeRange === 'month', limitBar: Number.isFinite(monthlyLimit) && monthlyLimit > 0, analytics: false }}>
+        <OverviewHero
+          timeRange={timeRange}
+          selectedMonth={selectedMonth}
+          income={totals.income}
+          expense={totals.expense}
+          monthlyLimit={monthlyLimit}
+          plaque={plaque}
+          onOpenHistory={onOpenHistory}
+        />
+      </SummaryFrame>
 
-        {/* Carousel dot indicators */}
-        <div style={{ display: 'flex', flexWrap: 'nowrap', justifyContent: 'center', marginTop: 'var(--space-3)' }}>
-          {slides.map((slide, index) => {
-            const isActive = slide.filter === selectedAccount;
-            return (
-              <button
-                key={slide.key}
-                type="button"
-                onClick={() => onSlideClick(slide, index)}
-                aria-label={`Показать ${slide.name}`}
-                aria-current={isActive}
-                className="account-carousel-button"
-                data-account-theme={slide.theme}
-                style={{
-                  // Hit target wants to be 40x40 for touch, but with many
-                  // accounts a row of fixed 40px boxes no longer fits the
-                  // width and used to wrap onto a second line. So the box is
-                  // 40px wide at most and allowed to shrink (flexShrink: 1)
-                  // down to 20px, which keeps every dot on one row up to
-                  // ~16 accounts. The horizontal margin stays at 0 so the
-                  // boxes tile edge-to-edge instead of overlapping (a
-                  // negative horizontal margin here made a wider dot's box
-                  // paint over its neighbour, so taps meant for one dot's
-                  // visible marker landed on the next dot instead); only the
-                  // vertical margin is pulled back, where there are no
-                  // neighbours to overlap and it keeps the row from growing
-                  // taller.
-                  flexShrink: 1,
-                  flexGrow: 0,
-                  flexBasis: '40px',
-                  maxWidth: '40px',
-                  minWidth: '20px',
-                  height: '40px',
-                  margin: '-9px 0',
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer'
-                }}
-              >
-                <span className="account-carousel-dot" aria-hidden="true">
-                  <svg width="18" height="8" viewBox="0 0 18 8" focusable="false">
-                    <rect x={isActive ? 0 : 5} y="0" width={isActive ? 18 : 8} height="8" rx="4" fill="currentColor" />
-                  </svg>
-                </span>
-              </button>
-            );
-          })}
+      <section aria-labelledby="overview-accounts" style={{ marginBottom: 'var(--space-6)' }}>
+        <div style={SECTION_HEADER_STYLE}>
+          <h2 id="overview-accounts" style={SECTION_TITLE_STYLE}>Счета</h2>
+          <Button tone="text" onClick={onOpenAccountsSettings} style={SECTION_ACTION_STYLE}>Настроить</Button>
         </div>
-      </Card>
-
-      {/* Quick Actions */}
-      <section style={{ marginBottom: 'var(--space-6)' }}>
-        <div style={{ display: 'flex', gap: 'var(--space-3)' }}>
-          <Button tone="positive" onClick={() => onAdd('income')} aria-label="Добавить доход" style={{ flex: 1, whiteSpace: 'nowrap' }}>
-            <Plus size={18} /> Доход
-          </Button>
-          <Button tone="expense" onClick={() => onAdd('expense')} aria-label="Добавить расход" style={{ flex: 1, whiteSpace: 'nowrap' }}>
-            <Minus size={18} /> Расход
-          </Button>
-          <Button tone="soft" onClick={() => onAdd('transfer')} aria-label="Добавить перевод" style={{ flex: 1, whiteSpace: 'nowrap' }}>
-            <ArrowRightLeft size={18} /> Перевод
-          </Button>
-        </div>
+        <AccountStrip slides={slides} selectedAccount={selectedAccount} onSelect={onSelectAccount} />
       </section>
 
-      {/* Единственный выбор периода на экране - не отдельная строка, а часть
-          подписи сводки: «Расход за сентябрь ⌄» на карточке (месяц, год,
-          всё время). Он стоит сразу под быстрыми действиями, поэтому у них
-          тот же отступ снизу, что у шапки. */}
-      {/* Summary Card with Budget Limit */}
-      <SummaryFrame {...summaryFrame} skeleton={{ monthly: timeRange === 'month', limitBar: Number.isFinite(monthlyLimit) && monthlyLimit > 0, analytics: false }}>
-        {timeRange === 'month' ? (
-          /* Месяцы листаются так же, как счета в шапке: не «жест меняет
-             данные», а лента карточек, которая едет за пальцем. Соседние
-             месяцы видно по краям и приглушены, чтобы читалось, какой
-             сейчас выбран. */
-          <div
-            ref={setMonthContainer}
-            onScroll={onMonthScroll}
-            data-testid="month-carousel"
-            style={{
-              display: 'flex',
-              overflowX: 'auto',
-              scrollSnapType: 'x mandatory',
-              WebkitOverflowScrolling: 'touch',
-              gap: 'var(--space-3)',
-              scrollbarWidth: 'none',
-              msOverflowStyle: 'none'
-            }}
-          >
-            {/* Отступы по краям: при выравнивании по центру у первого и
-                последнего слайда иначе не хватает слака, чтобы доехать до
-                середины. Не слайды - без data-carousel-slide. */}
-            <div aria-hidden="true" style={{ flex: '0 0 max(0px, 6% - 12px)', pointerEvents: 'none' }} />
-            {carouselMonths.map((month) => {
-              const totals = monthlyTotals[month] || { income: 0, expense: 0 };
-              const isActive = month === selectedMonth;
-              return (
-                <Card
-                  key={month}
-                  data-carousel-slide
-                  padding="lg"
-                  style={{
-                    flex: '0 0 88%',
-                    scrollSnapAlign: 'center',
-                    scrollSnapStop: 'always',
-                    boxSizing: 'border-box',
-                    // сверху отступ на ступень меньше, чем с остальных
-                    // сторон, - высота слайда прежняя; пресет lg дал бы +4px
-                    padding: 'var(--space-5) var(--space-6) var(--space-6)',
-                    opacity: isActive ? 1 : 0.5,
-                    transition: 'opacity 0.2s ease'
-                  }}
-                >
-                  <SummaryCard
-                    income={totals.income}
-                    expense={totals.expense}
-                    monthlyLimit={monthlyLimit}
-                    showLimitBar
-                    onOpenHistory={onOpenHistory}
-                    isActive={isActive}
-                    // Активная карточка - кнопка выбора периода, соседние -
-                    // тот же текст про свой месяц, но обычный: триггер на
-                    // карточке, которая ещё не выбрана, спорил бы с жестом
-                    // выбора по нажатию на неё. Кнопка в DOM ровно одна.
-                    headline={isActive
-                      ? <PeriodPicker variant="inline" prefix="Расход за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={onChangePeriod} />
-                      : `Расход за ${formatPeriodPhrase('month', month)}`}
-                  />
-                </Card>
-              );
-            })}
-            <div aria-hidden="true" style={{ flex: '0 0 max(0px, 6% - 12px)', pointerEvents: 'none' }} />
-          </div>
-        ) : (
-          /* Год и «всё время» листать нечем - одна карточка без полосы лимита:
-             месячный лимит для такого периода ничего не значит. */
-          <Card padding="lg">
-            <SummaryCard
-              income={periodStats.income}
-              expense={periodStats.expense}
-              monthlyLimit={monthlyLimit}
-              showLimitBar={false}
-              headline={<PeriodPicker variant="inline" prefix="Расход за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={onChangePeriod} />}
-              onOpenHistory={onOpenHistory}
+      <section aria-labelledby="overview-recent">
+        <div style={SECTION_HEADER_STYLE}>
+          <h2 id="overview-recent" style={SECTION_TITLE_STYLE}>Последние операции</h2>
+          <Button tone="text" onClick={onOpenAllHistory} style={SECTION_ACTION_STYLE}>Вся история</Button>
+        </div>
+        <Card padding="none" style={{ overflow: 'hidden' }}>
+          {recent.loading && (
+            <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
+              <ListSkeleton label="Загрузка операций…" rows={3} />
+            </div>
+          )}
+          {recent.error && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+              <span role="alert">Не удалось загрузить операции</span>
+              <Button tone="text" onClick={recent.retry} style={SECTION_ACTION_STYLE}>Повторить</Button>
+            </div>
+          )}
+          {!recent.loading && !recent.error && !hasRecent && (
+            <div style={{ padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+              Операций пока нет
+            </div>
+          )}
+          {hasRecent && (
+            <TransactionList
+              groups={recent.groups}
+              openEditModal={openEditModal}
+              getAccountDisplay={getAccountDisplay}
+              formatDate={formatDate}
+              rowPadding="var(--space-3) var(--space-4)"
             />
-          </Card>
-        )}
-      </SummaryFrame>
+          )}
+        </Card>
+      </section>
     </>
   );
 }

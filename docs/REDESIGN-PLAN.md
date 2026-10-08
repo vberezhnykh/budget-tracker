@@ -43,14 +43,14 @@
 `MoreScreen`; загрузка данных пока остаётся в `App`. История - экран вместо
 шторки, на `TransactionList` и `usePagedHistory`.
 
-### [~] 2. Серверный расчёт «обычного месяца»
+### [x] 2. Серверный расчёт «обычного месяца»
 
 Чистый модуль `server/typicalMonth.js` по правилам выше, с теми же фильтрами
 счёта и категории и теми же исключениями (переводы, «не в статистике»), что у
 остальных итогов. Поле `typicalMonth` в ответе `/api/stats/dashboard` для
 `timeRange=month`. Юнит-тесты модуля и тест роута.
 
-### [ ] 3. Обзор
+### [~] 3. Обзор
 
 Карточка «расход из лимита», выбор месяца в заголовке, плашка последних 10 дней,
 компактная лента счетов, последние операции, «+» вместо трёх кнопок.
@@ -79,6 +79,7 @@
 
 ### [ ] 8. Уборка
 
-Удаление `useSnapCarousel`, неиспользуемого параметра `active` у
-`useBodyScrollLock`, `AccountCards.css`, `CategoryDonut`, `getPaceForecast`;
+Удаление неиспользуемого параметра `active` у `useBodyScrollLock`,
+`CategoryDonut`, `getPaceForecast` (`useSnapCarousel`, `SummaryCard` и
+`AccountCards.css` ушли на этапе 3, цвета счетов теперь в `accountThemes.css`);
 обновление README и e2e-фикстур (в том числе моков `/api/planned-payments`).

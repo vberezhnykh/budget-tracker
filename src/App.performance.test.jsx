@@ -7,9 +7,9 @@ const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }, { _id: 'cas
 const response = body => ({ ok: true, status: 200, json: async () => body });
 let transactions, request;
 const statsCalls = () => request.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?'));
-const select = name => fireEvent.click(screen.getByRole('button', { name: `Показать ${name}` }));
+const select = name => fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}: €`) }));
 const skeleton = () => screen.queryByRole('status', { name: 'Загрузка итогов…' });
-// Переключатель счетов (карусель и точки) - только на Обзоре, поэтому к
+// Лента счетов - только на Обзоре, поэтому к
 // Аналитике ходим туда и обратно через нижнюю навигацию.
 const goTo = name => fireEvent.click(screen.getByRole('button', { name }));
 
@@ -33,7 +33,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(
 describe('instant account summaries', () => {
   it('shows the correct monthly ring on the first account switch without any summary or reference-data requests', async () => {
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     const count = statsCalls().length;
     select('Наличные');
     expect(skeleton()).not.toBeInTheDocument();
@@ -41,7 +41,7 @@ describe('instant account summaries', () => {
     select('Карта');
     expect(skeleton()).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Расход:.*300/ })).toBeVisible();
-    select('Общий капитал');
+    select('Все счета');
     expect(screen.getByRole('button', { name: /Расход:.*350/ })).toBeVisible();
     await act(async () => {});
     expect(statsCalls()).toHaveLength(count);
@@ -52,7 +52,7 @@ describe('instant account summaries', () => {
 
   it('loads only analytics for a new selection and instantly reuses visited selections', async () => {
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
     goTo('Обзор');
@@ -62,7 +62,7 @@ describe('instant account summaries', () => {
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
     expect(statsCalls()).toHaveLength(3); // startup + two analytics views
     goTo('Обзор');
-    select('Общий капитал');
+    select('Все счета');
     expect(skeleton()).not.toBeInTheDocument();
     goTo('Аналитика');
     expect(skeleton()).not.toBeInTheDocument();
@@ -80,7 +80,7 @@ describe('instant account summaries', () => {
 
   it('refreshes expired summaries in the background and keeps custom settings', async () => {
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     select('Наличные');
     const base = request.getMockImplementation();
     let finish;
@@ -99,7 +99,7 @@ describe('instant account summaries', () => {
 
   it('refreshes all views on return after expiry, without clearing the visible ring', async () => {
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     select('Наличные');
     vi.setSystemTime(new Date('2026-09-24T12:01:01Z'));
     transactions[1].amount = 70;
@@ -120,7 +120,7 @@ describe('instant account summaries', () => {
       return base(url, options);
     });
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
     goTo('Обзор');
@@ -128,7 +128,7 @@ describe('instant account summaries', () => {
     goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
     goTo('Обзор');
-    select('Общий капитал');
+    select('Все счета');
     goTo('История');
     fireEvent.click(await screen.findByRole('button', { name: /^Кофе,/ }));
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '75' } });

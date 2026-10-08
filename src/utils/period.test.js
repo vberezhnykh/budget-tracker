@@ -4,6 +4,8 @@ import {
   formatMonthName,
   formatPeriodLabel,
   formatPeriodPhrase,
+  formatPeriodTitle,
+  formatSyncStatus,
   getCurrentMonth,
   getLastMonthOfYear,
   listPeriodMonths,
@@ -149,4 +151,40 @@ describe('getCurrentMonth', () => {
     vi.setSystemTime(new Date(2026, 8, 30, 23, 30));
     expect(getCurrentMonth()).toBe('2026-09');
   });
+
+  describe('formatPeriodTitle', () => {
+    const now = new Date(2026, 9, 8, 12);
+
+    it('names a month of the current year by its capitalized name alone', () => {
+      expect(formatPeriodTitle('month', '2026-10', now)).toBe('Октябрь');
+      expect(formatPeriodTitle('month', '2026-01', now)).toBe('Январь');
+    });
+
+    it('adds the year for a month of another year', () => {
+      expect(formatPeriodTitle('month', '2025-12', now)).toBe('Декабрь 2025');
+    });
+
+    it('gives a bare year for «год» and «Всё время» for lifetime', () => {
+      expect(formatPeriodTitle('year', '2026-10', now)).toBe('2026');
+      expect(formatPeriodTitle('year', '2025-12', now)).toBe('2025');
+      expect(formatPeriodTitle('lifetime', '2026-10', now)).toBe('Всё время');
+    });
+  });
+
+  describe('formatSyncStatus', () => {
+    const now = new Date(2026, 9, 8, 18, 0);
+
+    it('shows only the time for a synchronization from today', () => {
+      expect(formatSyncStatus(new Date(2026, 9, 8, 14, 5), '8 окт., 14:05', now)).toBe('Обновлено 14:05');
+    });
+
+    it('falls back to the short date label for an earlier day, comparing local calendar days', () => {
+      expect(formatSyncStatus(new Date(2026, 9, 7, 23, 59), '7 окт., 23:59', now)).toBe('Обновлено 7 окт., 23:59');
+    });
+
+    it('gives nothing before the first synchronization', () => {
+      expect(formatSyncStatus(null, null, now)).toBeNull();
+    });
+  });
 });
+

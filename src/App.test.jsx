@@ -95,26 +95,15 @@ function createFetchMock() {
     });
 }
 
-// jsdom doesn't implement scrollIntoView; the carousel guards the call, but
-// tests need a spy to verify *which* slide it was asked to scroll to.
+// jsdom doesn't implement scrollIntoView; the accounts strip guards the call,
+// but tests need a spy to verify *which* card it was asked to scroll to.
 Element.prototype.scrollIntoView = vi.fn();
 
-// jsdom never lays anything out, so offsetLeft/offsetWidth/clientWidth are
-// always 0. Stub them on the carousel container and its slides so the
-// nearest-centre calculation in App.jsx has real numbers to work with.
-// A leading spacer (spacerWidth) plus one gap sits before slide 0 in the
-// real layout, so every slide's offsetLeft is pushed right by that amount -
-// mirror that here instead of assuming slide 0 starts at 0.
-function stubCarouselGeometry(container, slideWidth = 300, gap = 12, spacerWidth = 20) {
-    Object.defineProperty(container, 'clientWidth', { configurable: true, value: slideWidth });
-    const slideEls = Array.from(container.querySelectorAll('[data-carousel-slide]'));
-    const leadingInset = spacerWidth + gap;
-    slideEls.forEach((el, i) => {
-        Object.defineProperty(el, 'offsetLeft', { configurable: true, value: leadingInset + i * (slideWidth + gap) });
-        Object.defineProperty(el, 'offsetWidth', { configurable: true, value: slideWidth });
-    });
-    return slideEls;
-}
+// Обзор загружен, когда в нём появилась лента счетов.
+const waitForOverview = () => screen.findByTestId('accounts-row');
+
+// Карточка счёта в ленте Обзора: <button aria-pressed>, имя вида «Карта: €…».
+const accountCard = name => screen.getByRole('button', { name: new RegExp(`^${name}: €`) });
 
 // История - отдельная вкладка нижней навигации. Её содержимое (поиск, фильтры,
 // полная история) существует в дереве только пока вкладка открыта.
@@ -164,11 +153,12 @@ describe('App Integration Tests', () => {
     it('renders content after loading', async () => {
         render(<App />);
 
-        await waitFor(() => {
-            expect(screen.getByText('BudgetTracker')).toBeInTheDocument();
-        }, { timeout: 3000 });
+        await waitForOverview();
 
         expect(screen.getAllByText(/4\.000/)[0]).toBeInTheDocument();
+        // Названия приложения на Обзоре больше нет: заголовок - выбор периода.
+        expect(screen.queryByText('BudgetTracker')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toHaveTextContent('Январь');
     });
 
     it('shows an explicit initial error offline and applies the complete data set on retry', async () => {
@@ -183,13 +173,13 @@ describe('App Integration Tests', () => {
         render(<App />);
 
         expect(await screen.findByRole('heading', { name: 'Не удалось загрузить данные' })).toBeInTheDocument();
-        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
 
         offline = false;
         fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
 
-        await waitFor(() => expect(screen.getByTestId('balance-carousel')).toBeInTheDocument());
-        expect(screen.getByText(/Синхронизировано:/)).toBeInTheDocument();
+        await waitFor(() => expect(screen.getByTestId('accounts-row')).toBeInTheDocument());
+        expect(screen.getByText(/^Обновлено \d{2}:\d{2}$/)).toBeInTheDocument();
         consoleSpy.mockRestore();
     });
 
@@ -225,19 +215,19 @@ describe('App Integration Tests', () => {
         await act(async () => {
             resolveTransactions({ ok: true, status: 200, json: async () => readApi('/api/stats/dashboard?month=2026-01&today=2026-01-15', currentTransactions, currentAccounts) });
         });
-        await waitFor(() => expect(screen.getByText('BudgetTracker')).toBeInTheDocument());
+        await waitForOverview();
     });
 
-    it('changes the month from the period trigger on the summary card', async () => {
+    it('changes the month from the period title in the header', async () => {
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
-        // The trigger is part of the active card's label and is the only way
-        // to change the period - the old header arrow row is gone. Inactive
-        // neighbour cards show their own month as plain text, never a button.
-        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toHaveTextContent('Расход за январь');
+        // Заголовок экрана - единственный способ сменить период: месяц
+        // капитализирован, год в нём - только если он не текущий.
+        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toHaveTextContent(/^Январь$/);
         expect(screen.getAllByRole('button', { name: /^Период:/ })).toHaveLength(1);
+        expect(screen.getByText('Расход за январь')).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
 
@@ -247,13 +237,14 @@ describe('App Integration Tests', () => {
         await waitFor(() => {
             expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         });
-        expect(screen.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Период: Декабрь 2025' })).toHaveTextContent(/^Декабрь 2025$/);
+        expect(screen.getByText('Расход за декабрь 2025')).toBeInTheDocument();
     });
 
     it('offers only months between the start of history and the current month', async () => {
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
 
         // System time is mocked to 2026-01-15, so the selectable range is
@@ -268,12 +259,12 @@ describe('App Integration Tests', () => {
     it('switches between the four screens from the bottom navigation, one screen at a time', async () => {
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
         const nav = screen.getByRole('navigation', { name: 'Основная навигация' });
         const tab = name => within(nav).getByRole('button', { name });
         expect(tab('Обзор')).toHaveAttribute('aria-current', 'page');
-        expect(screen.getByTestId('balance-carousel')).toBeInTheDocument();
+        expect(screen.getByTestId('accounts-row')).toBeInTheDocument();
 
         fireEvent.click(tab('Аналитика'));
 
@@ -286,7 +277,7 @@ describe('App Integration Tests', () => {
         expect(tab('Аналитика')).toHaveAttribute('aria-current', 'page');
         expect(tab('Обзор')).not.toHaveAttribute('aria-current');
         // Шапка со счетами принадлежит Обзору.
-        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
 
         fireEvent.click(tab('История'));
         expect(await screen.findByTestId('history-scroll')).toBeInTheDocument();
@@ -298,13 +289,13 @@ describe('App Integration Tests', () => {
         expect(screen.queryByTestId('history-scroll')).not.toBeInTheDocument();
 
         fireEvent.click(tab('Обзор'));
-        expect(await screen.findByTestId('balance-carousel')).toBeInTheDocument();
+        expect(await screen.findByTestId('accounts-row')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /^Период:/ })).toBeInTheDocument();
     });
 
     it('reflects the screen in the hash without piling up browser history, and follows hashchange', async () => {
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         const entries = window.history.length;
 
         fireEvent.click(screen.getByRole('button', { name: 'История' }));
@@ -329,12 +320,12 @@ describe('App Integration Tests', () => {
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Ещё' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Ещё' })).toHaveAttribute('aria-current', 'page');
-        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
     });
 
     it('adds an expense from the center button of the bottom navigation', async () => {
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
         fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
 
@@ -346,7 +337,7 @@ describe('App Integration Tests', () => {
 
     it('keeps settings out of the overview header and opens them from «Ещё»', async () => {
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         expect(screen.queryByTitle('Настройки')).not.toBeInTheDocument();
 
         openSettings();
@@ -357,18 +348,21 @@ describe('App Integration Tests', () => {
     it('opens and closes the add transaction modal', async () => {
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
-        const incomeBtn = screen.getByRole('button', { name: 'Добавить доход' });
-        fireEvent.click(incomeBtn);
+        // Быстрых кнопок «Доход / Расход / Перевод» на Обзоре больше нет: добавить
+        // операцию можно «+» в нижней панели.
+        expect(screen.queryByRole('button', { name: 'Добавить доход' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Добавить перевод' })).not.toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
 
-        expect(screen.getByText(/Новый доход/)).toBeInTheDocument();
+        expect(screen.getByText(/Новый расход/)).toBeInTheDocument();
 
         const closeBtn = screen.getByRole('button', { name: 'Закрыть', exact: true });
         fireEvent.click(closeBtn);
 
         await waitFor(() => {
-            expect(screen.queryByText(/Новый доход/)).not.toBeInTheDocument();
+            expect(screen.queryByText(/Новый расход/)).not.toBeInTheDocument();
         });
     });
 
@@ -387,8 +381,8 @@ describe('App Integration Tests', () => {
         });
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
-        fireEvent.click(screen.getByRole('button', { name: 'Добавить расход' }));
+        await waitForOverview();
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
         fireEvent.click(screen.getByText('Продукты'));
         fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
@@ -413,7 +407,7 @@ describe('App Integration Tests', () => {
             return normalFetch(url, options);
         });
         render(<App />);
-        await waitFor(() => screen.getByTestId('balance-carousel'));
+        await waitForOverview();
 
         await openHistory();
         fireEvent.click(screen.getByRole('button', { name: /Monthly flat rent/ }));
@@ -448,10 +442,10 @@ describe('App Integration Tests', () => {
         });
 
         render(<App />);
-        await waitFor(() => screen.getByTestId('balance-carousel'));
-        const firstSyncLabel = screen.getByText(/Синхронизировано:/).textContent;
+        await waitForOverview();
+        const firstSyncLabel = screen.getByText(/^Обновлено /).textContent;
 
-        fireEvent.click(screen.getByRole('button', { name: 'Добавить расход' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
         fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '25' } });
         fireEvent.click(screen.getByText('Продукты'));
         fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
@@ -465,14 +459,14 @@ describe('App Integration Tests', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
 
         await waitFor(() => expect(screen.queryByText('Не удалось обновить данные')).not.toBeInTheDocument());
-        expect(screen.getByText(/Синхронизировано:/).textContent).not.toBe(firstSyncLabel);
+        expect(screen.getByText(/^Обновлено /).textContent).not.toBe(firstSyncLabel);
         expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions' && options?.method === 'POST')).toHaveLength(1);
         consoleSpy.mockRestore();
     });
 
     it('breaks the period expense down by category, and applies the tapped one as the summary filter', async () => {
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
         // Разбивка по категориям - на вкладке «Аналитика»; на главной её
         // больше нет, там теперь лимит и последние операции.
@@ -488,7 +482,7 @@ describe('App Integration Tests', () => {
     it('displays transaction description and account/category correctly', async () => {
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         // Операции живут в шторке, и её содержимое существует только когда
         // она раскрыта - открываем, как это делает пользователь.
         await openHistory();
@@ -511,7 +505,7 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         await openHistory();
 
         // Each editable row exposes a full-row button (see the accessible
@@ -559,7 +553,7 @@ describe('App Integration Tests', () => {
 
         window.confirm = vi.fn(() => true);
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         await openHistory();
 
         // Open split sub-item via its full-row button (see the accessible
@@ -585,50 +579,8 @@ describe('App Integration Tests', () => {
         });
     });
 
-    // Карусель месяцев - та же механика, что и у карусели счетов: прокрутка
-    // со снапом, выбор фиксируется, когда события прокрутки перестали
-    // приходить (см. utils/useSnapCarousel.js). Поэтому и проверяется она
-    // так же - подменённой геометрией плюс событием scroll, а не жестом:
-    // в jsdom нет раскладки, offsetLeft/offsetWidth там нули.
-    const scrollMonthCarouselTo = (container, index, count) => {
-        const slideWidth = 300;
-        const gap = 12;
-        const spacerWidth = 20;
-        expect(container.querySelectorAll('[data-carousel-slide]').length).toBe(count);
-        stubCarouselGeometry(container, slideWidth, gap, spacerWidth);
-        container.scrollLeft = spacerWidth + gap + index * (slideWidth + gap);
-
-        vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
-        vi.setSystemTime(new Date('2026-01-15'));
-        fireEvent.scroll(container);
-        act(() => {
-            vi.advanceTimersByTime(200);
-        });
-        vi.useRealTimers();
-    };
-
-    it('листает месяцы прокруткой карусели', async () => {
-        render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
-
-        // Выбираемые месяцы - от начала истории (ноябрь 2025) до текущего
-        // месяца, которым в тестах подменено время: ноябрь, декабрь, январь.
-        const container = screen.getByTestId('month-carousel');
-        expect(screen.getByRole('button', { name: 'Период: Январь 2026' })).toBeInTheDocument();
-
-        scrollMonthCarouselTo(container, 1, 3);
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Период: Декабрь 2025' })).toBeInTheDocument();
-        });
-
-        scrollMonthCarouselTo(container, 0, 3);
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Период: Ноябрь 2025' })).toBeInTheDocument();
-        });
-    });
-
-    it('показывает на каждой карточке итоги её месяца, а не выбранного', async () => {
-        // Декабрьская операция - чтобы у соседней карточки были свои числа.
+    it('shows the totals of the selected month in the hero, with no month carousel to swipe', async () => {
+        // Декабрьская операция - чтобы у декабря были свои числа.
         currentTransactions = [...mockTransactions, {
             _id: '9',
             title: 'Декабрьская трата',
@@ -640,39 +592,109 @@ describe('App Integration Tests', () => {
         }];
 
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
-        const slides = screen.getByTestId('month-carousel').querySelectorAll('[data-carousel-slide]');
-        const december = within(slides[1]);
-        const january = within(slides[2]);
-
-        // Подписи месяца на карточках нет - его называет чип периода.
-        expect(december.queryByText('Декабрь 2025')).not.toBeInTheDocument();
-        expect(december.getByText('€700,00')).toBeInTheDocument();
-        expect(january.queryByText('Январь 2026')).not.toBeInTheDocument();
         // Январь: расход из mockTransactions, декабрьская трата в него не
         // просочилась.
-        expect(january.queryByText('€700,00')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Расход: €1\.000,00/ })).toBeInTheDocument();
+        expect(screen.queryByText('€700,00')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('month-carousel')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+        fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Декабрь' }));
+
+        expect(await screen.findByRole('button', { name: /^Расход: €700,00/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Доход: €0,00/ })).toBeInTheDocument();
     });
 
-    it('кнопки перехода в историю расхода и дохода живут только на выбранной карточке', async () => {
+    it('has exactly one history button for expenses and one for income, without a pressed state', async () => {
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
-        // Кнопок-фильтров ровно по одной: соседние месяцы показывают те же
-        // цифры текстом, иначе они спорили бы с выбором месяца.
-        expect(screen.getAllByRole('button', { name: /^Расход: / })).toHaveLength(1);
-        expect(screen.getAllByRole('button', { name: /^Доход: / })).toHaveLength(1);
+        const expenseButtons = screen.getAllByRole('button', { name: /^Расход: / });
+        const incomeButtons = screen.getAllByRole('button', { name: /^Доход: / });
+        expect(expenseButtons).toHaveLength(1);
+        expect(incomeButtons).toHaveLength(1);
+        // Переход в Историю, а не переключатель.
+        expect(expenseButtons[0]).not.toHaveAttribute('aria-pressed');
+        expect(incomeButtons[0]).not.toHaveAttribute('aria-pressed');
+    });
 
-        const slides = screen.getByTestId('month-carousel').querySelectorAll('[data-carousel-slide]');
-        expect(within(slides[2]).getByRole('button', { name: /^Расход: / })).toBeInTheDocument();
-        expect(within(slides[1]).queryByRole('button', { name: /^Расход: / })).not.toBeInTheDocument();
+    describe('late-month plaque', () => {
+        // Март 2026, 25-е: до конца месяца 6 дней. В эталонных месяцах
+        // (февраль, январь, декабрь, ноябрь) к 25-му уходит 1000, а после -
+        // ещё 600, поэтому «обычно уходит около €600».
+        const referenceMonths = ['2025-11', '2025-12', '2026-01', '2026-02'].flatMap((month, index) => [
+            { _id: `a${index}`, title: 'Аренда', amount: 1000, type: 'expense', account: 'card', date: `${month}-02T00:00:00Z`, category: 'Housing' },
+            { _id: `b${index}`, title: 'Хвост месяца', amount: 600, type: 'expense', account: 'card', date: `${month}-28T00:00:00Z`, category: 'Food' },
+        ]);
+        const marchSpent = amount => ({ _id: 'm1', title: 'Март', amount, type: 'expense', account: 'card', date: '2026-03-03T00:00:00Z', category: 'Housing' });
+
+        beforeEach(() => {
+            vi.setSystemTime(new Date('2026-03-25T12:00:00'));
+        });
+
+        it('says how many days are left, what usually goes out, and the headroom to the limit', async () => {
+            currentTransactions = [...referenceMonths, marchSpent(1500)];
+            render(<App />);
+            await waitForOverview();
+
+            // 1500 + 600 = 2100 прогноз; 7000 - 2100 = 4900
+            const plaque = await screen.findByText('До конца месяца 6 дней');
+            expect(plaque.closest('[role="status"]')).toHaveTextContent(
+                'С 26 по 31 число у вас обычно уходит около €600. Если так и будет, запас до лимита ≈ €4.900.'
+            );
+        });
+
+        it('warns that the limit will be exceeded when the forecast is above it', async () => {
+            currentTransactions = [...referenceMonths, marchSpent(6500)];
+            render(<App />);
+            await waitForOverview();
+
+            // 6500 + 600 = 7100 прогноз; превышение на 100
+            const plaque = await screen.findByText('До конца месяца 6 дней');
+            expect(plaque.closest('[role="status"]')).toHaveTextContent('Если так и будет, лимит будет превышен примерно на €100.');
+        });
+
+        it('is not shown once the limit is already exceeded, or for another period', async () => {
+            currentTransactions = [...referenceMonths, marchSpent(7500)];
+            render(<App />);
+            await waitForOverview();
+            await screen.findByRole('button', { name: /^Расход: €7\.500,00/ });
+            expect(screen.queryByText(/До конца месяца/)).not.toBeInTheDocument();
+        });
+
+        it('is not shown for a past month or for the whole year', async () => {
+            currentTransactions = [...referenceMonths, marchSpent(1500)];
+            render(<App />);
+            await screen.findByText('До конца месяца 6 дней');
+
+            fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+            fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Февраль' }));
+            await screen.findByText('Расход за февраль');
+            expect(screen.queryByText(/До конца месяца/)).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+            fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Год' }));
+            fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '2026 год' }));
+            await screen.findByText('Расход за 2026 год');
+            expect(screen.queryByText(/До конца месяца/)).not.toBeInTheDocument();
+        });
+
+        it('is not shown outside the last ten days (the 15th)', async () => {
+            vi.setSystemTime(new Date('2026-03-15T12:00:00'));
+            currentTransactions = [...referenceMonths, marchSpent(1500)];
+            render(<App />);
+            await waitForOverview();
+            await screen.findByRole('button', { name: /^Расход: €1\.500,00/ });
+            expect(screen.queryByText(/До конца месяца/)).not.toBeInTheDocument();
+        });
     });
 
     it('toggles between monthly and lifetime stats', async () => {
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
         // Default is monthly income (Salary = 5000)
         expect(await screen.findByText(/\+€5\.000/)).toBeInTheDocument();
@@ -701,7 +723,7 @@ describe('App Integration Tests', () => {
         }];
 
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         await openHistory();
 
         // December follows January even when the dashboard shows one month.
@@ -732,7 +754,7 @@ describe('App Integration Tests', () => {
     it('filters transactions by search query', async () => {
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         await openHistory();
 
         // Initially shows both (Salary and Rent) in January view (since we mocked time)
@@ -776,7 +798,7 @@ describe('App Integration Tests', () => {
 
         render(<App />);
 
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
         await openHistory();
         await waitFor(() => screen.getByText('Coffee'));
         expect((await screen.findAllByText('Salary')).length).toBeGreaterThan(0);
@@ -820,31 +842,32 @@ describe('App Integration Tests', () => {
         currentTransactions = [...mockTransactions, cashTx];
 
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
         // Счёт выбран на Обзоре...
-        fireEvent.click(screen.getByRole('button', { name: 'Показать Карта' }));
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true'));
+        fireEvent.click(accountCard('Карта'));
+        await waitFor(() => expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'true'));
 
         // ...а История его не видит: в ней по-прежнему все счета, и запрос
-        // истории без параметра account.
+        // истории (40 строк) без параметра account. Блок «Последние операции»
+        // на Обзоре, наоборот, счёт получает - его запрос на 5 строк.
         await openHistory();
         await waitFor(() => screen.getByText('Coffee'));
         expect(screen.getAllByText('Salary').length).toBeGreaterThan(0);
         expect(within(screen.getByRole('group', { name: 'Фильтр по счёту' })).getByRole('button', { name: 'Все счета' })).toHaveAttribute('aria-pressed', 'true');
-        expect(fetchMock.mock.calls.some(([url]) => typeof url === 'string' && url.startsWith('/api/history?') && url.includes('account='))).toBe(false);
+        expect(fetchMock.mock.calls.some(([url]) => typeof url === 'string' && url.startsWith('/api/history?') && url.includes('limit=40') && url.includes('account='))).toBe(false);
 
         // И наоборот: фильтр Истории не меняет выбранный на Обзоре счёт.
         fireEvent.click(within(screen.getByRole('group', { name: 'Фильтр по счёту' })).getByRole('button', { name: 'Наличные' }));
         await waitFor(() => expect(screen.queryByText('Salary')).not.toBeInTheDocument());
         goTo('Обзор');
-        expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true');
-        expect(screen.getByRole('button', { name: 'Показать Наличные' })).toHaveAttribute('aria-current', 'false');
+        expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'true');
+        expect(accountCard('Наличные')).toHaveAttribute('aria-pressed', 'false');
     });
 
     it('opens the history of income from the income tile and the history of expenses from the expense figure', async () => {
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
         fireEvent.click(screen.getByRole('button', { name: /^Доход: .*открыть историю доходов$/ }));
 
@@ -868,87 +891,161 @@ describe('App Integration Tests', () => {
         expect(expenses.queryByText('Salary')).not.toBeInTheDocument();
     });
 
-    it('selects the slide nearest the scroll position once scrolling settles', async () => {
+    it('selects an account by tapping its card: one at a time, with a pending summary while it loads', async () => {
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
-        // Slide order: total(0), "Карта" account(1), "Наличные" account(2).
-        // Slide 1 is the per-account "Карта" slide - deliberately NOT the
-        // last slide, since the old buggy arithmetic (slideWidth computed
-        // from the hidden <style> tag) clamped every real swipe to the LAST
-        // slide regardless of where the user stopped.
-        const container = screen.getByTestId('balance-carousel');
-        const slideEls = stubCarouselGeometry(container);
-        expect(slideEls.length).toBe(3);
+        // Порядок: «Все счета», затем счета. Выбрано «Все счета».
+        expect(accountCard('Все счета')).toHaveAttribute('aria-pressed', 'true');
+        expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'false');
 
-        const targetIndex = 1;
-        const slideWidth = 300;
-        const gap = 12;
-        const spacerWidth = 20;
-        // Same leading inset stubCarouselGeometry applied to every slide's
-        // offsetLeft, so this scroll position still lands on slide 3 ("Карта").
-        container.scrollLeft = spacerWidth + gap + targetIndex * (slideWidth + gap);
+        fireEvent.click(accountCard('Карта'));
 
-        // The filter is only committed once scroll events stop arriving for
-        // ~120ms (settle-debounce) - fake the timers driving that.
-        vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame'] });
-        vi.setSystemTime(new Date('2026-01-15'));
-
-        fireEvent.scroll(container);
-        expect(screen.getByTestId('account-summary')).toHaveClass('account-summary--pending');
-        expect(screen.getByTestId('account-summary')).toHaveAttribute('aria-busy', 'true');
-        act(() => {
-            vi.advanceTimersByTime(200);
-        });
-
-        // Switch back to real timers before using waitFor/further queries -
-        // testing-library's polling can't see vitest's faked setTimeout here,
-        // and the settle-debounce has already fired inside the act() above.
-        vi.useRealTimers();
-
-        // Selecting slide 1 ("Карта") must select the card account, not
-        // whatever the last slide happens to be.
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true'));
-        expect(screen.getByRole('button', { name: 'Показать Наличные' })).toHaveAttribute('aria-current', 'false');
-        expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'false');
+        await waitFor(() => expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'true'));
+        expect(accountCard('Наличные')).toHaveAttribute('aria-pressed', 'false');
+        expect(accountCard('Все счета')).toHaveAttribute('aria-pressed', 'false');
         await waitFor(() => expect(screen.getByTestId('account-summary')).not.toHaveClass('account-summary--pending'));
+
+        // Повторное нажатие на выбранную карточку выбор не снимает.
+        fireEvent.click(accountCard('Карта'));
+        expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'true');
+
+        fireEvent.click(accountCard('Все счета'));
+        await waitFor(() => expect(accountCard('Все счета')).toHaveAttribute('aria-pressed', 'true'));
+        expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'false');
     });
 
-    it('navigates the carousel via the dot indicators', async () => {
+    it('does not change the selected account when the accounts row is scrolled', async () => {
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
+        fireEvent.click(accountCard('Карта'));
+        await waitFor(() => expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'true'));
+        await waitFor(() => expect(screen.getByTestId('account-summary')).not.toHaveClass('account-summary--pending'));
+        const requestsBefore = fetchMock.mock.calls.length;
 
-        const cardDot = screen.getByRole('button', { name: 'Показать Карта' });
-        fireEvent.click(cardDot);
+        // Раньше осевшая прокрутка выбирала ближайшую карточку; теперь
+        // лента листается свободно, а выбор делает только нажатие.
+        const row = screen.getByTestId('accounts-row');
+        row.scrollLeft = 400;
+        fireEvent.scroll(row);
+        await new Promise(resolve => setTimeout(resolve, 200));
 
-        await waitFor(() => {
-            expect(screen.getByText('Карта').closest('[data-carousel-slide]')).toHaveAttribute('aria-pressed', 'true');
-        });
-        expect(cardDot).toHaveAttribute('aria-current', 'true');
-        expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'false');
+        expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'true');
+        expect(accountCard('Все счета')).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByTestId('account-summary')).not.toHaveClass('account-summary--pending');
+        expect(fetchMock.mock.calls.length).toBe(requestsBefore);
     });
 
-    it('puts a remounted carousel back on the selected slide after switching tabs', async () => {
-        render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+    it('filters the recent operations by the account selected on the overview', async () => {
+        const cashTx = {
+            _id: '3',
+            title: 'Coffee',
+            amount: 5,
+            type: 'expense',
+            account: 'cash',
+            date: '2026-01-05T00:00:00Z',
+            category: 'Food'
+        };
+        currentTransactions = [...mockTransactions, cashTx];
 
-        fireEvent.click(screen.getByText('Карта').closest('[data-carousel-slide]'));
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true');
+        render(<App />);
+        await waitForOverview();
+
+        const recent = () => within(screen.getByRole('region', { name: 'Последние операции' }));
+        expect(await recent().findByText('Coffee')).toBeInTheDocument();
+        expect(recent().getByText('Monthly flat rent')).toBeInTheDocument();
+        const recentUrl = fetchMock.mock.calls.map(([url]) => url).find(url => typeof url === 'string' && url.includes('limit=5'));
+        expect(recentUrl).toBe('/api/history?month=2026-01&continuous=1&limit=5');
+
+        fireEvent.click(accountCard('Наличные'));
+
+        await waitFor(() => expect(recent().queryByText('Monthly flat rent')).not.toBeInTheDocument());
+        expect(recent().getByText('Coffee')).toBeInTheDocument();
+        expect(fetchMock.mock.calls.some(([url]) => url === '/api/history?month=2026-01&continuous=1&limit=5&account=cash')).toBe(true);
+    });
+
+    it('shows the five newest operations, opens one for editing and has a link to the whole history', async () => {
+        currentTransactions = Array.from({ length: 7 }, (_, index) => ({
+            _id: `t${index + 1}`,
+            title: `Покупка ${index + 1}`,
+            amount: 10 + index,
+            type: 'expense',
+            account: 'card',
+            date: `2026-01-0${index + 1}T00:00:00Z`,
+            category: 'Food',
+        }));
+
+        render(<App />);
+        await waitForOverview();
+
+        const recent = within(screen.getByRole('region', { name: 'Последние операции' }));
+        expect(await recent.findByText('Покупка 7')).toBeInTheDocument();
+        expect(recent.getByText('Покупка 3')).toBeInTheDocument();
+        expect(recent.queryByText('Покупка 2')).not.toBeInTheDocument();
+        expect(recent.queryByText('Покупка 1')).not.toBeInTheDocument();
+
+        fireEvent.click(recent.getByRole('button', { name: /^Покупка 7/ }));
+        expect(await screen.findByRole('dialog', { name: 'Редактировать' })).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Закрыть', exact: true }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+
+        fireEvent.click(screen.getByRole('button', { name: 'Вся история' }));
+        expect(window.location.hash).toBe('#history');
+        expect(await screen.findByTestId('history-scroll')).toBeInTheDocument();
+    });
+
+    it('says there are no operations yet, and offers a retry when the list cannot be loaded', async () => {
+        currentTransactions = [];
+        const normalFetch = createFetchMock();
+        let failRecent = true;
+        fetchMock.mockImplementation((url, options) => {
+            if (typeof url === 'string' && url.includes('limit=5') && failRecent) {
+                return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ message: 'boom' }) });
+            }
+            return normalFetch(url, options);
         });
 
-        // Шапка с каруселью живёт только на Обзоре: с него уходим, и карусель
-        // исчезает из дерева вовсе.
+        render(<App />);
+        await waitForOverview();
+
+        const recent = within(screen.getByRole('region', { name: 'Последние операции' }));
+        expect(await recent.findByText('Не удалось загрузить операции')).toBeInTheDocument();
+
+        failRecent = false;
+        fireEvent.click(recent.getByRole('button', { name: 'Повторить' }));
+
+        expect(await recent.findByText('Операций пока нет')).toBeInTheDocument();
+        expect(recent.queryByText('Не удалось загрузить операции')).not.toBeInTheDocument();
+    });
+
+    it('opens the accounts settings from «Настроить» in the accounts section', async () => {
+        render(<App />);
+        await waitForOverview();
+
+        fireEvent.click(within(screen.getByRole('region', { name: 'Счета' })).getByRole('button', { name: 'Настроить' }));
+
+        expect(screen.getByRole('dialog', { name: 'Настройки' })).toBeInTheDocument();
+    });
+
+    it('scrolls the selected card into view when the row is mounted again after switching tabs', async () => {
+        render(<App />);
+        await waitForOverview();
+
+        fireEvent.click(accountCard('Карта'));
+        await waitFor(() => expect(accountCard('Карта')).toHaveAttribute('aria-pressed', 'true'));
+
+        // Лента живёт только на Обзоре: с него уходим, и она исчезает из дерева.
         goTo('История');
-        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
         Element.prototype.scrollIntoView.mockClear();
 
-        // Вернувшись, она рождается с нулевой прокруткой и должна сама
-        // встать на выбранный слайд, а выбор - остаться прежним.
+        // Вернувшись, она рождается с нулевой прокруткой и должна подвести
+        // выбранную карточку в видимую область, а выбор - остаться прежним.
         goTo('Обзор');
-        const cardSlide = screen.getByText('Карта').closest('[data-carousel-slide]');
-        expect(Element.prototype.scrollIntoView.mock.contexts).toContain(cardSlide);
-        expect(screen.getByRole('button', { name: 'Показать Карта' })).toHaveAttribute('aria-current', 'true');
+        const card = accountCard('Карта');
+        expect(Element.prototype.scrollIntoView.mock.contexts).toContain(card);
+        expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ inline: 'nearest', block: 'nearest' });
+        expect(card).toHaveAttribute('aria-pressed', 'true');
     });
 
     it('clears the selection when the currently selected account is deleted', async () => {
@@ -960,13 +1057,12 @@ describe('App Integration Tests', () => {
         window.confirm = vi.fn(() => true);
 
         render(<App />);
-        await waitFor(() => screen.getByText('Кошелёк'));
+        await waitForOverview();
 
         // Select the account we're about to delete.
-        const walletSlide = screen.getByText('Кошелёк').closest('[data-carousel-slide]');
-        fireEvent.click(walletSlide);
+        fireEvent.click(accountCard('Кошелёк'));
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Показать Кошелёк' })).toHaveAttribute('aria-current', 'true');
+            expect(accountCard('Кошелёк')).toHaveAttribute('aria-pressed', 'true');
         });
 
         // Delete it via the accounts settings panel.
@@ -977,15 +1073,15 @@ describe('App Integration Tests', () => {
         expect(window.confirm).toHaveBeenCalled();
 
         // The filter pointed at an id that no longer exists - it must be reset
-        // and the selection taken back to total capital. Настройки
+        // and the selection taken back to «Все счета». Настройки
         // открыты поверх «Ещё», поэтому на Обзор возвращаемся, закрыв их.
         await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/accounts/wallet', expect.objectContaining({ method: 'DELETE' })));
         fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
         goTo('Обзор');
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: 'Показать Общий капитал' })).toHaveAttribute('aria-current', 'true');
+            expect(accountCard('Все счета')).toHaveAttribute('aria-pressed', 'true');
         });
-        expect(screen.queryByText('Кошелёк')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Кошелёк: / })).not.toBeInTheDocument();
     });
 
     it('держит замороженный счёт вне общего капитала и подписывает сумму отдельно', async () => {
@@ -999,11 +1095,11 @@ describe('App Integration Tests', () => {
         ];
 
         render(<App />);
-        await screen.findByLabelText(/Общий капитал: /);
+        await screen.findByLabelText(/Все счета: /);
 
         // 5000 - 1500: залог в капитал не входит, но и не исчезает - он
-        // назван отдельной строкой на том же слайде.
-        expect(screen.getByLabelText(/Общий капитал: €3\.500,00/)).toBeInTheDocument();
+        // назван отдельной строкой на той же карточке.
+        expect(screen.getByLabelText(/Все счета: €3\.500,00/)).toBeInTheDocument();
         expect(screen.getByText('1.500,00 € заморожено')).toBeInTheDocument();
         expect(screen.getByLabelText(/Залог: €1\.500,00, вне общего капитала/)).toBeInTheDocument();
     });
@@ -1136,7 +1232,7 @@ describe('App Integration Tests', () => {
             expect(screen.getByText(/Сервер не настроен/)).toBeInTheDocument();
         });
         expect(screen.getByRole('heading', { name: 'Не удалось загрузить данные' })).toBeInTheDocument();
-        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
 
         consoleSpy.mockRestore();
         vi.unstubAllGlobals();
@@ -1166,7 +1262,7 @@ describe('App Integration Tests', () => {
 
         render(<App />);
         expect(await screen.findByText(/Сервер вернул некорректные настройки/)).toBeInTheDocument();
-        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
 
         consoleSpy.mockRestore();
         vi.unstubAllGlobals();
@@ -1181,7 +1277,7 @@ describe('App Integration Tests', () => {
     describe('Logout', () => {
         it('keeps the authenticated state and reports the failure via the notice banner when /api/logout fails', async () => {
             render(<App />);
-            await waitFor(() => screen.getByText('BudgetTracker'));
+            await waitForOverview();
 
             const baseMock = fetchMock;
             vi.stubGlobal('fetch', vi.fn((url, options) => {
@@ -1206,7 +1302,7 @@ describe('App Integration Tests', () => {
 
         it('drops to the login screen once /api/logout actually confirms success', async () => {
             render(<App />);
-            await waitFor(() => screen.getByText('BudgetTracker'));
+            await waitForOverview();
 
             goTo('Ещё');
             fireEvent.click(screen.getByRole('button', { name: 'Выйти' }));
@@ -1218,7 +1314,7 @@ describe('App Integration Tests', () => {
 
         it('reports a network failure via the notice banner and stays authenticated', async () => {
             render(<App />);
-            await waitFor(() => screen.getByText('BudgetTracker'));
+            await waitForOverview();
 
             const baseMock = fetchMock;
             vi.stubGlobal('fetch', vi.fn((url, options) => {
@@ -1523,7 +1619,7 @@ describe('Authentication flow', () => {
         });
         // The login screen has its own "BudgetTracker" heading, so assert on
         // something that only exists in the authenticated main UI instead.
-        expect(screen.queryByTestId('balance-carousel')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('accounts-row')).not.toBeInTheDocument();
     });
 
     it('reveals the app after a successful login', async () => {
@@ -1587,7 +1683,7 @@ describe('Authentication flow', () => {
         }));
 
         render(<App />);
-        await waitFor(() => screen.getByText('BudgetTracker'));
+        await waitForOverview();
 
         // Any authenticated-looking screen still needs a live session for
         // further calls - saving a new account here is what hits /api/accounts

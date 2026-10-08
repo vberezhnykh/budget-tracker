@@ -99,3 +99,26 @@ export const formatPeriodPhrase = (timeRange, selectedMonth, now = new Date()) =
   const name = formatMonthName(selectedMonth).toLowerCase();
   return Number(year) === now.getFullYear() ? name : `${name} ${year}`;
 };
+
+// Заголовок выбора периода на Обзоре: «Октябрь», «Октябрь 2025», «2026»,
+// «Всё время». От formatPeriodLabel отличается тем, что год у месяца
+// добавляется только когда он не текущий (в заголовке экрана «Октябрь 2026»
+// в октябре 2026 - лишнее), и тем, что у года нет слова «год».
+export const formatPeriodTitle = (timeRange, selectedMonth, now = new Date()) => {
+  if (timeRange === 'lifetime') return 'Всё время';
+  const [year] = selectedMonth.split('-');
+  if (timeRange === 'year') return year;
+  const name = formatMonthName(selectedMonth);
+  return Number(year) === now.getFullYear() ? name : `${name} ${year}`;
+};
+
+// Статус синхронизации в шапке Обзора: «Обновлено 14:05» для сегодняшней
+// синхронизации и «Обновлено 7 окт., 14:05» для более старой (label - уже
+// готовая короткая дата со временем, которую App показывает и в других
+// местах). Дату сравниваем по локальному календарю, а не по UTC.
+export const formatSyncStatus = (syncedAt, label, now = new Date()) => {
+  if (!syncedAt || !label) return null;
+  if (toLocalDateInput(syncedAt) !== toLocalDateInput(now)) return `Обновлено ${label}`;
+  const time = syncedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  return `Обновлено ${time}`;
+};

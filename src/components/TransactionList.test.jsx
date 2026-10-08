@@ -85,3 +85,20 @@ describe('company snapshots in transaction history', () => {
         expect(screen.getByText('Zara')).toBeInTheDocument();
     });
 });
+
+describe('category link without a filter', () => {
+    it('shows the category as plain text when no toggle handler is given', () => {
+        const groups = getPeriodData(transformTransactions([expense]), '2026-09').transactions;
+        render(<TransactionList
+            groups={groups}
+            openEditModal={vi.fn()}
+            getAccountDisplay={() => 'Мой счёт'}
+            formatDate={() => 'Сегодня'}
+        />);
+
+        // Название строки и подпись с категорией - два разных элемента.
+        expect(screen.getAllByText('Продукты')).toHaveLength(2);
+        expect(screen.queryByRole('button', { name: 'Продукты' })).not.toBeInTheDocument();
+    });
+});
+

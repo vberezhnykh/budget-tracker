@@ -13,14 +13,13 @@ import OverviewScreen from './screens/OverviewScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import AnalyticsScreen from './screens/AnalyticsScreen'
 import MoreScreen from './screens/MoreScreen'
-import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput } from './utils/period'
+import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput, formatSyncStatus } from './utils/period'
 import { transformTransactions, getPaceForecast } from './utils/finance'
 import usePagedHistory from './utils/usePagedHistory'
 import useHashScreen from './utils/useHashScreen'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
-import useSnapCarousel from './utils/useSnapCarousel'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -565,10 +564,10 @@ function App() {
     ? dashboard.data.monthlyTotalsByAccount?.[selectedAccount || ''] : undefined;
   const statsReady = Boolean(summary || ((accountMonthlyTotals || matchingTotals) && screen !== 'analytics' && timeRange === 'month'));
 
-  // Declarative slide list for the header balance carousel: total capital,
-  // then one slide per individual account. The type-group slides
-  // ('type:card' / 'type:cash') were dropped from the carousel - that
-  // split is now shown as a static line in the stats block instead - but
+  // Declarative card list for the accounts strip on the overview: total
+  // capital («Все счета»), then one card per individual account. The
+  // type-group entries ('type:card' / 'type:cash') were dropped long ago -
+  // that split is shown as a static line in the stats block instead - but
   // the filter values themselves remain valid (see getAccountFilterLabel
   // and the filtering utilities in utils/finance.js), simply unreachable
   // from here.
@@ -579,7 +578,7 @@ function App() {
         key: 'total',
         theme: 'total',
         icon: 'wallet',
-        name: 'Общий капитал',
+        name: 'Все счета',
         amount: balances.total,
         filter: null,
         // Деньги на "замороженных" счетах в капитал не входят, но и молча
@@ -597,8 +596,8 @@ function App() {
       filter: acc._id,
       note: acc.excludeFromTotal ? 'вне общего капитала' : null,
     });
-    // Замороженные счета уезжают в конец карусели: до них доходят редко, а
-    // между повседневными картами они были бы лишней остановкой при свайпе.
+    // Замороженные счета уезжают в конец ленты: до них доходят редко, а
+    // между повседневными картами они только мешали бы.
     const spendable = accounts.filter(acc => !acc.excludeFromTotal).map(toSlide);
     const held = accounts.filter(acc => acc.excludeFromTotal).map(toSlide);
     return [...base, ...spendable, ...held];
@@ -610,9 +609,9 @@ function App() {
   const categoryUsage = dashboard?.data.categoryUsage || {};
   const comparisonData = summary?.comparison || EMPTY_COMPARISON;
   const categoryComparison = summary?.categoryComparison || {};
-  const carouselMonths = useMemo(() => listPeriodMonths(), []);
+  const periodMonths = useMemo(() => listPeriodMonths(), []);
   const monthlyTotals = accountMonthlyTotals || summary?.monthlyTotals || (matchingTotals ? dashboard.data.monthlyTotals : {});
-  const monthlySeries = carouselMonths.map(month => ({
+  const monthlySeries = periodMonths.map(month => ({
     month,
     year: Number(month.slice(0, 4)),
     label: new Date(`${month}-01T12:00:00`).toLocaleDateString('ru-RU', { month: 'short' }).replace(/\.$/, ''),
@@ -624,47 +623,25 @@ function App() {
     return selectedMonth === getCurrentMonth();
   }, [selectedMonth]);
 
-  // Карусель счетов: вся механика прокрутки со снапом - в useSnapCarousel,
-  // она же обслуживает карусель месяцев ниже. Здесь остаётся только то, что
-  // значит выбор слайда именно для счетов - фильтр по счёту.
-  const accountSummaryRef = useRef(null);
-  const accountCarousel = useSnapCarousel({
-    onSettle: (index) => {
-      const filter = slides[index]?.filter ?? null;
-      setSelectedAccount(prev => (prev === filter ? prev : filter));
-    },
-    onScrollProgress: (progress) => accountSummaryRef.current?.style.setProperty('--swipe-blur', String(progress)),
-  });
+  // Пока итоги не готовы, цифры сводки размыты и недоступны (SummaryFrame).
+  // Ожидание касается и смены счёта: данные другого счёта прежними
+  // показывать нельзя.
+  const summaryPending = !statsReady && (!syncWarning || isRefreshing);
 
-  const accountStatsPending = accountCarousel.isScrolling || (!statsReady && (!syncWarning || isRefreshing));
-
-  // Размытие по свайпу действует только на время самого свайпа: когда
-  // ожидание кончилось, сбрасываем переменную, чтобы следующее ожидание без
-  // свайпа (загрузка данных, смена периода) снова размывало полностью.
-  useEffect(() => {
-    if (!accountStatsPending) accountSummaryRef.current?.style.removeProperty('--swipe-blur');
-  }, [accountStatsPending]);
-
-  // Нажатие на слайд всегда выбирает его - без «нажать ещё раз, чтобы
-  // снять»: ровно один слайд активен в любой момент.
-  const handleSlideClick = (slide, index) => {
+  // Нажатие на карточку всегда выбирает её - без «нажать ещё раз, чтобы
+  // снять»: ровно один счёт активен в любой момент. Прокрутка ленты выбор не
+  // меняет.
+  const handleSelectAccount = (slide) => {
     setSelectedAccount(prev => (prev === slide.filter ? prev : slide.filter));
-    accountCarousel.scrollToIndex(index);
   };
 
-  // Keep the carousel in sync with filter changes that didn't originate from
-  // the carousel itself (the "reset filter" control, or an account that got
-  // deleted out from under the current selection). Also resets a selection
-  // that no longer matches any slide.
+  // An account that got deleted out from under the current selection (the
+  // strip no longer has its card) would leave the summary filtered by
+  // nothing: reset the selection to «Все счета».
   useEffect(() => {
     if (selectedAccount && !slides.some(s => s.filter === selectedAccount)) {
       setSelectedAccount(null);
-      return;
     }
-    const index = slides.findIndex(s => s.filter === selectedAccount);
-    if (index === -1) return;
-    accountCarousel.scrollToIndex(index, { skipIfSynced: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccount, slides]);
 
   const toggleCategoryFilter = (category) => {
@@ -1172,31 +1149,6 @@ function App() {
     return { income: monthlyData.income, expense: monthlyData.expense, categoryTotals: monthlyData.categoryTotals };
   }, [timeRange, monthlyData, yearlyData, lifetimeStats]);
 
-  // Месяцы, по которым листается карточка сводки, и итоги по каждому. Список
-  // тот же, что предлагает чип периода, - иначе свайп уводил бы туда, куда
-  // через чип не попасть.
-  const selectedMonthIndex = carouselMonths.indexOf(selectedMonth);
-
-  // Карусель месяцев на той же механике, что и карусель счетов: осевшая
-  // прокрутка выбирает слайд, отличается только смысл выбора.
-  const monthCarousel = useSnapCarousel({
-    onSettle: (index) => {
-      const month = carouselMonths[index];
-      if (!month || month === selectedMonth) return;
-      handlePeriodChange({ timeRange: 'month', selectedMonth: month });
-    },
-  });
-
-  // Месяц сменили не свайпом (чип периода, столбик тренда в «Аналитике») -
-  // карусель должна доехать до него сама.
-  useEffect(() => {
-    if (timeRange !== 'month' || selectedMonthIndex === -1) return;
-    monthCarousel.scrollToIndex(selectedMonthIndex, { skipIfSynced: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeRange, selectedMonthIndex]);
-
-
-
   // Expense of this month vs the same stretch of the previous one. For the
   // current month getComparisonData cuts the previous month at today's day
   // number (comparing like with like); for a past month it compares whole
@@ -1234,13 +1186,12 @@ function App() {
       minute: '2-digit',
     })
     : null;
+  const syncStatus = formatSyncStatus(lastSuccessfulSync, lastSyncLabel);
 
   // Общие для Обзора и Аналитики пропсы обёртки сводки (см.
-  // screens/SummaryFrame): ожидание данных считается здесь, потому что от
-  // него зависит и сама карусель счетов.
+  // screens/SummaryFrame): ожидание данных считается здесь.
   const summaryFrame = {
-    frameRef: accountSummaryRef,
-    pending: accountStatsPending,
+    pending: summaryPending,
     ready: statsReady,
     syncWarning,
     isRefreshing,
@@ -1383,24 +1334,26 @@ function App() {
       <main style={{ paddingBottom: screen === 'history' ? 0 : `calc(${NAV_OFFSET} + var(--space-4))` }}>
         {screen === 'overview' && (
           <OverviewScreen
-            lastSyncLabel={lastSyncLabel}
-            setAccountContainer={accountCarousel.setContainer}
-            onAccountScroll={accountCarousel.handleScroll}
+            syncStatus={syncStatus}
             slides={slides}
             selectedAccount={selectedAccount}
-            onSlideClick={handleSlideClick}
-            onAdd={openAddModal}
+            onSelectAccount={handleSelectAccount}
+            onOpenAccountsSettings={() => setShowAccountsSettings(true)}
             summaryFrame={summaryFrame}
             timeRange={timeRange}
-            setMonthContainer={monthCarousel.setContainer}
-            onMonthScroll={monthCarousel.handleScroll}
-            carouselMonths={carouselMonths}
-            monthlyTotals={monthlyTotals}
             selectedMonth={selectedMonth}
-            monthlyLimit={monthlyLimit}
+            monthlyTotals={monthlyTotals}
             periodStats={periodStats}
+            monthlyLimit={monthlyLimit}
+            typicalMonth={summary?.typicalMonth ?? null}
             onChangePeriod={handlePeriodChange}
             onOpenHistory={openHistoryOfType}
+            onOpenAllHistory={() => setScreen('history')}
+            request={apiFetch}
+            historyRevision={historyRevision}
+            openEditModal={openEditModal}
+            getAccountDisplay={getAccountDisplay}
+            formatDate={formatDate}
           />
         )}
         {screen === 'history' && (

@@ -48,7 +48,12 @@ function RowOverlayButton({ label, onClick }) {
 // Категория как переключатель фильтра. Не <button>: она лежит внутри
 // строки, у которой уже есть своя кнопка-подложка, - зато role и
 // обработка Enter/Space возвращают ей клавиатурное поведение кнопки.
+//
+// Там, где фильтра по категории нет (блок «Последние операции» на Обзоре),
+// onToggle не передаётся, и категория остаётся простым текстом: подчёркнутая
+// «ссылка», которая ничего не делает, хуже её отсутствия.
 function CategoryFilterLink({ category, selected, onToggle }) {
+    if (!onToggle) return <span>{category}</span>;
     return (
         <span
             role="button"

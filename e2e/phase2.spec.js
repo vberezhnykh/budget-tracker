@@ -5,7 +5,10 @@ test.describe('Navigation, transfers and trash (mobile)', () => {
   test('transfer account chips list every account, swap on conflict and via the swap button', async ({ page }) => {
     await mockPhase2Api(page);
     await page.goto('/');
-    await page.getByRole('button', { name: 'Добавить перевод' }).click();
+    // Быстрой кнопки «Перевод» на Обзоре больше нет: «+» в нижней панели,
+    // затем тип «Перевод» внутри формы.
+    await page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: 'Добавить операцию' }).click();
+    await page.getByRole('group', { name: 'Тип операции' }).getByRole('button', { name: 'Перевод' }).click();
     const from = page.getByRole('group', { name: 'Откуда', exact: true });
     const to = page.getByRole('group', { name: 'Куда', exact: true });
     const selected = group => group.locator('button[aria-pressed="true"]');
@@ -33,9 +36,9 @@ test.describe('Navigation, transfers and trash (mobile)', () => {
       trash: [{ id: deleted._id, deletionBatchId: 'batch-deleted', deletedAt: '2026-09-04T10:00:00.000Z', count: 1, transactions: [deleted] }],
     });
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
     await page.reload();
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
 
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
     // Четыре вкладки и кнопка добавления по центру.

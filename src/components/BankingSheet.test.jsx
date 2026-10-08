@@ -246,15 +246,15 @@ function openSettingsFromMore() {
 }
 
 async function openBankSheetInApp() {
-  await screen.findByText('BudgetTracker');
+  await screen.findByTestId('accounts-row');
   openSettingsFromMore();
   fireEvent.click(await screen.findByRole('button', { name: /^Банки/ }));
   await screen.findByRole('heading', { name: 'Предложения из банков (1)' });
 }
 
 async function submitManualExpense() {
-  await screen.findByText('BudgetTracker');
-  fireEvent.click(screen.getByRole('button', { name: 'Добавить расход' }));
+  await screen.findByTestId('accounts-row');
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
   fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '12.34' } });
   fireEvent.click(screen.getByText('Продукты'));
   fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
@@ -316,7 +316,7 @@ describe('App banking integration', () => {
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
     // Настройки открывались из «Ещё»; итоги лежат на Обзоре.
     fireEvent.click(screen.getByRole('button', { name: 'Обзор' }));
-    expect(screen.getByTestId('balance-carousel')).toHaveTextContent('0,00');
+    expect(screen.getByTestId('accounts-row')).toHaveTextContent('0,00');
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
   });
 
@@ -370,7 +370,7 @@ describe('App banking integration', () => {
       if (url === '/api/banking') return response({}, 401);
     });
     render(<App />);
-    await screen.findByText('BudgetTracker');
+    await screen.findByTestId('accounts-row');
     openSettingsFromMore();
     await waitFor(() => expect(finishBanking).toBeTypeOf('function'));
     fireEvent.click(screen.getByRole('button', { name: /^Банки/ }));
@@ -421,8 +421,8 @@ describe('App banking integration', () => {
       }
     });
     render(<App />);
-    await screen.findByText('BudgetTracker');
-    fireEvent.click(screen.getByRole('button', { name: 'Добавить расход' }));
+    await screen.findByTestId('accounts-row');
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '30' } });
     fireEvent.click(screen.getByText('Разделить на несколько категорий'));
     const amounts = screen.getAllByPlaceholderText('Сумма');

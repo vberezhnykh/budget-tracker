@@ -16,9 +16,11 @@ async function openSettings(page) {
 // Real-browser smoke suite. Three real bugs shipped this month and every one
 // was found by a human on a phone, never by the (jsdom-based) unit suite:
 //
-//   1. A <style> element rendered as the carousel's first child shifted
-//      every container.children[i] index, so swiping jumped to the wrong
-//      account.
+//   1. A <style> element rendered as the account carousel's first child
+//      shifted every container.children[i] index, so swiping jumped to the
+//      wrong account. (The carousel is gone - accounts are a plain row of
+//      tap-to-select cards - but the lesson stands: selection is checked
+//      against the real rendered row.)
 //   2. The drawer's travel distance was derived from window.innerHeight
 //      while its resting position came from a `calc(88vh - ...)` CSS
 //      transform. On iOS Safari those differ, so the sheet came to rest in
@@ -53,112 +55,109 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     release();
     await expect(startup).toHaveCount(0);
-    const carousel = page.getByTestId('month-carousel');
-    const original = await carousel.elementHandle();
-    // Clicking an offscreen account may scroll the page as well as its rail.
+    const summaryFrame = page.getByTestId('account-summary');
+    const bar = page.getByTestId('limit-bar');
+    await expect(bar).toBeVisible();
+    const original = await summaryFrame.elementHandle();
+    // Clicking an offscreen account may scroll the page as well as its row.
     // Compare document positions so that scroll is not mistaken for layout shift.
     const documentTop = locator => locator.evaluate(el => el.getBoundingClientRect().top + window.scrollY);
     // Веб-шрифт может догрузиться уже после замера и поменять высоту строк
-    // над каруселью. Это не тот сдвиг, который ловит тест, поэтому меряем
+    // над карточкой. Это не тот сдвиг, который ловит тест, поэтому меряем
     // после загрузки шрифтов.
     await page.evaluate(() => document.fonts.ready);
-    const before = await documentTop(carousel);
+    const before = await documentTop(summaryFrame);
 
     await page.getByRole('button', { name: /^Тинькофф:/ }).click();
     const summary = page.getByRole('status', { name: 'Загрузка итогов…' });
     await expect(summary).toHaveCount(0);
-    await expect(carousel).toBeVisible();
+    await expect(bar).toBeVisible();
     expect(summaryRequests).toBe(1);
-    expect(await original.evaluate(el => el === document.querySelector('[data-testid="month-carousel"]'))).toBe(true);
-    expect(Math.abs(await documentTop(carousel) - before)).toBeLessThan(2);
+    expect(await original.evaluate(el => el === document.querySelector('[data-testid="account-summary"]'))).toBe(true);
+    expect(Math.abs(await documentTop(summaryFrame) - before)).toBeLessThan(2);
   });
 
-  test('renders the app: header and total-capital slide are visible', async ({ page }) => {
+  test('renders the app: period title, summary card and the «Все счета» card are visible; no app name', async ({ page }) => {
     await mockApi(page);
     await page.goto('/');
 
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
-    const container = page.getByTestId('balance-carousel');
-    await expect(container).toBeVisible();
-    await expect(page.getByText('Общий капитал')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Период:/ })).toBeVisible();
+    await expect(page.getByText('BudgetTracker')).toHaveCount(0);
+    await expect(page.getByText(/^Обновлено /)).toBeVisible();
+    await expect(page.getByTestId('limit-bar')).toBeVisible();
+    const total = page.getByRole('button', { name: /^Все счета:/ });
+    await expect(total).toBeVisible();
+    await expect(total).toHaveAttribute('aria-pressed', 'true');
+    // Секции экрана по порядку: счета, затем последние операции.
+    const accountsTop = (await page.getByRole('heading', { level: 2, name: 'Счета' }).boundingBox()).y;
+    const recentTop = (await page.getByRole('heading', { level: 2, name: 'Последние операции' }).boundingBox()).y;
+    expect(accountsTop).toBeLessThan(recentTop);
   });
 
-  test('carousel selects the exact slide scrolled to, not just the last one', async ({ page }) => {
-    await mockApi(page);
+  test('scrolling the accounts row never changes the selection; a tap selects exactly the tapped card', async ({ page }) => {
+    // Раньше осевшая прокрутка карусели выбирала ближайший счёт (и ловился баг,
+    // при котором выбирался всегда последний). Теперь лента листается
+    // свободно, а выбор делает только нажатие. Прокрутка здесь настоящая:
+    // jsdom её не знает.
+    await mockApi(page, { accounts: manyAccounts });
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    const row = page.getByTestId('accounts-row');
+    await expect(row).toBeVisible();
+    const cards = row.getByRole('button');
+    await expect(cards).toHaveCount(manyAccounts.length + 1);
 
-    const container = page.getByTestId('balance-carousel');
-    await container.waitFor();
-    await expect(container.locator('[data-carousel-slide]')).toHaveCount(accounts.length + 1);
-
-    // Slide order: total capital (0), then one slide per account in fixture
-    // order - Тинькофф(1), Сбербанк(2), Наличные(3), the long-named wallet(4).
-    // Index 2 is deliberately NOT the last slide: the shipped bug (a stray
-    // <style> child shifting every container.children[i] lookup) manifested
-    // as every real swipe landing on whatever slide happened to be last,
-    // regardless of where the user actually stopped - so a test that only
-    // ever checks the last slide could never have caught it.
-    const targetIndex = 2;
-    const targetAccountName = accounts[targetIndex - 1].name;
-    const lastAccountName = accounts[accounts.length - 1].name;
-
-    // A real, native scroll - not a click, which sets the filter directly
-    // in the app's click handler and never touches the geometry-dependent
-    // code at all. scrollTo lands close to the slide's centre using the
-    // slide's real, rendered offsetLeft/offsetWidth, and the browser's own
-    // `scroll-snap-type: x mandatory` then pulls the container the rest of
-    // the way to the exact snap point - all real layout, impossible in jsdom.
-    await container.evaluate((el, idx) => {
-      const slides = Array.from(el.querySelectorAll('[data-carousel-slide]'));
-      const slide = slides[idx];
-      const target = slide.offsetLeft + slide.offsetWidth / 2 - el.clientWidth / 2;
-      el.scrollTo({ left: target, behavior: 'instant' });
-    }, targetIndex);
-
-    // The app only commits a filter once scroll events stop arriving for
-    // ~120ms (see scheduleCarouselSettle in src/App.jsx).
+    await row.evaluate(el => el.scrollTo({ left: el.scrollWidth, behavior: 'instant' }));
     await page.waitForTimeout(500);
+    await expect(row.locator('button[aria-pressed="true"]')).toHaveCount(1);
+    await expect(cards.first()).toHaveAttribute('aria-pressed', 'true');
 
-    // Выбранный счёт отмечен текущей точкой-индикатором (aria-current) и на
-    // самом слайде (aria-pressed): ровно тот, до которого доехали, а не
-    // последний.
-    await expect(page.getByRole('button', { name: `Показать ${targetAccountName}` })).toHaveAttribute('aria-current', 'true');
-    await expect(page.getByRole('button', { name: `Показать ${lastAccountName}` })).toHaveAttribute('aria-current', 'false');
-    await expect(page.getByRole('button', { name: new RegExp(`^${targetAccountName}:`) })).toHaveAttribute('aria-pressed', 'true');
+    // Нажатие не в последнюю карточку и не в первую: выбирается именно она.
+    const target = manyAccounts[2];
+    const last = manyAccounts[manyAccounts.length - 1];
+    await page.getByRole('button', { name: new RegExp(`^${target.name}:`) }).click();
+    await expect(page.getByRole('button', { name: new RegExp(`^${target.name}:`) })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: new RegExp(`^${last.name}:`) })).toHaveAttribute('aria-pressed', 'false');
+    await expect(row.locator('button[aria-pressed="true"]')).toHaveCount(1);
+
+    // Дальнейшая прокрутка выбор не двигает.
+    await row.evaluate(el => el.scrollTo({ left: 0, behavior: 'instant' }));
+    await page.waitForTimeout(500);
+    await expect(page.getByRole('button', { name: new RegExp(`^${target.name}:`) })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('each carousel slide is a hard scroll-snap stop (one slide per swipe)', async ({ page }) => {
-    await mockApi(page);
+  test('the accounts row is free-scrolling (no snap, no scrollbar) and bleeds to the right screen edge', async ({ page }) => {
+    // «Прокручивается без привязки и без полосы, выходит к правому краю
+    // экрана» - свойства раскладки, которые видит только настоящий движок.
+    await mockApi(page, { accounts: manyAccounts });
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    const row = page.getByTestId('accounts-row');
+    await expect(row).toBeVisible();
 
-    const container = page.getByTestId('balance-carousel');
-    await container.waitFor();
-    const slideEls = container.locator('[data-carousel-slide]');
-    const count = await slideEls.count();
-    expect(count).toBe(accounts.length + 1);
-
-    // `scroll-snap-stop: always` is what stops a single fast flick from
-    // sailing past several slides before the browser's momentum decays -
-    // without it, a hard swipe can skip straight to a slide well past the
-    // adjacent one. Headless Chromium's touch/fling synthesis (tried here
-    // via CDP Input.dispatchTouchEvent and Input.synthesizeScrollGesture)
-    // does not reliably reproduce real hardware momentum, so rather than
-    // build a flaky simulated "swipe", this asserts the real, browser-
-    // computed style that implements the guarantee - getComputedStyle here
-    // reflects actual CSS cascade/parsing from a real rendering engine, not
-    // jsdom's limited CSSStyleDeclaration stub.
-    for (let i = 0; i < count; i++) {
-      const stop = await slideEls.nth(i).evaluate((el) => getComputedStyle(el).scrollSnapStop);
-      expect(stop).toBe('always');
-    }
+    const geometry = await row.evaluate(el => {
+      const style = getComputedStyle(el);
+      const box = el.getBoundingClientRect();
+      return {
+        overflowX: style.overflowX,
+        snap: style.scrollSnapType,
+        scrollbarWidth: style.scrollbarWidth,
+        right: box.right,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      };
+    });
+    expect(geometry.overflowX).toBe('auto');
+    expect(geometry.snap).toBe('none');
+    expect(geometry.scrollbarWidth).toBe('none');
+    expect(geometry.scrollWidth).toBeGreaterThan(geometry.clientWidth);
+    expect(geometry.right).toBeCloseTo(page.viewportSize().width, 0);
+    // Лента не растягивает страницу вширь.
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 
   test('account rows stay on one line in the accounts modal', async ({ page }) => {
     await mockApi(page);
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
 
     await openSettings(page);
 
@@ -192,167 +191,40 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     }
   });
 
-  test('carousel dot hit areas tile without overlapping', async ({ page }) => {
-    // The dots' hit areas were enlarged to 40x40px (from a visual 6px dot in
-    // a 22px footprint) via a negative margin on all sides, to keep the
-    // row's own size unchanged. That works vertically (no vertical
-    // neighbours to overlap), but horizontally it made adjacent 40px boxes
-    // overlap by 18px - and in the overlap, the later sibling in DOM order
-    // wins pointer events, so tapping slightly right of a dot's visible
-    // centre selected the *next* account instead. This asserts, from real
-    // rendered geometry, that adjacent dots' hit boxes never overlap and
-    // that every dot's own visible marker sits inside its own hit box.
+  test('the overview has no quick-action buttons: adding goes through the «+» in the bottom navigation', async ({ page }) => {
+    // Три быстрые кнопки «Доход / Расход / Перевод» заменила «+» в нижней
+    // панели. Заодно проверяем раскладку экрана на самой узкой ширине: ни одна
+    // секция не должна растягивать страницу вширь.
+    await page.setViewportSize({ width: 320, height: 700 });
     await mockApi(page);
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
 
-    const dots = page.locator('button[aria-label^="Показать"]');
-    const count = await dots.count();
-    expect(count).toBe(accounts.length + 1);
-
-    const boxes = [];
-    for (let i = 0; i < count; i++) {
-      const box = await dots.nth(i).boundingBox();
-      expect(box).not.toBeNull();
-      boxes.push(box);
-
-      // The visible marker must fall inside its own button's box - not
-      // pulled outside it by the hit-area enlargement.
-      const markerBox = await dots.nth(i).locator('span').boundingBox();
-      expect(markerBox).not.toBeNull();
-      expect(markerBox.x).toBeGreaterThanOrEqual(box.x);
-      expect(markerBox.y).toBeGreaterThanOrEqual(box.y);
-      expect(markerBox.x + markerBox.width).toBeLessThanOrEqual(box.x + box.width);
-      expect(markerBox.y + markerBox.height).toBeLessThanOrEqual(box.y + box.height);
+    for (const name of ['Добавить доход', 'Добавить расход', 'Добавить перевод']) {
+      await expect(page.getByRole('button', { name })).toHaveCount(0);
     }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 
-    // Adjacent dots (in DOM order) must not overlap horizontally when on the
-    // same row - an overlap means the later sibling's box paints over the
-    // earlier sibling's visible dot, so pointer events in the shared region
-    // always resolve to the later one, regardless of which dot the user
-    // actually meant to tap.
-    for (let i = 0; i < boxes.length - 1; i++) {
-      const a = boxes[i];
-      const b = boxes[i + 1];
-      const sameRow = Math.abs(a.y - b.y) < 1;
-      if (sameRow) {
-        expect(a.x + a.width).toBeLessThanOrEqual(b.x + 0.5);
-      }
-    }
+    // Число расхода и подпись «из лимита» помещаются в карточку.
+    const hero = page.getByTestId('account-summary');
+    const heroBox = await hero.boundingBox();
+    const figure = await page.getByRole('button', { name: /^Расход: / }).boundingBox();
+    expect(figure.x).toBeGreaterThanOrEqual(heroBox.x);
+    expect(figure.x + figure.width).toBeLessThanOrEqual(heroBox.x + heroBox.width + 0.5);
+
+    await page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: 'Добавить операцию' }).click();
+    await expect(page.getByRole('dialog', { name: 'Новый расход' })).toBeVisible();
   });
 
-  test('carousel dots stay on one row when there are many accounts', async ({ page }) => {
-    // With eight accounts the row of fixed 40px hit boxes no longer fit a
-    // phone's width and wrapped onto a second line (reported from a real
-    // device: "точек из-за счетов стало много, перенеслись на другую
-    // строку"). The boxes now shrink instead of wrapping. Only real layout
-    // can show this: jsdom neither measures the 40px boxes against the
-    // viewport nor performs flex line-breaking at all.
-    await mockApi(page, { accounts: manyAccounts });
-    await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
-
-    const dots = page.locator('button[aria-label^="Показать"]');
-    const count = await dots.count();
-    expect(count).toBe(manyAccounts.length + 1);
-
-    const viewport = page.viewportSize();
-    // Measure the row in one frame: font loading or a page scroll between
-    // separate boundingBox calls must not look like wrapped indicators.
-    const boxes = await dots.evaluateAll(buttons => buttons.map(button => {
-      const box = button.getBoundingClientRect();
-      return { x: box.x, y: box.y, width: box.width, height: box.height };
-    }));
-
-    // One row: every dot shares the first one's vertical position, and the
-    // whole row fits inside the viewport.
-    for (const box of boxes) {
-      expect(Math.abs(box.y - boxes[0].y)).toBeLessThanOrEqual(1);
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 0.5);
-    }
-
-    // Shrinking must not reintroduce the overlap the sibling test above
-    // guards against, and the hit boxes must stay tappable rather than
-    // collapsing to the 6px visual dot.
-    for (let i = 0; i < boxes.length; i++) {
-      expect(boxes[i].width).toBeGreaterThanOrEqual(20);
-      expect(boxes[i].height).toBeGreaterThanOrEqual(40);
-      if (i < boxes.length - 1) {
-        expect(boxes[i].x + boxes[i].width).toBeLessThanOrEqual(boxes[i + 1].x + 0.5);
-      }
-    }
-
-    // Each dot still selects its own account - shrunken boxes must stay
-    // aligned with the slide they stand for.
-    await dots.nth(3).click();
-    await expect(dots.nth(3)).toHaveAttribute('aria-current', 'true');
-    await expect(page.getByRole('button', { name: `Показать ${manyAccounts[2].name}` })).toHaveAttribute('aria-current', 'true');
-  });
-
-  test('quick-action buttons (income/expense/transfer) sit on one row, fit the viewport, and are not text-clipped', async ({ page }) => {
-    // These three buttons used to be a full-width transfer button stacked
-    // above an income/expense row. They were merged onto a single row of
-    // three equal-width buttons to reclaim vertical space. jsdom can't see
-    // whether the shorter "⇄ Перевод" label actually fits at 1/3 width on a
-    // real 390px phone, whether the row overflows the page, or whether all
-    // three end up the same height - only real layout can, hence this test.
-    await mockApi(page);
-    await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
-
-    const income = page.getByRole('button', { name: 'Добавить доход' });
-    const expense = page.getByRole('button', { name: 'Добавить расход' });
-    const transfer = page.getByRole('button', { name: 'Добавить перевод' });
-
-    const buttons = [income, expense, transfer];
-    const boxes = [];
-    for (const button of buttons) {
-      await expect(button).toBeVisible();
-      const box = await button.boundingBox();
-      expect(box).not.toBeNull();
-      boxes.push(box);
-    }
-
-    // All three sit on the same row - their vertical centres line up, within
-    // a couple of pixels (allowing for sub-pixel rounding differences
-    // between the filled and the tinted quick-action tones).
-    const centres = boxes.map((box) => box.y + box.height / 2);
-    for (const centre of centres) {
-      expect(Math.abs(centre - centres[0])).toBeLessThanOrEqual(2);
-    }
-
-    // None of the three overflows the page horizontally.
-    const viewport = page.viewportSize();
-    for (const box of boxes) {
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
-    }
-
-    // None of the three labels is clipped - scrollWidth (the content's real,
-    // unclipped width) must not exceed clientWidth (the box actually
-    // rendered). This is exactly the kind of narrow-viewport label-overflow
-    // defect jsdom cannot see, since it never performs real text layout.
-    for (const button of buttons) {
-      const { scrollWidth, clientWidth } = await button.evaluate((el) => ({
-        scrollWidth: el.scrollWidth,
-        clientWidth: el.clientWidth,
-      }));
-      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-    }
-  });
-
-  test('the period trigger replaces the header month row and its sheet is reachable and tappable', async ({ page }) => {
+  test('the period title replaces the header month row and its sheet is reachable and tappable', async ({ page }) => {
     // The month arrow row and the Месяц/Год/Всё время toggle were replaced
     // by a single period control that opens a bottom sheet (CoinKeeper's
-    // pattern); it now lives in the summary card's label («Расход за
-    // сентябрь ⌄») instead of a row of its own. The header must no longer
-    // carry any month control, and the
-    // sheet's month cells must be finger-sized and fit the viewport - none
-    // of which jsdom can measure, since it lays nothing out.
+    // pattern); on the overview it is the screen title («Октябрь ⌄») in the
+    // header row. The sheet's month cells must be finger-sized and fit the
+    // viewport - none of which jsdom can measure, since it lays nothing out.
     await mockApi(page);
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
 
     // No month arrows anywhere any more.
     await expect(page.getByRole('button', { name: '←', exact: true })).toHaveCount(0);
@@ -361,19 +233,11 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     const chip = page.getByRole('button', { name: /^Период:/ });
     await expect(chip).toBeVisible();
 
-    // The trigger lives in <main>, not the header card - the header is now
-    // purely balance/identity chrome.
-    const ancestry = await chip.evaluate((el) => ({
-      insideHeader: !!el.closest('header'),
-      insideMain: !!el.closest('main'),
-    }));
-    expect(ancestry.insideHeader).toBe(false);
-    expect(ancestry.insideMain).toBe(true);
-
-    // Текстовая кнопка в подписи: сам текст мелкий, но площадь нажатия
-    // добирается padding'ом до размера под палец.
+    // Заголовок экрана - кнопка высотой не меньше 44px и крупным шрифтом.
     const chipBox = await chip.boundingBox();
-    expect(chipBox.height).toBeGreaterThanOrEqual(36);
+    expect(chipBox.height).toBeGreaterThanOrEqual(44);
+    expect(await chip.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(24);
+    expect(await chip.evaluate((el) => !!el.closest('main'))).toBe(true);
 
     await chip.click();
     const sheet = page.getByRole('dialog', { name: 'Выбор периода' });
@@ -415,7 +279,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // держит - и возвращается в исходное состояние при закрытии.
     await mockApi(page, { accounts: manyAccounts });
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
 
     const bodyState = () => page.evaluate(() => ({
       position: document.body.style.position,
@@ -428,11 +292,12 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(free.position).toBe('');
     expect(free.overflow).not.toBe('hidden');
 
-    // Настройки открываются с экрана «Ещё», где уже нет ни выбора периода, ни
-    // быстрых действий Обзора, - поэтому они последние в списке.
+    // Настройки из «Ещё» открываются с экрана, где уже нет ни выбора периода,
+    // ни ленты счетов Обзора, - поэтому они последние в списке.
     for (const open of [
       () => page.getByRole('button', { name: /^Период:/ }).click(),
-      () => page.getByRole('button', { name: 'Добавить расход' }).click(),
+      () => page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('button', { name: 'Добавить операцию' }).click(),
+      () => page.getByRole('button', { name: 'Настроить' }).click(),
       () => openSettings(page),
     ]) {
       await open();
@@ -476,7 +341,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await page.clock.setFixedTime(new Date('2026-01-15T12:00:00Z'));
     await mockApi(page, { transactions });
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
     await goToTab(page, 'История');
 
     const scroll = page.getByTestId('history-scroll');
@@ -509,77 +374,13 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
   });
 
-  test('карточка сводки - лента месяцев: листается и держит выбранный месяц', async ({ page }) => {
-    // Месяцы листаются той же каруселью со снапом, что и счета в шапке
-    // (utils/useSnapCarousel.js). Проверять это можно только в реальном
-    // движке: в jsdom нет ни раскладки, ни настоящей прокрутки, а весь смысл
-    // здесь именно в ней - карточки едут за пальцем, а не «жест меняет
-    // данные».
-    await mockApi(page, { accounts: manyAccounts });
-    await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
-
-    const carousel = page.getByTestId('month-carousel');
-    const slides = carousel.locator('[data-carousel-slide]');
-    await expect(slides.first()).toBeVisible();
-    const count = await slides.count();
-    expect(count).toBeGreaterThan(1);
-
-    const chip = page.getByRole('button', { name: /^Период:/ });
-    // Название месяца берём из имени кнопки («Период: Сентябрь 2026»), а не
-    // из её текста: текст теперь фраза («Расход за сентябрь»).
-    const monthWord = async () => (await chip.getAttribute('aria-label')).replace('Период: ', '').split(' ')[0];
-    const startMonth = await monthWord();
-
-    // Лента открывается на выбранном месяце, а не на первом слайде: он
-    // самый старый, и увидеть при запуске ноябрь позапрошлого года вместо
-    // текущего месяца было бы неожиданно.
-    const startScroll = await carousel.evaluate((el) => el.scrollLeft);
-    expect(startScroll).toBeGreaterThan(0);
-
-    // Каждый слайд - жёсткая остановка: один свайп = один месяц, а не
-    // пролёт через полгода по инерции.
-    for (let i = 0; i < count; i++) {
-      const stop = await slides.nth(i).evaluate((el) => getComputedStyle(el).scrollSnapStop);
-      expect(stop).toBe('always');
-    }
-
-    // Прокрутка на слайд назад - и выбранный месяц меняется сам, без нажатий.
-    await carousel.evaluate((el) => {
-      const slide = el.querySelector('[data-carousel-slide]');
-      el.scrollBy({ left: -(slide.offsetWidth + 12), behavior: 'instant' });
-    });
-    await page.waitForTimeout(500);
-    const afterMonth = await monthWord();
-    expect(afterMonth).not.toBe(startMonth);
-
-    // Месяц называет подпись каждой карточки, но кнопка выбора периода в
-    // ленте одна - у активной. Соседи показывают свой месяц обычным
-    // текстом, иначе на карточке, которая ещё не выбрана, было бы две
-    // кнопки, спорящие с жестом выбора.
-    await expect(carousel.getByRole('button', { name: /^Период:/ })).toHaveCount(1);
-    await expect(slides.filter({ hasText: /Расход за / })).toHaveCount(count);
-    await expect(slides.filter({ has: chip })).toHaveCount(1);
-
-    // Обратный путь: месяц, выбранный в чипе, подтягивает ленту к себе.
-    await chip.click();
-    const sheet = page.getByRole('dialog', { name: 'Выбор периода' });
-    await sheet.getByRole('button', { name: startMonth }).click();
-    await page.waitForTimeout(600);
-    await expect(chip).toHaveText(new RegExp(startMonth, 'i'));
-    expect(await carousel.evaluate((el) => el.scrollLeft)).toBe(startScroll);
-  });
-
   test('знак суммы не отрывается от числа в карточке сводки', async ({ page }) => {
     // «+» висел на строке один, а сумма уезжала под него: строка ломалась
-    // ровно по пробелу между знаком и числом. Под сумму в этих боксах
-    // остаётся ~93px, а прежним кеглем «+€8.649,42» занимал 89 - то есть
-    // помещалось это на одном телефоне и не помещалось на другом, где шрифт
-    // чуть шире. Поэтому сумма здесь заведомо длиннее той, что была на
-    // скриншоте: «+€28.649,42» прежним кеглем требовал 99px и не влезал
-    // никак - на нём тест и падает, если убрать перенос и уменьшенный кегль.
-    // jsdom такого не покажет: он не переносит строки, потому что их не
-    // измеряет.
+    // ровно по пробелу между знаком и числом. Сумма здесь заведомо длинная:
+    // «+€28.649,42» должна остаться одной строкой в половине карточки, и на
+    // самой узкой ширине тоже. jsdom такого не покажет: он не переносит
+    // строки, потому что их не измеряет.
+    await page.setViewportSize({ width: 320, height: 700 });
     const now = new Date();
     const inThisMonth = (day) => new Date(Date.UTC(now.getFullYear(), now.getMonth(), day)).toISOString();
     await mockApi(page, {
@@ -590,12 +391,10 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
       ],
     });
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
 
-    // Выбранная карточка - единственная, где расход и доход остались
-    // кнопками-фильтрами (у соседних месяцев это просто текст).
-    const activeCard = page.locator('[data-carousel-slide]').filter({ has: page.locator('button[aria-label^="Доход:"]') });
-    await expect(activeCard).toHaveCount(1);
+    const activeCard = page.getByTestId('account-summary');
+    await expect(activeCard.locator('button[aria-label^="Доход:"]')).toHaveCount(1);
 
     for (const label of ['Доход', 'Сальдо']) {
       const value = activeCard.locator(`div:text-is("${label}") + div`);
@@ -624,7 +423,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // реальной геометрии на каждом экране, у которого страница листается.
     await mockApi(page);
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
 
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
     await expect(nav).toBeVisible();
@@ -691,7 +490,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
   test('switching tabs writes the hash without piling up history, and manual hash changes and back/forward move between screens', async ({ page }) => {
     await mockApi(page);
     await page.goto('/');
-    await expect(page.getByText('BudgetTracker')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
     const current = (name) => expect(nav.getByRole('button', { name, exact: true })).toHaveAttribute('aria-current', 'page');
     const entries = () => page.evaluate(() => history.length);
@@ -721,7 +520,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await current('Аналитика');
     await page.goBack();
     await current('Обзор');
-    await expect(page.getByTestId('balance-carousel')).toBeVisible();
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
     await page.goForward();
     await current('Аналитика');
 

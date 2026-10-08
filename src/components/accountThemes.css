@@ -1,0 +1,71 @@
+/* Цвета счетов не связаны со смыслом доход/расход: это опознавательный цвет
+   счёта (иконка в ленте счетов на Обзоре). Тема выставляется атрибутом
+   data-account-theme, а значения берут потребители: --account-accent -
+   цвет иконки, --account-tint - её подложка, --account-border - рамка.
+   Сырые значения цвета живут только здесь и в index.css. */
+/* Account identity colors are independent of income/expense semantics. */
+[data-account-theme="teal"] {
+  --account-accent: #0f766e;
+  --account-tint: #e1f5f0;
+  --account-border: #b1dacf;
+}
+
+[data-account-theme="violet"] {
+  --account-accent: #6d43b0;
+  --account-tint: #eee7fa;
+  --account-border: #d5c3ef;
+}
+
+[data-account-theme="amber"] {
+  --account-accent: #966011;
+  --account-tint: #fff1ce;
+  --account-border: #e8d094;
+}
+
+[data-account-theme="blue"] {
+  --account-accent: #245fa6;
+  --account-tint: #e3efff;
+  --account-border: #b8d0ee;
+}
+
+[data-account-theme="rose"] {
+  --account-accent: #a13f59;
+  --account-tint: #fbe5ec;
+  --account-border: #e8bac8;
+}
+
+[data-account-theme="cyan"] {
+  --account-accent: #086d85;
+  --account-tint: #def4f9;
+  --account-border: #a9d8e2;
+}
+
+[data-account-theme="olive"] {
+  --account-accent: #5b6d25;
+  --account-tint: #eef2d8;
+  --account-border: #cdd7a5;
+}
+
+[data-account-theme="orange"] {
+  --account-accent: #a25525;
+  --account-tint: #ffead9;
+  --account-border: #edc6a5;
+}
+
+[data-account-theme="pink"] {
+  --account-accent: #974e88;
+  --account-tint: #f6e7f3;
+  --account-border: #dfbdd8;
+}
+
+[data-account-theme="slate"] {
+  --account-accent: #516376;
+  --account-tint: #e8edf4;
+  --account-border: #c5cedb;
+}
+
+[data-account-theme="total"] {
+  --account-accent: #253c60;
+  --account-tint: #e1e9f5;
+  --account-border: #3e577a;
+}

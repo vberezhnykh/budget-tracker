@@ -1,0 +1,103 @@
+/* Лента счетов на Обзоре: компактные карточки в один ряд. Прокручивается
+   пальцем без привязки к карточкам - выбор делает только нажатие.
+   Ряд выходит за правый край экрана на ширину бокового отступа
+   layout-container, чтобы последняя карточка прижималась к краю, а не
+   обрезалась рамкой страницы; такой же отступ справа внутри ряда даёт ей
+   доехать до конца. */
+.account-strip {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin-right: calc(-1 * var(--space-5));
+  /* 2px сверху и снизу - место для обводки фокуса, иначе её срезает overflow */
+  padding: var(--space-0-5) var(--space-5) var(--space-0-5) 0;
+}
+
+.account-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 150px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-0-5);
+  min-width: 0;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text-main);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.account-chip:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Иконка счёта: подложка и цвет - из темы счёта. */
+.account-chip__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--account-tint);
+  color: var(--account-accent);
+}
+
+.account-chip__name {
+  max-width: 100%;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-chip__balance {
+  max-width: 100%;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-chip__note {
+  max-width: 100%;
+  font-size: var(--text-2xs);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Выбранная карточка инвертирована: тёмная заливка, светлый текст. Подложка
+   иконки при этом белая - на тёмном фоне тонированная терялась бы. */
+.account-chip[aria-pressed="true"] {
+  background: var(--color-text-main);
+  color: var(--color-text-inverse);
+}
+
+.account-chip[aria-pressed="true"] .account-chip__name,
+.account-chip[aria-pressed="true"] .account-chip__note {
+  color: var(--color-text-inverse);
+  opacity: 0.75;
+}
+
+.account-chip[aria-pressed="true"] .account-chip__icon {
+  background: var(--color-surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-chip {
+    transition: none;
+  }
+}

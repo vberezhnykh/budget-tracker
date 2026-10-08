@@ -144,7 +144,7 @@ describe('App phase 2 flows', () => {
     const api = makeApi();
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     const nav = screen.getByRole('navigation', { name: 'Основная навигация' });
     expect(within(nav).getAllByRole('button').map(button => button.getAttribute('aria-label') || button.textContent))
       .toEqual(['Обзор', 'История', 'Добавить операцию', 'Аналитика', 'Ещё']);
@@ -152,7 +152,9 @@ describe('App phase 2 flows', () => {
     fireEvent.click(within(nav).getByRole('button', { name: /Аналитика/ }));
     expect(within(nav).getByRole('button', { name: /Аналитика/ })).toHaveAttribute('aria-current', 'page');
     fireEvent.click(within(nav).getByRole('button', { name: 'Обзор' }));
-    expect(screen.getByRole('button', { name: 'Добавить перевод' })).toBeInTheDocument();
+    // На Обзоре вместо трёх быстрых кнопок - секция счетов; добавляет «+» внизу.
+    expect(screen.getByRole('heading', { level: 2, name: 'Счета' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Добавить перевод' })).not.toBeInTheDocument();
     expect(api.fetch.mock.calls.some(([url]) => url.startsWith('/api/planned-payments'))).toBe(false);
   });
 
@@ -160,7 +162,7 @@ describe('App phase 2 flows', () => {
     const api = makeApi();
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     await openHistory();
     fireEvent.click(screen.getByRole('button', { name: /Кофе утром/ }));
     const dialog = screen.getByRole('dialog', { name: 'Редактировать' });
@@ -197,7 +199,7 @@ describe('App phase 2 flows', () => {
     });
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     await openHistory();
 
     fireEvent.click(screen.getByRole('button', { name: /Первый расход/ }));
@@ -229,11 +231,11 @@ describe('App phase 2 flows', () => {
     });
     vi.stubGlobal('fetch', api.fetch);
     const first = render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     first.unmount();
 
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     const trashDialog = await openTrash();
     expect(within(trashDialog).getByText('Старый расход')).toBeInTheDocument();
     expect(within(trashDialog).getByText('Связанный расход')).toBeInTheDocument();
@@ -265,7 +267,7 @@ describe('App phase 2 flows', () => {
     });
     vi.stubGlobal('fetch', api.fetch);
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     await openTrash();
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть корзину' }));
     const reopened = await openTrash();

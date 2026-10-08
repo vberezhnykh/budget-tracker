@@ -31,7 +31,7 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(
 // История - вкладка нижней навигации; на ней нет ничего, кроме её списка и
 // шапки, так что запросы идут ко всему экрану.
 async function openHistory() {
-  await screen.findByTestId('balance-carousel');
+  await screen.findByTestId('accounts-row');
   fireEvent.click(screen.getByRole('button', { name: 'История' }));
   await screen.findByText('Покупка 84');
   return screen;
@@ -41,7 +41,7 @@ describe('lazy budget reads', () => {
   it('loads 40 operations while totals include the whole ledger, then appends on demand', async () => {
     render(<App />);
     // Итоги - на Обзоре, они считаются по всей книге, а не по первой странице.
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);
     const history = await openHistory();
     expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(40);
@@ -103,7 +103,7 @@ describe('lazy budget reads', () => {
       ? new Promise(resolve => { finishHistory = () => resolve(response(readApi(url, transactions, accounts))); })
       : base(url, options));
     render(<App />);
-    await screen.findByTestId('balance-carousel');
+    await screen.findByTestId('accounts-row');
     expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);
     await waitFor(() => expect(finishHistory).toBeDefined());
     await act(async () => finishHistory());

@@ -352,11 +352,9 @@ button {
   }
 }
 
-/* Mask the previous account's figures from the first scroll until selection
-   settles and the selected account's summary is ready. The mask grows with
-   the swipe distance via --swipe-blur (0..1, set by App from useSnapCarousel
-   progress); without it (data loading, period change) it defaults to full
-   blur. Reveal gently only.
+/* Пока итоги загружаются (смена счёта, периода, обновление), цифры сводки
+   размыты - прежние значения не должны читаться как актуальные. Снимается
+   плавно, только на показ.
    will-change gives each value its own layer: Safari otherwise repaints only
    the element's box while the blur radius changes frame by frame, and the
    blur's top edge stays clipped against the label above as a hard stripe. */
@@ -367,7 +365,7 @@ button {
 }
 
 .account-summary--pending [data-account-value] {
-  filter: blur(calc(var(--swipe-blur, 1) * 8px));
+  filter: blur(8px);
   transition: none;
   user-select: none;
 }

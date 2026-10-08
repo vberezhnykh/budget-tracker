@@ -6,13 +6,12 @@ import { SummarySkeleton } from '../components/ui/Skeleton';
 // недоступны» одинаковы на обоих экранах, поэтому живут в одном месте, а не
 // копируются.
 //
-// frameRef нужен App: через него карусель счетов выставляет --swipe-blur во
-// время свайпа. pending/ready считает App - от них зависят и другие части
-// экрана, а не только эта обёртка.
-export default function SummaryFrame({ frameRef, pending, ready, syncWarning, isRefreshing, skeleton, children }) {
+// pending/ready считает App - от них зависят и другие части экрана, а не
+// только эта обёртка. Пока pending, цифры внутри (data-account-value) размыты
+// фиксированно: размытие по прогрессу свайпа ушло вместе с каруселью счетов.
+export default function SummaryFrame({ pending, ready, syncWarning, isRefreshing, skeleton, children }) {
   return (
     <div
-      ref={frameRef}
       data-testid="account-summary"
       className={pending ? 'account-summary account-summary--pending' : 'account-summary'}
       aria-busy={pending}
@@ -24,7 +23,8 @@ export default function SummaryFrame({ frameRef, pending, ready, syncWarning, is
           ? <Card padding="lg" style={{ color: 'var(--color-text-muted)' }}>Итоги недоступны. Повторите загрузку кнопкой выше.</Card>
           : <SummarySkeleton {...skeleton} />}
       </div>}
-      {/* Keep the carousel mounted so loading never resets its scroll position. */}
+      {/* Содержимое остаётся в дереве и пока данных нет: загрузка не должна
+          сбрасывать состояние внутри (прокрутку, открытый лист периода). */}
       <div aria-hidden={!ready || undefined} style={{ gridArea: '1 / 1', minWidth: 0, visibility: ready ? 'visible' : 'hidden' }}>
         {children}
       </div>

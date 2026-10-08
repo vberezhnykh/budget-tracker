@@ -11,6 +11,7 @@ import {
   formatMonthName,
   formatPeriodLabel,
   formatPeriodPhrase,
+  formatPeriodTitle,
   listPeriodMonths,
   listPeriodYears,
 } from '../utils/period';
@@ -21,10 +22,11 @@ import {
 // month/year, so the whole notion of "which period am I looking at" lives in
 // one place and the header stays free of it.
 //
-// Триггер бывает двух видов. По умолчанию - чип «Период» (так его видит
+// Триггер бывает трёх видов. По умолчанию - чип «Период» (так его видит
 // шторка истории с monthsOnly). variant="inline" - текстовая кнопка внутри
-// подписи карточки: «{prefix} <период> ⌄». Лист и логика выбора у них одни,
-// отличается только то, что нажимают.
+// подписи карточки: «{prefix} <период> ⌄». variant="title" - крупный
+// заголовок экрана («Октябрь ⌄»), так выбор периода выглядит на Обзоре. Лист
+// и логика выбора у них одни, отличается только то, что нажимают.
 export default function PeriodPicker({ timeRange, selectedMonth, onChange, monthsOnly = false, variant = 'chip', prefix = '' }) {
   const [isOpen, setIsOpen] = useState(false);
   // The granularity being previewed inside the open sheet. It only becomes
@@ -87,7 +89,41 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
 
   return (
     <>
-      {variant === 'inline' ? (
+      {variant === 'title' ? (
+        <button
+          ref={chipRef}
+          type="button"
+          data-period-trigger
+          onClick={open}
+          aria-haspopup="dialog"
+          aria-expanded={isOpen}
+          // Видимый текст короче («Октябрь»), а доступное имя полное - как у
+          // остальных триггеров, чтобы читалка называла и год.
+          aria-label={`Период: ${formatPeriodLabel(timeRange, selectedMonth)}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 'var(--space-1-5)',
+            minHeight: '44px',
+            // Заголовок стоит у левого края экрана: боковой отступ убран,
+            // чтобы текст встал вровень с карточками, а площадь нажатия
+            // держит минимальная высота.
+            padding: 0,
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--color-text-main)',
+            fontFamily: 'inherit',
+            fontSize: 'var(--text-title)',
+            fontWeight: 'var(--weight-strong)',
+            lineHeight: 1.2,
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+          }}
+        >
+          {formatPeriodTitle(timeRange, selectedMonth)}
+          <ChevronDown size={22} aria-hidden="true" style={{ color: 'var(--color-text-muted)' }} />
+        </button>
+      ) : variant === 'inline' ? (
         <button
           ref={chipRef}
           type="button"
