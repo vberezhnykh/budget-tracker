@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   MIN_MONTH,
+  formatDayMonth,
+  formatDayMonthShort,
   formatMonthName,
   formatPeriodLabel,
   formatPeriodPhrase,
@@ -186,5 +188,18 @@ describe('getCurrentMonth', () => {
       expect(formatSyncStatus(null, null, now)).toBeNull();
     });
   });
-});
 
+  describe('formatDayMonth / formatDayMonthShort', () => {
+    it('число и месяц в родительном падеже', () => {
+      expect(formatDayMonth('2026-10', 8)).toBe('8 октября');
+      expect(formatDayMonth('2026-03', 31)).toBe('31 марта');
+      expect(formatDayMonth('2026-05', 1)).toBe('1 мая');
+    });
+
+    it('короткая подпись без точки', () => {
+      expect(formatDayMonthShort('2026-10', 1)).toBe('1 окт');
+      expect(formatDayMonthShort('2026-01', 22)).toBe('22 янв');
+      expect(formatDayMonthShort('2026-05', 8)).toBe('8 мая');
+    });
+  });
+});

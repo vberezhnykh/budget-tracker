@@ -11,7 +11,6 @@ import {
     getDescriptionSuggestions,
     getMonthlySeries,
     getCategoryComparison,
-    getPaceForecast,
     splitCategoriesByUsage,
     getCategoryUsage,
     categoryUsageKey
@@ -484,59 +483,6 @@ describe('getCategoryComparison', () => {
 
         expect(result['Fun'].previous).toBe(0);
         expect(result['Fun'].percent).toBeNull();
-    });
-});
-
-describe('getPaceForecast', () => {
-    afterEach(() => {
-        vi.useRealTimers();
-    });
-
-    it('returns null when selectedMonth is not the current calendar month', () => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date('2026-01-15'));
-
-        expect(getPaceForecast(300, '2025-12')).toBeNull();
-    });
-
-    it('computes perDay/forecast arithmetic for the month in progress', () => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date('2026-01-15')); // day 15 of a 31-day month
-
-        const pace = getPaceForecast(300, '2026-01');
-
-        expect(pace.daysInMonth).toBe(31);
-        expect(pace.daysElapsed).toBe(15);
-        expect(pace.daysLeft).toBe(16);
-        expect(pace.perDay).toBe(20); // 300 / 15
-        expect(pace.forecast).toBe(620); // 20 * 31
-    });
-
-    it('fills in the limit fields when a usable monthlyLimit is given', () => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date('2026-01-15'));
-
-        const pace = getPaceForecast(300, '2026-01', 500);
-
-        expect(pace.remaining).toBe(200); // 500 - 300
-        expect(pace.perDayLeft).toBe(12.5); // 200 / 16
-        expect(pace.willExceedLimit).toBe(true); // forecast 620 > 500
-    });
-
-    it('leaves the limit fields null for an unusable monthlyLimit', () => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date('2026-01-15'));
-
-        const zeroLimit = getPaceForecast(300, '2026-01', 0);
-        expect(zeroLimit.remaining).toBeNull();
-        expect(zeroLimit.perDayLeft).toBeNull();
-        expect(zeroLimit.willExceedLimit).toBeNull();
-
-        const noLimit = getPaceForecast(300, '2026-01');
-        expect(noLimit.remaining).toBeNull();
-
-        const nanLimit = getPaceForecast(300, '2026-01', NaN);
-        expect(nanLimit.remaining).toBeNull();
     });
 });
 

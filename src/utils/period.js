@@ -122,3 +122,15 @@ export const formatSyncStatus = (syncedAt, label, now = new Date()) => {
   const time = syncedAt.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   return `Обновлено ${time}`;
 };
+
+// «8 октября» - число и месяц в родительном падеже: подпись даты в тексте
+// («Обычно к 8 октября»). Intl со стилем day+month сам склоняет месяц.
+export const formatDayMonth = (selectedMonth, day) =>
+  new Date(`${selectedMonth}-${String(day).padStart(2, '0')}T12:00:00`)
+    .toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+
+// «1 окт» - короткая подпись дня на оси графика, без точки на конце.
+export const formatDayMonthShort = (selectedMonth, day) =>
+  new Date(`${selectedMonth}-${String(day).padStart(2, '0')}T12:00:00`)
+    .toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+    .replace(/\.$/, '');

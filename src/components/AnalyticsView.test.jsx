@@ -2,8 +2,19 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import AnalyticsView from './AnalyticsView';
 
+// Январь 2026, идёт 15-й день из 31. «Обычно»: 100 в 1-й день (аренда) и
+// по 10 в день дальше.
+const byDay = Array.from({ length: 31 }, (_, i) => 100 + i * 10);
+const typicalMonth = {
+    months: ['2025-12', '2025-11', '2025-10'],
+    byDay,
+    monthTotal: byDay[30],
+    actualByDay: Array.from({ length: 15 }, (_, i) => 100 + i * 12),
+    today: { day: 15, typicalToDate: byDay[14], typicalRemaining: 160, spent: 268, forecast: 428 }
+};
+
 describe('AnalyticsView Component', () => {
-    // The period phrase drops the year for the current one, so "now" is pinned.
+    // «Идущий месяц» определяется по часам, поэтому «сейчас» зафиксировано.
     beforeEach(() => {
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(new Date(2026, 0, 15, 12));
@@ -26,135 +37,152 @@ describe('AnalyticsView Component', () => {
 
     const baseProps = {
         periodStats: basePeriodStats,
-        onChangePeriod: () => { },
         timeRange: 'month',
-        pace: null,
+        typicalMonth: null,
         monthlyLimit: 500,
         series,
         selectedMonth: '2026-01',
         onSelectMonth: () => { },
+        expenseComparison: { previous: 350, diff: 50, percent: 14, label: 'на 15 декабря было €350,00' },
         categoryComparison: {},
-        comparisonLabel: 'к 15 января',
-        selectedCategory: null,
-        onSelectCategory: () => { }
+        comparisonLabel: 'к 15 декабря',
+        onOpenCategory: () => { }
     };
 
-    it('renders the summary card and category bars when the period has spending', () => {
+    it('renders categories, the monthly trend and the totals when the period has spending', () => {
         render(<AnalyticsView {...baseProps} />);
 
-        // The heading carries the period and is the period trigger.
-        const trigger = screen.getByRole('button', { name: 'Период: Январь 2026' });
-        expect(trigger).toHaveTextContent('Сводка за январь');
-        expect(screen.getByText('Расходы по категориям')).toBeInTheDocument();
-        expect(screen.getByText('Food')).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Категории' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Food: €300,00/ })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'По месяцам' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Итоги' })).toBeInTheDocument();
+        // Заголовок экрана с выбором периода живёт в AnalyticsScreen.
+        expect(screen.queryByRole('button', { name: /^Период:/ })).not.toBeInTheDocument();
+        expect(screen.queryByText(/Сводка за/)).not.toBeInTheDocument();
     });
 
-    it('hides the pace card when pace is null', () => {
-        render(<AnalyticsView {...baseProps} pace={null} />);
-        expect(screen.queryByText('Темп трат')).not.toBeInTheDocument();
+    describe('pace card', () => {
+        it('is shown for a month when the typical month exists', () => {
+            render(<AnalyticsView {...baseProps} typicalMonth={typicalMonth} />);
+
+            expect(screen.getByRole('heading', { name: 'Темп трат' })).toBeInTheDocument();
+            expect(screen.getByText('15 из 31 дня')).toBeInTheDocument();
+            expect(screen.getByRole('img', { name: /График темпа трат/ })).toBeInTheDocument();
+        });
+
+        it('explains the missing history instead of a chart when there is no typical month', () => {
+            render(<AnalyticsView {...baseProps} typicalMonth={null} />);
+
+            expect(screen.queryByRole('heading', { name: 'Темп трат' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('img', { name: /График темпа трат/ })).not.toBeInTheDocument();
+            expect(screen.getByText('Для сравнения с обычным месяцем нужно хотя бы три полных месяца истории.')).toBeInTheDocument();
+        });
+
+        it.each(['year', 'lifetime'])('does not exist for the %s view, nor does the history hint', (timeRange) => {
+            render(<AnalyticsView {...baseProps} timeRange={timeRange} typicalMonth={null} />);
+
+            expect(screen.queryByRole('heading', { name: 'Темп трат' })).not.toBeInTheDocument();
+            expect(screen.queryByText(/хотя бы три полных месяца/)).not.toBeInTheDocument();
+        });
+
+        it('still renders for a month without spending, next to the empty-categories card', () => {
+            render(<AnalyticsView {...baseProps} typicalMonth={typicalMonth} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
+
+            expect(screen.getByRole('heading', { name: 'Темп трат' })).toBeInTheDocument();
+            expect(screen.getByText('За выбранный период трат нет')).toBeInTheDocument();
+        });
     });
 
-    it('shows the pace card with its figures when pace is provided for the month view', () => {
-        const pace = {
-            daysInMonth: 31,
-            daysElapsed: 15,
-            daysLeft: 16,
-            perDay: 20,
-            forecast: 620,
-            remaining: 200,
-            perDayLeft: 12.5,
-            willExceedLimit: true
-        };
-        render(<AnalyticsView {...baseProps} pace={pace} />);
+    describe('categories', () => {
+        it('shows the change against last month and its date only for a month', () => {
+            const categoryComparison = { Food: { value: 300, previous: 200, diff: 100, percent: 50 } };
+            const { rerender } = render(<AnalyticsView {...baseProps} categoryComparison={categoryComparison} />);
 
-        expect(screen.getByText('Темп трат')).toBeInTheDocument();
-        expect(screen.getByText(/В среднем €20,00 в день/)).toBeInTheDocument();
-        expect(screen.getByText(/Прогноз до конца месяца ~€620,00/)).toBeInTheDocument();
-        expect(screen.getByText(/будет превышен/)).toBeInTheDocument();
+            expect(screen.getByText('↑ 50%')).toBeInTheDocument();
+            expect(screen.getByText('к 15 декабря')).toBeInTheDocument();
+
+            rerender(<AnalyticsView {...baseProps} timeRange="year" categoryComparison={categoryComparison} />);
+            expect(screen.queryByText('↑ 50%')).not.toBeInTheDocument();
+            expect(screen.queryByText('к 15 декабря')).not.toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /^Food: €300,00/ })).toBeInTheDocument();
+        });
+
+        it('hands the tapped category to onOpenCategory', () => {
+            const onOpenCategory = vi.fn();
+            render(<AnalyticsView {...baseProps} onOpenCategory={onOpenCategory} />);
+
+            fireEvent.click(screen.getByRole('button', { name: /^Fun: €/ }));
+
+            expect(onOpenCategory).toHaveBeenCalledWith('Fun');
+        });
+
+        it('shows an empty-state card with the exact expected text when there is no spending', () => {
+            render(<AnalyticsView {...baseProps} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
+
+            expect(screen.getByText('За выбранный период трат нет')).toBeInTheDocument();
+            expect(screen.queryByRole('heading', { name: 'Категории' })).not.toBeInTheDocument();
+        });
     });
 
-    it('caps pace figures at two decimals', () => {
-        // perDay/forecast come out of a division, so minimumFractionDigits
-        // alone let "€230,06" render as "€230,063".
-        const pace = {
-            daysInMonth: 31, daysElapsed: 16, daysLeft: 15,
-            perDay: 3681 / 16, forecast: (3681 / 16) * 31,
-            remaining: null, perDayLeft: null, willExceedLimit: null
-        };
-        render(<AnalyticsView {...baseProps} pace={pace} />);
+    describe('totals', () => {
+        const totals = () => within(screen.getByRole('heading', { name: 'Итоги' }).closest('section'));
 
-        expect(screen.getByText('В среднем €230,06 в день')).toBeInTheDocument();
-        expect(screen.getByText('Прогноз до конца месяца ~€7.131,94')).toBeInTheDocument();
+        it('shows income with a plus, expense with a minus, and the signed balance', () => {
+            render(<AnalyticsView {...baseProps} />);
+
+            expect(totals().getByText('+€1.000,00')).toBeInTheDocument();
+            expect(totals().getByText('−€400,00')).toBeInTheDocument();
+            expect(totals().getByText('+€600,00')).toBeInTheDocument();
+        });
+
+        it('paints a negative balance in the negative colour and a positive one in the positive colour', () => {
+            const { rerender } = render(<AnalyticsView {...baseProps} periodStats={{ ...basePeriodStats, income: 100, expense: -400 }} />);
+
+            expect(totals().getByText('−€300,00')).toHaveStyle({ color: 'var(--color-negative)' });
+
+            rerender(<AnalyticsView {...baseProps} />);
+            expect(totals().getByText('+€600,00')).toHaveStyle({ color: 'var(--color-positive)' });
+        });
+
+        it('states the change of the expense against last month with the date', () => {
+            render(<AnalyticsView {...baseProps} />);
+
+            const up = totals().getByText('↑ 14% к прошлому месяцу');
+            expect(up).toHaveStyle({ color: 'var(--color-negative)' });
+            expect(totals().getByText('на 15 декабря было €350,00')).toBeInTheDocument();
+        });
+
+        it('paints a decrease in the positive colour', () => {
+            render(<AnalyticsView {...baseProps} expenseComparison={{ previous: 500, diff: -100, percent: -20, label: 'x' }} />);
+
+            expect(totals().getByText('↓ 20% к прошлому месяцу')).toHaveStyle({ color: 'var(--color-positive)' });
+        });
+
+        it('says there was no spending last month instead of a percentage', () => {
+            render(<AnalyticsView {...baseProps} expenseComparison={{ previous: 0, diff: 400, percent: null, label: 'x' }} />);
+
+            expect(totals().getByText('В прошлом месяце трат не было')).toBeInTheDocument();
+            expect(totals().queryByText(/к прошлому месяцу/)).not.toBeInTheDocument();
+        });
+
+        it('has no month comparison for the year or all time', () => {
+            render(<AnalyticsView {...baseProps} timeRange="year" />);
+
+            expect(totals().queryByText(/к прошлому месяцу/)).not.toBeInTheDocument();
+            expect(totals().getByText('+€1.000,00')).toBeInTheDocument();
+        });
     });
 
-    it('agrees the day count with the number and drops it on the last day of the month', () => {
-        const base = { daysInMonth: 31, daysElapsed: 30, perDay: 20, forecast: 620, willExceedLimit: false };
+    it('draws the monthly trend with the limit and the caption for the month view', () => {
+        render(<AnalyticsView {...baseProps} />);
 
-        const { unmount } = render(<AnalyticsView {...baseProps} pace={{ ...base, daysLeft: 1, remaining: 100, perDayLeft: 100 }} />);
-        expect(screen.getByText(/на оставшиеся 1 день$/)).toBeInTheDocument();
-        unmount();
-
-        const { unmount: unmount2 } = render(<AnalyticsView {...baseProps} pace={{ ...base, daysLeft: 3, remaining: 90, perDayLeft: 30 }} />);
-        expect(screen.getByText(/на оставшиеся 3 дня$/)).toBeInTheDocument();
-        unmount2();
-
-        const { unmount: unmount3 } = render(<AnalyticsView {...baseProps} pace={{ ...base, daysLeft: 11, remaining: 110, perDayLeft: 10 }} />);
-        expect(screen.getByText(/на оставшиеся 11 дней$/)).toBeInTheDocument();
-        unmount3();
-
-        // On the last day there is nothing left to divide the remainder by,
-        // so that half of the sentence drops out.
-        render(<AnalyticsView {...baseProps} pace={{ ...base, daysElapsed: 31, daysLeft: 0, remaining: 50, perDayLeft: null }} />);
-        expect(screen.getByText('Осталось €50,00')).toBeInTheDocument();
-        expect(screen.queryByText(/оставшиеся/)).not.toBeInTheDocument();
+        expect(screen.getByTestId('monthly-trend-limit')).toBeInTheDocument();
+        expect(screen.getByText(/^Лимит не превышался ни в одном из 1 закрытых\./)).toBeInTheDocument();
     });
 
-    it('states an already-blown limit as fact instead of forecasting it', () => {
-        const pace = {
-            daysInMonth: 31, daysElapsed: 20, daysLeft: 11,
-            perDay: 30, forecast: 930, remaining: -100, perDayLeft: -9.09, willExceedLimit: true
-        };
-        render(<AnalyticsView {...baseProps} pace={pace} />);
+    it('draws the ghost bar for the current month from the forecast of the typical month', () => {
+        render(<AnalyticsView {...baseProps} typicalMonth={typicalMonth} />);
 
-        expect(screen.getByText(/уже превышен на €100,00/)).toBeInTheDocument();
-        expect(screen.queryByText(/будет превышен/)).not.toBeInTheDocument();
-        // A negative "осталось" must never be printed.
-        expect(screen.queryByText(/Осталось/)).not.toBeInTheDocument();
-    });
-
-    it('shows an empty-state card with the exact expected text when there is no spending', () => {
-        render(<AnalyticsView {...baseProps} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
-
-        expect(screen.getByText('За выбранный период трат нет')).toBeInTheDocument();
-        expect(screen.queryByText('Расходы по категориям')).not.toBeInTheDocument();
-    });
-
-    it('does not pass category comparison through for a non-month time range', () => {
-        render(<AnalyticsView {...baseProps} timeRange="year" pace={null} />);
-        // The pace card never shows outside the month view even if pace were set,
-        // and the comparison label above the category bars is skipped too.
-        expect(screen.queryByText('к 15 января')).not.toBeInTheDocument();
-    });
-
-    it('words the summary heading by period: month, year, lifetime', () => {
-        const { rerender } = render(<AnalyticsView {...baseProps} />);
-        expect(screen.getByRole('button', { name: /^Период:/ })).toHaveTextContent(/^Сводка за январь$/);
-
-        rerender(<AnalyticsView {...baseProps} timeRange="year" />);
-        expect(screen.getByRole('button', { name: 'Период: 2026 год' })).toHaveTextContent('Сводка за 2026');
-
-        rerender(<AnalyticsView {...baseProps} timeRange="lifetime" />);
-        expect(screen.getByRole('button', { name: 'Период: Всё время' })).toHaveTextContent('Сводка за всё время');
-    });
-
-    it('keeps exactly one period trigger, and it still opens the sheet, when the period is empty', () => {
-        const onChangePeriod = vi.fn();
-        render(<AnalyticsView {...baseProps} onChangePeriod={onChangePeriod} periodStats={{ income: 0, expense: 0, categoryTotals: {} }} />);
-
-        // An empty month must not leave the tab without a way to change it.
-        expect(screen.getAllByRole('button', { name: /^Период:/ })).toHaveLength(1);
-        fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
-        fireEvent.click(within(screen.getByRole('dialog', { name: 'Выбор периода' })).getByRole('button', { name: 'Декабрь' }));
-        expect(onChangePeriod).toHaveBeenCalledWith({ timeRange: 'month', selectedMonth: '2025-12' });
+        expect(screen.getByTestId('monthly-trend-ghost')).toBeInTheDocument();
     });
 });

@@ -117,13 +117,27 @@ function computeTypicalMonth(transactions, { month, today, account = null, categ
         round2(median(byMonth.map(ref => cumAt(i + 1, ref))))
     ));
 
+    // Факт выбранного месяца - тот же накопленный расход и с теми же
+    // фильтрами, что и «потрачено». Нужен графику темпа: «обычно» (byDay) и
+    // «факт» рисуются на одной оси.
+    const selectedCum = cumulativeExpense(
+        filtered.filter(t => t.date.startsWith(month)),
+        selectedLength
+    ).map(round2);
+
+    // Сколько дней выбранного месяца уже «наступило»: прошедший месяц - весь,
+    // идущий - до сегодняшнего числа, будущий - ни одного. Без today
+    // сравнивать не с чем, и месяц считается прошедшим, как и в todayBlock
+    // (там без today блока нет).
+    const todayMonth = today ? String(today).slice(0, 7) : null;
+    let elapsedDays = selectedLength;
+    if (todayMonth && month > todayMonth) elapsedDays = 0;
+    else if (todayMonth === month) elapsedDays = parseInt(String(today).slice(8, 10), 10);
+    const actualByDay = selectedCum.slice(0, elapsedDays);
+
     let todayBlock = null;
     if (today && String(today).startsWith(`${month}-`)) {
-        const day = parseInt(String(today).slice(8, 10), 10);
-        const selectedCum = cumulativeExpense(
-            filtered.filter(t => t.date.startsWith(month)),
-            selectedLength
-        );
+        const day = elapsedDays;
         const spent = selectedCum[day - 1];
         // Медиана остатков по месяцам, а не «обычный итог минус обычное к
         // этому дню»: разность двух медиан может не совпасть ни с одним
@@ -134,7 +148,7 @@ function computeTypicalMonth(transactions, { month, today, account = null, categ
             day,
             typicalToDate: byDay[day - 1],
             typicalRemaining: round2(typicalRemaining),
-            spent: round2(spent),
+            spent,
             forecast: round2(spent + typicalRemaining)
         };
     }
@@ -143,6 +157,7 @@ function computeTypicalMonth(transactions, { month, today, account = null, categ
         months: referenceMonths,
         byDay,
         monthTotal: round2(median(byMonth.map(ref => ref.total))),
+        actualByDay,
         today: todayBlock
     };
 }

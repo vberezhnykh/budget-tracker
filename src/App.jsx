@@ -14,7 +14,8 @@ import HistoryScreen from './screens/HistoryScreen'
 import AnalyticsScreen from './screens/AnalyticsScreen'
 import MoreScreen from './screens/MoreScreen'
 import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput, formatSyncStatus } from './utils/period'
-import { transformTransactions, getPaceForecast } from './utils/finance'
+import { transformTransactions } from './utils/finance'
+import { formatMoney } from './utils/money'
 import usePagedHistory from './utils/usePagedHistory'
 import useHashScreen from './utils/useHashScreen'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
@@ -147,11 +148,12 @@ function App() {
   const [categories, setCategories] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccount, setSelectedAccount] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState(null);
 
   // Фильтры Истории отделены от выбора на Обзоре: счёт и категория, выбранные
-  // там, влияют только на сводку (selectedAccount / selectedCategory идут в
-  // запрос итогов), а список операций фильтруется своим состоянием. Поиск и
+  // там, влияет только на сводку (selectedAccount идёт в запрос итогов), а
+  // список операций фильтруется своим состоянием. Категории в итогах не
+  // фильтруются вовсе: нажатие на категорию в Аналитике открывает Историю
+  // (openHistoryOfCategory). Поиск и
   // месяц (searchQuery / historyMonth) и так относились только к Истории.
   const [historyAccount, setHistoryAccount] = useState(null);
   const [historyCategory, setHistoryCategory] = useState(null);
@@ -190,7 +192,6 @@ function App() {
     undoTimeoutRef.current = null;
     setMonthlyLimit(DEFAULT_MONTHLY_LIMIT);
     setSelectedAccount(null);
-    setSelectedCategory(null);
     setHistoryAccount(null);
     setHistoryCategory(null);
     setHistoryType(null);
@@ -248,9 +249,8 @@ function App() {
     analytics: screen === 'analytics' ? '1' : '0',
   });
   if (selectedAccount) statsParams.set('account', selectedAccount);
-  if (selectedCategory) statsParams.set('category', selectedCategory);
   const statsKey = statsParams.toString();
-  const summaryFilterKey = JSON.stringify([selectedAccount, selectedCategory]);
+  const summaryFilterKey = JSON.stringify([selectedAccount]);
   const historyParams = new URLSearchParams({ month: historyMonth, continuous: '1', limit: '40' });
   if (historyAccount) historyParams.set('account', historyAccount);
   if (historyCategory) historyParams.set('category', historyCategory);
@@ -281,8 +281,7 @@ function App() {
     const cached = dashboardReads.get(statsKey);
     const fresh = timestamp => Date.now() - timestamp < DASHBOARD_FRESH_MS;
     const hasFastTotals = screen !== 'analytics' && timeRange === 'month'
-      && dashboard?.categoryKey === (selectedCategory || '')
-      && dashboard.data.monthlyTotalsByAccount?.[selectedAccount || '']
+      && dashboard?.data.monthlyTotalsByAccount?.[selectedAccount || '']
       && fresh(dashboard.updatedAt);
     if (onlyStats && ((cached && fresh(cached.updatedAt)) || hasFastTotals)) {
       setDashboardCache(dashboardReads.snapshot());
@@ -330,8 +329,7 @@ function App() {
       if (!isCurrent()) return false;
 
       setDashboardCache(dashboardReads.snapshot());
-      setDashboard({ key: statsKey, filterKey: summaryFilterKey, categoryKey: selectedCategory || '',
-        updatedAt: Date.now(), data: loadedDashboard });
+      setDashboard({ key: statsKey, filterKey: summaryFilterKey, updatedAt: Date.now(), data: loadedDashboard });
       if (!onlyStats) {
         setAccounts(loadedAccounts);
         accountsRef.current = loadedAccounts;
@@ -560,8 +558,7 @@ function App() {
   // Month cards already have totals for every month. Keep them visible while
   // a swipe refreshes the selected month's details in the background.
   const matchingTotals = dashboard?.filterKey === summaryFilterKey;
-  const accountMonthlyTotals = dashboard?.categoryKey === (selectedCategory || '')
-    ? dashboard.data.monthlyTotalsByAccount?.[selectedAccount || ''] : undefined;
+  const accountMonthlyTotals = dashboard?.data.monthlyTotalsByAccount?.[selectedAccount || ''];
   const statsReady = Boolean(summary || ((accountMonthlyTotals || matchingTotals) && screen !== 'analytics' && timeRange === 'month'));
 
   // Declarative card list for the accounts strip on the overview: total
@@ -604,11 +601,10 @@ function App() {
   }, [accounts, balances]);
 
   // Расход текущего месяца по всем счетам для подсказки лимита в форме
-  // операции. Берётся из итогов «по всем счетам» (ключ ''), и только если
-  // панель загружена без фильтра по категории: иначе в сумму вошла бы одна
-  // категория, и остаток лимита вышел бы завышенным. Месяца без операций в
-  // итогах нет - это нулевой расход. Нет итогов - undefined, подсказки нет.
-  const allAccountsTotals = dashboard?.categoryKey === '' ? dashboard.data.monthlyTotalsByAccount?.[''] : undefined;
+  // операции. Берётся из итогов «по всем счетам» (ключ ''). Месяца без
+  // операций в итогах нет - это нулевой расход. Нет итогов - undefined,
+  // подсказки нет.
+  const allAccountsTotals = dashboard?.data.monthlyTotalsByAccount?.[''];
   const formMonthExpense = allAccountsTotals
     ? Math.abs(allAccountsTotals[getCurrentMonth()]?.expense || 0)
     : undefined;
@@ -654,10 +650,6 @@ function App() {
     }
   }, [selectedAccount, slides]);
 
-  const toggleCategoryFilter = (category) => {
-    setSelectedCategory(prev => prev === category ? null : category);
-  };
-
   // Плитки «Доход» и «Расход» в сводке Обзора ведут в Историю с фильтром по
   // типу. Выбранная ранее категория другого типа в этом списке дала бы пустой
   // результат (чипы категорий фильтруются по типу, а она бы осталась
@@ -666,6 +658,19 @@ function App() {
     const selected = categories.find(c => c.name === historyCategory);
     if (selected && selected.type !== type) setHistoryCategory(null);
     setHistoryType(type);
+    setScreen('history');
+  };
+
+  // Нажатие на категорию в Аналитике: История, отфильтрованная этой категорией
+  // за выбранный месяц. Тип сбрасывается - выбранная категория уже задаёт
+  // «расходы», а оставшийся фильтр «Доходы» дал бы пустой список. У года и
+  // «всего времени» месяца Истории нет, поэтому остаётся тот, что был. Поиск
+  // очищается: слово из старого поиска скрыло бы строки этой категории.
+  const openHistoryOfCategory = (category) => {
+    setHistoryCategory(category);
+    setHistoryType(null);
+    if (timeRange === 'month') setHistoryMonth(selectedMonth);
+    setSearchQuery('');
     setScreen('history');
   };
 
@@ -1024,7 +1029,6 @@ function App() {
       // The filter is string-based. Move it only when the matching refreshed
       // snapshot arrived; after a refresh failure keep the old snapshot
       // usable by clearing this one stale filter until Retry succeeds.
-      setSelectedCategory(prev => prev === category.name ? (refreshed ? trimmed : null) : prev);
       setHistoryCategory(prev => prev === category.name ? (refreshed ? trimmed : null) : prev);
       showNotice('Категория переименована', 'success');
       return true;
@@ -1052,7 +1056,6 @@ function App() {
       if (res.ok) {
         // Фильтр мог стоять на только что удалённой категории - иначе экран
         // остался бы отфильтрованным по тому, чего больше нет в списке.
-        setSelectedCategory(prev => prev === category.name ? null : prev);
         setHistoryCategory(prev => prev === category.name ? null : prev);
         await loadData({ initial: false });
       } else {
@@ -1171,23 +1174,17 @@ function App() {
       diff,
       percent: previous > 0 ? Math.round((diff / previous) * 100) : null,
       label: isActualCurrentMonth
-        ? `на ${comparisonData.prevMonthDayLabel} было €${previous.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
-        : `весь ${comparisonData.prevMonthName} — €${previous.toLocaleString('de-DE', { minimumFractionDigits: 2 })}`
+        ? `на ${comparisonData.prevMonthDayLabel} было ${formatMoney(previous)}`
+        : `весь ${comparisonData.prevMonthName} — ${formatMoney(previous)}`
     };
   }, [comparisonData, monthlyData.expense, isActualCurrentMonth]);
 
-  // Spending pace for the Аналитика tab's "Темп трат" card - null outside
-  // the month actually in progress, since a finished month has no "rate" left.
-  const paceForecast = useMemo(
-    () => getPaceForecast(Math.abs(monthlyData.expense), selectedMonth, monthlyLimit),
-    [monthlyData.expense, selectedMonth, monthlyLimit]
-  );
-
-  // "к 15 января" / "к декабрю" - reuses the fields getComparisonData already
-  // derived rather than recomputing the same "current vs past month" split.
-  // prevMonthDayLabel is already in the genitive the day form needs, while
-  // the bare month name arrives nominative and has to be declined.
-  const comparisonLabel = `Изменения к ${isActualCurrentMonth ? comparisonData.prevMonthDayLabel : toDativeMonth(comparisonData.prevMonthName)}`;
+  // "к 15 января" / "к декабрю" - подпись над изменениями по категориям.
+  // Reuses the fields getComparisonData already derived rather than
+  // recomputing the same "current vs past month" split. prevMonthDayLabel is
+  // already in the genitive the day form needs, while the bare month name
+  // arrives nominative and has to be declined.
+  const comparisonLabel = `к ${isActualCurrentMonth ? comparisonData.prevMonthDayLabel : toDativeMonth(comparisonData.prevMonthName)}`;
   const lastSyncLabel = lastSuccessfulSync
     ? lastSuccessfulSync.toLocaleString('ru-RU', {
       day: 'numeric',
@@ -1396,7 +1393,7 @@ function App() {
             periodStats={periodStats}
             timeRange={timeRange}
             onChangePeriod={handlePeriodChange}
-            pace={paceForecast}
+            typicalMonth={summary?.typicalMonth ?? null}
             monthlyLimit={monthlyLimit}
             series={monthlySeries}
             selectedMonth={selectedMonth}
@@ -1404,8 +1401,7 @@ function App() {
             expenseComparison={expenseComparison}
             categoryComparison={categoryComparison}
             comparisonLabel={comparisonLabel}
-            selectedCategory={selectedCategory}
-            onSelectCategory={toggleCategoryFilter}
+            onOpenCategory={openHistoryOfCategory}
           />
         )}
         {screen === 'more' && (

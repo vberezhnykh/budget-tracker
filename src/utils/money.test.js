@@ -41,4 +41,12 @@ describe('formatMoney', () => {
         expect(formatMoney(NaN, { sign: 'auto' })).toBe('€0,00');
         expect(formatMoney('12.5')).toBe('€12,50');
     });
+
+    it('whole: rounds to whole euros without decimals and keeps grouping and signs', () => {
+        expect(formatMoney(1119.6, { whole: true })).toBe('€1.120');
+        expect(formatMoney(7000, { whole: true })).toBe('€7.000');
+        expect(formatMoney(0.4, { whole: true })).toBe('€0');
+        expect(formatMoney(-0.4, { whole: true, sign: 'auto' })).toBe('€0');
+        expect(formatMoney(-12.6, { whole: true, sign: 'minus' })).toBe('−€13');
+    });
 });

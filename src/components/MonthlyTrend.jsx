@@ -1,29 +1,28 @@
 import { useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import Card from './ui/Card';
-import { formatMonthName, formatPeriodLabel, getCurrentMonth } from '../utils/period';
+import { formatMoney } from '../utils/money';
+import { formatMonthName, getCurrentMonth } from '../utils/period';
+import { isLimitUsable } from '../utils/paceChart';
+import { getTrendCaption } from '../utils/trendCaption';
 import './MonthlyTrend.css';
 
-const HEIGHT = 176;
-const INSET = 12;
-const COLUMN_WIDTH = 64;
-const formatEuro = value => value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const formatTick = value => value.toLocaleString('ru-RU', { notation: 'compact', maximumFractionDigits: 1 });
+// Расход по месяцам столбцами. Сколько месяцев помещается на экран без
+// прокрутки: полгода для месячного вида и год для годового; весь ряд при этом
+// остаётся доступным горизонтальной прокруткой, а выбранный месяц всегда
+// показывается.
+const VISIBLE_MONTHS = { month: 6, year: 12, lifetime: 12 };
 
-function getScaleMax(series) {
-    const max = Math.max(0, ...series.flatMap(month => [month.income, month.expense]));
-    if (max === 0) return 1;
-    const rawStep = max / 4;
-    const unit = 10 ** Math.floor(Math.log10(rawStep));
-    const step = [1, 2, 5, 10].find(value => value * unit >= rawStep) * unit;
-    return step * 4;
+// Запас сверху шкалы, чтобы самый высокий столбец не упирался в край.
+const HEADROOM = 1.1;
+
+function getScaleMax(series, limit, forecast) {
+    const max = Math.max(0, limit ?? 0, forecast ?? 0, ...series.map(month => month.expense)) * HEADROOM;
+    return max > 0 ? max : 1;
 }
 
-export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth }) {
+export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth, timeRange = 'month', limit = null, forecast = null }) {
     const scrollRef = useRef(null);
     const monthRefs = useRef(new Map());
-    const selectedIndex = series.findIndex(month => month.month === selectedMonth);
-    const selected = series[selectedIndex];
 
     // Keep selection visible without rebuilding or recentering the timeline.
     useEffect(() => {
@@ -46,20 +45,20 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
 
     if (series.length === 0) return null;
 
-    const max = getScaleMax(series);
-    const width = series.length * COLUMN_WIDTH;
-    const x = index => (index + 0.5) * COLUMN_WIDTH;
-    const y = amount => HEIGHT - INSET - (amount / max) * (HEIGHT - INSET * 2);
-    const points = key => series.map((month, index) => `${x(index)},${y(month[key])}`).join(' ');
-    const ticks = [max, max * 0.75, max * 0.5, max * 0.25, 0];
-    const spansYears = new Set(series.map(month => month.year)).size > 1;
-    const net = selected ? selected.income - selected.expense : 0;
     const currentMonth = getCurrentMonth();
-
-    const selectRelativeMonth = delta => {
-        const month = series[selectedIndex + delta];
-        if (month) onSelectMonth(month.month);
-    };
+    const visible = VISIBLE_MONTHS[timeRange] ?? VISIBLE_MONTHS.month;
+    // Лимит месячный, поэтому имеет смысл рядом со столбцами месяцев, но не в
+    // «всём времени», где период - не месяц.
+    const showLimit = timeRange !== 'lifetime' && isLimitUsable(limit);
+    const ghostForecast = Number.isFinite(forecast) && forecast > 0 ? forecast : null;
+    const max = getScaleMax(series, showLimit ? limit : null, ghostForecast);
+    const ratio = amount => Math.min(Math.max(amount / max, 0), 1);
+    const spansYears = new Set(series.map(month => month.year)).size > 1;
+    // Год подписывается под первым месяцем ряда и под каждым, где он меняется:
+    // год под всеми столбцами только засорял бы узкие подписи.
+    const showYear = index => spansYears && (index === 0 || series[index - 1].year !== series[index].year);
+    const hasGhost = ghostForecast !== null && series.some(month => month.month === currentMonth);
+    const caption = timeRange === 'month' ? getTrendCaption(series, { limit, currentMonth, visible }) : null;
 
     const handleKeyDown = (event, index) => {
         const nextIndex = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: series.length - 1 }[event.key];
@@ -71,78 +70,91 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
     };
 
     return (
-        <Card as="section" padding="lg" className="monthly-trend" aria-label="Динамика по месяцам">
-            <div className="monthly-trend__heading">
-                <div>
-                    <h3>Динамика по месяцам</h3>
-                    <p>Доходы и расходы, €</p>
-                </div>
-                <div className="monthly-trend__navigation">
-                    <button type="button" aria-label="Предыдущий месяц" disabled={selectedIndex <= 0} onClick={() => selectRelativeMonth(-1)}><ChevronLeft size={20} /></button>
-                    <button type="button" aria-label="Следующий месяц" disabled={selectedIndex < 0 || selectedIndex >= series.length - 1} onClick={() => selectRelativeMonth(1)}><ChevronRight size={20} /></button>
+        <Card as="section" padding="lg" className="monthly-trend" aria-labelledby="monthly-trend-title">
+            <h2 id="monthly-trend-title" className="monthly-trend__title">По месяцам</h2>
+
+            <div
+                data-account-value
+                className="monthly-trend__scroll"
+                data-testid="monthly-trend-scroll"
+                ref={scrollRef}
+            >
+                <div className="monthly-trend__track" style={{ width: `${Math.max(100, (series.length / visible) * 100)}%` }}>
+                    {showLimit && (
+                        <div
+                            data-testid="monthly-trend-limit"
+                            className="monthly-trend__limit"
+                            style={{ bottom: `calc(var(--trend-label-height) + var(--trend-plot-height) * ${ratio(limit)})` }}
+                        />
+                    )}
+                    {series.map((month, index) => {
+                        const isSelected = month.month === selectedMonth;
+                        const isOver = showLimit && month.expense > limit;
+                        const isCurrent = month.month === currentMonth;
+                        const ghost = hasGhost && isCurrent;
+                        // Цвет столбца: выбранный - акцент; за лимитом - тревожный;
+                        // остальные - серые. Выбор важнее превышения: он отвечает на
+                        // вопрос «какой месяц я сейчас смотрю».
+                        const barColor = isSelected
+                            ? 'var(--color-primary)'
+                            : isOver ? 'var(--color-negative)' : 'var(--color-control-off)';
+                        const label = `${formatMonthName(month.month)} ${month.year}: расход ${formatMoney(month.expense)}`
+                            + (ghost ? `, прогноз ${formatMoney(ghostForecast, { whole: true })}` : '')
+                            + (isOver ? ', лимит превышен' : '');
+                        return (
+                            <button
+                                key={month.month}
+                                ref={element => { if (element) monthRefs.current.set(month.month, element); else monthRefs.current.delete(month.month); }}
+                                type="button"
+                                className="monthly-trend__month"
+                                data-month={month.month}
+                                aria-pressed={isSelected}
+                                aria-label={label}
+                                title={label}
+                                onClick={() => onSelectMonth(month.month)}
+                                onKeyDown={event => handleKeyDown(event, index)}
+                            >
+                                <span className="monthly-trend__plot" aria-hidden="true">
+                                    {ghost && (
+                                        <span
+                                            data-testid="monthly-trend-ghost"
+                                            className="monthly-trend__bar monthly-trend__bar--ghost"
+                                            style={{ height: `${ratio(Math.max(ghostForecast, month.expense)) * 100}%` }}
+                                        />
+                                    )}
+                                    <span
+                                        data-testid="monthly-trend-bar"
+                                        data-over-limit={isOver || undefined}
+                                        className="monthly-trend__bar"
+                                        style={{
+                                            height: `${ratio(month.expense) * 100}%`,
+                                            minHeight: month.expense > 0 ? 2 : 0,
+                                            background: barColor,
+                                        }}
+                                    />
+                                </span>
+                                <span className="monthly-trend__label" style={{ fontWeight: isSelected ? 'var(--weight-strong)' : 'var(--weight-text)', color: isSelected ? 'var(--color-text-main)' : undefined }}>
+                                    {month.label}
+                                    {showYear(index) && <small>{month.year}</small>}
+                                </span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
-            <div className="monthly-trend__legend">
-                <span><i className="monthly-trend__key monthly-trend__key--income" />Доход</span>
-                <span><i className="monthly-trend__key monthly-trend__key--expense" />Расход</span>
-            </div>
-
-            <div className="monthly-trend__plot">
-                <div data-account-value className="monthly-trend__axis" aria-hidden="true" style={{ height: HEIGHT }}>
-                    {ticks.map(tick => <span key={tick} style={{ top: y(tick) }}>{formatTick(tick)}</span>)}
-                </div>
-                <div ref={scrollRef} className="monthly-trend__scroll" data-testid="monthly-trend-scroll">
-                    <div className="monthly-trend__track" style={{ minWidth: width }}>
-                        <svg data-account-value width="100%" height={HEIGHT} viewBox={`0 0 ${width} ${HEIGHT}`} preserveAspectRatio="none" aria-hidden="true" className="monthly-trend__chart">
-                            {ticks.map(tick => <line key={tick} x1="0" x2={width} y1={y(tick)} y2={y(tick)} className="monthly-trend__grid" />)}
-                            <polygon points={`${x(0)},${y(0)} ${points('expense')} ${x(series.length - 1)},${y(0)}`} className="monthly-trend__area" />
-                            <polyline points={points('income')} className="monthly-trend__line monthly-trend__line--income" />
-                            <polyline points={points('expense')} className="monthly-trend__line monthly-trend__line--expense" />
-                            {series.map((month, index) => (
-                                <g key={month.month}>
-                                    <circle cx={x(index)} cy={y(month.income)} r={index === selectedIndex ? 5 : 3} className="monthly-trend__point monthly-trend__point--income" />
-                                    <rect x={x(index) - (index === selectedIndex ? 4 : 2.5)} y={y(month.expense) - (index === selectedIndex ? 4 : 2.5)} width={index === selectedIndex ? 8 : 5} height={index === selectedIndex ? 8 : 5} rx="1" className="monthly-trend__point monthly-trend__point--expense" />
-                                </g>
-                            ))}
-                        </svg>
-                        <div className="monthly-trend__months">
-                            {series.map((month, index) => (
-                                <button
-                                    key={month.month}
-                                    ref={element => { if (element) monthRefs.current.set(month.month, element); else monthRefs.current.delete(month.month); }}
-                                    type="button"
-                                    className="monthly-trend__month"
-                                    aria-pressed={month.month === selectedMonth}
-                                    aria-label={`${formatMonthName(month.month)} ${month.year}: расход €${formatEuro(month.expense)}, доход €${formatEuro(month.income)}`}
-                                    onClick={() => onSelectMonth(month.month)}
-                                    onKeyDown={event => handleKeyDown(event, index)}
-                                    style={{ paddingTop: HEIGHT + 8 }}
-                                >
-                                    <span>{month.label}</span>
-                                    {spansYears && <small>{month.year}</small>}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <p className="monthly-trend__hint">Листайте график · Нажмите на месяц для подробностей</p>
-
-            {selected && (
-                <div className="monthly-trend__detail" aria-live="polite" aria-atomic="true">
-                    <div className="monthly-trend__selected-label">
-                        <strong>{formatPeriodLabel('month', selectedMonth)}</strong>
-                        {selectedMonth === currentMonth && <span>Месяц ещё идёт</span>}
-                    </div>
-                    <dl className="monthly-trend__totals">
-                        <div><dt>Доход</dt><dd data-account-value className="monthly-trend__income">€{formatEuro(selected.income)}</dd></div>
-                        <div><dt>Расход</dt><dd data-account-value>€{formatEuro(selected.expense)}</dd></div>
-                        <div><dt>Сальдо</dt><dd data-account-value className={net < 0 ? 'monthly-trend__negative' : 'monthly-trend__income'}>{net < 0 ? '−' : net > 0 ? '+' : ''}€{formatEuro(Math.abs(net))}</dd></div>
-                    </dl>
-                    {selected.income === 0 && selected.expense === 0 && <p className="monthly-trend__empty">Нет доходов и расходов за этот месяц</p>}
+            {(showLimit || hasGhost) && (
+                <div className="monthly-trend__legend">
+                    {showLimit && (
+                        <span><i className="monthly-trend__key monthly-trend__key--limit" />{`лимит ${formatMoney(limit, { whole: true })}`}</span>
+                    )}
+                    {hasGhost && (
+                        <span><i className="monthly-trend__key monthly-trend__key--forecast" />прогноз месяца</span>
+                    )}
                 </div>
             )}
+
+            {caption && <p className="monthly-trend__caption">{caption}</p>}
         </Card>
     );
 }

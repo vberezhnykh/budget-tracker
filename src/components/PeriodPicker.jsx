@@ -27,7 +27,10 @@ import {
 // подписи карточки: «{prefix} <период> ⌄». variant="title" - крупный
 // заголовок экрана («Октябрь ⌄»), так выбор периода выглядит на Обзоре. Лист
 // и логика выбора у них одни, отличается только то, что нажимают.
-export default function PeriodPicker({ timeRange, selectedMonth, onChange, monthsOnly = false, variant = 'chip', prefix = '' }) {
+//
+// У чипа есть два тона: светлый по умолчанию и tone="dark" - тёмная таблетка
+// в шапке Аналитики.
+export default function PeriodPicker({ timeRange, selectedMonth, onChange, monthsOnly = false, variant = 'chip', prefix = '', tone = 'light' }) {
   const [isOpen, setIsOpen] = useState(false);
   // The granularity being previewed inside the open sheet. It only becomes
   // the app's timeRange once a concrete choice is made (or immediately, for
@@ -41,6 +44,7 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
   // вложенный fixed-лист надо выводить наружу.
   const renderSheet = node => createPortal(node, document.body);
 
+  const dark = tone === 'dark';
   const maxMonth = getCurrentMonth();
   const months = listPeriodMonths(maxMonth);
   const years = listPeriodYears(maxMonth);
@@ -174,20 +178,21 @@ export default function PeriodPicker({ timeRange, selectedMonth, onChange, month
           display: 'inline-flex',
           alignItems: 'center',
           gap: 'var(--space-2)',
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
+          background: dark ? 'var(--color-text-main)' : 'var(--color-surface)',
+          border: dark ? '1px solid var(--color-text-main)' : '1px solid var(--color-border)',
           borderRadius: 'var(--radius-pill)',
-          padding: 'var(--space-3) var(--space-4)',
+          padding: dark ? 'var(--space-3) var(--space-3) var(--space-3) var(--space-4)' : 'var(--space-3) var(--space-4)',
           minHeight: '40px',
-          color: 'var(--color-text-main)',
+          whiteSpace: 'nowrap',
+          color: dark ? 'var(--color-text-inverse)' : 'var(--color-text-main)',
           fontSize: 'var(--text-base)',
           fontWeight: 'var(--weight-strong)',
           cursor: 'pointer',
-          boxShadow: 'var(--shadow-xs)',
+          boxShadow: dark ? 'none' : 'var(--shadow-xs)',
         }}
       >
         {formatPeriodLabel(timeRange, selectedMonth)}
-        <ChevronDown size={16} style={{ color: 'var(--color-text-muted)' }} />
+        <ChevronDown size={16} style={{ color: dark ? 'var(--color-text-inverse)' : 'var(--color-text-muted)', opacity: dark ? 0.7 : 1 }} />
       </button>
       )}
 

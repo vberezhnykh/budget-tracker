@@ -342,3 +342,84 @@ describe('computeTypicalMonth: блок today', () => {
         expect(result.today.typicalRemaining).toBe(0);
     });
 });
+
+describe('computeTypicalMonth: actualByDay', () => {
+    const history = [
+        inc('2026-04-01'),
+        exp('2026-04-10', 100), exp('2026-05-10', 100), exp('2026-06-10', 100)
+    ];
+
+    it('идущий месяц: накопленный расход только за дни до сегодняшнего', () => {
+        const data = [...history, exp('2026-07-03', 40), exp('2026-07-03', 10), exp('2026-07-09', 60), exp('2026-07-11', 500)];
+
+        const result = computeTypicalMonth(data, { month: '2026-07', today: '2026-07-10' });
+
+        expect(result.actualByDay).toHaveLength(10);
+        expect(result.actualByDay.slice(0, 4)).toEqual([0, 0, 50, 50]);
+        expect(result.actualByDay[8]).toBe(110);
+        // Последний элемент - то же число, что «потрачено» в блоке today.
+        expect(result.actualByDay[9]).toBe(110);
+        expect(result.actualByDay[9]).toBe(result.today.spent);
+    });
+
+    it('прошедший месяц: весь месяц, последнее значение - его итог', () => {
+        const data = [...history, exp('2026-06-30', 25), exp('2026-07-03', 40), exp('2026-07-31', 60)];
+
+        const result = computeTypicalMonth(data, { month: '2026-07', today: '2026-09-01' });
+
+        expect(result.actualByDay).toHaveLength(31);
+        expect(result.actualByDay[1]).toBe(0);
+        expect(result.actualByDay[2]).toBe(40);
+        expect(result.actualByDay[30]).toBe(100);
+        expect(result.today).toBeNull();
+    });
+
+    it('будущий месяц: пустой массив', () => {
+        const result = computeTypicalMonth(history, { month: '2026-08', today: '2026-07-15' });
+
+        expect(result.actualByDay).toEqual([]);
+        expect(result.byDay).toHaveLength(31);
+    });
+
+    it('длина прошедшего месяца равна числу его дней', () => {
+        const result = computeTypicalMonth(history, { month: '2026-09', today: '2026-10-15' });
+
+        expect(result.actualByDay).toHaveLength(30);
+    });
+
+    it('те же правила, что у «потрачено»: переводы, «не в статистике», доходы не считаются', () => {
+        const data = [
+            ...history,
+            exp('2026-07-02', 30),
+            exp('2026-07-02', 999, { type: 'transfer' }),
+            exp('2026-07-03', 999, { excludeFromStats: true }),
+            inc('2026-07-04')
+        ];
+
+        const result = computeTypicalMonth(data, { month: '2026-07', today: '2026-07-05' });
+
+        expect(result.actualByDay).toEqual([0, 30, 30, 30, 30]);
+    });
+
+    it('фильтры счёта и категории применяются к факту', () => {
+        const data = [
+            ...history,
+            exp('2026-07-02', 30, { account: 'acc-cash', accountType: 'cash' }),
+            exp('2026-07-02', 20, { category: 'Кафе' })
+        ];
+
+        const byAccount = computeTypicalMonth(data, { month: '2026-07', today: '2026-07-03', account: 'acc-cash' });
+        const byCategory = computeTypicalMonth(data, { month: '2026-07', today: '2026-07-03', category: 'Кафе' });
+
+        expect(byAccount.actualByDay).toEqual([0, 30, 30]);
+        expect(byCategory.actualByDay).toEqual([0, 20, 20]);
+    });
+
+    it('суммы округляются до копеек', () => {
+        const data = [...history, exp('2026-07-01', 0.1), exp('2026-07-01', 0.2)];
+
+        const result = computeTypicalMonth(data, { month: '2026-07', today: '2026-07-02' });
+
+        expect(result.actualByDay).toEqual([0.3, 0.3]);
+    });
+});

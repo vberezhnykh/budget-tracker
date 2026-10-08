@@ -76,6 +76,8 @@ describe('GET /api/stats/dashboard', () => {
         expect(month.body.typicalMonth.byDay).toHaveLength(31);
         expect(month.body.typicalMonth.today.day).toBe(15);
         expect(month.body.typicalMonth.today.spent).toBe(350);
+        expect(month.body.typicalMonth.actualByDay).toHaveLength(15);
+        expect(month.body.typicalMonth.actualByDay[14]).toBe(350);
         expect(year.body).toHaveProperty('typicalMonth', null);
         // Лёгкий повторный запрос (analytics=0) тоже его отдаёт.
         expect(lean.body.typicalMonth).not.toBeNull();

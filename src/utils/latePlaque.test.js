@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getLatePlaque, pluralDays } from './latePlaque';
+import { getLatePlaque, getForecastVerdict, formatRemainingSpan, pluralDays } from './latePlaque';
 
 // Январь 2026: 31 день. N = 31 - day.
 const typical = (day, overrides = {}) => ({
@@ -105,5 +105,48 @@ describe('getLatePlaque: прогноз на центы выше лимита', 
     });
     expect(plaque.tone).toBe('neutral');
     expect(plaque.text).toContain('запас до лимита ≈ €0.');
+  });
+});
+
+describe('getForecastVerdict', () => {
+  it('запас до лимита, когда прогноз ниже', () => {
+    expect(getForecastVerdict({ forecast: 6000, limit: 7000 })).toEqual({
+      overLimit: false, text: 'Если так и будет, запас до лимита ≈ €1.000.',
+    });
+  });
+
+  it('превышение считается после округления до евро: ниже €1 - это ещё запас', () => {
+    expect(getForecastVerdict({ forecast: 7000.4, limit: 7000 }).overLimit).toBe(false);
+    expect(getForecastVerdict({ forecast: 7000.4, limit: 7000 }).text).toContain('запас до лимита ≈ €0');
+    expect(getForecastVerdict({ forecast: 7000.6, limit: 7000 })).toEqual({
+      overLimit: true, text: 'Если так и будет, лимит будет превышен примерно на €1.',
+    });
+  });
+
+  it('без «Если так и будет» предложение начинается с заглавной', () => {
+    expect(getForecastVerdict({ forecast: 6000, limit: 7000, conditional: false }).text)
+      .toBe('Запас до лимита ≈ €1.000.');
+  });
+
+  it('уже превышенный лимит не называется будущим', () => {
+    const verdict = getForecastVerdict({ forecast: 7500, limit: 7000, spent: 7200 });
+    expect(verdict.overLimit).toBe(true);
+    expect(verdict.text).toBe('Если так и будет, лимит уже превышен, к концу месяца перерасход составит около €500.');
+  });
+
+  it('null, когда лимит не годится или прогноза нет', () => {
+    expect(getForecastVerdict({ forecast: 100, limit: 0 })).toBeNull();
+    expect(getForecastVerdict({ forecast: 100, limit: NaN })).toBeNull();
+    expect(getForecastVerdict({ forecast: 100, limit: null })).toBeNull();
+    expect(getForecastVerdict({ forecast: null, limit: 7000 })).toBeNull();
+  });
+});
+
+describe('formatRemainingSpan', () => {
+  it('подставляет оборот и округляет до евро', () => {
+    expect(formatRemainingSpan({ day: 25, lastDay: 31, typicalRemaining: 1119.6 }))
+      .toBe('С 26 по 31 число у вас обычно уходит около €1.120.');
+    expect(formatRemainingSpan({ day: 25, lastDay: 31, typicalRemaining: 300, verb: 'вы обычно тратите' }))
+      .toBe('С 26 по 31 число вы обычно тратите около €300.');
   });
 });

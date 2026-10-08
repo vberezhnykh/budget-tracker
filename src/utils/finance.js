@@ -418,34 +418,6 @@ export const getMonthlySeries = (transactions, endMonth, months = 6, accountFilt
     });
 };
 
-// How fast the current month's spending is running, so the analytics tab can
-// show "at this rate you'll spend €X by month end" instead of just a raw
-// total. Only meaningful for the month actually in progress.
-export const getPaceForecast = (expenseAbs, selectedMonth, monthlyLimit = null) => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const now = new Date();
-    if (now.getFullYear() !== year || (now.getMonth() + 1) !== month) return null;
-
-    const daysInMonth = new Date(year, month, 0).getDate();
-    const daysElapsed = now.getDate();
-    const daysLeft = daysInMonth - daysElapsed;
-
-    const perDay = expenseAbs / daysElapsed;
-    const forecast = perDay * daysInMonth;
-
-    const limitUsable = Number.isFinite(monthlyLimit) && monthlyLimit > 0;
-    let remaining = null;
-    let perDayLeft = null;
-    let willExceedLimit = null;
-    if (limitUsable) {
-        remaining = monthlyLimit - expenseAbs;
-        perDayLeft = daysLeft > 0 ? remaining / daysLeft : null;
-        willExceedLimit = forecast > monthlyLimit;
-    }
-
-    return { daysInMonth, daysElapsed, daysLeft, perDay, forecast, remaining, perDayLeft, willExceedLimit };
-};
-
 export const getYearlyData = (transactions, selectedMonth, accountFilter = null, categoryFilter = null) => {
     const year = selectedMonth.split('-')[0];
     let filtered = transactions.filter(t => t.date.startsWith(year));

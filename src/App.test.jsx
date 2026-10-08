@@ -270,11 +270,12 @@ describe('App Integration Tests', () => {
         fireEvent.click(tab('Аналитика'));
 
         await waitFor(() => {
-            expect(screen.getByText(/Расходы по категориям/)).toBeInTheDocument();
+            expect(screen.getByRole('heading', { name: 'Категории' })).toBeInTheDocument();
         });
-        // The period trigger follows you across tabs (it moves into the
-        // «Сводка» heading) rather than being owned by the overview.
-        expect(screen.getByRole('button', { name: /^Период:/ })).toHaveTextContent('Сводка за январь');
+        // The period trigger follows you across tabs (it sits in the
+        // «Аналитика» header as a chip) rather than being owned by the overview.
+        expect(screen.getByRole('heading', { level: 1, name: 'Аналитика' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^Период:/ })).toHaveTextContent('Январь 2026');
         expect(tab('Аналитика')).toHaveAttribute('aria-current', 'page');
         expect(tab('Обзор')).not.toHaveAttribute('aria-current');
         // Шапка со счетами принадлежит Обзору.
@@ -282,7 +283,7 @@ describe('App Integration Tests', () => {
 
         fireEvent.click(tab('История'));
         expect(await screen.findByTestId('history-scroll')).toBeInTheDocument();
-        expect(screen.queryByText(/Расходы по категориям/)).not.toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Категории' })).not.toBeInTheDocument();
         expect(screen.getByRole('heading', { level: 1, name: 'История' })).toBeInTheDocument();
 
         fireEvent.click(tab('Ещё'));
@@ -311,7 +312,7 @@ describe('App Integration Tests', () => {
             window.history.replaceState(null, '', '/#analytics');
             window.dispatchEvent(new HashChangeEvent('hashchange'));
         });
-        expect(await screen.findByText(/Расходы по категориям/)).toBeInTheDocument();
+        expect(await screen.findByRole('heading', { name: 'Категории' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Аналитика' })).toHaveAttribute('aria-current', 'page');
     });
 
@@ -511,19 +512,126 @@ describe('App Integration Tests', () => {
         consoleSpy.mockRestore();
     });
 
-    it('breaks the period expense down by category, and applies the tapped one as the summary filter', async () => {
-        render(<App />);
-        await waitForOverview();
+    // Нажатие на категорию в Аналитике ведёт в Историю с фильтром по ней, а не
+    // фильтрует саму сводку: ни один запрос итогов не несёт category=.
+    describe('category breakdown on the analytics tab', () => {
+        const historyUrls = () => fetchMock.mock.calls
+            .map(([url]) => url)
+            .filter(url => typeof url === 'string' && url.startsWith('/api/history?') && !url.includes('limit=5'));
+        const statsUrls = () => fetchMock.mock.calls
+            .map(([url]) => url)
+            .filter(url => typeof url === 'string' && url.startsWith('/api/stats/dashboard'));
 
-        // Разбивка по категориям - на вкладке «Аналитика»; на главной её
-        // больше нет, там теперь лимит и последние операции.
-        await openAnalytics();
-        const categoryButton = await screen.findByRole('button', { name: /^Housing: €/ });
-        expect(categoryButton).toHaveAttribute('aria-pressed', 'false');
+        // Месяц Истории переключается её собственным выбором месяца.
+        const pickHistoryMonth = async (monthName) => {
+            const section = await screen.findByTestId('history-scroll');
+            fireEvent.click(within(section.querySelector('[data-history-month]')).getByRole('button', { name: /^Месяц истории:/ }));
+            fireEvent.click(screen.getByRole('button', { name: monthName, exact: true }));
+            await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
+        };
 
-        fireEvent.click(categoryButton);
+        beforeEach(() => {
+            currentCategories = [{ _id: 'c1', name: 'Housing', type: 'expense', order: 1 }];
+        });
 
-        expect(await screen.findByRole('button', { name: /^Housing: €/ })).toHaveAttribute('aria-pressed', 'true');
+        it('breaks the period expense down by category into buttons without a pressed state', async () => {
+            render(<App />);
+            await waitForOverview();
+
+            await openAnalytics();
+            const housing = await screen.findByRole('button', { name: /^Housing: €/ });
+
+            // Это кнопка перехода, а не переключатель фильтра.
+            expect(housing).not.toHaveAttribute('aria-pressed');
+            expect(housing).toHaveTextContent('Housing');
+        });
+
+        it('opens the history filtered by the tapped category for the selected month', async () => {
+            render(<App />);
+            await waitForOverview();
+            await openAnalytics();
+
+            fireEvent.click(await screen.findByRole('button', { name: /^Housing: €/ }));
+
+            expect(await screen.findByTestId('history-scroll')).toBeInTheDocument();
+            expect(screen.getByRole('heading', { level: 1, name: 'История' })).toBeInTheDocument();
+            const group = await screen.findByRole('group', { name: 'Фильтр по категории' });
+            expect(within(group).getByRole('button', { name: 'Housing' })).toHaveAttribute('aria-pressed', 'true');
+            await waitFor(() => {
+                const last = historyUrls().at(-1);
+                expect(last).toContain('category=Housing');
+                expect(last).toContain('month=2026-01');
+            });
+        });
+
+        it('resets the type filter and the search when opening a category', async () => {
+            render(<App />);
+            await waitForOverview();
+            // Фильтр «Доходы» и поиск, оставленные в Истории, не должны скрыть
+            // расходы выбранной категории.
+            fireEvent.click(screen.getByRole('button', { name: /^Доход: .*открыть историю доходов$/ }));
+            await waitFor(() => expect(historyUrls().at(-1)).toContain('type=income'));
+            fireEvent.change(screen.getByPlaceholderText(/Поиск/), { target: { value: 'Salary' } });
+            await waitFor(() => expect(historyUrls().at(-1)).toContain('q=Salary'));
+
+            await openAnalytics();
+            fireEvent.click(await screen.findByRole('button', { name: /^Housing: €/ }));
+
+            await waitFor(() => {
+                const last = historyUrls().at(-1);
+                expect(last).toContain('category=Housing');
+                expect(last).not.toContain('type=');
+                expect(last).not.toContain('q=');
+            });
+        });
+
+        it('uses the month selected in analytics, not the month the history was left on', async () => {
+            render(<App />);
+            await waitForOverview();
+            await openHistory();
+            await pickHistoryMonth('Декабрь');
+            await waitFor(() => expect(historyUrls().at(-1)).toContain('month=2025-12'));
+
+            await openAnalytics();
+            fireEvent.click(await screen.findByRole('button', { name: /^Housing: €/ }));
+
+            await waitFor(() => expect(historyUrls().at(-1)).toContain('month=2026-01'));
+            expect(historyUrls().at(-1)).toContain('category=Housing');
+        });
+
+        it('keeps the month of the history when the analytics period is a year', async () => {
+            render(<App />);
+            await waitForOverview();
+            await openAnalytics();
+            fireEvent.click(screen.getByRole('button', { name: /^Период:/ }));
+            fireEvent.click(within(screen.getByRole('dialog', { name: 'Выбор периода' })).getByRole('button', { name: 'Год', exact: true }));
+            fireEvent.click(screen.getByRole('button', { name: '2026 год', exact: true }));
+            await waitFor(() => expect(screen.queryByText('Загрузка итогов…')).not.toBeInTheDocument());
+
+            await openHistory();
+            await pickHistoryMonth('Декабрь');
+            await waitFor(() => expect(historyUrls().at(-1)).toContain('month=2025-12'));
+            await openAnalytics();
+            fireEvent.click(await screen.findByRole('button', { name: /^Housing: €/ }));
+
+            await waitFor(() => {
+                expect(historyUrls().at(-1)).toContain('category=Housing');
+                expect(historyUrls().at(-1)).toContain('month=2025-12');
+            });
+        });
+
+        it('never sends a category parameter with the summary requests', async () => {
+            render(<App />);
+            await waitForOverview();
+            await openAnalytics();
+            fireEvent.click(await screen.findByRole('button', { name: /^Housing: €/ }));
+            await screen.findByTestId('history-scroll');
+            await openAnalytics();
+            await screen.findByRole('button', { name: /^Housing: €/ });
+
+            expect(statsUrls().length).toBeGreaterThan(0);
+            statsUrls().forEach(url => expect(url).not.toContain('category='));
+        });
     });
 
     it('displays transaction description and account/category correctly', async () => {
@@ -1173,16 +1281,10 @@ describe('App Integration Tests', () => {
         render(<App />);
         await screen.findByRole('button', { name: 'Ещё' });
 
-        // Ставим фильтр на категорию, которую сейчас удалим - через разбивку
-        // расхода на вкладке «Аналитика» (фильтр сводки) и чипом в Истории
-        // (отдельный фильтр списка): удаление должно снять оба.
+        // Ставим фильтр Истории на категорию, которую сейчас удалим: нажатием
+        // на неё в разбивке расхода на вкладке «Аналитика».
         await openAnalytics();
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
-        });
-        await openHistory();
-        fireEvent.click(within(screen.getByRole('group', { name: 'Фильтр по категории' })).getByRole('button', { name: 'Подписки' }));
         expect(await screen.findByText('Категория:')).toBeInTheDocument();
 
         openSettings();
@@ -1192,12 +1294,8 @@ describe('App Integration Tests', () => {
         await waitFor(() => {
             expect(fetchMock).toHaveBeenCalledWith('/api/categories/c2', expect.objectContaining({ method: 'DELETE' }));
         });
-        // Фильтры указывали на исчезнувшую категорию - их нужно снять.
+        // Фильтр указывал на исчезнувшую категорию - его нужно снять.
         fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
-        await openAnalytics();
-        await waitFor(() => {
-            expect(screen.queryByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'false');
-        });
         await openHistory();
         expect(screen.queryByText('Категория:')).not.toBeInTheDocument();
     });
@@ -1214,16 +1312,11 @@ describe('App Integration Tests', () => {
         render(<App />);
         await screen.findByRole('button', { name: 'Ещё' });
 
-        // Фильтры стоят на категории, которую сейчас переименуем: в сводке
-        // (разбивка на «Аналитике») и в Истории (чип) - у каждого своё
-        // состояние, и переехать на новое имя должны оба.
+        // Фильтр Истории стоит на категории, которую сейчас переименуем: он
+        // выставлен нажатием на неё в разбивке на «Аналитике» и должен
+        // переехать на новое имя.
         await openAnalytics();
         fireEvent.click(await screen.findByRole('button', { name: /^Подписки: €/ }));
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: /^Подписки: €/ })).toHaveAttribute('aria-pressed', 'true');
-        });
-        await openHistory();
-        fireEvent.click(within(screen.getByRole('group', { name: 'Фильтр по категории' })).getByRole('button', { name: 'Подписки' }));
         expect(await screen.findByText('Категория:')).toBeInTheDocument();
 
         openSettings();
@@ -1240,13 +1333,10 @@ describe('App Integration Tests', () => {
         // Список категорий перечитан - строка уже под новым именем.
         expect(await screen.findByLabelText('Переименовать категорию: Сервисы')).toBeInTheDocument();
 
-        // История перечитана: разбивка расхода знает новое имя, а фильтр
-        // переехал на него вместе с ней.
+        // Итоги перечитаны: разбивка расхода знает только новое имя.
         fireEvent.click(await screen.findByRole('button', { name: 'Закрыть настройки' }));
         await openAnalytics();
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: /^Сервисы: €/ })).toHaveAttribute('aria-pressed', 'true');
-        });
+        expect(await screen.findByRole('button', { name: /^Сервисы: €/ })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: /^Подписки: €/ })).not.toBeInTheDocument();
 
         // Фильтр Истории переехал на новое имя тоже: список перечитан по нему.

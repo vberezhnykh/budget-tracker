@@ -1,103 +1,98 @@
 .monthly-trend {
     min-width: 0;
+    /* Высота поля столбцов и строки подписей: от них считается положение
+       линии лимита, поэтому они общие токены графика, а не числа в правилах. */
+    --trend-plot-height: 140px;
+    --trend-label-height: 34px;
 }
 
-.monthly-trend__heading,
-.monthly-trend__selected-label {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
+.monthly-trend__title {
+    margin: 0 0 var(--space-3);
+    font-size: var(--text-xl);
+    font-weight: var(--weight-strong);
 }
 
-.monthly-trend__heading h3 {
-    margin: 0;
-    color: var(--color-text-main);
-    font-size: var(--text-md);
-}
-
-.monthly-trend__heading p,
-.monthly-trend__hint,
-.monthly-trend__empty {
-    margin: var(--space-1) 0 0;
-    color: var(--color-text-muted);
-    font-size: var(--text-2xs);
-    line-height: 1.5;
-}
-
-.monthly-trend__navigation { display: flex; gap: var(--space-1); }
-.monthly-trend__navigation button {
-    display: grid;
-    place-items: center;
-    width: 40px;
-    height: 40px;
-    flex-shrink: 0;
-    border-radius: var(--radius-md);
-    background: var(--color-surface-muted);
-    color: var(--color-text-main);
-    font-size: 1.6rem;
-}
-.monthly-trend__navigation button:disabled { opacity: 0.3; cursor: default; }
-.monthly-trend__navigation button:enabled:hover { background: var(--color-primary-tint); }
 .monthly-trend button:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 
-.monthly-trend__legend { display: flex; gap: var(--space-4); margin: var(--space-4) 0 var(--space-2); }
-.monthly-trend__legend span { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted); }
-.monthly-trend__key { width: 18px; height: 0; border-top: 2px solid; }
-.monthly-trend__key--income { color: var(--color-positive-strong); }
-.monthly-trend__key--expense { color: var(--color-expense); border-top-style: dashed; }
-
-.monthly-trend__plot { display: flex; min-width: 0; }
-.monthly-trend__axis { position: relative; flex: 0 0 42px; font-size: 0.6rem; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
-.monthly-trend__axis span { position: absolute; right: 8px; transform: translateY(-50%); white-space: nowrap; }
+/* Прокрутка по горизонтали только внутри графика: страница не должна
+   становиться шире экрана. */
 .monthly-trend__scroll {
-    flex: 1;
     min-width: 0;
     overflow-x: auto;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
+    scrollbar-width: none;
 }
-.monthly-trend__track { position: relative; width: 100%; }
-.monthly-trend__chart { position: absolute; top: 0; left: 0; z-index: 1; pointer-events: none; overflow: visible; }
-.monthly-trend__grid { stroke: var(--color-border); stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
-.monthly-trend__area { fill: var(--color-expense); opacity: 0.06; }
-.monthly-trend__line { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.monthly-trend__line--income { stroke: var(--color-positive-strong); }
-.monthly-trend__line--expense { stroke: var(--color-expense); stroke-dasharray: 5 4; }
-.monthly-trend__point { stroke: var(--color-surface); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.monthly-trend__point--income { fill: var(--color-positive-strong); }
-.monthly-trend__point--expense { fill: var(--color-expense); }
-.monthly-trend__months { display: flex; }
+.monthly-trend__scroll::-webkit-scrollbar { display: none; }
+.monthly-trend__track { position: relative; display: flex; min-width: 100%; }
+
 .monthly-trend__month {
-    flex: 1 0 0;
+    flex: 1 1 0;
     min-width: 0;
-    padding: 0 0 var(--space-2);
+    display: flex;
+    flex-direction: column;
+    padding: 0;
     border-radius: var(--radius-sm);
     background: transparent;
     color: var(--color-text-muted);
     font-size: var(--text-xs);
 }
-.monthly-trend__month[aria-pressed="true"] { background: var(--color-primary-tint); color: var(--color-primary); font-weight: var(--weight-label); }
-.monthly-trend__month:hover { background: var(--color-primary-soft); }
-.monthly-trend__month span { display: block; }
-.monthly-trend__month small { display: block; margin-top: var(--space-1); font-size: 0.6rem; }
-.monthly-trend__hint { margin-top: var(--space-3); }
 
-.monthly-trend__detail { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--color-border); }
-.monthly-trend__selected-label { flex-wrap: wrap; font-size: var(--text-sm); }
-.monthly-trend__selected-label > span { color: var(--color-text-muted); font-size: var(--text-2xs); }
-.monthly-trend__totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: var(--space-3) 0 0; }
-.monthly-trend__totals dt { font-size: var(--text-2xs); color: var(--color-text-muted); margin-bottom: var(--space-1); }
-.monthly-trend__totals dd { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.monthly-trend__income { color: var(--color-positive-strong); }
-.monthly-trend__negative { color: var(--color-expense-strong); }
-.monthly-trend__empty { margin-top: var(--space-3); }
+/* Поле столбцов: столбец прижат к нижней границе, закругление только сверху -
+   снизу он растёт из общей базовой линии. */
+.monthly-trend__plot {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    height: var(--trend-plot-height);
+    border-bottom: 1px solid var(--color-border);
+}
+.monthly-trend__bar {
+    position: absolute;
+    bottom: 0;
+    width: min(24px, 60%);
+    border-radius: 4px 4px 0 0;
+}
+/* Ожидаемый итог идущего месяца: контур без заливки за фактическим столбцом. */
+.monthly-trend__bar--ghost {
+    box-sizing: border-box;
+    border: 1.5px dashed var(--color-primary);
+    border-bottom: none;
+    background: transparent;
+}
+
+.monthly-trend__label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    height: var(--trend-label-height);
+    padding-top: var(--space-2);
+    box-sizing: border-box;
+}
+.monthly-trend__label small { margin-top: var(--space-0-5); font-size: 0.6rem; font-weight: var(--weight-text); color: var(--color-text-muted); }
+
+/* Линия лимита лежит поверх столбцов, но жестов не перехватывает. */
+.monthly-trend__limit {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 1;
+    border-top: 1.5px dashed var(--color-negative);
+    pointer-events: none;
+}
+
+.monthly-trend__legend { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); margin-top: var(--space-3); }
+.monthly-trend__legend span { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--color-text-muted); }
+.monthly-trend__key { display: inline-block; width: 18px; height: 0; border-top: 2px dashed; }
+.monthly-trend__key--limit { color: var(--color-negative); }
+.monthly-trend__key--forecast { height: 10px; border: 1.5px dashed var(--color-primary); border-radius: 3px 3px 0 0; width: 14px; }
+
+.monthly-trend__caption { margin: var(--space-3) 0 0; color: var(--color-text-muted); font-size: var(--text-xs); line-height: 1.5; }
 
 @media (max-width: 360px) {
     /* Отступ карточки задаёт ui/Card инлайном, поэтому узкий экран
        переопределяет его только через !important. */
     .monthly-trend { padding: var(--space-4) var(--space-3) !important; }
-    .monthly-trend__totals { grid-template-columns: 1fr; gap: var(--space-2); }
-    .monthly-trend__totals > div { display: flex; justify-content: space-between; gap: var(--space-2); }
 }

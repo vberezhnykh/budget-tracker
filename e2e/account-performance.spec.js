@@ -24,11 +24,11 @@ test('account limit bars and visited analytics work with subsequent summary requ
   const nav = page.getByRole('navigation', { name: 'Основная навигация' });
   const goTo = name => nav.getByRole('button', { name, exact: true }).click();
   await goTo('Аналитика');
-  await expect(page.getByText('Расходы по категориям')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible();
   await goTo('Обзор');
   await page.getByRole('button', { name: /^Наличные: €/ }).click();
   await goTo('Аналитика');
-  await expect(page.getByText('Расходы по категориям')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible();
   await expect(skeleton).toHaveCount(0);
   const before = summaries();
   // Any accidental cache miss now fails rather than passing on fast localhost.
@@ -39,7 +39,7 @@ test('account limit bars and visited analytics work with subsequent summary requ
     await expect(page.getByRole('button', { name: /^Расход:/ })).toBeVisible();
     await expect(skeleton).toHaveCount(0);
     await goTo('Аналитика');
-    await expect(page.getByText('Расходы по категориям')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible();
     await expect(skeleton).toHaveCount(0);
   }
   expect(summaries()).toBe(before);

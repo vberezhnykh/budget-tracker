@@ -481,10 +481,10 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // Widening the range from the chip fills the same tab with category bars.
     await page.getByRole('button', { name: /^Период:/ }).click();
     await page.getByRole('dialog', { name: 'Выбор периода' }).getByRole('button', { name: 'Всё время' }).click();
-    await expect(page.getByText('Расходы по категориям')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible();
 
     await nav.getByRole('button', { name: 'Обзор', exact: true }).click();
-    await expect(page.getByText('Расходы по категориям')).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Категории' })).toHaveCount(0);
   });
 
   test('switching tabs writes the hash without piling up history, and manual hash changes and back/forward move between screens', async ({ page }) => {
@@ -510,7 +510,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // Хэш, выставленный снаружи (ссылка, адресная строка), переключает экран...
     await page.evaluate(() => { location.hash = '#analytics'; });
     await current('Аналитика');
-    await expect(page.getByText(/Расходы по категориям|За выбранный период трат нет/)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Категории' }).or(page.getByText('За выбранный период трат нет'))).toBeVisible();
     await page.evaluate(() => { location.hash = '#more'; });
     await current('Ещё');
     await expect(page.getByRole('heading', { level: 1, name: 'Ещё' })).toBeVisible();

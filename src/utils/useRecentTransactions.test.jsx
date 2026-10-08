@@ -91,9 +91,11 @@ describe('useRecentTransactions', () => {
     await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(result.current.error).toBe(true));
 
+    // Ждём сами данные, а не error === false: пока повтор загружается, хук
+    // тоже отдаёт error: false, и такое ожидание срабатывало до ответа.
     act(() => result.current.retry());
-    await waitFor(() => expect(result.current.error).toBe(false));
-    expect(ids(result)).toEqual(['ok']);
+    await waitFor(() => expect(ids(result)).toEqual(['ok']));
+    expect(result.current.error).toBe(false);
   });
 
   it('treats a network failure as an error', async () => {

@@ -1,33 +1,35 @@
-import React from 'react';
-import CategoryDonut from './CategoryDonut';
+import CategoryBars from './CategoryBars';
 import MonthlyTrend from './MonthlyTrend';
+import PaceCard from './PaceCard';
 import Card from './ui/Card';
-import PeriodPicker from './PeriodPicker';
+import { formatMoney } from '../utils/money';
 
-// maximumFractionDigits matters here in a way it doesn't for the plain sums
-// elsewhere in the app: pace figures come out of a division, so without a cap
-// "€230,06 в день" renders as the unreadable "€230,063".
-const formatEuro = (value) => value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-// "1 день / 2 дня / 5 дней" - Russian needs three forms, and the teens are
-// the exception that a plain "ends in 1" rule gets wrong (11 дней, not день).
-const pluralDays = (count) => {
-    const mod100 = count % 100;
-    if (mod100 >= 11 && mod100 <= 14) return 'дней';
-    const mod10 = count % 10;
-    if (mod10 === 1) return 'день';
-    if (mod10 >= 2 && mod10 <= 4) return 'дня';
-    return 'дней';
+const SECTION_TITLE_STYLE = {
+    margin: 0,
+    fontSize: 'var(--text-xl)',
+    fontWeight: 'var(--weight-strong)',
 };
 
-// The whole "Аналитика" tab, pulled out of App.jsx so that file stops
-// growing: a period summary, the spending-pace card (month view only), the
-// monthly timeline, and the category donut with month-over-month deltas.
+// Строка «Доход / Расход / Сальдо» в итогах: подпись слева, сумма справа.
+function TotalsRow({ label, value, color, divider }) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-2) 0', borderTop: divider ? '1px solid var(--color-border-subtle)' : 'none' }}>
+            <div style={{ fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>{label}</div>
+            <div data-account-value style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-strong)', color, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                {value}
+            </div>
+        </div>
+    );
+}
+
+// Содержимое вкладки «Аналитика» под заголовком экрана, сверху вниз: темп
+// трат (только месяц), категории, расход по месяцам, итоги периода. Заголовок
+// с выбором периода живёт в AnalyticsScreen, вне обёртки ожидания: период
+// должен меняться и пока цифры грузятся.
 export default function AnalyticsView({
     periodStats,
     timeRange,
-    onChangePeriod,
-    pace,
+    typicalMonth,
     monthlyLimit,
     series,
     selectedMonth,
@@ -35,8 +37,7 @@ export default function AnalyticsView({
     expenseComparison,
     categoryComparison,
     comparisonLabel,
-    selectedCategory,
-    onSelectCategory
+    onOpenCategory
 }) {
     const expenseAbs = Math.abs(periodStats.expense);
     const saldo = periodStats.income + periodStats.expense;
@@ -47,40 +48,57 @@ export default function AnalyticsView({
     // has no single "previous" period to compare against.
     const showCategoryComparison = timeRange === 'month' && !!categoryComparison;
 
+    let saldoColor = 'var(--color-text-main)';
+    if (saldo < 0) saldoColor = 'var(--color-negative)';
+    else if (saldo > 0) saldoColor = 'var(--color-positive)';
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', minWidth: 0 }}>
-            <Card padding="lg">
-                {/* Заголовок - заодно единственный на этой вкладке выбор
-                    периода. Карточка со сводкой рисуется всегда, и когда трат
-                    нет тоже (пустое состояние внизу - отдельная карточка), так
-                    что пустой месяц не остаётся без способа сменить период. */}
-                <h3 style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
-                    <PeriodPicker variant="inline" prefix="Сводка за" timeRange={timeRange} selectedMonth={selectedMonth} onChange={onChangePeriod} />
-                </h3>
-                {/* Строки «подпись - сумма», а не три плитки в ряд: у плитки
-                    на ширине телефона оставалось ~65px под число, и уже
-                    «€1.145,28» обрезался многоточием. В строке сумме
-                    достаётся вся ширина карточки. Знак ставится перед €, а
-                    не как у toLocaleString («€-281,00»). */}
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {[
-                        { label: 'Расход', value: expenseAbs, color: 'var(--color-text-main)', sign: '' },
-                        { label: 'Доход', value: periodStats.income, color: 'var(--color-positive)', sign: '' },
-                        { label: 'Сальдо', value: Math.abs(saldo), color: saldo < 0 ? 'var(--color-negative)' : 'var(--color-positive)', sign: saldo < 0 ? '−' : (saldo > 0 ? '+' : '') }
-                    ].map((row, index) => (
-                        <div key={row.label} style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-2) 0', borderTop: index > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}>
-                            <div style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>{row.label}</div>
-                            <div data-account-value style={{ fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-strong)', color: row.color, whiteSpace: 'nowrap' }}>
-                                {row.sign}€{formatEuro(row.value)}
-                            </div>
-                        </div>
-                    ))}
+            {/* Темп трат есть только у месяца: у года и «всего времени» нет
+                «обычного месяца», с которым сравнивать. Если истории меньше
+                трёх полных месяцев, сервер отдаёт null - тогда вместо графика
+                одна строка с объяснением. */}
+            {timeRange === 'month' && (typicalMonth ? (
+                <PaceCard typicalMonth={typicalMonth} selectedMonth={selectedMonth} monthlyLimit={monthlyLimit} />
+            ) : (
+                <Card tone="muted" padding="lg" style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-base)', lineHeight: 1.5 }}>
+                    Для сравнения с обычным месяцем нужно хотя бы три полных месяца истории.
+                </Card>
+            ))}
+
+            {hasSpending ? (
+                <CategoryBars
+                    data={periodStats.categoryTotals}
+                    comparison={showCategoryComparison ? categoryComparison : undefined}
+                    comparisonLabel={comparisonLabel}
+                    onSelectCategory={onOpenCategory}
+                />
+            ) : (
+                <Card padding="lg" style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
+                    <span data-account-value>За выбранный период трат нет</span>
+                </Card>
+            )}
+
+            <MonthlyTrend
+                series={series}
+                selectedMonth={selectedMonth}
+                onSelectMonth={onSelectMonth}
+                timeRange={timeRange}
+                limit={monthlyLimit}
+                forecast={typicalMonth?.today?.forecast ?? null}
+            />
+
+            <Card as="section" padding="lg">
+                <h2 style={{ ...SECTION_TITLE_STYLE, marginBottom: 'var(--space-2)' }}>Итоги</h2>
+                <div>
+                    <TotalsRow label="Доход" value={formatMoney(periodStats.income, { sign: 'auto' })} color="var(--color-positive)" />
+                    <TotalsRow label="Расход" value={formatMoney(expenseAbs, { sign: 'minus' })} color="var(--color-text-main)" divider />
+                    <TotalsRow label="Сальдо" value={formatMoney(saldo, { sign: 'auto' })} color={saldoColor} divider />
                 </div>
-                {/* Расход против прошлого месяца. Раньше эта строка стояла на
-                    главной, но отвечает она на вопрос разбора («стало больше
-                    или меньше»), а не на вопрос «сколько можно ещё потратить»,
-                    ради которого туда заходят. Сравнивать с «прошлым месяцем»
-                    имеет смысл только когда период - месяц. */}
+                {/* Расход против прошлого месяца. Эта строка отвечает на
+                    вопрос разбора («стало больше или меньше»), а не на
+                    вопрос «сколько можно ещё потратить». Сравнивать с
+                    «прошлым месяцем» имеет смысл только когда период - месяц. */}
                 {timeRange === 'month' && expenseComparison && (
                     <div data-account-value style={{ marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-subtle)' }}>
                         {expenseComparison.percent === null ? (
@@ -100,65 +118,6 @@ export default function AnalyticsView({
                     </div>
                 )}
             </Card>
-
-            {/* Pace only exists (getPaceForecast returns non-null) for the
-                month actually in progress, and only reads sensibly next to
-                the month view - a year/lifetime total isn't "on pace". */}
-            {pace && timeRange === 'month' && (
-                <Card padding="lg">
-                    <h3 style={{ margin: '0 0 var(--space-3)', fontSize: 'var(--text-md)', color: 'var(--color-text-muted)' }}>
-                        Темп трат
-                    </h3>
-                    <div data-account-value style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', fontSize: 'var(--text-base)', color: 'var(--color-text-main)' }}>
-                        <div>В среднем €{formatEuro(pace.perDay)} в день</div>
-                        <div>Прогноз до конца месяца ~€{formatEuro(pace.forecast)}</div>
-                        {/* On the last day of the month there is no "per day
-                            left" figure to give (daysLeft is 0), so that half
-                            of the sentence drops out rather than dividing by
-                            zero or claiming "0 дней". */}
-                        {pace.remaining !== null && pace.remaining >= 0 && (
-                            <div>
-                                Осталось €{formatEuro(pace.remaining)}
-                                {pace.perDayLeft !== null && ` — это €${formatEuro(pace.perDayLeft)} в день на оставшиеся ${pace.daysLeft} ${pluralDays(pace.daysLeft)}`}
-                            </div>
-                        )}
-                        {/* An already-blown limit is stated as fact; the
-                            forecast warning would only muddy it by adding
-                            that it "will be" exceeded. */}
-                        {pace.remaining !== null && pace.remaining < 0 ? (
-                            <div style={{ color: 'var(--color-negative)', fontWeight: 'var(--weight-label)' }}>
-                                Лимит €{monthlyLimit.toLocaleString('de-DE')} уже превышен на €{formatEuro(Math.abs(pace.remaining))}
-                            </div>
-                        ) : pace.willExceedLimit && (
-                            <div style={{ color: 'var(--color-negative)', fontWeight: 'var(--weight-label)' }}>
-                                При текущем темпе лимит €{monthlyLimit.toLocaleString('de-DE')} будет превышен
-                            </div>
-                        )}
-                    </div>
-                </Card>
-            )}
-
-            <MonthlyTrend series={series} selectedMonth={selectedMonth} onSelectMonth={onSelectMonth} />
-
-            {hasSpending ? (
-                <div>
-                    {showCategoryComparison && comparisonLabel && (
-                        <div style={{ textAlign: 'center', fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>
-                            {comparisonLabel}
-                        </div>
-                    )}
-                    <CategoryDonut
-                        data={periodStats.categoryTotals}
-                        comparison={showCategoryComparison ? categoryComparison : undefined}
-                        selectedCategory={selectedCategory}
-                        onSelectCategory={onSelectCategory}
-                    />
-                </div>
-            ) : (
-                <Card padding="lg" style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
-                    <span data-account-value>За выбранный период трат нет</span>
-                </Card>
-            )}
         </div>
     );
 }
