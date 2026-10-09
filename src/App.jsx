@@ -660,7 +660,7 @@ function App() {
   // type-group entries ('type:card' / 'type:cash') were dropped long ago -
   // that split is shown as a static line in the stats block instead - but
   // the filter values themselves remain valid (see getAccountFilterLabel
-  // and the filtering utilities in utils/finance.js), simply unreachable
+  // and matchesAccount in server/transform.js), simply unreachable
   // from here.
   const slides = useMemo(() => {
     const accountThemes = getAccountThemes(accounts);

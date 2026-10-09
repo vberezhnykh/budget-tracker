@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import TransactionList from './TransactionList';
-import { getPeriodData, transformTransactions } from '../utils/finance';
+import { transformTransactions } from '../utils/finance';
+// Группы по дням экран получает с сервера готовыми - берём их оттуда же.
+import { computePeriodData } from '../../server/periodStats.js';
 
 const day = '2026-09-12';
 const ACCOUNT_NAMES = { card: 'Карта', cash: 'Наличные' };
@@ -10,7 +12,7 @@ const expense = { _id: 'one', amount: 12, type: 'expense', account: 'card', cate
 function renderTransactions(rows, props = {}) {
     const openEditModal = vi.fn();
     const toggleCategoryFilter = vi.fn();
-    const groups = getPeriodData(transformTransactions(rows), '2026-09').transactions;
+    const groups = computePeriodData(transformTransactions(rows), '2026-09').transactions;
     const result = render(<TransactionList
         groups={groups}
         openEditModal={openEditModal}
@@ -90,7 +92,7 @@ describe('company snapshots in transaction history', () => {
 
 describe('category link without a filter', () => {
     it('shows the category as plain text when no toggle handler is given', () => {
-        const groups = getPeriodData(transformTransactions([expense]), '2026-09').transactions;
+        const groups = computePeriodData(transformTransactions([expense]), '2026-09').transactions;
         render(<TransactionList
             groups={groups}
             openEditModal={vi.fn()}

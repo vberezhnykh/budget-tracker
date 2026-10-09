@@ -26,7 +26,7 @@ const LOGO_MODES = ['auto', 'domain', 'category'];
 const { normalizeMerchantDomain } = require('./merchantDomain');
 
 // Суммы движений хранятся положительными - знак операции задаётся её типом
-// (см. transformTransactions в src/utils/finance.js). Исключение - initial:
+// (см. transformTransactions в server/transform.js). Исключение - initial:
 // его отрицательное значение означает долг на момент начала учёта.
 // Ноль не несёт движения или начального остатка и всегда отклоняется.
 // Number.isFinite отсекает заодно NaN и Infinity: JSON вида 1e999

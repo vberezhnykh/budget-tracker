@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { transformTransactions as transformOnServer, matchesAccount } from './transform.js';
-import { transformTransactions as transformOnClient } from '../src/utils/finance.js';
 
 // Тот же набор данных, что и в stats.test.js: он специально проходит по
 // всем правилам, которые легко перепутать - перевод, заморозка,
@@ -28,23 +27,104 @@ const transactions = [
     { _id: 't14', title: 'Неизвестный счёт', amount: 5, type: 'expense', category: 'Другое', account: 'acc-удалённый', date: '2025-12-02T00:00:00.000Z' },
 ];
 
-describe('transformTransactions на сервере совпадает с клиентским', () => {
-    it('на всём наборе, поле в поле', () => {
-        // Главная проверка модуля: агрегаты, которые переезжают на сервер,
-        // считаются поверх этого преобразования, и расхождение здесь
-        // разъехалось бы сразу во всех тринадцати.
-        expect(transformOnServer(transactions, accounts)).toEqual(transformOnClient(transactions, accounts));
+describe('transformTransactions: полный вид преобразованной операции', () => {
+    const rowsById = (docs, accs) => Object.fromEntries(transformOnServer(docs, accs).map(t => [t.id, t]));
+
+    it('на всём наборе: каждая операция превращается в ожидаемую строку', () => {
+        // Главная проверка модуля: агрегаты считаются поверх этого
+        // преобразования, и расхождение здесь разъехалось бы сразу во всех.
+        // Для каждой операции: знаковая сумма, движение по счетам, типы
+        // счетов и дата.
+        const rows = transformOnServer(transactions, accounts);
+
+        expect(rows.map(t => [t.id, t.visualAmount, t.accountFlows, t.accountType, t.toAccountType, t.date])).toEqual([
+            ['t1', 5650, { 'acc-cash': 5650 }, 'cash', null, '2025-11-09'],
+            ['t2', 4200, { 'acc-card': 4200 }, 'card', null, '2026-07-05'],
+            ['t3', -120.55, { 'acc-card': -120.55 }, 'card', null, '2026-07-06'],
+            ['t5', 500, { 'acc-card': -500, 'acc-cash': 500 }, 'card', 'cash', '2026-08-02'],
+            ['t6', -900, { 'acc-card': -900 }, 'card', null, '2026-08-03'],
+            // Счёт «Обмена» - cash в справочнике, поэтому тип назначения тоже cash.
+            ['t8', 700, { 'acc-exchange': -700, 'acc-cash': 700 }, 'cash', 'cash', '2026-08-05'],
+            ['t9', -40, { 'acc-card': -40 }, 'card', null, '2026-08-06'],
+            ['t11', -65, { 'acc-cash': -65 }, 'cash', null, '2026-08-31'],
+            ['t13', -12, { cash: -12 }, 'cash', null, '2025-12-01'],
+            ['t14', -5, { 'acc-удалённый': -5 }, 'card', null, '2025-12-02'],
+        ]);
     });
 
-    it('без справочника счетов - тоже', () => {
-        expect(transformOnServer(transactions)).toEqual(transformOnClient(transactions));
+    it('все поля одной строки: расход в карточном счёте', () => {
+        // Остальные поля (заголовок, логотип, флаги) - значения по умолчанию.
+        expect(rowsById(transactions, accounts).t3).toEqual({
+            id: 't3',
+            __v: 0,
+            title: 'Продукты',
+            amount: 120.55,
+            visualAmount: -120.55,
+            accountFlows: { 'acc-card': -120.55 },
+            type: 'expense',
+            category: 'Продукты',
+            logoMode: 'auto',
+            account: 'acc-card',
+            toAccount: null,
+            accountType: 'card',
+            toAccountType: null,
+            date: '2026-07-06',
+            excludeFromStats: false
+        });
+    });
+
+    it('все поля одной строки: перевод с «Обменом» в старой категории', () => {
+        expect(rowsById(transactions, accounts).t8).toEqual({
+            id: 't8',
+            __v: 0,
+            title: 'Обмен',
+            amount: 700,
+            visualAmount: 700,
+            accountFlows: { 'acc-exchange': -700, 'acc-cash': 700 },
+            type: 'transfer',
+            // Старая категория «Обмен» читается как «Перевод».
+            category: 'Перевод',
+            logoMode: 'auto',
+            account: 'acc-exchange',
+            toAccount: 'acc-cash',
+            accountType: 'cash',
+            toAccountType: 'cash',
+            date: '2026-08-05',
+            excludeFromStats: false
+        });
+    });
+
+    it('разделённая операция сохраняет splitId', () => {
+        expect(rowsById(transactions, accounts).t9).toMatchObject({ id: 't9', splitId: 'split-1', visualAmount: -40 });
+    });
+
+    it('без справочника счетов типы выводятся только из литерала cash', () => {
+        // Справочника нет: «cash» - наличные, всё остальное (включая
+        // идентификатор acc-cash, о котором никто не знает) - карта.
+        const rows = transformOnServer(transactions);
+
+        expect(rows.map(t => [t.id, t.accountType, t.toAccountType])).toEqual([
+            ['t1', 'card', null],
+            ['t2', 'card', null],
+            ['t3', 'card', null],
+            ['t5', 'card', 'card'],
+            ['t6', 'card', null],
+            ['t8', 'card', 'card'],
+            ['t9', 'card', null],
+            ['t11', 'card', null],
+            ['t13', 'cash', null],
+            ['t14', 'card', null],
+        ]);
+        // Суммы и движение по счетам от справочника не зависят.
+        expect(rows[3].accountFlows).toEqual({ 'acc-card': -500, 'acc-cash': 500 });
     });
 
     it('на пустой истории', () => {
-        expect(transformOnServer([], accounts)).toEqual(transformOnClient([], accounts));
+        expect(transformOnServer([], accounts)).toEqual([]);
+        expect(transformOnServer(undefined, accounts)).toEqual([]);
     });
 
-    it('preserves the same logo choice for API history, period results and client-side rows', () => {
+    it('preserves the logo choice of API history and period results', () => {
         const fixture = { ...transactions[2], title: 'Chop Chop' };
         const variants = [
             { ...fixture, _id: 'chosen-company', logoMode: 'domain', merchantDomain: 'chopchop.me' },
@@ -53,7 +133,6 @@ describe('transformTransactions на сервере совпадает с кли
             { ...fixture, _id: 'legacy' }
         ];
         const serverRows = transformOnServer(variants, accounts);
-        expect(serverRows).toEqual(transformOnClient(variants, accounts));
         expect(serverRows.map(({ id, logoMode, merchantDomain }) => ({ id, logoMode, merchantDomain }))).toEqual([
             { id: 'chosen-company', logoMode: 'domain', merchantDomain: 'chopchop.me' },
             { id: 'chosen-category', logoMode: 'category', merchantDomain: undefined },
@@ -70,7 +149,6 @@ describe('transformTransactions на сервере совпадает с кли
             { ...fixture, _id: 'legacy' }
         ];
         const transformed = transformOnServer(rows);
-        expect(transformed).toEqual(transformOnClient(rows));
         expect(transformed[0]).toMatchObject({ companyId: rows[0].companyId, companyName: 'Chop Chop' });
         expect(transformed[1]).toHaveProperty('companyName', '');
         expect(transformed[2]).not.toHaveProperty('companyName');
