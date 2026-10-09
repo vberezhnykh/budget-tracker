@@ -83,7 +83,7 @@
 Экраны по макетам; строка «данные устарели» вместо красной карточки; тосты;
 замена всех `window.confirm()`.
 
-### [~] 8. Уборка
+### [x] 8. Уборка
 
 Удаление неиспользуемого параметра `active` у `useBodyScrollLock`,
 `CategoryDonut`, `getPaceForecast` (`useSnapCarousel`, `SummaryCard` и
