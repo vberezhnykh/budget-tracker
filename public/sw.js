@@ -15,7 +15,8 @@
 // меняются с каждой сборкой, а держать их список в актуальном состоянии
 // руками - гарантированная рассинхронизация. Вместо этого всё кладётся в
 // кеш по факту первого запроса; после первого визита приложение открывается
-// офлайн.
+// офлайн. Старые бандлы выметаются из кеша после каждой удачной загрузки
+// страницы: хеши меняются с выкатом, а кеш иначе копил бы их вечно.
 
 const CACHE = 'budgetpro-v1';
 
@@ -50,6 +51,25 @@ function isApiRequest(url) {
     return url.pathname.toLowerCase().startsWith('/api/');
 }
 
+// Бандлы прошлых сборок: их имена хешированы, поэтому новая страница на них
+// не ссылается, а из кеша они сами не уходят - activate срабатывает только
+// при изменении самого sw.js, а не при каждом выкате. Живыми считаем то, на
+// что ссылается свежий HTML.
+function pruneAssets(cache, html) {
+    const live = new Set(html.match(/\/assets\/[^"'\s)<>?#]+/g) || []);
+    // Страница без единой ссылки на /assets - не наша оболочка (неожиданный
+    // 200). По ней нельзя судить, что устарело, поэтому не удаляем ничего.
+    if (live.size === 0) return Promise.resolve();
+    return cache.keys().then(requests => Promise.all(
+        requests
+            .filter((request) => {
+                const { pathname } = new URL(request.url);
+                return pathname.startsWith('/assets/') && !live.has(pathname);
+            })
+            .map(request => cache.delete(request))
+    ));
+}
+
 self.addEventListener('fetch', (event) => {
     const { request } = event;
 
@@ -79,7 +99,14 @@ self.addEventListener('fetch', (event) => {
                 .then((response) => {
                     if (response.ok) {
                         const copy = response.clone();
-                        caches.open(CACHE).then(cache => cache.put(OFFLINE_FALLBACK, copy));
+                        const forPrune = response.clone();
+                        // Ошибка уборки не должна ломать навигацию: в худшем
+                        // случае старый бандл полежит до следующего раза.
+                        caches.open(CACHE)
+                            .then(cache => cache.put(OFFLINE_FALLBACK, copy)
+                                .then(() => forPrune.text())
+                                .then(html => pruneAssets(cache, html)))
+                            .catch(() => {});
                     }
                     return response;
                 })

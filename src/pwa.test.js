@@ -6,7 +6,7 @@
 // уже не работает: манифест разъехался с иконками, у иконки не тот размер,
 // service worker начал кешировать API.
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -127,12 +127,20 @@ describe('Service worker', () => {
         };
 
         cacheStore = new Map();
+        // Настоящий кеш хранит абсолютные адреса, даже если положили '/'.
+        const absolute = (key) => new URL(key, 'https://budget.example/').href;
         const cache = {
             add: async () => {},
             put: async (request, response) => {
                 cacheStore.set(typeof request === 'string' ? request : request.url, response);
             },
-            match: async (request) => cacheStore.get(typeof request === 'string' ? request : request.url)
+            match: async (request) => cacheStore.get(typeof request === 'string' ? request : request.url),
+            keys: async () => [...cacheStore.keys()].map(key => ({ url: absolute(key) })),
+            delete: async (request) => {
+                const target = absolute(typeof request === 'string' ? request : request.url);
+                const key = [...cacheStore.keys()].find(candidate => absolute(candidate) === target);
+                return key === undefined ? false : cacheStore.delete(key);
+            }
         };
         const caches = {
             open: async () => cache,
@@ -229,5 +237,70 @@ describe('Service worker', () => {
         fetchImpl = async () => { throw new Error('офлайн'); };
         const offline = await dispatchFetch('https://budget.example/', { mode: 'navigate' }).response;
         expect(offline).toEqual({ from: 'page' });
+    });
+
+    describe('уборка старых бандлов', () => {
+        const ORIGIN = 'https://budget.example';
+
+        // Уборка запускается без ожидания (как и сама запись в кеш), поэтому
+        // тесту нужно дать цепочке промисов отработать.
+        async function settle() {
+            for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        function pageWith(html) {
+            return { ok: true, text: async () => html, clone: () => ({ from: 'page', text: async () => html }) };
+        }
+
+        beforeEach(() => {
+            cacheStore.clear();
+            cacheStore.set('/', { from: 'old-page' });
+            cacheStore.set(`${ORIGIN}/icon-192.png`, { from: 'icon' });
+            cacheStore.set(`${ORIGIN}/manifest.webmanifest`, { from: 'manifest' });
+            cacheStore.set(`${ORIGIN}/assets/index-old.js`, { from: 'old-js' });
+            cacheStore.set(`${ORIGIN}/assets/index-old.css`, { from: 'old-css' });
+            cacheStore.set(`${ORIGIN}/assets/index-new.js`, { from: 'new-js' });
+        });
+
+        it('после удачной загрузки страницы удаляет бандлы, на которые она уже не ссылается', async () => {
+            // Хеши меняются с каждой сборкой, а сам кеш при выкате не
+            // переименовывается: без уборки старые бандлы копились бы вечно.
+            fetchImpl = async () => pageWith(
+                '<script src="/assets/index-new.js"></script><link href="/assets/index-new.css">'
+            );
+
+            await dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' }).response;
+            await settle();
+
+            expect(cacheStore.has(`${ORIGIN}/assets/index-old.js`)).toBe(false);
+            expect(cacheStore.has(`${ORIGIN}/assets/index-old.css`)).toBe(false);
+            // Живой бандл, оболочка и не-бандлы остаются.
+            expect(cacheStore.has(`${ORIGIN}/assets/index-new.js`)).toBe(true);
+            expect(cacheStore.get('/').from).toBe('page');
+            expect(cacheStore.has(`${ORIGIN}/icon-192.png`)).toBe(true);
+            expect(cacheStore.has(`${ORIGIN}/manifest.webmanifest`)).toBe(true);
+        });
+
+        it('если страница не ссылается ни на один бандл, ничего не удаляет', async () => {
+            // Неожиданный 200 (заглушка, страница ошибки) не повод судить,
+            // что в кеше устарело.
+            fetchImpl = async () => pageWith('<html><body>Технические работы</body></html>');
+            const before = [...cacheStore.keys()].sort();
+
+            await dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' }).response;
+            await settle();
+
+            expect([...cacheStore.keys()].sort()).toEqual(before);
+        });
+
+        it('офлайн ничего не удаляет', async () => {
+            fetchImpl = async () => { throw new Error('офлайн'); };
+            const before = [...cacheStore.keys()].sort();
+
+            await dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' }).response;
+            await settle();
+
+            expect([...cacheStore.keys()].sort()).toEqual(before);
+        });
     });
 });

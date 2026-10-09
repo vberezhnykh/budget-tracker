@@ -849,7 +849,13 @@ if (process.env.NODE_ENV === 'production') {
         app.use(express.static(distPath, {
             maxAge: '1h',
             setHeaders: (res, filePath) => {
-                // Never cache index.html even if requested directly.
+                // index.html и sw.js - no-cache, а не no-store: браузер всё
+                // равно сверяется с сервером при каждом заходе, но в ответ
+                // получает короткий 304 по ETag/Last-Modified (их по
+                // умолчанию шлёт express.static) вместо файла целиком, а
+                // no-store ещё и отключает bfcache в части браузеров.
+                // index.html - статичная оболочка без данных пользователя,
+                // прятать её от диска незачем.
                 //
                 // sw.js - по той же причине, но следствия у неё другие:
                 // браузер сверяет воркер с сервером при каждом заходе, и
@@ -857,7 +863,14 @@ if (process.env.NODE_ENV === 'production') {
                 // сидит под старым воркером. Имя файла при этом не
                 // хешируется (адрес /sw.js зафиксирован в регистрации), так
                 // что отличить новую версию по адресу нельзя.
-                if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+                if (filePath === path.join(distPath, 'index.html') || filePath.endsWith('sw.js')) {
+                    res.setHeader('Cache-Control', 'no-cache');
+                } else if (filePath.endsWith('.html')) {
+                    // Остальные страницы - банковские (dist/banking): в адресе
+                    // callback.html лежит одноразовый код авторизации. Роутер
+                    // банка ставит no-store раньше, но setHeaders express.static
+                    // срабатывает позже и перезаписал бы его, так что строгие
+                    // заголовки держим здесь.
                     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
                     res.setHeader('Pragma', 'no-cache');
                     res.setHeader('Expires', '0');
@@ -865,13 +878,11 @@ if (process.env.NODE_ENV === 'production') {
             }
         }));
 
-        // SPA fallback — always serve fresh index.html with no-cache headers
+        // SPA fallback — index.html всегда с ревалидацией (см. комментарий выше)
         app.get('*', (req, res) => {
             const indexPath = path.join(distPath, 'index.html');
             if (fs.existsSync(indexPath)) {
-                res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-                res.setHeader('Pragma', 'no-cache');
-                res.setHeader('Expires', '0');
+                res.setHeader('Cache-Control', 'no-cache');
                 res.sendFile(indexPath);
             } else {
                 console.error(`❌ index.html not found in dist: ${indexPath}`);
