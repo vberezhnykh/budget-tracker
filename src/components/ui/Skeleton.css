@@ -34,11 +34,23 @@
 .skeleton-chart { margin-top: var(--space-4); align-items: flex-start; }
 .skeleton-bars { height: 160px; display: flex; align-items: flex-end; gap: var(--space-3); width: 100%; }
 .skeleton-bars > .skeleton { flex: 1; min-width: 0; }
-.skeleton-header { margin-bottom: var(--space-6); }
-.skeleton-brand { display: grid; justify-items: center; gap: var(--space-2); margin-bottom: var(--space-8); }
-.skeleton-account { width: 88%; margin: auto; padding: var(--space-6) var(--space-4); box-sizing: border-box; display: grid; justify-items: center; gap: var(--space-3); background: var(--color-surface-inset); border-radius: var(--radius-xl); }
-.skeleton-dots { display: flex; justify-content: center; gap: var(--space-4); margin-top: var(--space-5); }
-.skeleton-actions { margin-bottom: var(--space-6); }
+
+/* Скелет запуска: повторяет Обзор (шапка, главная карточка, счета, операции). */
+.skeleton-app-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 44px; margin-bottom: var(--space-3); }
+.skeleton-pill { border-radius: var(--radius-pill); }
+.skeleton-hero { display: flex; flex-direction: column; gap: var(--space-4); margin-bottom: var(--space-6); }
+.skeleton-hero-main { display: grid; justify-items: start; gap: var(--space-2); }
+.skeleton-hero-bar-line { margin-top: var(--space-2); }
+.skeleton-hero-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--color-border-subtle); }
+.skeleton-hero-column { display: grid; justify-items: start; gap: var(--space-1); }
+.skeleton-section-accounts { margin-bottom: var(--space-6); }
+.skeleton-section-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 44px; }
+/* Ряд выходит за правый край на боковой отступ страницы и обрезается, как лента счетов. */
+.skeleton-strip { display: flex; gap: var(--space-3); overflow: hidden; margin-right: calc(-1 * var(--space-5)); padding: var(--space-0-5) 0; }
+.skeleton-chip { flex: 0 0 150px; box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); padding: var(--space-3) var(--space-4); border-radius: var(--radius-lg); background: var(--color-surface); }
+/* Заглушка нижней панели: ту же высоту занимает настоящая BottomNav. */
+.skeleton-chip > :first-child { margin-bottom: var(--space-1); }
+.skeleton-nav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 800; box-sizing: border-box; background: var(--color-surface); border-top: 1px solid var(--color-border); }
 
 @keyframes skeleton-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) {

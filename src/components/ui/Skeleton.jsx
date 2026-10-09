@@ -1,5 +1,6 @@
 import './Skeleton.css';
 import Card from './Card';
+import { NAV_OFFSET } from '../BottomNav';
 
 function Skeleton({ width = '100%', height = 16, className = '' }) {
   return <div aria-hidden="true" className={`skeleton ${className}`} style={{ width, height }} />;
@@ -12,13 +13,19 @@ function LoadingSkeleton({ label, className = '', children }) {
   </div>;
 }
 
+// Строки списка: плитка 40px, две строки текста и сумма. Общие для
+// ListSkeleton и для скелета запуска.
+function SkeletonRows({ rows, amounts }) {
+  return Array.from({ length: rows }, (_, index) => <div className="skeleton-row" key={index}>
+    <Skeleton width={40} height={40} className="skeleton-avatar" />
+    <div className="skeleton-row-copy"><Skeleton width={`${72 - index % 3 * 12}%`} /><Skeleton width="42%" height={11} /></div>
+    {amounts && <Skeleton width={66} height={18} />}
+  </div>);
+}
+
 export function ListSkeleton({ label, rows = 3, amounts = true }) {
   return <LoadingSkeleton label={label}>
-    {Array.from({ length: rows }, (_, index) => <div className="skeleton-row" key={index}>
-      <Skeleton width={40} height={40} className="skeleton-avatar" />
-      <div className="skeleton-row-copy"><Skeleton width={`${72 - index % 3 * 12}%`} /><Skeleton width="42%" height={11} /></div>
-      {amounts && <Skeleton width={66} height={18} />}
-    </div>)}
+    <SkeletonRows rows={rows} amounts={amounts} />
   </LoadingSkeleton>;
 }
 
@@ -45,16 +52,47 @@ export function SummarySkeleton({ monthly = true, limitBar = true, analytics = f
   </LoadingSkeleton>;
 }
 
+// Скелет запуска повторяет вкладку «Обзор» (OverviewScreen): шапка с периодом,
+// главная карточка, лента счетов и последние операции - в тех же размерах и с
+// теми же отступами, чтобы при появлении данных ничего не прыгало.
+// Нижней панели во время загрузки нет (App отдаёт AppSkeleton вместо всего
+// экрана), поэтому на её месте стоит статичная полоса той же высоты.
 export function AppSkeleton() {
-  return <div className="layout-container" aria-busy="true">
+  return <div className="layout-container skeleton-app" aria-busy="true" style={{ paddingBottom: `calc(${NAV_OFFSET} + var(--space-4))` }}>
     <LoadingSkeleton label="Загрузка приложения…">
-      <Card padding="lg" className="skeleton-header">
-        <div className="skeleton-brand"><Skeleton width={190} height={30} /><Skeleton width={150} height={10} /></div>
-        <div className="skeleton-account"><Skeleton width={110} height={12} /><Skeleton width={180} height={36} /></div>
-        <div className="skeleton-dots">{[0, 1, 2].map(key => <Skeleton key={key} width={8} height={8} />)}</div>
+      <div className="skeleton-app-header"><Skeleton width={140} height={28} /><Skeleton width={110} height={14} /></div>
+
+      <Card padding="none" className="skeleton-hero" style={{ padding: 'var(--space-5)' }}>
+        <div className="skeleton-hero-main">
+          <Skeleton width={150} height={17} />
+          <Skeleton width={180} height={40} />
+        </div>
+        <div>
+          <Skeleton width="100%" height={10} className="skeleton-pill" />
+          <div className="skeleton-limit-row skeleton-hero-bar-line"><Skeleton width={120} height={17} /><Skeleton width={36} height={17} /></div>
+        </div>
+        <div className="skeleton-hero-columns">
+          {[0, 1].map(key => <div key={key} className="skeleton-hero-column"><Skeleton width={44} height={14} /><Skeleton width={96} height={23} /></div>)}
+        </div>
       </Card>
-      <div className="skeleton-columns skeleton-actions"><Skeleton height={44} /><Skeleton height={44} /><Skeleton height={44} /></div>
+
+      <section className="skeleton-section skeleton-section-accounts">
+        <div className="skeleton-section-header"><Skeleton width={72} height={18} /><Skeleton width={76} height={14} /></div>
+        <div className="skeleton-strip">
+          {[0, 1, 2].map(key => <div key={key} className="skeleton-chip">
+            <Skeleton width={32} height={32} />
+            <Skeleton width={64} height={16} />
+            <Skeleton width={92} height={21} />
+          </div>)}
+        </div>
+      </section>
+
+      <section className="skeleton-section">
+        <div className="skeleton-section-header"><Skeleton width={152} height={18} /><Skeleton width={82} height={14} /></div>
+        <Card padding="none" className="skeleton-recent" style={{ padding: 'var(--space-3) var(--space-4)', overflow: 'hidden' }}><SkeletonRows rows={3} amounts /></Card>
+      </section>
     </LoadingSkeleton>
-    <SummarySkeleton />
+    {/* Заглушка нижней панели: статичная, без пульсации, и скрыта от чтения. */}
+    <div aria-hidden="true" className="skeleton-nav" style={{ height: NAV_OFFSET }} />
   </div>;
 }

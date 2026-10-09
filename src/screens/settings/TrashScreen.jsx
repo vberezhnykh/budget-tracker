@@ -131,11 +131,6 @@ function TrashCard({ group, pendingAction, confirming, onRestore, onAskPurge, on
                 ? `Удалить навсегда все части (${groupCount(group)})? Вернуть их будет нельзя.`
                 : 'Удалить навсегда? Вернуть будет нельзя.'}
             </span>
-            {/* Сервер при удалении навсегда возвращает связанный оплаченный
-                план в ожидающие (server/trash.js), поэтому оговорка остаётся. */}
-            <span style={{ fontSize: 'var(--text-xs)' }}>
-              Связанный оплаченный план, если он есть, снова станет ожидающим.
-            </span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
             <Button

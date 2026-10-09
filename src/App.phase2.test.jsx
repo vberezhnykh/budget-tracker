@@ -284,7 +284,8 @@ describe('App phase 2 flows', () => {
     fireEvent.click(within(oldB).getByRole('button', { name: /^Удалить навсегда/ }));
     expect(api.state.trash).toHaveLength(1);
     const confirmation = within(oldB).getByRole('group', { name: /^Подтверждение удаления/ });
-    expect(confirmation).toHaveTextContent('Связанный оплаченный план, если он есть, снова станет ожидающим');
+    expect(confirmation).toHaveTextContent('Удалить навсегда? Вернуть будет нельзя.');
+    expect(confirmation).not.toHaveTextContent('план');
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Удалить' }));
     await waitFor(() => expect(api.state.trash).toHaveLength(0));
     expect(confirm).not.toHaveBeenCalled();
