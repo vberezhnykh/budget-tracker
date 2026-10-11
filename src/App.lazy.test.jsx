@@ -57,7 +57,7 @@ describe('lazy budget reads', () => {
     expect(history.queryByRole('button', { name: 'Загрузить еще' })).not.toBeInTheDocument();
     fireEvent.click(history.getByRole('button', { name: /^Покупка 0,/ }));
     expect(screen.getByRole('dialog', { name: 'Редактировать' })).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('0')).toHaveValue(10);
+    expect(screen.getByPlaceholderText('0')).toHaveValue('10');
     // Подгрузка страниц итоги не трогает.
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Обзор' }));

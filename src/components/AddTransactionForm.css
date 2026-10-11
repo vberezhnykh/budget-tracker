@@ -2,15 +2,6 @@
    Псевдоэлементы инлайном не задать, поэтому они здесь. */
 .transaction-amount-input {
   font-family: inherit;
-  -moz-appearance: textfield;
-  appearance: textfield;
-}
-
-/* Стрелки number-поля при кегле 3rem занимали бы пол-поля. */
-.transaction-amount-input::-webkit-outer-spin-button,
-.transaction-amount-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
 }
 
 .transaction-amount-input::placeholder {

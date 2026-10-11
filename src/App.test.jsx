@@ -515,7 +515,7 @@ describe('App Integration Tests', () => {
 
         expect(await screen.findByRole('alert')).toHaveTextContent('База временно недоступна');
         expect(screen.getByRole('dialog', { name: 'Новый расход' })).toBeInTheDocument();
-        expect(screen.getByPlaceholderText('0')).toHaveValue(25);
+        expect(screen.getByPlaceholderText('0')).toHaveValue('25');
         expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions' && options?.method === 'POST')).toHaveLength(1);
     });
 

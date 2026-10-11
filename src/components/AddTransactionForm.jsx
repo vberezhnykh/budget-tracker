@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, X } from 'lucide-react';
+import { Calculator, ChevronDown, X } from 'lucide-react';
 import CompanyField from './CompanyField';
 import Field, { FormLabel } from './ui/Field'
 import Sheet from './ui/Sheet'
@@ -17,6 +17,15 @@ import useSplits from './transaction-form/useSplits'
 import useDescriptionSuggestions from './transaction-form/useDescriptionSuggestions'
 import { buildSubmission } from './transaction-form/buildSubmission'
 import { getLimitHint } from './transaction-form/limitHint'
+import {
+    AMOUNT_ERROR_TEXT,
+    appendOperator,
+    evaluateAmount,
+    formatAmountForInput,
+    hasOperator,
+    sanitizeAmountInput,
+} from './transaction-form/amountExpression'
+import { formatMoney } from '../utils/money';
 import { saveCompanySelection } from '../utils/companies';
 import { toLocalDateInput } from '../utils/period';
 import './AddTransactionForm.css';
@@ -27,6 +36,34 @@ const SAVE_LABELS = { expense: 'Сохранить расход', income: 'Со�
 
 // Поля формы: высота 48px и тот же радиус, что у чипов (задаёт сам Field).
 const FORM_FIELD_STYLE = { width: '100%', minHeight: '48px' };
+
+// Кнопки под полем суммы: знак в строке и подпись для экранного диктора.
+// «Делить», а не «Разделить»: так называется переключатель разделения
+// операции по категориям, и диктор не должен путать две кнопки.
+const CALC_OPERATORS = [
+    { symbol: '+', label: 'Плюс' },
+    { symbol: '−', label: 'Минус' },
+    { symbol: '×', label: 'Умножить' },
+    { symbol: '÷', label: 'Делить' },
+];
+
+// Кегль поля суммы: длинное выражение иначе вылезло бы за лист.
+const amountFontSize = (length) => (length <= 7 ? '3rem' : length <= 12 ? '2.375rem' : '1.875rem');
+
+// Кнопки калькулятора: высота 44px и радиус чипов, как у остальных
+// нажимаемых элементов формы.
+const CALC_BUTTON_STYLE = {
+    height: '44px',
+    padding: 0,
+    border: 'none',
+    borderRadius: 'var(--radius-md)',
+    background: 'var(--color-surface-inset)',
+    color: 'var(--color-text-main)',
+    fontSize: '1.375rem',
+    fontWeight: 'var(--weight-label)',
+    lineHeight: 1,
+    cursor: 'pointer',
+};
 
 // Сообщение об ошибке заканчивается точкой, чтобы за ним можно было
 // дописать следующую фразу.
@@ -83,6 +120,16 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         excludeFromStats: false
     });
 
+    // Сумма может быть выражением («100−30»), поэтому везде, где нужно число,
+    // берём amountValue, а не formData.amount. При ошибке числа нет: ни в
+    // разделение, ни в подсказку лимита негодный итог попадать не должен.
+    const amountCalc = evaluateAmount(formData.amount);
+    const amountValue = amountCalc.error ? null : amountCalc.value;
+    const [amountFocused, setAmountFocused] = useState(false);
+    // Исходное выражение после «=»: показываем плашкой, чтобы было видно,
+    // откуда сумма. В операцию оно не попадает.
+    const [lastExpression, setLastExpression] = useState('');
+
     const [companyLogoChanged, setCompanyLogoChanged] = useState(false);
     // Не сохранилось: причина и слепок формы на тот момент. Пока форма не
     // изменилась, плашка стоит над кнопкой, а кнопка зовёт «ещё раз»; любая
@@ -98,7 +145,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     // Split Logic
     const [isSplit, setIsSplit] = useState(false);
-    const split = useSplits(formData.amount);
+    const split = useSplits(amountValue ?? '');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Свежее состояние формы для слепка ошибки: правка во время запроса
@@ -124,7 +171,8 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     // submit handler (so the gate can't be bypassed some other way, e.g. an
     // Enter keypress). Transfers require two distinct existing accounts.
     const isSaveDisabled = isSubmitting
-        || !(parseFloat(formData.amount) > 0)
+        || amountCalc.error
+        || !(amountValue > 0)
         || (!isTransfer && !formData.account)
         || (isTransfer && (formData.account === formData.toAccount
             || !accounts.some(a => a._id === formData.account)
@@ -143,7 +191,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
             const savedForm = formData.type === 'expense' && formData.companyName?.trim() && (!formData.companyId || companyLogoChanged)
                 ? await saveCompanySelection(formData, { request: apiFetch || fetch, logoChanged: companyLogoChanged })
                 : formData;
-            const submission = onSubmit(buildSubmission({ formData, savedForm, splits: split.splits, isSplit, initialData }));
+            const submission = onSubmit(buildSubmission({ formData: { ...formData, amount: amountValue }, savedForm, splits: split.splits, isSplit, initialData }));
             const result = submission && typeof submission.then === 'function'
                 ? await submission
                 : submission;
@@ -231,16 +279,36 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         date: formData.date,
         monthlyLimit,
         monthExpense,
-        amount: formData.amount,
+        amount: amountValue ?? '',
     });
 
     // «Разделить» предлагается, когда есть что делить; уже начатое разделение
     // можно отменить всегда, иначе очистка суммы заперла бы форму в нём.
-    const canToggleSplit = isSplit || (!initialData && formData.amount && parseFloat(formData.amount) > 0);
+    const canToggleSplit = isSplit || (!initialData && amountValue > 0);
 
     // Ширина поля суммы следует за введённым: так «€» стоит вплотную к числу,
     // а группа остаётся по центру листа.
-    const amountWidth = `${Math.min(Math.max(String(formData.amount).length, 4), 10) + 1}ch`;
+    // Для длинного выражения потолок выше: кегль там мельче, а maxWidth всё
+    // равно не даст полю выйти за лист.
+    const amountLength = String(formData.amount).length;
+    const amountWidth = `${Math.min(Math.max(amountLength, 4), 20) + 1}ch`;
+
+    // Выражение заменяется итогом. Висящий знак («100−») - не выражение,
+    // он просто отбрасывается без плашки.
+    const collapse = () => {
+        if (!hasOperator(formData.amount) || amountCalc.error || amountCalc.value == null) return;
+        if (amountCalc.isExpression) setLastExpression(String(formData.amount));
+        setFormData(prev => ({ ...prev, amount: formatAmountForInput(amountCalc.value) }));
+    };
+
+    // Правка суммы руками или кнопкой делает плашку со старым выражением
+    // неправдой, поэтому снимаем её.
+    const changeAmount = (amount) => {
+        setLastExpression('');
+        setFormData(prev => ({ ...prev, amount }));
+    };
+
+    const canCalculate = amountCalc.isExpression && !amountCalc.error;
 
     return (
         <Sheet ariaLabel={getTitle()} onClose={requestClose}>
@@ -281,12 +349,14 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             <Field
                                 id="transaction-amount"
                                 className="transaction-amount-input"
-                                type="number"
+                                type="text"
                                 inputMode="decimal"
-                                step="0.01"
+                                autoComplete="off"
                                 placeholder="0"
                                 value={formData.amount}
-                                onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                                onChange={e => changeAmount(sanitizeAmountInput(e.target.value))}
+                                onFocus={() => setAmountFocused(true)}
+                                onBlur={() => { setAmountFocused(false); collapse(); }}
                                 style={{
                                     width: amountWidth,
                                     maxWidth: 'calc(100% - 3rem)',
@@ -294,13 +364,92 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                     border: 'none',
                                     background: 'transparent',
                                     textAlign: 'center',
-                                    fontSize: '3rem',
+                                    fontSize: amountFontSize(amountLength),
                                     fontWeight: 'var(--weight-strong)',
                                     letterSpacing: '-1.5px',
                                     lineHeight: 1.2,
                                 }}
                             />
                         </div>
+                        {/* Системная клавиатура iOS (inputMode="decimal") знаков
+                            действий не даёт, поэтому они в ряду под числом.
+                            Пока поле в фокусе, ряд на месте. pointerdown и
+                            mousedown гасим: иначе тап по кнопке уводит фокус
+                            с поля, и клавиатура закрывается раньше, чем
+                            сработает click. По той же причине «=» не
+                            disabled, а aria-disabled: у disabled-кнопки
+                            pointerdown не приходит, и тап увёл бы фокус. */}
+                        {amountFocused && (
+                            <div
+                                role="group"
+                                aria-label="Калькулятор"
+                                style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}
+                            >
+                                {CALC_OPERATORS.map(({ symbol, label }) => (
+                                    <button
+                                        key={symbol}
+                                        type="button"
+                                        aria-label={label}
+                                        onPointerDown={e => e.preventDefault()}
+                                        onMouseDown={e => e.preventDefault()}
+                                        onClick={() => { setLastExpression(''); setFormData(prev => ({ ...prev, amount: appendOperator(prev.amount, symbol) })); }}
+                                        style={CALC_BUTTON_STYLE}
+                                    >
+                                        {symbol}
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    aria-label="Посчитать"
+                                    aria-disabled={!canCalculate}
+                                    onPointerDown={e => e.preventDefault()}
+                                    onMouseDown={e => e.preventDefault()}
+                                    onClick={() => { if (canCalculate) collapse(); }}
+                                    style={{
+                                        ...CALC_BUTTON_STYLE,
+                                        background: canCalculate ? 'var(--color-primary)' : 'var(--color-surface-inset)',
+                                        color: canCalculate ? 'var(--color-text-inverse)' : 'var(--color-text-subtle)',
+                                    }}
+                                >
+                                    =
+                                </button>
+                            </div>
+                        )}
+                        {amountCalc.error ? (
+                            <p
+                                data-testid="amount-error"
+                                style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-sm)', textAlign: 'center', color: 'var(--color-negative)' }}
+                            >
+                                {AMOUNT_ERROR_TEXT[amountCalc.error]}
+                            </p>
+                        ) : amountCalc.isExpression ? (
+                            <p
+                                data-testid="amount-result"
+                                style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-2xl)', fontWeight: 'var(--weight-strong)', textAlign: 'center', color: 'var(--color-primary)' }}
+                            >
+                                = {formatMoney(amountCalc.value)}
+                            </p>
+                        ) : lastExpression ? (
+                            <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--space-2)' }}>
+                                <span
+                                    data-testid="amount-expression"
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 'var(--space-1-5)',
+                                        height: '26px',
+                                        padding: '0 var(--space-3)',
+                                        borderRadius: 'var(--radius-pill)',
+                                        background: 'var(--color-surface-inset)',
+                                        color: 'var(--color-text-muted)',
+                                        fontSize: 'var(--text-sm)',
+                                    }}
+                                >
+                                    <Calculator size={14} aria-hidden="true" />
+                                    {lastExpression}
+                                </span>
+                            </div>
+                        ) : null}
                         {limitHint && (
                             <p
                                 data-testid="limit-hint"

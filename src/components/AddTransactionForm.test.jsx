@@ -192,7 +192,7 @@ describe('AddTransactionForm Component', () => {
 
         await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
         expect(onClose).not.toHaveBeenCalled();
-        expect(screen.getByPlaceholderText('0')).toHaveValue(50.5);
+        expect(screen.getByPlaceholderText('0')).toHaveValue('50.5');
         expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeEnabled();
     });
 
@@ -217,7 +217,7 @@ describe('AddTransactionForm Component', () => {
             expect(onClose).not.toHaveBeenCalled();
 
             // всё введённое на месте
-            expect(screen.getByPlaceholderText('0')).toHaveValue(50.5);
+            expect(screen.getByPlaceholderText('0')).toHaveValue('50.5');
             expect(screen.getByPlaceholderText('Необязательно')).toHaveValue('Билеты');
             expect(screen.getByRole('button', { name: 'Транспорт' })).toHaveAttribute('aria-pressed', 'true');
             expect(screen.getByRole('button', { name: 'Карта', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -916,6 +916,150 @@ describe('AddTransactionForm Component', () => {
             expect(await screen.findByRole('alert')).toHaveTextContent('Категория уже существует');
             expect(screen.getByPlaceholderText('Название...')).toHaveValue('Кофе');
             expect(onAddCategory).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('calculator', () => {
+        const props = { categories: mockCategories, accounts: mockAccounts, onClose: mockOnClose, onSubmit: mockOnSubmit };
+        const amountField = () => screen.getByPlaceholderText('0');
+        const calc = () => screen.getByRole('group', { name: 'Калькулятор' });
+        const calcButton = name => within(calc()).getByRole('button', { name });
+        const type = value => fireEvent.change(amountField(), { target: { value } });
+        const pickCategoryAndAccount = () => {
+            fireEvent.click(screen.getByText('Продукты'));
+            fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
+        };
+
+        it('shows the button row while the amount is focused and hides it on blur', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            expect(screen.queryByRole('group', { name: 'Калькулятор' })).not.toBeInTheDocument();
+
+            fireEvent.focus(amountField());
+            expect(within(calc()).getAllByRole('button').map(b => b.getAttribute('aria-label')))
+                .toEqual(['Плюс', 'Минус', 'Умножить', 'Делить', 'Посчитать']);
+
+            fireEvent.blur(amountField());
+            expect(screen.queryByRole('group', { name: 'Калькулятор' })).not.toBeInTheDocument();
+        });
+
+        it('keeps the field focused when a button is pressed', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            fireEvent.focus(amountField());
+            // fireEvent возвращает false, если обработчик вызвал preventDefault
+            expect(fireEvent.pointerDown(calcButton('Плюс'))).toBe(false);
+            expect(fireEvent.mouseDown(calcButton('Посчитать'))).toBe(false);
+        });
+
+        it('shows the typed expression and its result, and counts the limit hint from the result', () => {
+            render(<AddTransactionForm type="expense" {...props} monthlyLimit={2000} monthExpense={1500} />);
+            type('100-30');
+            expect(amountField()).toHaveValue('100−30');
+            expect(screen.getByTestId('amount-result')).toHaveTextContent('= €70,00');
+            expect(screen.getByTestId('limit-hint')).toHaveTextContent('После него можно потратить €430,00');
+        });
+
+        it('submits only the number when saved without pressing «=»', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('100-30');
+            pickCategoryAndAccount();
+            fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
+            expect(mockOnSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ amount: 70 }));
+        });
+
+        it('appends an operator from the button and replaces it on the next press', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('100');
+            fireEvent.focus(amountField());
+            fireEvent.click(calcButton('Минус'));
+            expect(amountField()).toHaveValue('100−');
+            fireEvent.click(calcButton('Плюс'));
+            expect(amountField()).toHaveValue('100+');
+            // висящий знак - ещё не выражение
+            expect(screen.queryByTestId('amount-result')).not.toBeInTheDocument();
+        });
+
+        it('collapses the expression into the result on «=» and keeps it as a chip', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('100-30');
+            fireEvent.focus(amountField());
+            expect(calcButton('Посчитать')).toHaveAttribute('aria-disabled', 'false');
+            fireEvent.click(calcButton('Посчитать'));
+            expect(amountField()).toHaveValue('70');
+            expect(screen.queryByTestId('amount-result')).not.toBeInTheDocument();
+            expect(screen.getByTestId('amount-expression')).toHaveTextContent('100−30');
+        });
+
+        it('does nothing on «=» without an expression', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('100');
+            fireEvent.focus(amountField());
+            expect(calcButton('Посчитать')).toHaveAttribute('aria-disabled', 'true');
+            fireEvent.click(calcButton('Посчитать'));
+            expect(amountField()).toHaveValue('100');
+            expect(screen.queryByTestId('amount-expression')).not.toBeInTheDocument();
+        });
+
+        it('collapses the expression when the field loses focus', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            fireEvent.focus(amountField());
+            type('12,5*3');
+            fireEvent.blur(amountField());
+            expect(amountField()).toHaveValue('37,5');
+            expect(screen.getByTestId('amount-expression')).toHaveTextContent('12,5×3');
+        });
+
+        it('drops a dangling operator on blur without a chip', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            fireEvent.focus(amountField());
+            type('100-');
+            fireEvent.blur(amountField());
+            expect(amountField()).toHaveValue('100');
+            expect(screen.queryByTestId('amount-expression')).not.toBeInTheDocument();
+        });
+
+        it('removes the chip when the field is edited', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('100-30');
+            fireEvent.blur(amountField());
+            expect(screen.getByTestId('amount-expression')).toBeInTheDocument();
+            type('75');
+            expect(screen.queryByTestId('amount-expression')).not.toBeInTheDocument();
+        });
+
+        it('enables saving for a valid expression once category and account are picked', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('100-30');
+            pickCategoryAndAccount();
+            expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeEnabled();
+        });
+
+        it('explains division by zero and blocks saving', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('10/0');
+            expect(screen.getByTestId('amount-error')).toHaveTextContent('На ноль делить нельзя');
+            expect(screen.queryByTestId('amount-result')).not.toBeInTheDocument();
+            // категория и счёт выбраны: заблокировать может только сумма
+            pickCategoryAndAccount();
+            expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeDisabled();
+        });
+
+        it('explains a result that is not above zero and blocks saving', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('10-20');
+            expect(screen.getByTestId('amount-error')).toHaveTextContent('Сумма должна быть больше нуля');
+            pickCategoryAndAccount();
+            expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeDisabled();
+        });
+
+        it('splits the calculated amount', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('100-30');
+            // поле не в фокусе, ряд калькулятора скрыт: «Разделить» только одна
+            fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
+            const [first, second] = screen.getAllByPlaceholderText('Сумма');
+            fireEvent.change(first, { target: { value: '40' } });
+            fireEvent.change(second, { target: { value: '30' } });
+            expect(screen.getByText('€0,00')).toBeInTheDocument();
         });
     });
 });
