@@ -94,11 +94,11 @@ describe('Заголовки безопасности', () => {
         expect(csp['worker-src']).toEqual(["'self'"]);
     });
 
-    it('пускает логотипы только с Logo.dev, не расширяя доступ к API', async () => {
+    it('пускает логотипы только с Logo.dev и фото чека из памяти страницы, не расширяя доступ к API', async () => {
         const res = await request(app).get('/api/health');
         const csp = parseCsp(res.headers['content-security-policy']);
 
-        expect(csp['img-src']).toEqual(["'self'", 'data:', 'https://img.logo.dev']);
+        expect(csp['img-src']).toEqual(["'self'", 'data:', 'blob:', 'https://img.logo.dev']);
         expect(csp['connect-src']).toEqual(["'self'"]);
         expect(res.headers['referrer-policy']).toBe('no-referrer');
     });

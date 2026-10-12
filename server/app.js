@@ -103,8 +103,10 @@ app.use(helmet({
             fontSrc: ["'self'", 'https://fonts.gstatic.com'],
 
             // data: нужен иконкам, которые Vite инлайнит в сборке мелкими.
+            // blob: - миниатюра и просмотр фото чека (URL.createObjectURL):
+            // картинка живёт только в памяти страницы и никуда не уходит.
             // Logo.dev загружается напрямую через <img>; API остаётся своим.
-            imgSrc: ["'self'", 'data:', 'https://img.logo.dev'],
+            imgSrc: ["'self'", 'data:', 'blob:', 'https://img.logo.dev'],
 
             // Запросы уходят только на свой origin: в проде фронт и API на
             // одном домене, в разработке - через прокси Vite.

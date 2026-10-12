@@ -148,9 +148,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const isTransfer = formData.type === 'transfer';
 
-    // Ввод фразой: слепок формы до заполнения нужен для «Вернуть как было»,
-    // quickBusy приглушает форму, пока идёт запрос, а quickFilled помнит, что
-    // поля заполнены фразой: только тогда пустой счёт подсвечивается.
+    // Ввод фразой и фото чека: слепок формы (поля, режим разделения и части)
+    // до заполнения нужен для «Вернуть как было», quickBusy приглушает форму,
+    // пока идёт запрос, а quickFilled помнит, что поля заполнены черновиком:
+    // только тогда пустой счёт подсвечивается.
     const [quickBusy, setQuickBusy] = useState(false);
     const [quickFilled, setQuickFilled] = useState(false);
     const quickSnapshotRef = useRef(null);
@@ -324,9 +325,16 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const applyDraft = (draft) => {
         // Ответ приходит позже клика: берём свежую форму, а не ту, что была в замыкании
-        const current = latestRef.current.formData;
-        quickSnapshotRef.current = current;
-        setFormData(applyQuickEntryDraft(current, draft, accounts));
+        const current = latestRef.current;
+        quickSnapshotRef.current = { formData: current.formData, isSplit: current.isSplit, splits: current.splits };
+        const next = applyQuickEntryDraft(current.formData, draft, accounts);
+        // Чек с товарами разных категорий приходит уже разделённым: части идут
+        // в разделение, а общая категория пустеет. Любой другой черновик
+        // разделение выключает, иначе поля противоречили бы друг другу.
+        const parts = next.type === 'expense' && Array.isArray(draft.splits) && draft.splits.length >= 2 ? draft.splits : null;
+        if (parts) split.replace(parts);
+        setIsSplit(Boolean(parts));
+        setFormData(parts ? { ...next, category: '' } : next);
         setQuickFilled(true);
         setLastExpression('');
         setCompanyLogoChanged(false);
@@ -336,7 +344,12 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     };
 
     const revertDraft = () => {
-        if (quickSnapshotRef.current) setFormData(quickSnapshotRef.current);
+        const snapshot = quickSnapshotRef.current;
+        if (snapshot) {
+            setFormData(snapshot.formData);
+            setIsSplit(snapshot.isSplit);
+            split.restore(snapshot.splits);
+        }
         quickSnapshotRef.current = null;
         setQuickFilled(false);
         setLastExpression('');
@@ -345,7 +358,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         setUsualCategory('');
     };
 
-    const showQuickEntry = quickEntry && !initialData && !isSplit;
+    const showQuickEntry = quickEntry && !initialData;
     const accountMissing = quickFilled && !isTransfer && !formData.account;
 
     return (
