@@ -1,0 +1,47 @@
+/* Поле ввода чата «Вопросы к данным». Псевдоклассы инлайном не задать. */
+.ask-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-main);
+  font-family: inherit;
+  font-size: var(--text-lg);
+  outline: none;
+}
+
+.ask-input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.ask-send {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  cursor: pointer;
+}
+
+.ask-send:disabled {
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.ask-send--stop {
+  background: var(--color-text-main);
+}
+
+.ask-send:focus-visible,
+.ask-input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

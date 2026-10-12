@@ -66,4 +66,48 @@ describe('AnalyticsScreen', () => {
         // Заголовок вне обёртки ожидания, которая делает содержимое inert.
         expect(screen.getByRole('button', { name: /^Период:/ }).closest('[inert]')).toBeNull();
     });
+
+    describe('карточка «Вопросы к данным»', () => {
+        it('нет карточки, пока вопросы не включены', () => {
+            render(<AnalyticsScreen {...props} />);
+
+            expect(screen.queryByRole('region', { name: 'Вопрос к своим данным' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Спросить о своих расходах' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Сколько ушло на кафе?' })).not.toBeInTheDocument();
+        });
+
+        it('под заголовком: поле-кнопка и две подсказки', () => {
+            render(<AnalyticsScreen {...props} onAsk={() => { }} />);
+
+            const card = within(screen.getByRole('region', { name: 'Вопрос к своим данным' }));
+            expect(card.getAllByRole('button').map(button => button.textContent)).toEqual([
+                'Спросить о своих расходах',
+                'Сколько ушло на кафе?',
+                'Что выросло за месяц?'
+            ]);
+            const heading = screen.getByRole('heading', { level: 1, name: 'Аналитика' });
+            const region = screen.getByRole('region', { name: 'Вопрос к своим данным' });
+            expect(heading.compareDocumentPosition(region) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        });
+
+        it('поле открывает чат без вопроса, подсказка - с вопросом', () => {
+            const onAsk = vi.fn();
+            render(<AnalyticsScreen {...props} onAsk={onAsk} />);
+
+            fireEvent.click(screen.getByRole('button', { name: 'Спросить о своих расходах' }));
+            expect(onAsk).toHaveBeenLastCalledWith();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Что выросло за месяц?' }));
+            expect(onAsk).toHaveBeenLastCalledWith('Что выросло за месяц?');
+            fireEvent.click(screen.getByRole('button', { name: 'Сколько ушло на кафе?' }));
+            expect(onAsk).toHaveBeenLastCalledWith('Сколько ушло на кафе?');
+            expect(onAsk).toHaveBeenCalledTimes(3);
+        });
+
+        it('карточка доступна и пока цифры грузятся', () => {
+            render(<AnalyticsScreen {...props} onAsk={() => { }} summaryFrame={{ pending: true, ready: false, syncWarning: null, isRefreshing: false }} />);
+
+            expect(screen.getByRole('button', { name: 'Спросить о своих расходах' }).closest('[inert]')).toBeNull();
+        });
+    });
 });

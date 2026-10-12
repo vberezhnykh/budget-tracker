@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Экран живёт в location.hash. Вкладки: `#history`, `#analytics`, `#more`;
-// Обзор - без хэша вовсе. Внутренние экраны лежат под вкладкой «Ещё»:
-// `#more/accounts`, `#more/categories`, `#more/trash`. Так обновление
-// страницы возвращает на тот же экран, а ссылку на него можно открыть
-// напрямую.
+// Обзор - без хэша вовсе. Внутренние экраны лежат под своей вкладкой: под «Ещё»
+// - `#more/accounts`, `#more/categories`, `#more/trash`, под «Аналитикой» -
+// `#analytics/ask` (вопросы к данным). Так обновление страницы возвращает на тот
+// же экран, а ссылку на него можно открыть напрямую.
 const TAB_SCREENS = ['history', 'analytics', 'more'];
-const INNER_SCREENS = ['accounts', 'categories', 'trash'];
+const INNER_SCREENS = {
+  more: ['accounts', 'categories', 'trash'],
+  analytics: ['ask'],
+};
 
 // Метка в history.state: эту запись создало приложение (openInner), поэтому
 // «назад» из внутреннего экрана - это history.back() к записи, из которой
@@ -15,14 +18,18 @@ const INNER_SCREENS = ['accounts', 'categories', 'trash'];
 // принадлежать другому сайту, и history.back() увёл бы из приложения.
 const PUSHED_MARK = 'budgetInnerPushed';
 
-// Маршрут - строка вида `overview`, `more`, `more/accounts`. Из неё же
-// выводятся вкладка и внутренний экран, поэтому состояние хука одно и
-// сравнивается как примитив.
+// Маршрут - строка вида `overview`, `more`, `more/accounts`, `analytics/ask`. Из
+// неё же выводятся вкладка и внутренний экран, поэтому состояние хука одно и
+// сравнивается как примитив. Внутренний экран годится только под своей
+// вкладкой: `#history/accounts` - просто «История».
 const readRoute = () => {
   const [tab, inner] = window.location.hash.replace(/^#/, '').split('/');
   if (!TAB_SCREENS.includes(tab)) return 'overview';
-  return tab === 'more' && INNER_SCREENS.includes(inner) ? `more/${inner}` : tab;
+  return INNER_SCREENS[tab]?.includes(inner) ? `${tab}/${inner}` : tab;
 };
+
+// Вкладка, под которой лежит внутренний экран; имена экранов не повторяются.
+const tabOfInner = (name) => TAB_SCREENS.find((tab) => INNER_SCREENS[tab]?.includes(name));
 
 const hashOf = (route) => (route === 'overview' ? '' : `#${route}`);
 
@@ -47,7 +54,7 @@ const stateWith = (pushed) => {
 // по ссылке с другим хэшем.
 //
 // Возвращает { screen, inner, setScreen, openInner, closeInner }: screen -
-// вкладка (у внутреннего экрана это 'more', он подсвечивает «Ещё»), inner -
+// вкладка (у внутреннего экрана это его вкладка, она и подсвечена), inner -
 // имя внутреннего экрана или null.
 export default function useHashScreen() {
   const [route, setRoute] = useState(readRoute);
@@ -95,8 +102,9 @@ export default function useHashScreen() {
   }, [replaceRoute]);
 
   const openInner = useCallback((name) => {
-    if (!INNER_SCREENS.includes(name)) return;
-    const next = `more/${name}`;
+    const tab = tabOfInner(name);
+    if (!tab) return;
+    const next = `${tab}/${name}`;
     if (readRoute() === next) return;
     const { pathname, search } = window.location;
     window.history.pushState(stateWith(true), '', `${pathname}${search}${hashOf(next)}`);
@@ -108,7 +116,10 @@ export default function useHashScreen() {
       // Состояние обновит popstate.
       window.history.back();
     } else {
-      replaceRoute('more');
+      // Назад - на вкладку, под которой лежал экран (страницу открыли сразу
+      // на нём). Без внутреннего экрана - на «Ещё», как и раньше.
+      const [tab] = readRoute().split('/');
+      replaceRoute(INNER_SCREENS[tab] ? tab : 'more');
     }
   }, [replaceRoute]);
 

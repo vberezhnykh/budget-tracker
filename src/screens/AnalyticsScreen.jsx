@@ -1,4 +1,5 @@
 import AnalyticsView from '../components/AnalyticsView';
+import AskCard from '../components/AskCard';
 import PeriodPicker from '../components/PeriodPicker';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import SummaryFrame from './SummaryFrame';
@@ -10,7 +11,11 @@ import SummaryFrame from './SummaryFrame';
 //
 // Счёт для расчёта берётся тот, что выбран на Обзоре: переключателя счетов
 // здесь нет, он остаётся в шапке Обзора.
-export default function AnalyticsScreen({ summaryFrame, ...analyticsProps }) {
+//
+// onAsk есть, только когда включены «Вопросы к данным» (задан ключ Claude):
+// под заголовком появляется карточка входа в чат. Она тоже вне SummaryFrame -
+// вопрос можно задать и пока цифры грузятся.
+export default function AnalyticsScreen({ summaryFrame, onAsk, ...analyticsProps }) {
   const { timeRange, selectedMonth, onChangePeriod } = analyticsProps;
   return (
     <>
@@ -20,6 +25,11 @@ export default function AnalyticsScreen({ summaryFrame, ...analyticsProps }) {
           actions={<PeriodPicker tone="dark" timeRange={timeRange} selectedMonth={selectedMonth} onChange={onChangePeriod} />}
         />
       </div>
+      {onAsk && (
+        <div style={{ marginBottom: 'var(--space-3)' }}>
+          <AskCard onAsk={onAsk} />
+        </div>
+      )}
       <SummaryFrame {...summaryFrame} skeleton={{ monthly: timeRange === 'month', analytics: true }}>
         <AnalyticsView {...analyticsProps} />
       </SummaryFrame>

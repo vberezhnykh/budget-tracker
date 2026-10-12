@@ -219,6 +219,68 @@ describe('useHashScreen', () => {
             expect(pushState).not.toHaveBeenCalled();
         });
 
+        it('reads #analytics/ask as the «Аналитика» tab with the chat inside', () => {
+            window.history.replaceState(null, '', '/#analytics/ask');
+            const { result } = renderHook(() => useHashScreen());
+
+            expect(result.current).toMatchObject({ screen: 'analytics', inner: 'ask' });
+        });
+
+        it('keeps inner screens under their own tab: ask is not under «Ещё», accounts are not under «Аналитика»', () => {
+            window.history.replaceState(null, '', '/#more/ask');
+            expect(renderHook(() => useHashScreen()).result.current).toMatchObject({ screen: 'more', inner: null });
+
+            window.history.replaceState(null, '', '/#analytics/accounts');
+            expect(renderHook(() => useHashScreen()).result.current).toMatchObject({ screen: 'analytics', inner: null });
+
+            window.history.replaceState(null, '', '/#analytics/nonsense');
+            expect(renderHook(() => useHashScreen()).result.current).toMatchObject({ screen: 'analytics', inner: null });
+        });
+
+        it('openInner(ask) pushes #analytics/ask from the Analytics tab and closeInner goes back to it', async () => {
+            const { result } = renderHook(() => useHashScreen());
+            act(() => result.current.setScreen('analytics'));
+            const pushState = vi.spyOn(window.history, 'pushState');
+            const back = vi.spyOn(window.history, 'back');
+
+            act(() => result.current.openInner('ask'));
+            expect(pushState).toHaveBeenCalledTimes(1);
+            expect(window.location.hash).toBe('#analytics/ask');
+            expect(window.history.state).toMatchObject({ budgetInnerPushed: true });
+            expect(result.current).toMatchObject({ screen: 'analytics', inner: 'ask' });
+
+            act(() => result.current.closeInner());
+            expect(back).toHaveBeenCalledTimes(1);
+            await waitFor(() => expect(result.current.inner).toBe(null));
+            expect(result.current.screen).toBe('analytics');
+            expect(window.location.hash).toBe('#analytics');
+        });
+
+        it('closeInner on a page opened straight on #analytics/ask replaces the hash with #analytics', () => {
+            window.history.replaceState(null, '', '/#analytics/ask');
+            const back = vi.spyOn(window.history, 'back');
+            const { result } = renderHook(() => useHashScreen());
+
+            act(() => result.current.closeInner());
+
+            expect(back).not.toHaveBeenCalled();
+            expect(window.location.hash).toBe('#analytics');
+            expect(result.current).toMatchObject({ screen: 'analytics', inner: null });
+        });
+
+        it('a tab tap from the chat replaces the entry, and openInner(ask) twice pushes once', () => {
+            const { result } = renderHook(() => useHashScreen());
+            const pushState = vi.spyOn(window.history, 'pushState');
+            act(() => result.current.openInner('ask'));
+            act(() => result.current.openInner('ask'));
+            expect(pushState).toHaveBeenCalledTimes(1);
+
+            act(() => result.current.setScreen('history'));
+            expect(result.current).toMatchObject({ screen: 'history', inner: null });
+            expect(window.location.hash).toBe('#history');
+            expect(pushState).toHaveBeenCalledTimes(1);
+        });
+
         it('scrolls to the top when an inner screen opens and when it closes', () => {
             const { result } = renderHook(() => useHashScreen());
             act(() => result.current.setScreen('more'));

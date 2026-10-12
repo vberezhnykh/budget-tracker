@@ -358,6 +358,7 @@ function computeCategoryCounts(transactions, type, today, windowDays = FREQUENT_
 }
 
 module.exports = {
+    sumIncome,
     sumExpense,
     applyFilters,
     shiftMonth,

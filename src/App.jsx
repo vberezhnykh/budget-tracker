@@ -12,6 +12,7 @@ import Toast from './components/ui/Toast'
 import OverviewScreen from './screens/OverviewScreen'
 import HistoryScreen from './screens/HistoryScreen'
 import AnalyticsScreen from './screens/AnalyticsScreen'
+import AskScreen from './screens/AskScreen'
 import MoreScreen from './screens/MoreScreen'
 import AccountsScreen from './screens/settings/AccountsScreen'
 import AccountEditSheet from './screens/settings/AccountEditSheet'
@@ -23,6 +24,7 @@ import { transformTransactions } from './utils/finance'
 import { formatMoney } from './utils/money'
 import usePagedHistory from './utils/usePagedHistory'
 import useHashScreen from './utils/useHashScreen'
+import useAskConversation from './utils/useAskConversation'
 import { useModalOpen } from './utils/useBodyScrollLock'
 import { useAppUpdate, reloadPage } from './utils/appUpdate'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
@@ -84,6 +86,7 @@ function App() {
   const [showBanking, setShowBanking] = useState(false);
   const [bankingEnabled, setBankingEnabled] = useState(false);
   const [quickEntryEnabled, setQuickEntryEnabled] = useState(false);
+  const [askEnabled, setAskEnabled] = useState(false);
   const [banking, setBanking] = useState(null);
   const [bankingReview, setBankingReview] = useState({ items: [], total: 0 });
   const [bankingLoading, setBankingLoading] = useState(false);
@@ -256,6 +259,9 @@ function App() {
     setShowBanking(false);
     setBankingEnabled(false);
     setQuickEntryEnabled(false);
+    setAskEnabled(false);
+    // Ответы Claude - те же личные данные: разговор не переживает выход.
+    ask.reset();
     setBanking(null);
     setBankingReview({ items: [], total: 0 });
     setBankingLoading(false);
@@ -315,6 +321,10 @@ function App() {
     // All mutable auth state is read through generation refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // «Вопросы к данным»: разговор живёт здесь, а не в экране, чтобы из чата
+  // можно было уйти в Историю и вернуться, а идущий запрос не обрывался.
+  const ask = useAskConversation({ request: apiFetch });
 
   const readJson = async (url, fallbackMessage, { allowMissing = false } = {}) => {
     const res = await apiFetch(url);
@@ -426,6 +436,7 @@ function App() {
         setMonthlyLimit(loadedSettings === null ? DEFAULT_MONTHLY_LIMIT : loadedSettings.monthlyLimit);
         setBankingEnabled(loadedSettings?.features?.banking === true);
         setQuickEntryEnabled(loadedSettings?.features?.quickEntry === true);
+        setAskEnabled(loadedSettings?.features?.ask === true);
       }
       if (historyRefreshNeededRef.current) {
         setHistoryRevision(value => value + 1);
@@ -808,6 +819,25 @@ function App() {
     setHistoryCategory(category);
     setHistoryType(null);
     if (timeRange === 'month') setHistoryMonth(selectedMonth);
+    setSearchQuery('');
+    setScreen('history');
+  };
+
+  // Чат «Вопросы к данным» - внутренний экран Аналитики. С вопросом (подсказка
+  // на карточке) он сразу уходит в Claude; идущий вопрос не прерывается.
+  const openAsk = (question) => {
+    openInner('ask');
+    if (typeof question === 'string') ask.send(question);
+  };
+
+  // «Открыть в Истории» под ответом: фильтр, по которому можно проверить главное
+  // число. Поиск очищается по той же причине, что и в openHistoryOfCategory;
+  // месяц, если он есть, - тот, с которого начинается лента.
+  const openHistoryFromAsk = ({ category, account, type, month }) => {
+    setHistoryCategory(category ?? null);
+    setHistoryAccount(account ?? null);
+    setHistoryType(type ?? null);
+    if (month) setHistoryMonth(month);
     setSearchQuery('');
     setScreen('history');
   };
@@ -1508,8 +1538,20 @@ function App() {
             positionRef={historyPositionRef}
           />
         )}
-        {screen === 'analytics' && (
+        {screen === 'analytics' && askEnabled && inner === 'ask' && (
+          <AskScreen
+            turns={ask.turns}
+            onSend={ask.send}
+            onRetry={ask.retry}
+            onStop={ask.stop}
+            onReset={ask.reset}
+            onBack={closeInner}
+            onOpenHistory={openHistoryFromAsk}
+          />
+        )}
+        {screen === 'analytics' && !(askEnabled && inner === 'ask') && (
           <AnalyticsScreen
+            onAsk={askEnabled ? openAsk : undefined}
             summaryFrame={summaryFrame}
             periodStats={periodStats}
             timeRange={timeRange}

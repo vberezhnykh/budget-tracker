@@ -1,6 +1,13 @@
 const express = require('express');
-const Anthropic = require('@anthropic-ai/sdk');
 const { createClientErrorRateLimiter } = require('./operational');
+const {
+    DAY_MS,
+    isApiKeyConfigured,
+    parseDay,
+    createClaudeSender,
+    classifyClaudeError,
+    createClaudeGate
+} = require('./claudeClient');
 const { normalizeCompanyName } = require('./companies');
 
 const DEFAULT_MODEL = 'claude-haiku-5-5';
@@ -12,7 +19,6 @@ const RECEIPT_MAX_BYTES = '6mb';
 // Допуск между суммой чека и суммой частей: копейки округления у модели.
 const SPLIT_TOLERANCE_CENTS = 5;
 const QUICK_ENTRY_RATE_WINDOW_MS = 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_AMOUNT = 1e9;
 const MAX_DATE_SHIFT_DAYS = 366;
 const MAX_DESCRIPTION_LENGTH = 200;
@@ -24,27 +30,13 @@ const RECEIPT_CONTENT_KEYS = ['amount', 'category', 'splits', 'companyName', 'ac
 const UNPARSED_MESSAGE = 'Не получилось разобрать фразу. Добавьте сумму и на что потрачено или заполните поля вручную.';
 const RECEIPT_UNPARSED_MESSAGE = 'Не удалось прочитать чек. Сфотографируйте его целиком, ровно и при хорошем свете или заполните поля вручную.';
 
-function isQuickEntryEnabled(env = process.env) {
-    return typeof env.ANTHROPIC_API_KEY === 'string' && env.ANTHROPIC_API_KEY.trim() !== '';
-}
+const isQuickEntryEnabled = isApiKeyConfigured;
 
 function normalizePhrase(value) {
     if (typeof value !== 'string' || value.length > 1000) return null;
     const text = value.normalize('NFKC').replace(/\s+/gu, ' ').trim();
     if (text.length < 2 || text.length > 300 || /\p{Cc}/u.test(text)) return null;
     return text;
-}
-
-// «Сегодня» присылает браузер: у сервера свой часовой пояс, а «вчера» человек
-// считает от своей даты. Поэтому дата - настоящий день календаря, не только
-// строка нужной формы.
-function parseDay(value) {
-    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-    const [year, month, day] = value.split('-').map(Number);
-    const time = Date.UTC(year, month - 1, day);
-    const date = new Date(time);
-    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
-    return time;
 }
 
 // Ответ модели в схеме вывода: список значений или только null, если списка нет
@@ -275,9 +267,6 @@ async function defaultLoadContext() {
     };
 }
 
-const isRateLimitError = (error) => error instanceof Anthropic.RateLimitError || error?.status === 429;
-const isTimeoutError = (error) => error instanceof Anthropic.APIConnectionTimeoutError;
-
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 
 // Заголовок с пояснением к чеку: пусто или нет заголовка - пояснения нет,
@@ -310,43 +299,21 @@ function createQuickEntryRouter({
 } = {}) {
     const router = express.Router();
 
-    // Клиент создаётся при первом запросе: ключ могли задать уже после старта
-    // модуля, а без ключа роутер до Claude всё равно не доходит.
-    let client = null;
-    let clientKey = null;
-    const send = createMessage || ((params, options) => {
-        const apiKey = getApiKey();
-        if (!client || clientKey !== apiKey) {
-            client = new Anthropic({ apiKey, maxRetries: 1 });
-            clientKey = apiKey;
-        }
-        return client.messages.create(params, options);
+    const send = createClaudeSender({ createMessage, getApiKey });
+    // Лимиты и ключ общие с вопросами к данным (claudeClient.js). У фраз и
+    // чеков счётчики свои: чек дороже, и его лимит не должен съедать фразы.
+    const gate = createClaudeGate({
+        getApiKey,
+        rateLimiter,
+        now,
+        codes: { unavailable: 'QUICK_ENTRY_UNAVAILABLE', rateLimited: 'QUICK_ENTRY_RATE_LIMITED' }
     });
-
-    // Дневные счётчики дешёвые: в памяти, по суткам UTC. После перезапуска
-    // они обнуляются, а потолок расходов всё равно задаёт лимит в Anthropic Console.
-    // У фраз и чеков счётчики свои: чек дороже, и его лимит не должен съедать фразы.
-    const usage = { phrase: { day: -1, count: 0 }, receipt: { day: -1, count: 0 } };
 
     // Общая часть обоих маршрутов после проверки входа: ключ, лимиты, контекст.
     // Возвращает контекст или null, если ответ уже отправлен. Счётчик растёт
     // только у запросов, которые дошли до Claude.
-    const admit = async (req, res, { kind, limit, unavailable, limited }) => {
-        const apiKey = getApiKey();
-        if (typeof apiKey !== 'string' || apiKey.trim() === '') {
-            res.status(503).json({ code: 'QUICK_ENTRY_UNAVAILABLE', message: unavailable });
-            return null;
-        }
-        if (!rateLimiter(req.ip || req.socket?.remoteAddress || 'unknown')) {
-            res.set('Retry-After', '60').status(429).json({ code: 'QUICK_ENTRY_RATE_LIMITED', message: 'Слишком много запросов. Попробуйте через минуту.' });
-            return null;
-        }
-        const day = Math.floor(now() / DAY_MS);
-        if (usage[kind].day !== day) usage[kind] = { day, count: 0 };
-        if (usage[kind].count >= limit) {
-            res.status(429).json({ code: 'QUICK_ENTRY_RATE_LIMITED', message: limited });
-            return null;
-        }
+    const admit = async (req, res, options) => {
+        if (!gate.admit(req, res, options)) return null;
 
         let context;
         try {
@@ -355,7 +322,7 @@ function createQuickEntryRouter({
             res.status(500).json({ code: 'QUICK_ENTRY_FAILED', message: 'Не удалось загрузить счета и категории. Заполните поля вручную.' });
             return null;
         }
-        usage[kind].count += 1;
+        gate.count(options.kind);
         return context;
     };
 
@@ -384,10 +351,11 @@ function createQuickEntryRouter({
         } catch (error) {
             // Только имя и статус: тело ошибки Anthropic может повторять запрос.
             console.error('[quick-entry] запрос к Claude не удался:', error?.name, error?.status);
-            if (controller.signal.aborted || isTimeoutError(error)) {
+            const kind = classifyClaudeError(error, { aborted: controller.signal.aborted });
+            if (kind === 'timeout') {
                 return res.status(504).json({ code: 'QUICK_ENTRY_TIMEOUT', message: 'Claude не ответил вовремя. Заполните поля вручную.' });
             }
-            if (isRateLimitError(error)) {
+            if (kind === 'rate_limit') {
                 return res.set('Retry-After', '60').status(429).json({ code: 'QUICK_ENTRY_RATE_LIMITED', message: 'Claude временно ограничил запросы. Попробуйте через минуту.' });
             }
             return res.status(502).json({ code: 'QUICK_ENTRY_FAILED', message: 'Не удалось связаться с Claude. Заполните поля вручную.' });

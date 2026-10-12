@@ -1,0 +1,776 @@
+// @vitest-environment node
+import http from 'node:http';
+import { createRequire } from 'node:module';
+import express from 'express';
+import request from 'supertest';
+import cookieParser from 'cookie-parser';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createAuthMiddleware } from './auth.js';
+import { createClientErrorRateLimiter } from './operational.js';
+import { prepareData } from './askTools.js';
+import {
+    buildAnswerSchema,
+    buildSystemPrompt,
+    createAskRouter,
+    isAskEnabled,
+    normalizeAskText,
+    parseAskBody,
+    sanitizeAnswer
+} from './ask.js';
+
+const KEY = 'sk-ant-test-secret-1234567890';
+const TODAY = '2026-10-12';
+const QUESTION = 'Сравни транспорт этим летом и прошлым';
+
+const accounts = [
+    { _id: 'acc-card', name: 'Revolut', type: 'card' },
+    { _id: 'acc-cash', name: 'Наличные', type: 'cash' },
+    { _id: 'acc-deposit', name: 'Залог', type: 'card', excludeFromTotal: true }
+];
+const categories = [
+    { name: 'Транспорт', type: 'expense' },
+    { name: 'Кафе', type: 'expense' },
+    { name: 'Зарплата', type: 'income' },
+    { name: 'Прочее', type: 'expense' },
+    { name: 'Прочее', type: 'income' }
+];
+const tx = (id, type, amount, category, account, date, extra = {}) => ({
+    _id: id, type, amount, category, account, date: `${date}T00:00:00.000Z`, title: category, ...extra
+});
+const docs = [
+    tx('i0', 'initial', 1000, 'Другое', 'acc-cash', '2025-11-09'),
+    tx('t1', 'expense', 25, 'Транспорт', 'acc-card', '2026-06-10', { companyName: 'Bolt' }),
+    tx('t2', 'expense', 40, 'Транспорт', 'acc-card', '2026-07-20', { companyName: 'Bolt' }),
+    tx('t3', 'expense', 20, 'Транспорт', 'acc-card', '2025-07-20', { companyName: 'Bolt' }),
+    tx('t4', 'income', 3000, 'Зарплата', 'acc-card', '2026-08-05')
+];
+const context = { docs, accounts, categories };
+const data = prepareData({ ...context, today: TODAY });
+
+const body = (patch = {}) => ({ messages: [{ role: 'user', text: QUESTION }], today: TODAY, ...patch });
+
+const answer = (patch = {}) => ({
+    blocks: [{ type: 'text', text: 'Этим летом на транспорт ушло **€65**.' }],
+    basis: 'Транспорт, июнь – август 2026',
+    history: null,
+    ...patch
+});
+const finalTurn = (value = answer()) => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(value) }] });
+const use = (id, name, input) => ({ type: 'tool_use', id, name, input });
+const toolTurn = (...uses) => ({ stop_reason: 'tool_use', content: [{ type: 'thinking', thinking: 'считаю', signature: 'sig-1' }, ...uses] });
+const sumInput = (patch = {}) => ({
+    from: '2026-06-01', to: '2026-08-31', type: 'expense', category: 'Транспорт', account: null, company: null, group_by: 'none', ...patch
+});
+
+// Ответы по очереди; последний повторяется, если вызовов больше.
+const script = (...turns) => vi.fn(async () => (turns.length > 1 ? turns.shift() : turns[0]));
+
+function makeApp(options = {}, authenticated = false) {
+    const app = express();
+    app.use(express.json());
+    app.use(cookieParser());
+    if (authenticated) app.use(createAuthMiddleware(false));
+    app.use('/api/ask', createAskRouter({
+        getApiKey: () => KEY,
+        loadContext: async () => context,
+        createMessage: script(finalTurn()),
+        rateLimiter: () => true,
+        ...options
+    }));
+    return app;
+}
+
+// Тело NDJSON целиком, строкой: supertest не буферизует незнакомый тип сам.
+const post = (app, payload = body()) => request(app).post('/api/ask').send(payload)
+    .buffer(true)
+    .parse((res, callback) => {
+        let text = '';
+        res.setEncoding('utf8');
+        res.on('data', chunk => { text += chunk; });
+        res.on('end', () => callback(null, text));
+    })
+    .then(result => ({
+        status: result.status,
+        headers: result.headers,
+        text: result.body,
+        // Ошибки до потока приходят обычным JSON, поток - строками.
+        json: result.headers['content-type']?.includes('application/json') ? JSON.parse(result.body) : null,
+        events: result.headers['content-type']?.includes('ndjson') ? result.body.split('\n').filter(Boolean).map(line => JSON.parse(line)) : null
+    }));
+
+const lastEvent = (result) => result.events.at(-1);
+
+beforeEach(() => vi.spyOn(console, 'error').mockImplementation(() => {}));
+afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+});
+
+describe('isAskEnabled', () => {
+    it('включён только при непустом ключе', () => {
+        expect(isAskEnabled({})).toBe(false);
+        expect(isAskEnabled({ ANTHROPIC_API_KEY: '  ' })).toBe(false);
+        expect(isAskEnabled({ ANTHROPIC_API_KEY: KEY })).toBe(true);
+    });
+});
+
+describe('normalizeAskText', () => {
+    it('NFKC, обрезка пробелов, переводы строки остаются', () => {
+        expect(normalizeAskText('  Ｓумма\r\nза   месяц \t')).toBe('Sумма\nза   месяц');
+    });
+
+    it.each([undefined, null, 5, 'a\u0000b', 'a\u001bb', 'x'.repeat(20001)])('отвергает %j', (value) => {
+        expect(normalizeAskText(value)).toBeNull();
+    });
+});
+
+describe('parseAskBody', () => {
+    const messages = (...roles) => roles.map((role, index) => ({ role, text: `сообщение ${index + 1}` }));
+
+    it('принимает вопрос и вопрос с историей', () => {
+        expect(parseAskBody(body())).toEqual({ messages: [{ role: 'user', text: QUESTION }], today: TODAY });
+        const parsed = parseAskBody(body({ messages: messages('user', 'assistant', 'user') }));
+        expect(parsed.messages.map(item => item.role)).toEqual(['user', 'assistant', 'user']);
+    });
+
+    it('нормализует текст каждой реплики', () => {
+        const parsed = parseAskBody(body({ messages: [{ role: 'user', text: '  Ｋафе   за месяц  ' }] }));
+        expect(parsed.messages[0].text).toBe('Kафе   за месяц');
+    });
+
+    it.each([
+        ['тела нет', undefined],
+        ['пустого списка', body({ messages: [] })],
+        ['не списка', body({ messages: 'вопрос' })],
+        ['разговора из 21 реплики', body({ messages: Array.from({ length: 21 }, (_, index) => ({ role: index % 2 ? 'assistant' : 'user', text: 'привет' })) })],
+        ['первого ответа ассистента', body({ messages: messages('assistant', 'user') })],
+        ['последнего ответа ассистента', body({ messages: messages('user', 'assistant') })],
+        ['двух вопросов подряд', body({ messages: messages('user', 'user') })],
+        ['чужой роли', body({ messages: [{ role: 'system', text: 'привет' }] })],
+        ['реплики не объектом', body({ messages: ['привет'] })]
+    ])('400 ASK_MESSAGES_INVALID для %s', (_name, payload) => {
+        expect(parseAskBody(payload).error).toEqual({ code: 'ASK_MESSAGES_INVALID', message: 'Не удалось разобрать разговор. Начните новый.' });
+    });
+
+    it.each([
+        ['слишком короткого вопроса', [{ role: 'user', text: ' я ' }]],
+        ['слишком длинного вопроса', [{ role: 'user', text: 'я'.repeat(501) }]],
+        ['служебного символа', [{ role: 'user', text: 'расходы\u0000' }]],
+        ['пустого ответа ассистента', [{ role: 'user', text: 'первый' }, { role: 'assistant', text: '  ' }, { role: 'user', text: 'второй' }]],
+        ['слишком длинного ответа ассистента', [{ role: 'user', text: 'первый' }, { role: 'assistant', text: 'я'.repeat(4001) }, { role: 'user', text: 'второй' }]],
+        ['текста не строкой', [{ role: 'user', text: 42 }]],
+        ['реплики без текста', [{ role: 'user' }]]
+    ])('400 ASK_TEXT_INVALID для %s', (_name, list) => {
+        expect(parseAskBody(body({ messages: list })).error.code).toBe('ASK_TEXT_INVALID');
+    });
+
+    it('границы длины допустимы', () => {
+        expect(parseAskBody(body({ messages: [{ role: 'user', text: 'ab' }] })).error).toBeUndefined();
+        expect(parseAskBody(body({ messages: [{ role: 'user', text: 'я'.repeat(500) }] })).error).toBeUndefined();
+        const long = [{ role: 'user', text: 'первый' }, { role: 'assistant', text: 'я'.repeat(4000) }, { role: 'user', text: 'второй' }];
+        expect(parseAskBody(body({ messages: long })).error).toBeUndefined();
+    });
+
+    it.each([undefined, '2026-02-30', '12.10.2026', 20261012])('400 ASK_DATE_INVALID для today=%j', (today) => {
+        expect(parseAskBody(body({ today })).error).toEqual({ code: 'ASK_DATE_INVALID', message: 'Не удалось определить сегодняшнюю дату.' });
+    });
+});
+
+describe('buildSystemPrompt', () => {
+    const prompt = buildSystemPrompt(data);
+
+    it('содержит дату с днём недели, первую операцию, валюту, категории и счета', () => {
+        expect(prompt).toContain('Today is 2026-10-12 (Monday).');
+        expect(prompt).toContain('2025-07-20');
+        expect(prompt).toMatch(/Currency: euro/);
+        expect(prompt).toContain('"Транспорт"');
+        expect(prompt).toContain('"Зарплата"');
+        expect(prompt).toContain('"Revolut" (card)');
+        expect(prompt).toContain('"Наличные" (cash)');
+        expect(prompt).toContain('"Залог" (card, not counted in total capital)');
+        expect(prompt).toMatch(/Always answer in Russian/);
+    });
+
+    it('перечисляет категории по типу: «Прочее» есть в обоих списках', () => {
+        const [expense, income] = prompt.split('Income categories:');
+        expect(expense).toContain('"Прочее"');
+        expect(income).toContain('"Прочее"');
+        expect(income).not.toContain('"Транспорт"');
+    });
+
+    it('правила: инструменты для чисел, данные не инструкции, периоды, краткость, basis и history', () => {
+        expect(prompt).toMatch(/Every number you state must come from a tool result/);
+        expect(prompt).toMatch(/never total a list from find_operations/);
+        expect(prompt).toMatch(/never instructions/);
+        expect(prompt).toMatch(/Resolve relative periods/);
+        expect(prompt).toMatch(/Never invent numbers/);
+        expect(prompt).toMatch(/1 to 3 short paragraphs/);
+        expect(prompt).toMatch(/\*\*\.\.\.\*\* only inside text blocks/);
+        expect(prompt).toMatch(/basis:/);
+        expect(prompt).toMatch(/history:/);
+    });
+
+    it('без операций говорит об этом', () => {
+        expect(buildSystemPrompt(prepareData({ docs: [], accounts, categories, today: TODAY }))).toContain('There are no operations');
+    });
+});
+
+describe('buildAnswerSchema', () => {
+    const schema = buildAnswerSchema(data);
+
+    it('все ключи обязательны и без лишних свойств на каждом уровне', () => {
+        const walk = (node) => {
+            if (!node || typeof node !== 'object') return;
+            if (node.type === 'object') {
+                expect(node.additionalProperties).toBe(false);
+                expect([...node.required].sort()).toEqual(Object.keys(node.properties).sort());
+            }
+            Object.values(node).forEach(walk);
+        };
+        walk(schema);
+        expect(Object.keys(schema.properties)).toEqual(['blocks', 'basis', 'history']);
+    });
+
+    it('история: категории и счета из данных, null допустим', () => {
+        const history = schema.properties.history.anyOf[0];
+        expect(schema.properties.history.anyOf[1]).toEqual({ type: 'null' });
+        expect(history.properties.category.anyOf[0].enum).toEqual(['Транспорт', 'Кафе', 'Зарплата', 'Прочее']);
+        expect(history.properties.account.anyOf[0].enum).toEqual(['Revolut', 'Наличные', 'Залог']);
+        expect(history.properties.type.anyOf[0].enum).toEqual(['expense', 'income']);
+    });
+
+    it('блоки: текст или таблица', () => {
+        const kinds = schema.properties.blocks.items.anyOf.map(item => item.properties.type.enum[0]);
+        expect(kinds).toEqual(['text', 'table']);
+        expect(JSON.stringify(schema)).not.toMatch(/"(minimum|maximum|minLength|maxLength|minItems|maxItems)"/);
+        expect(JSON.stringify(schema)).not.toContain('"enum":[]');
+    });
+});
+
+describe('sanitizeAnswer', () => {
+    it('оставляет нормальный ответ', () => {
+        const raw = answer({
+            blocks: [
+                { type: 'text', text: 'Первый абзац.\n\nВторой с **€5**.' },
+                { type: 'table', columns: ['Месяц', '2026'], rows: [['Июнь', '€25'], ['Июль', '€40']] }
+            ],
+            history: { category: 'Транспорт', account: 'Revolut', type: 'expense', month: '2026-08' }
+        });
+        expect(sanitizeAnswer(raw, data)).toEqual({
+            blocks: raw.blocks,
+            basis: 'Транспорт, июнь – август 2026',
+            history: { category: 'Транспорт', account: 'acc-card', type: 'expense', month: '2026-08' }
+        });
+    });
+
+    it.each([null, 'текст', [], {}, { blocks: [] }, { blocks: [{ type: 'image' }] }, { blocks: [{ type: 'text', text: '   ' }] }, { blocks: [{ type: 'table', columns: [], rows: [['a']] }] }, { blocks: [{ type: 'table', columns: ['a'], rows: [] }] }])('отвергает %j', (raw) => {
+        expect(sanitizeAnswer(raw, data)).toBeNull();
+    });
+
+    it('не больше 12 блоков, таблица не больше 6 колонок и 24 строк, строки по ширине таблицы', () => {
+        const blocks = Array.from({ length: 15 }, (_, index) => ({ type: 'text', text: `абзац ${index}` }));
+        expect(sanitizeAnswer(answer({ blocks }), data).blocks).toHaveLength(12);
+
+        const wide = {
+            type: 'table',
+            columns: Array.from({ length: 8 }, (_, index) => `к${index}`),
+            rows: Array.from({ length: 30 }, (_, row) => Array.from({ length: 9 }, (_, column) => `${row}:${column}`))
+        };
+        const [table] = sanitizeAnswer(answer({ blocks: [wide] }), data).blocks;
+        expect(table.columns).toHaveLength(6);
+        expect(table.rows).toHaveLength(24);
+        expect(table.rows.every(row => row.length === 6)).toBe(true);
+
+        const [short] = sanitizeAnswer(answer({ blocks: [{ type: 'table', columns: ['a', 'b'], rows: [['1']] }] }), data).blocks;
+        expect(short.rows).toEqual([['1', '']]);
+    });
+
+    it('обрезает строки и чистит служебные символы', () => {
+        const result = sanitizeAnswer({
+            blocks: [
+                { type: 'text', text: `  ${'я'.repeat(2000)}  ` },
+                { type: 'text', text: 'строка\u0000 один\nстрока\u001b два' },
+                { type: 'table', columns: ['к\u0000олонка'], rows: [['я'.repeat(200) + '\n']] }
+            ],
+            basis: `${'о'.repeat(300)}\n`,
+            history: null
+        }, data);
+        expect(result.blocks[0].text).toHaveLength(1500);
+        expect(result.blocks[1].text).toBe('строка один\nстрока два');
+        expect(result.blocks[2].columns).toEqual(['к олонка']);
+        expect(result.blocks[2].rows[0][0]).toHaveLength(80);
+        expect(result.basis).toHaveLength(160);
+    });
+
+    it('история: неизвестные категория и счёт отбрасываются, счёт уходит как id', () => {
+        const history = (patch) => sanitizeAnswer(answer({ history: { category: null, account: null, type: null, month: null, ...patch } }), data).history;
+        expect(history({ category: 'Рестораны', account: 'Тинькофф', month: '2026-07' })).toEqual({ category: null, account: null, type: null, month: '2026-07' });
+        expect(history({ account: 'Наличные' })).toEqual({ category: null, account: 'acc-cash', type: null, month: null });
+        // Категория другого типа в связке не годится, тип остаётся
+        expect(history({ category: 'Зарплата', type: 'expense' })).toEqual({ category: null, account: null, type: 'expense', month: null });
+        expect(history({ category: 'Зарплата', type: 'income' })).toMatchObject({ category: 'Зарплата', type: 'income' });
+        expect(history({ month: '2026-13' })).toBeNull();
+        expect(history({ type: 'transfer' })).toBeNull();
+        expect(history({})).toBeNull();
+    });
+
+    it('без истории история null', () => {
+        expect(sanitizeAnswer(answer({ history: null }), data).history).toBeNull();
+        expect(sanitizeAnswer({ blocks: answer().blocks, basis: 5 }, data)).toMatchObject({ basis: '', history: null });
+    });
+});
+
+describe('POST /api/ask: вход и допуск', () => {
+    it('неверный вход - 400 до всякого обращения к Claude и без расхода лимита', async () => {
+        const createMessage = script(finalTurn());
+        const loadContext = vi.fn(async () => context);
+        const app = makeApp({ createMessage, loadContext, dailyLimit: 1 });
+
+        const bad = await post(app, body({ messages: [{ role: 'user', text: 'я' }] }));
+        expect(bad.status).toBe(400);
+        expect(bad.json).toEqual({ code: 'ASK_TEXT_INVALID', message: 'Вопрос: от 2 до 500 символов, без служебных символов.' });
+        expect(bad.headers['cache-control']).toBe('no-store');
+        expect(createMessage).not.toHaveBeenCalled();
+        expect(loadContext).not.toHaveBeenCalled();
+
+        expect((await post(app, body({ today: 'сегодня' }))).json.code).toBe('ASK_DATE_INVALID');
+        expect((await post(app, { messages: 'x', today: TODAY })).json.code).toBe('ASK_MESSAGES_INVALID');
+        // Лимит в 1 вопрос не потрачен неверными запросами
+        expect((await post(app)).status).toBe(200);
+    });
+
+    it('без ключа - 503 ASK_UNAVAILABLE', async () => {
+        const createMessage = script(finalTurn());
+        const result = await post(makeApp({ createMessage, getApiKey: () => '  ' }));
+        expect(result.status).toBe(503);
+        expect(result.json).toEqual({ code: 'ASK_UNAVAILABLE', message: 'Вопросы к данным не настроены.' });
+        expect(createMessage).not.toHaveBeenCalled();
+    });
+
+    it('за проверкой входа: без куки - 401, Claude не вызывается', async () => {
+        vi.stubEnv('APP_PASSWORD', 'test-password');
+        vi.stubEnv('SESSION_SECRET', 'x'.repeat(32));
+        const createMessage = script(finalTurn());
+        const result = await post(makeApp({ createMessage }, true));
+        expect(result.status).toBe(401);
+        expect(createMessage).not.toHaveBeenCalled();
+    });
+
+    it('10 вопросов в минуту с адреса: следующий - 429 и Retry-After, потом окно сбрасывается', async () => {
+        let time = 1000;
+        const createMessage = script(finalTurn());
+        const app = makeApp({ createMessage, rateLimiter: createClientErrorRateLimiter({ now: () => time, windowMs: 60_000, maxRequests: 10 }) });
+        for (let index = 0; index < 10; index += 1) expect((await post(app)).status).toBe(200);
+        const limited = await post(app);
+        expect(limited.status).toBe(429);
+        expect(limited.json.code).toBe('ASK_RATE_LIMITED');
+        expect(limited.headers['retry-after']).toBe('60');
+        expect(createMessage).toHaveBeenCalledTimes(10);
+        time += 60_000;
+        expect((await post(app)).status).toBe(200);
+    });
+
+    it('по умолчанию лимит 10 в минуту', async () => {
+        const app = express();
+        app.use(express.json());
+        app.use('/api/ask', createAskRouter({ getApiKey: () => KEY, loadContext: async () => context, createMessage: script(finalTurn()) }));
+        for (let index = 0; index < 10; index += 1) expect((await post(app)).status).toBe(200);
+        expect((await post(app)).status).toBe(429);
+    });
+
+    it('100 вопросов в сутки: потом 429 с понятным текстом, на следующие сутки счёт заново', async () => {
+        let time = Date.UTC(2026, 9, 12, 23, 0);
+        const createMessage = script(finalTurn());
+        const app = makeApp({ createMessage, dailyLimit: 2, now: () => time });
+        expect((await post(app)).status).toBe(200);
+        expect((await post(app)).status).toBe(200);
+        const limited = await post(app);
+        expect(limited.status).toBe(429);
+        expect(limited.json).toEqual({ code: 'ASK_RATE_LIMITED', message: 'Дневной лимит вопросов исчерпан.' });
+        expect(createMessage).toHaveBeenCalledTimes(2);
+        time = Date.UTC(2026, 9, 13, 0, 5);
+        expect((await post(app)).status).toBe(200);
+    });
+
+    it('по умолчанию дневной потолок 100', async () => {
+        const createMessage = script(finalTurn());
+        const app = makeApp({ createMessage });
+        for (let index = 0; index < 100; index += 1) expect((await post(app)).status).toBe(200);
+        expect((await post(app)).status).toBe(429);
+        expect(createMessage).toHaveBeenCalledTimes(100);
+    });
+
+    it('в дневной счёт идёт один вопрос, сколько бы шагов в нём ни было', async () => {
+        const createMessage = script(toolTurn(use('u1', 'get_balances', {})), finalTurn());
+        const app = makeApp({ createMessage, dailyLimit: 2 });
+        expect((await post(app)).status).toBe(200);
+        expect((await post(app)).status).toBe(200);
+        expect((await post(app)).status).toBe(429);
+    });
+
+    it('если данные не загрузились - 500 до потока, и вопрос не засчитан', async () => {
+        const createMessage = script(finalTurn());
+        let fail = true;
+        const app = makeApp({ createMessage, dailyLimit: 1, loadContext: async () => { if (fail) throw new Error('mongo down'); return context; } });
+        const result = await post(app);
+        expect(result.status).toBe(500);
+        expect(result.json.code).toBe('ASK_FAILED');
+        expect(createMessage).not.toHaveBeenCalled();
+        fail = false;
+        expect((await post(app)).status).toBe(200);
+    });
+});
+
+describe('POST /api/ask: цикл с инструментами', () => {
+    it('отдаёт NDJSON: шаги, отметки готовности и ответ', async () => {
+        const createMessage = script(
+            toolTurn(use('u1', 'sum_operations', sumInput())),
+            toolTurn(use('u2', 'sum_operations', sumInput({ from: '2025-06-01', to: '2025-08-31' }))),
+            finalTurn(answer({ history: { category: 'Транспорт', account: null, type: 'expense', month: '2026-08' } }))
+        );
+        const result = await post(makeApp({ createMessage }));
+
+        expect(result.status).toBe(200);
+        expect(result.headers['content-type']).toBe('application/x-ndjson; charset=utf-8');
+        expect(result.headers['cache-control']).toBe('no-store');
+        expect(result.headers['x-accel-buffering']).toBe('no');
+        expect(result.events).toEqual([
+            { type: 'step', label: 'Транспорт, 1 июня – 31 августа 2026' },
+            { type: 'step_done' },
+            { type: 'step', label: 'Транспорт, 1 июня – 31 августа 2025' },
+            { type: 'step_done' },
+            {
+                type: 'answer',
+                blocks: [{ type: 'text', text: 'Этим летом на транспорт ушло **€65**.' }],
+                basis: 'Транспорт, июнь – август 2026',
+                history: { category: 'Транспорт', account: null, type: 'expense', month: '2026-08' }
+            }
+        ]);
+        expect(createMessage).toHaveBeenCalledTimes(3);
+    });
+
+    it('результат инструмента - числа из серверных функций', async () => {
+        const createMessage = script(toolTurn(use('u1', 'sum_operations', sumInput())), finalTurn());
+        await post(makeApp({ createMessage }));
+        const [, followUp] = createMessage.mock.calls;
+        const [result] = followUp[0].messages.at(-1).content;
+        expect(result).toMatchObject({ type: 'tool_result', tool_use_id: 'u1' });
+        expect(result).not.toHaveProperty('is_error');
+        expect(JSON.parse(result.content)).toMatchObject({ from: '2026-06-01', to: '2026-08-31', total: 65, count: 2, filters: { category: 'Транспорт' } });
+    });
+
+    it('запрос к Claude: модель, лимит, структурированный вывод, инструменты, кэш; без чужих параметров', async () => {
+        const createMessage = script(finalTurn());
+        await post(makeApp({ createMessage }));
+        const [params, options] = createMessage.mock.calls[0];
+
+        expect(params.model).toBe('claude-sonnet-5-5');
+        expect(params.max_tokens).toBe(8000);
+        expect(params.cache_control).toEqual({ type: 'ephemeral' });
+        expect(params.output_config.effort).toBe('medium');
+        expect(params.output_config.format.type).toBe('json_schema');
+        expect(params.output_config.format.schema).toEqual(buildAnswerSchema(data));
+        expect(params.tools.map(tool => tool.name)).toEqual(['sum_operations', 'find_operations', 'get_balances', 'get_typical_month']);
+        expect(params.tools.every(tool => tool.strict === true)).toBe(true);
+        expect(params.system).toBe(buildSystemPrompt(data));
+        for (const forbidden of ['temperature', 'top_p', 'top_k', 'thinking', 'tool_choice']) expect(params).not.toHaveProperty(forbidden);
+        expect(options.signal).toBeInstanceOf(AbortSignal);
+        expect(params.messages).toEqual([{ role: 'user', content: QUESTION }]);
+    });
+
+    it('модель берётся из ASK_MODEL', async () => {
+        vi.stubEnv('ASK_MODEL', 'claude-test-model');
+        const createMessage = script(finalTurn());
+        const app = express();
+        app.use(express.json());
+        app.use('/api/ask', createAskRouter({ createMessage, getApiKey: () => KEY, loadContext: async () => context, rateLimiter: () => true }));
+        await post(app);
+        expect(createMessage.mock.calls[0][0].model).toBe('claude-test-model');
+
+        const custom = script(finalTurn());
+        await post(makeApp({ createMessage: custom, getModel: () => 'claude-custom' }));
+        expect(custom.mock.calls[0][0].model).toBe('claude-custom');
+    });
+
+    it('прошлые реплики уходят обычным текстом, и только они', async () => {
+        const createMessage = script(finalTurn());
+        await post(makeApp({ createMessage }), body({
+            messages: [
+                { role: 'user', text: 'Сколько на кафе?' },
+                { role: 'assistant', text: 'На кафе ушло €18.' },
+                { role: 'user', text: 'А на транспорт?' }
+            ]
+        }));
+        expect(createMessage.mock.calls[0][0].messages).toEqual([
+            { role: 'user', content: 'Сколько на кафе?' },
+            { role: 'assistant', content: 'На кафе ушло €18.' },
+            { role: 'user', content: 'А на транспорт?' }
+        ]);
+    });
+
+    it('ответ модели возвращается как есть, а результаты параллельных вызовов - одним сообщением', async () => {
+        const first = toolTurn(
+            use('u1', 'sum_operations', sumInput()),
+            use('u2', 'get_balances', {}),
+            use('u3', 'sum_operations', sumInput({ category: 'Рестораны' }))
+        );
+        const createMessage = script(first, finalTurn());
+        const result = await post(makeApp({ createMessage }));
+
+        const [, second] = createMessage.mock.calls;
+        const sent = second[0].messages;
+        expect(sent).toHaveLength(3);
+        // Блоки размышления и вызовов не тронуты: тот же объект, а не копия
+        expect(sent[1]).toEqual({ role: 'assistant', content: first.content });
+        expect(sent[1].content).toBe(first.content);
+        expect(sent[1].content[0]).toMatchObject({ type: 'thinking', signature: 'sig-1' });
+        expect(sent[2].role).toBe('user');
+        expect(sent[2].content.map(block => block.tool_use_id)).toEqual(['u1', 'u2', 'u3']);
+        expect(sent[2].content.every(block => block.type === 'tool_result')).toBe(true);
+        // Неверный ввод - is_error, а не исключение, и цикл продолжается
+        expect(sent[2].content[2]).toMatchObject({ is_error: true });
+        expect(sent[2].content[2].content).toMatch(/Unknown category/);
+        expect(sent[2].content[0]).not.toHaveProperty('is_error');
+
+        expect(result.events.filter(event => event.type === 'step')).toHaveLength(3);
+        expect(result.events.map(event => event.type)).toEqual(['step', 'step_done', 'step', 'step_done', 'step', 'step_done', 'answer']);
+    });
+
+    it('история растёт: каждый следующий запрос содержит все прошлые шаги', async () => {
+        const createMessage = script(
+            toolTurn(use('u1', 'get_balances', {})),
+            toolTurn(use('u2', 'sum_operations', sumInput())),
+            finalTurn()
+        );
+        await post(makeApp({ createMessage }));
+        expect(createMessage.mock.calls.map(call => call[0].messages.length)).toEqual([1, 3, 5]);
+    });
+
+    it('система, инструменты и параметры байт-в-байт одни и те же на всех шагах', async () => {
+        const createMessage = script(
+            toolTurn(use('u1', 'get_balances', {})),
+            toolTurn(use('u2', 'sum_operations', sumInput())),
+            finalTurn()
+        );
+        await post(makeApp({ createMessage }));
+        const calls = createMessage.mock.calls.map(call => call[0]);
+        expect(calls).toHaveLength(3);
+        for (const params of calls) {
+            expect(JSON.stringify(params.system)).toBe(JSON.stringify(calls[0].system));
+            expect(JSON.stringify(params.tools)).toBe(JSON.stringify(calls[0].tools));
+            expect(JSON.stringify(params.output_config)).toBe(JSON.stringify(calls[0].output_config));
+            const { messages: _drop, ...rest } = params;
+            const { messages: _first, ...firstRest } = calls[0];
+            expect(JSON.stringify(rest)).toBe(JSON.stringify(firstRest));
+        }
+    });
+
+    it('чистит ответ: лишние блоки, неизвестная категория в истории', async () => {
+        const createMessage = script(finalTurn(answer({
+            blocks: Array.from({ length: 14 }, (_, index) => ({ type: 'text', text: `абзац ${index}` })),
+            history: { category: 'Рестораны', account: 'Revolut', type: null, month: null }
+        })));
+        const result = await post(makeApp({ createMessage }));
+        const final = lastEvent(result);
+        expect(final.blocks).toHaveLength(12);
+        expect(final.history).toEqual({ category: null, account: 'acc-card', type: null, month: null });
+    });
+
+    it('данные не уходят в Claude целиком: в запросе нет операций', async () => {
+        const createMessage = script(finalTurn());
+        await post(makeApp({ createMessage }));
+        const text = JSON.stringify(createMessage.mock.calls[0][0]);
+        expect(text).not.toContain('Bolt');
+        expect(text).not.toContain('3000');
+    });
+});
+
+describe('POST /api/ask: ошибки Claude и пределы', () => {
+    const unparsed = { type: 'error', code: 'ASK_UNPARSED', message: 'Не получилось ответить. Попробуйте спросить иначе.' };
+
+    it.each([
+        ['отказ', { stop_reason: 'refusal', content: [] }],
+        ['обрезанный ответ', { ...finalTurn(), stop_reason: 'max_tokens' }],
+        ['пауза', { stop_reason: 'pause_turn', content: [] }],
+        ['нет текстового блока', { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: '...' }] }],
+        ['невалидный JSON', { stop_reason: 'end_turn', content: [{ type: 'text', text: `{"blocks": ${KEY}` }] }],
+        ['JSON не того вида', { stop_reason: 'end_turn', content: [{ type: 'text', text: '"ответ"' }] }],
+        ['ответ без блоков', finalTurn({ blocks: [], basis: '', history: null })],
+        ['tool_use без вызовов', { stop_reason: 'tool_use', content: [{ type: 'text', text: 'ок' }] }]
+    ])('ASK_UNPARSED: %s', async (_name, message) => {
+        const result = await post(makeApp({ createMessage: script(message) }));
+        expect(result.status).toBe(200);
+        expect(lastEvent(result)).toEqual(unparsed);
+        expect(result.text).not.toContain(KEY);
+    });
+
+    it('берёт последний текстовый блок после размышления', async () => {
+        const turn = { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: 'ага' }, ...finalTurn().content] };
+        expect(lastEvent(await post(makeApp({ createMessage: script(turn) }))).type).toBe('answer');
+    });
+
+    it('больше 8 шагов - ASK_TOO_COMPLEX, ровно 8 запросов', async () => {
+        const createMessage = script(toolTurn(use('u1', 'get_balances', {})));
+        const result = await post(makeApp({ createMessage }));
+        expect(createMessage).toHaveBeenCalledTimes(8);
+        expect(lastEvent(result)).toEqual({ type: 'error', code: 'ASK_TOO_COMPLEX', message: 'Вопрос оказался слишком сложным. Попробуйте разбить его на части.' });
+        // 7 раундов инструментов выполнены, на восьмом запрос оборван
+        expect(result.events.filter(event => event.type === 'step')).toHaveLength(7);
+    });
+
+    it('восьмой запрос может быть ответом', async () => {
+        const turns = [...Array.from({ length: 7 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', {}))), finalTurn()];
+        const result = await post(makeApp({ createMessage: script(...turns) }));
+        expect(lastEvent(result).type).toBe('answer');
+    });
+
+    it('молчание дольше 60 секунд (здесь 40 мс) - ASK_TIMEOUT, запрос к Claude отменён', async () => {
+        const createMessage = vi.fn(() => new Promise(() => {}));
+        const result = await post(makeApp({ createMessage, timeoutMs: 40 }));
+        expect(lastEvent(result)).toEqual({ type: 'error', code: 'ASK_TIMEOUT', message: 'Claude не ответил вовремя. Вопрос сохранен, его можно отправить еще раз.' });
+        expect(createMessage.mock.calls[0][1].signal.aborted).toBe(true);
+    });
+
+    it('таймаут считается на весь вопрос, а не на каждый шаг', async () => {
+        let calls = 0;
+        const createMessage = vi.fn(async () => {
+            calls += 1;
+            await new Promise(resolve => setTimeout(resolve, 30));
+            return toolTurn(use(`u${calls}`, 'get_balances', {}));
+        });
+        const result = await post(makeApp({ createMessage, timeoutMs: 100 }));
+        expect(lastEvent(result).code).toBe('ASK_TIMEOUT');
+        expect(calls).toBeLessThan(8);
+    });
+
+    it('таймаут SDK тоже ASK_TIMEOUT', async () => {
+        // Тот же экземпляр класса, что и у сервера (CommonJS), а не ESM-копия.
+        const { APIConnectionTimeoutError } = createRequire(import.meta.url)('@anthropic-ai/sdk');
+        const createMessage = vi.fn(async () => { throw new APIConnectionTimeoutError(); });
+        expect(lastEvent(await post(makeApp({ createMessage }))).code).toBe('ASK_TIMEOUT');
+    });
+
+    it('429 от Claude - ASK_FAILED с текстом про ограничение', async () => {
+        const createMessage = vi.fn(async () => { throw Object.assign(new Error('rate'), { status: 429 }); });
+        const result = await post(makeApp({ createMessage }));
+        expect(lastEvent(result)).toEqual({ type: 'error', code: 'ASK_FAILED', message: 'Claude временно ограничил запросы. Попробуйте через минуту.' });
+    });
+
+    it('другая ошибка - ASK_FAILED без подробностей, в журнале нет ни вопроса, ни тела ошибки', async () => {
+        const createMessage = vi.fn(async () => { throw new Error(`401 {"error":"bad key ${KEY}"} ${QUESTION}`); });
+        const result = await post(makeApp({ createMessage }));
+        expect(lastEvent(result)).toEqual({ type: 'error', code: 'ASK_FAILED', message: 'Не удалось связаться с Claude. Попробуйте еще раз.' });
+        expect(result.text).not.toContain(KEY);
+        const logged = JSON.stringify(console.error.mock.calls);
+        expect(logged).not.toContain(KEY);
+        expect(logged).not.toContain('Сравни');
+        expect(logged).not.toContain('bad key');
+    });
+
+    it('ошибка после нескольких шагов тоже приходит событием в конце потока', async () => {
+        let call = 0;
+        const createMessage = vi.fn(async () => {
+            call += 1;
+            if (call === 1) return toolTurn(use('u1', 'get_balances', {}));
+            throw new Error('boom');
+        });
+        const result = await post(makeApp({ createMessage }));
+        expect(result.events.map(event => event.type)).toEqual(['step', 'step_done', 'error']);
+    });
+
+    it('в журнал не попадают ни вопрос, ни результаты инструментов', async () => {
+        const createMessage = script(toolTurn(use('u1', 'sum_operations', sumInput())), finalTurn());
+        await post(makeApp({ createMessage }));
+        expect(console.error).not.toHaveBeenCalled();
+    });
+});
+
+describe('POST /api/ask: живой сервер', () => {
+    let server;
+    afterEach(() => new Promise(resolve => (server ? server.close(resolve) : resolve())));
+
+    const listen = (app) => new Promise((resolve) => {
+        server = app.listen(0, () => resolve(server.address().port));
+    });
+
+    const open = (port, onData) => {
+        const req = http.request({ port, method: 'POST', path: '/api/ask', headers: { 'content-type': 'application/json' } }, (res) => {
+            res.setEncoding('utf8');
+            res.on('data', onData);
+        });
+        req.on('error', () => {});
+        req.end(JSON.stringify(body()));
+        return req;
+    };
+
+    const deferred = () => {
+        let resolve;
+        const promise = new Promise((done) => { resolve = done; });
+        return { promise, resolve };
+    };
+
+    it('шаг уходит клиенту сразу, пока Claude ещё думает над ответом', async () => {
+        const gate = deferred();
+        let call = 0;
+        const createMessage = vi.fn(async () => {
+            call += 1;
+            if (call === 1) return toolTurn(use('u1', 'get_balances', {}));
+            await gate.promise;
+            return finalTurn();
+        });
+        const port = await listen(makeApp({ createMessage }));
+        let received = '';
+        const req = open(port, (chunk) => { received += chunk; });
+
+        await vi.waitFor(() => expect(received).toContain('"step_done"'));
+        expect(received).toContain('"label":"Остатки по счетам"');
+        expect(received).not.toContain('"answer"');
+
+        gate.resolve();
+        await vi.waitFor(() => expect(received).toContain('"type":"answer"'));
+        req.destroy();
+    });
+
+    it('клиент ушёл: запрос к Claude отменён, цикл не идёт дальше и вопрос засчитан один раз', async () => {
+        const gate = deferred();
+        const createMessage = vi.fn(async () => {
+            await gate.promise;
+            return toolTurn(use('u1', 'get_balances', {}));
+        });
+        const port = await listen(makeApp({ createMessage, dailyLimit: 5 }));
+        const req = open(port, () => {});
+
+        await vi.waitFor(() => expect(createMessage).toHaveBeenCalledTimes(1));
+        const { signal } = createMessage.mock.calls[0][1];
+        expect(signal.aborted).toBe(false);
+
+        req.destroy();
+        await vi.waitFor(() => expect(signal.aborted).toBe(true));
+
+        // Claude отвечает уже после ухода клиента: следующего запроса быть не должно
+        gate.resolve();
+        await new Promise(resolve => setTimeout(resolve, 50));
+        expect(createMessage).toHaveBeenCalledTimes(1);
+        expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it('клиент не мешает серверу: после ухода следующий вопрос обрабатывается', async () => {
+        const gate = deferred();
+        let first = true;
+        const createMessage = vi.fn(async () => {
+            if (first) {
+                first = false;
+                await gate.promise;
+            }
+            return finalTurn();
+        });
+        const app = makeApp({ createMessage });
+        const port = await listen(app);
+        const req = open(port, () => {});
+        await vi.waitFor(() => expect(createMessage).toHaveBeenCalledTimes(1));
+        req.destroy();
+        await vi.waitFor(() => expect(createMessage.mock.calls[0][1].signal.aborted).toBe(true));
+        expect(lastEvent(await post(app)).type).toBe('answer');
+        gate.resolve();
+    });
+});
