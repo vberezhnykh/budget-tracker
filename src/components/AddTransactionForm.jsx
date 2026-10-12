@@ -351,7 +351,15 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 className="transaction-amount-input"
                                 type="text"
                                 inputMode="decimal"
+                                // Текстовое поле Safari на iOS принимает за
+                                // контактное и вешает над клавиатурой
+                                // «Автозаполнить контакт»; autoComplete="off"
+                                // он не слушает. Поле, в имени которого есть
+                                // «search», эвристика автозаполнения пропускает.
+                                name="amount-search"
                                 autoComplete="off"
+                                autoCorrect="off"
+                                spellCheck={false}
                                 placeholder="0"
                                 value={formData.amount}
                                 onChange={e => changeAmount(sanitizeAmountInput(e.target.value))}

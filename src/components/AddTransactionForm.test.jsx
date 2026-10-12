@@ -362,6 +362,8 @@ describe('AddTransactionForm Component', () => {
             const input = screen.getByLabelText('Сумма');
             expect(input).toBe(screen.getByPlaceholderText('0'));
             expect(input).toHaveAttribute('inputmode', 'decimal');
+            // Без «search» в имени Safari на iOS предлагает «Автозаполнить контакт»
+            expect(input).toHaveAttribute('name', 'amount-search');
             fireEvent.change(input, { target: { value: '12.34' } });
             fireEvent.click(screen.getByText('Продукты'));
             fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
