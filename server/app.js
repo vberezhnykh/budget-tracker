@@ -27,6 +27,7 @@ const { prepareTransactionCompany } = require('./transactionCompany');
 const { getCanonicalSettings, saveCanonicalSettings } = require('./settingsSingleton');
 const { createOperationalRouter } = require('./operational');
 const { createMerchantSearchRouter } = require('./merchantSearch');
+const { createQuickEntryRouter, isQuickEntryEnabled } = require('./quickEntry');
 const { createCompaniesRouter } = require('./companies');
 const { activeTransactionFilter } = require('./ledgerState');
 const { validateAccountReferences } = require('./accountRefs');
@@ -209,6 +210,7 @@ app.use('/api', createOperationalRouter({ mongoose }));
 app.use('/api/trash', createTrashRouter());
 app.use('/api/planned-payments', createPlannedPaymentsRouter());
 app.use('/api/merchants', createMerchantSearchRouter());
+app.use('/api/quick-entry', createQuickEntryRouter());
 app.use('/api/companies', createCompaniesRouter());
 
 // ---- Auth ----
@@ -503,7 +505,7 @@ app.get('/api/settings', async (req, res) => {
         const settings = await getCanonicalSettings();
         res.set('Cache-Control', 'no-store');
         res.json({ monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT,
-            features: { banking: isBankingEnabled() } });
+            features: { banking: isBankingEnabled(), quickEntry: isQuickEntryEnabled() } });
     } catch (err) {
         if (err.code === 'SETTINGS_INTEGRITY') {
             return res.status(409).json({ message: err.message });

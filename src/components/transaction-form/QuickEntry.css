@@ -1,0 +1,34 @@
+/* Строка «Опишите операцию»: рамку рисует контейнер, поле внутри без рамки,
+   поэтому кольцо фокуса стоит на контейнере. Псевдоклассы инлайном не задать. */
+.quick-entry__row:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.quick-entry__input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text-main);
+  font-family: inherit;
+  font-size: var(--text-lg);
+  outline: none;
+}
+
+.quick-entry__input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 1;
+}
+
+.quick-entry__spinner {
+  animation: quick-entry-spin 0.9s linear infinite;
+}
+
+@keyframes quick-entry-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-entry__spinner { animation-duration: 3s; }
+}

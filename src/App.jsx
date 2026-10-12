@@ -81,6 +81,7 @@ function App() {
   const [trashLoaded, setTrashLoaded] = useState(false);
   const [showBanking, setShowBanking] = useState(false);
   const [bankingEnabled, setBankingEnabled] = useState(false);
+  const [quickEntryEnabled, setQuickEntryEnabled] = useState(false);
   const [banking, setBanking] = useState(null);
   const [bankingReview, setBankingReview] = useState({ items: [], total: 0 });
   const [bankingLoading, setBankingLoading] = useState(false);
@@ -232,6 +233,7 @@ function App() {
     setTrashLoaded(false);
     setShowBanking(false);
     setBankingEnabled(false);
+    setQuickEntryEnabled(false);
     setBanking(null);
     setBankingReview({ items: [], total: 0 });
     setBankingLoading(false);
@@ -401,6 +403,7 @@ function App() {
         setCategories(loadedCategories);
         setMonthlyLimit(loadedSettings === null ? DEFAULT_MONTHLY_LIMIT : loadedSettings.monthlyLimit);
         setBankingEnabled(loadedSettings?.features?.banking === true);
+        setQuickEntryEnabled(loadedSettings?.features?.quickEntry === true);
       }
       if (historyRefreshNeededRef.current) {
         setHistoryRevision(value => value + 1);
@@ -1556,6 +1559,7 @@ function App() {
           categoryCounts={dashboard?.data.categoryCounts}
           monthlyLimit={monthlyLimit}
           monthExpense={formMonthExpense}
+          quickEntry={quickEntryEnabled}
           // Only a real account id preselects - the total-capital slide
           // (null) and any residual type:* filter value must fall through
           // to no preset, forcing an explicit choice.

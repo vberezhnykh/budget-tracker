@@ -198,20 +198,31 @@ describe('Настройки', () => {
 
     it('reports the default-off runtime feature without creating a settings document', async () => {
         vi.stubEnv('BANKING_ENABLED', undefined);
+        vi.stubEnv('ANTHROPIC_API_KEY', undefined);
         const response = await agent.get('/api/settings');
-        expect(response.body).toEqual({ monthlyLimit: 7000, features: { banking: false } });
+        expect(response.body).toEqual({ monthlyLimit: 7000, features: { banking: false, quickEntry: false } });
         expect(response.headers['cache-control']).toBe('no-store');
         expect(await Settings.countDocuments()).toBe(0);
     });
 
     it('only the server environment enables banking; settings writes cannot persist or switch it', async () => {
         vi.stubEnv('BANKING_ENABLED', 'false');
+        vi.stubEnv('ANTHROPIC_API_KEY', undefined);
         const saved = await agent.put('/api/settings').send({ monthlyLimit: 4321, features: { banking: true } });
         expect(saved.status).toBe(200);
-        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: false } });
+        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: false, quickEntry: false } });
         vi.stubEnv('BANKING_ENABLED', 'true');
-        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: true } });
+        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: true, quickEntry: false } });
         expect(await Settings.findOne().lean()).not.toHaveProperty('features');
+    });
+
+    it('включает ввод фразой только по серверному ключу Anthropic', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', '  ');
+        expect((await agent.get('/api/settings')).body.features.quickEntry).toBe(false);
+        vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test');
+        const response = await agent.get('/api/settings');
+        expect(response.body.features.quickEntry).toBe(true);
+        expect(JSON.stringify(response.body)).not.toContain('sk-ant-test');
     });
 
     it('до первого сохранения отдаёт значение по умолчанию, не создавая документ', async () => {

@@ -13,6 +13,8 @@ import CategoryPicker from './transaction-form/CategoryPicker'
 import DateField from './transaction-form/DateField'
 import TransferAccounts from './transaction-form/TransferAccounts'
 import SplitEditor from './transaction-form/SplitEditor'
+import QuickEntry from './transaction-form/QuickEntry'
+import { applyQuickEntryDraft } from './transaction-form/quickEntryDraft'
 import useSplits from './transaction-form/useSplits'
 import useDescriptionSuggestions from './transaction-form/useDescriptionSuggestions'
 import { buildSubmission } from './transaction-form/buildSubmission'
@@ -78,7 +80,10 @@ const withPeriod = (message) => (/[.!?…]$/.test(message) ? message : `${messag
 // плашка с причиной. { cancelled: true } - пользователь сам отказался
 // (например, от слияния с банковской записью): лист остаётся, плашки нет.
 // Любое другое значение (включая undefined у простых вызывающих) - успех.
-export default function AddTransactionForm({ type = 'expense', initialData = null, categories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], categoryCounts, apiFetch, monthlyLimit, monthExpense }) {
+//
+// quickEntry включает строку «Опишите операцию» (ввод фразой) в новой
+// операции; у правки её нет, как и у разделения.
+export default function AddTransactionForm({ type = 'expense', initialData = null, categories = [], onAddCategory, onClose, onSubmit, onDelete, accounts = [], presetAccountId = null, transactions = [], categoryCounts, apiFetch, monthlyLimit, monthExpense, quickEntry = false }) {
     const defaultAccount = accounts.find(a => a.type === 'cash')?._id || accounts[0]?._id || 'cash';
     const defaultToAccount = accounts.find(a => a.type === 'card' && a._id !== defaultAccount)?._id || accounts.find(a => a._id !== defaultAccount)?._id || '';
 
@@ -142,6 +147,13 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const [categoryAutoFilled, setCategoryAutoFilled] = useState(false);
 
     const isTransfer = formData.type === 'transfer';
+
+    // Ввод фразой: слепок формы до заполнения нужен для «Вернуть как было»,
+    // quickBusy приглушает форму, пока идёт запрос, а quickFilled помнит, что
+    // поля заполнены фразой: только тогда пустой счёт подсвечивается.
+    const [quickBusy, setQuickBusy] = useState(false);
+    const [quickFilled, setQuickFilled] = useState(false);
+    const quickSnapshotRef = useRef(null);
 
     // Split Logic
     const [isSplit, setIsSplit] = useState(false);
@@ -310,6 +322,32 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     const canCalculate = amountCalc.isExpression && !amountCalc.error;
 
+    const applyDraft = (draft) => {
+        // Ответ приходит позже клика: берём свежую форму, а не ту, что была в замыкании
+        const current = latestRef.current.formData;
+        quickSnapshotRef.current = current;
+        setFormData(applyQuickEntryDraft(current, draft, accounts));
+        setQuickFilled(true);
+        setLastExpression('');
+        setCompanyLogoChanged(false);
+        setCategoryAutoFilled(false);
+        setUsualCategory('');
+        setFailure(null);
+    };
+
+    const revertDraft = () => {
+        if (quickSnapshotRef.current) setFormData(quickSnapshotRef.current);
+        quickSnapshotRef.current = null;
+        setQuickFilled(false);
+        setLastExpression('');
+        setCompanyLogoChanged(false);
+        setCategoryAutoFilled(false);
+        setUsualCategory('');
+    };
+
+    const showQuickEntry = quickEntry && !initialData && !isSplit;
+    const accountMissing = quickFilled && !isTransfer && !formData.account;
+
     return (
         <Sheet ariaLabel={getTitle()} onClose={requestClose}>
                 {/* Шапка: у новой операции слева переключатель типа, у
@@ -334,7 +372,23 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     <IconButton round tone="neutral" onClick={requestClose} aria-label="Закрыть"><X size={20} strokeWidth={1.8} aria-hidden="true" /></IconButton>
                 </div>
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+                {/* Фраза стоит вне формы: Enter в её поле не должен ничего сохранять */}
+                {showQuickEntry && (
+                    <QuickEntry
+                        apiFetch={apiFetch}
+                        onDraft={applyDraft}
+                        onRevert={revertDraft}
+                        accountMissing={accountMissing}
+                        onBusyChange={setQuickBusy}
+                    />
+                )}
+
+                <form
+                    onSubmit={handleSubmit}
+                    aria-busy={quickBusy || undefined}
+                    inert={quickBusy || undefined}
+                    style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', ...(quickBusy ? { opacity: 0.45, pointerEvents: 'none' } : null) }}
+                >
 
                     {/* Сумма: крупное число по центру без рамки */}
                     <div style={{ textAlign: 'center' }}>
@@ -511,6 +565,9 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             <div>
                                 <FormLabel>
                                     {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
+                                    {accountMissing && (
+                                        <span style={{ color: 'var(--color-negative)' }}> · выберите счет</span>
+                                    )}
                                 </FormLabel>
                                 <AccountPicker
                                     accounts={accounts}
