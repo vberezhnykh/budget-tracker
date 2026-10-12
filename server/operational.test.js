@@ -24,6 +24,33 @@ describe('operational router', () => {
         expect(Object.keys(response.body)).toEqual(['ok']);
     });
 
+    it('GET /api/version returns the build version with no-store', async () => {
+        const app = makeApp({ getBuildVersion: () => '/assets/index-C07hSNy2.js' });
+        const response = await request(app).get('/api/version');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ version: '/assets/index-C07hSNy2.js' });
+        expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('GET /api/version returns null when there is no build (dev, tests)', async () => {
+        const app = makeApp({ getBuildVersion: () => null });
+        const response = await request(app).get('/api/version');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({ version: null });
+        expect(response.headers['cache-control']).toBe('no-store');
+    });
+
+    it('GET /api/version reads dist/index.html through the default reader', async () => {
+        // Без внедрения: проверяет, что по умолчанию роут подключён к чтению
+        // файла и не падает, когда сборки нет.
+        const response = await request(makeApp()).get('/api/version');
+
+        expect(response.status).toBe(200);
+        expect(response.body).toHaveProperty('version');
+    });
+
     it('maps mongoose connection state 1 to ready', () => {
         expect(isMongoReady({ connection: { readyState: 1 } })).toBe(true);
         expect(isMongoReady({ connection: { readyState: 0 } })).toBe(false);

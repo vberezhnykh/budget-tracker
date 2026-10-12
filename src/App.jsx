@@ -23,6 +23,8 @@ import { transformTransactions } from './utils/finance'
 import { formatMoney } from './utils/money'
 import usePagedHistory from './utils/usePagedHistory'
 import useHashScreen from './utils/useHashScreen'
+import { useModalOpen } from './utils/useBodyScrollLock'
+import { useAppUpdate, reloadPage } from './utils/appUpdate'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
@@ -152,6 +154,26 @@ function App() {
       if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
     };
   }, []);
+
+  // Вышла новая версия (см. utils/appUpdate): приложение с экрана «Домой»
+  // возвращается из фона со старым кодом. Страницу перезагружаем сразу, но не
+  // посреди ввода - пока открыт лист (форма операции, настройки, выбор
+  // периода), введённое пропало бы. Тогда внизу висит плашка «Обновить», а
+  // перезагрузка случится сама, как только все листы закрыты, - так
+  // сохранённая форма не теряется, а обновление подхватывается следом.
+  // Откладываем и пока висит «Операция в корзине»: перезагрузка отняла бы
+  // у владельца отмену удаления. Листы App знает по своим состояниям, а выбор
+  // периода хранит своё внутри, поэтому к ним добавлен счётчик листов
+  // (useModalOpen): он же закрывает короткое окно, когда состояние уже
+  // выставлено, а лист ещё не смонтирован.
+  const { updateAvailable } = useAppUpdate();
+  const sheetOpen = useModalOpen();
+  const modalOpen = sheetOpen || showAddTransaction || Boolean(editingTransaction)
+    || Boolean(accountSheet) || showLimit || (bankingEnabled && showBanking);
+  const updateDeferred = updateAvailable && (modalOpen || Boolean(undoDeletion));
+  useEffect(() => {
+    if (updateAvailable && !updateDeferred) reloadPage();
+  }, [updateAvailable, updateDeferred]);
 
   // Высота полосы «не удалось обновить» вместе с отступом под ней. Экраны
   // (История считает свою высоту от окна) вычитают её через переменную
@@ -1393,6 +1415,17 @@ function App() {
             onClick: handleUndoDeletion,
             disabled: undoDeletion.pending,
           }}
+        />
+      )}
+      {/* Плашка о новой версии встаёт над остальными тостами: сообщение об
+          ошибке и «Операция в корзине» остаются видимыми под ней. Без
+          автозакрытия и без крестика - она нужна, пока не нажали «Обновить»
+          или не закрыли все листы. */}
+      {updateDeferred && (
+        <Toast
+          message="Доступна новая версия"
+          bottomOffset={TOAST_BOTTOM + TOAST_STACK_STEP * ((notice ? 1 : 0) + (undoDeletion ? 1 : 0))}
+          action={{ label: 'Обновить', onClick: reloadPage }}
         />
       )}
       {/* Ровно один экран за раз. Состояние и обработчики остаются здесь, экраны

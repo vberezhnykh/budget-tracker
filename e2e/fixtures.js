@@ -57,6 +57,8 @@ export async function mockApi(page, overrides = {}) {
     const request = route.request();
     const { pathname } = new URL(request.url());
     const method = request.method();
+    // Версия сборки: dev-сервер её не знает, как и сервер без dist (null).
+    if (method === 'GET' && pathname === '/api/version') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: null }) });
     const data = method === 'GET' ? readApi(request.url(), transactionsData, accountsData) : undefined;
     if (data !== undefined) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
 
@@ -93,6 +95,7 @@ export async function mockPhase2Api(page, overrides = {}) {
     const request = route.request();
     const { pathname } = new URL(request.url());
     const method = request.method();
+    if (method === 'GET' && pathname === '/api/version') return fulfill(route, { version: null });
     const data = method === 'GET' ? readApi(request.url(), state.transactions, state.accounts) : undefined;
     if (data !== undefined) return fulfill(route, data);
 

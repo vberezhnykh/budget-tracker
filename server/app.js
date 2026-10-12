@@ -199,15 +199,18 @@ app.use('/banking', bankingRouters.publicRouter);
 
 // Auth gate for the API. Mounted before any route definitions (not after),
 // so it can't be bypassed by route ordering. Excludes /api/login (you need
-// to be able to reach it while unauthenticated), /api/health (liveness) and
-// /api/ready (readiness). See server/auth.js for the fail-closed behavior when
-// APP_PASSWORD/SESSION_SECRET are missing or too weak, and for the
-// AUTH_DISABLED/loopback-only bypass.
+// to be able to reach it while unauthenticated), /api/health (liveness),
+// /api/ready (readiness) and /api/version (build id for the update check).
+// See server/auth.js for the fail-closed behavior when APP_PASSWORD/
+// SESSION_SECRET are missing or too weak, and for the AUTH_DISABLED/
+// loopback-only bypass.
 app.use(createAuthMiddleware(authDisabled));
 app.use('/api/banking', bankingRouters.apiRouter);
 
-// Readiness is public so an orchestrator can decide whether to route traffic;
-// client error reports pass through the auth gate above like business APIs.
+// Readiness and build version are public (see the auth gate above): an
+// orchestrator decides whether to route traffic, the PWA checks for a new
+// release even with an expired session. Client error reports pass through
+// the auth gate above like business APIs.
 app.use('/api', createOperationalRouter({ mongoose }));
 app.use('/api/trash', createTrashRouter());
 app.use('/api/planned-payments', createPlannedPaymentsRouter());

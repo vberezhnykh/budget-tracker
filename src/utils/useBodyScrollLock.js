@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 
 // Фиксация страницы под тем, что лежит поверх неё: под модальным листом
 // (ui/Sheet).
@@ -23,6 +23,23 @@ import { useEffect } from 'react';
 let lockCount = 0;
 let lockedScrollY = 0;
 
+// Тот же счётчик отвечает на вопрос «открыт ли сейчас какой-нибудь лист»:
+// листом пользуются все модальные окна приложения, включая выбор периода,
+// чьё состояние живёт внутри него, а не в App. Нужен отложенной перезагрузке
+// при выходе новой версии (utils/appUpdate): посреди ввода страницу не
+// перезагружаем.
+const modalListeners = new Set();
+const notifyModalListeners = () => modalListeners.forEach(listener => listener());
+const subscribeToModals = (listener) => {
+    modalListeners.add(listener);
+    return () => modalListeners.delete(listener);
+};
+const hasOpenModal = () => lockCount > 0;
+
+export function useModalOpen() {
+    return useSyncExternalStore(subscribeToModals, hasOpenModal, () => false);
+}
+
 // Блокировка живёт ровно столько, сколько смонтирован вызывающий компонент.
 export default function useBodyScrollLock() {
     useEffect(() => {
@@ -35,9 +52,11 @@ export default function useBodyScrollLock() {
             body.style.top = `-${lockedScrollY}px`;
         }
         lockCount += 1;
+        notifyModalListeners();
 
         return () => {
             lockCount -= 1;
+            notifyModalListeners();
             if (lockCount === 0) {
                 body.style.overflow = '';
                 body.style.position = '';

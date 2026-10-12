@@ -4,8 +4,8 @@
 // full user-account system is not warranted. Instead:
 //   - POST /api/login checks the submitted password against APP_PASSWORD and,
 //     on success, sets an httpOnly cookie carrying a signed, expiring token.
-//   - Every other /api/* route (except /api/login, /api/health and
-//     /api/ready) requires that cookie to be present and valid.
+//   - Every other /api/* route (except /api/login, /api/health, /api/ready
+//     and /api/version) requires that cookie to be present and valid.
 //
 // The pure pieces (token sign/verify, password check, config detection) live
 // here rather than inside route closures so they can be unit tested directly.
@@ -264,7 +264,9 @@ function createAuthMiddleware(authDisabled) {
     return function authMiddleware(req, res, next) {
         const path = req.path.toLowerCase();
         if (!path.startsWith('/api/')) return next();
-        if (path === '/api/login' || path === '/api/health' || path === '/api/ready') return next();
+        // /api/version - номер сборки для проверки обновления: не секрет, и
+        // спросить его нужно даже с протухшей кукой.
+        if (path === '/api/login' || path === '/api/health' || path === '/api/ready' || path === '/api/version') return next();
 
         const { sessionSecret, appPassword, isConfigured } = getAuthConfig();
         if (!isConfigured) {

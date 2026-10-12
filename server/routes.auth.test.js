@@ -53,11 +53,18 @@ describe('Гейт /api/*', () => {
         }
     });
 
-    it('пропускает без куки вход, liveness и readiness', async () => {
+    it('пропускает без куки вход, liveness, readiness и версию сборки', async () => {
         expect((await request(app).get('/api/health')).status).toBe(200);
         const ready = await request(app).get('/api/ready');
         expect(ready.status).toBe(200);
         expect(ready.body).toEqual({ ok: true });
+        // Версия: в тестах dist нет или он без скрипта, важен не её вид, а то,
+        // что гейт не отвечает 401, - протухшая кука не должна мешать
+        // узнать о новой сборке.
+        const version = await request(app).get('/api/version');
+        expect(version.status).toBe(200);
+        expect(version.body).toHaveProperty('version');
+        expect(version.headers['cache-control']).toBe('no-store');
         // Вход без пароля - это 401, а не 401 «не авторизован» от гейта:
         // важно, что запрос до роута вообще доходит.
         expect((await request(app).post('/api/login').send({})).status).toBe(401);

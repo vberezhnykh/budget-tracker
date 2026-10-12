@@ -351,6 +351,19 @@ describe('createAuthMiddleware - fails closed', () => {
         expect(res.statusCode).toBeNull();
     });
 
+    it('/api/version is always excluded (case-insensitively), configured or not', () => {
+        const middleware = createAuthMiddleware(false);
+        for (const path of ['/api/version', '/API/Version']) {
+            const { req, res } = makeReqRes(path);
+            const next = vi.fn();
+
+            middleware(req, res, next);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBeNull();
+        }
+    });
+
     it('non-API paths are never touched by the middleware', () => {
         const middleware = createAuthMiddleware(false);
         const { req, res } = makeReqRes('/assets/index.js');

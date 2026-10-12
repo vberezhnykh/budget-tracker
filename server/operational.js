@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const express = require('express');
+const { createBuildVersionReader } = require('./buildVersion');
 
 const CLIENT_ERROR_CODES = new Set(['react_render', 'unhandled_rejection']);
 const CLIENT_ERROR_AREAS = new Set(['app']);
@@ -49,13 +50,22 @@ function createOperationalRouter({
     isReady = () => isMongoReady(mongoose),
     logger = console,
     now = () => new Date(),
-    rateLimiter = createClientErrorRateLimiter()
+    rateLimiter = createClientErrorRateLimiter(),
+    getBuildVersion = createBuildVersionReader()
 } = {}) {
     const router = express.Router();
 
     router.get('/ready', (req, res) => {
         const ok = Boolean(isReady());
         res.status(ok ? 200 : 503).json({ ok });
+    });
+
+    // Публичный, как и ready: версия сборки не секрет, а проверять её надо и
+    // с протухшей кукой. no-store, иначе браузер или прокси отдали бы старый
+    // ответ, и приложение не узнало бы о выкате.
+    router.get('/version', (req, res) => {
+        res.set('Cache-Control', 'no-store');
+        res.json({ version: getBuildVersion() });
     });
 
     router.post('/client-errors', (req, res) => {
