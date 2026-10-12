@@ -81,12 +81,17 @@ test.describe('Error and status states (mobile, real browser)', () => {
     const strip = main.getByText(/^Не удалось обновить\. Показаны данные на /);
     await expect(strip).toBeVisible();
 
-    const measured = await main.evaluate(el => {
+    // Переменную выставляет ResizeObserver, то есть асинхронно: сразу после
+    // появления полосы (или пока догружается шрифт и строка переносится)
+    // она может отставать от высоты на кадр. Ждём, пока догонит.
+    const measure = () => main.evaluate(el => {
       const wrapper = el.firstElementChild;
-      return { variable: el.style.getPropertyValue('--status-strip-height'), height: wrapper.getBoundingClientRect().height };
+      return { variable: Number.parseFloat(el.style.getPropertyValue('--status-strip-height')), height: wrapper.getBoundingClientRect().height };
     });
-    expect(Number.parseFloat(measured.variable)).toBeGreaterThan(0);
-    expect(Math.abs(Number.parseFloat(measured.variable) - measured.height)).toBeLessThanOrEqual(1);
+    await expect.poll(async () => {
+      const { variable, height } = await measure();
+      return variable > 0 && Math.abs(variable - height) <= 1;
+    }).toBe(true);
 
     offline = false;
     await main.getByRole('button', { name: 'Повторить' }).click();
