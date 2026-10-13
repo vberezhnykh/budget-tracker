@@ -44,6 +44,10 @@ const MAX_BLOCK_TEXT = 1500;
 const MAX_CELL_TEXT = 80;
 const MAX_BASIS = 160;
 
+// Итоговый ответ модель отдаёт вызовом этого инструмента. Это не инструмент
+// данных: он не выполняется, не даёт шага в интерфейсе и не проверяется на повтор.
+const ANSWER_TOOL_NAME = 'give_answer';
+
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 const UNPARSED_MESSAGE = 'Не получилось ответить. Попробуйте спросить иначе.';
@@ -129,6 +133,8 @@ function buildSystemPrompt(data) {
         '- find_operations is for showing individual operations (the largest, the latest, a merchant, a note). Its list is limited.',
         '- Most questions need one or two tool calls. When several independent numbers are needed (for example two periods to compare), request them all in parallel in a single turn instead of one after another.',
         '- Never repeat a call and never re-verify a result you already have: the tools are exact. Answer as soon as you have the numbers.',
+        `- Deliver the final answer by calling ${ANSWER_TOOL_NAME} exactly once, as soon as you have the numbers, and write nothing after it. A typical question needs one data call and then ${ANSWER_TOOL_NAME}.`,
+        '- Call get_balances only for questions about current balances or how much money there is. Call get_typical_month only for questions about the pace of spending or a typical month. Never call a data tool to "double-check" a result you already have.',
         '- For "what did I spend the most on in <month>" use one sum_operations call with group_by "category" for that month (optionally plus one find_operations sorted by amount for the largest single purchases), then answer.',
         '- Quote periods exactly as the tools computed them (the from/to in the result). If the period is not over yet, say that the figure is for the days so far.',
         '- Resolve relative periods ("этим летом", "в прошлом месяце", "за неделю") against today\'s date. Summer is June 1 to August 31.',
@@ -137,7 +143,7 @@ function buildSystemPrompt(data) {
         '- Keep it short: 1 to 3 short paragraphs and, when comparing several periods or items, one table. No greeting, no recap of the question.',
         '- Write amounts like €412 or €1 234,50 (euro sign first, space between thousands, no cents when zero). Bold the key amounts with **...** only inside text blocks, never in table cells and never anywhere else.',
         '',
-        'Answer format (enforced by the schema).',
+        `Answer format (the arguments of ${ANSWER_TOOL_NAME}).`,
         '- blocks: text and table blocks in reading order. A table has columns and rows of strings, at most 6 columns and 24 rows.',
         '- basis: one short line saying what was computed, e.g. "Транспорт, июнь – август 2025 и 2026".',
         '- history: a filter that lets the user check the main number in the History screen, or null. category, account (by name), type and month (YYYY-MM) are each optional; set only those that match the main number. For a multi-month period use its latest month.'
@@ -198,6 +204,18 @@ function buildAnswerSchema(data) {
     };
 }
 
+// Инструмент итогового ответа: схема та же, что у принудительного последнего
+// запроса. Его определение входит в tools на каждом шаге, поэтому tools
+// остаются побайтно одинаковыми.
+function buildAnswerTool(data) {
+    return {
+        name: ANSWER_TOOL_NAME,
+        description: 'Deliver the final answer to the user. Call it exactly once, when you have the numbers you need; nothing comes after it. It is not a data tool: it fetches and computes nothing, so call it only with numbers taken from the data tools\' results.',
+        strict: true,
+        input_schema: buildAnswerSchema(data)
+    };
+}
+
 // Строка из ответа модели: без управляющих символов (в текстовом блоке
 // остаются переводы строки), с обрезкой по длине.
 function cleanString(value, limit, { keepNewlines = false } = {}) {
@@ -252,6 +270,26 @@ function sanitizeAnswer(raw, data) {
         basis: cleanString(raw.basis, MAX_BASIS),
         history: sanitizeHistory(raw.history, data)
     };
+}
+
+// Ответ из текста, которым модель закончила ход. Последний запрос идёт с
+// форматом вывода: там текст обязан быть JSON ответа. На обычном раунде модель
+// могла просто написать ответ словами, не вызвав give_answer: тогда это
+// текстовый блок без basis и фильтра Истории. Текст, который на самом деле JSON
+// ответа, принимается как ответ; JSON-объект, из которого ответа не вышло,
+// показывать как текст нельзя.
+function answerFromText(text, data, { forced }) {
+    if (typeof text !== 'string') return null;
+    let parsed;
+    try {
+        parsed = JSON.parse(text);
+    } catch {
+        parsed = undefined;
+    }
+    if (parsed && typeof parsed === 'object') return sanitizeAnswer(parsed, data);
+    if (forced) return null;
+    const clean = cleanString(text, MAX_BLOCK_TEXT, { keepNewlines: true });
+    return clean ? { blocks: [{ type: 'text', text: clean }], basis: '', history: null } : null;
 }
 
 // --- Цикл с инструментами ---------------------------------------------------------
@@ -357,13 +395,17 @@ function describeRound({ round, forced, response, traced, answerOk }) {
         text_chars: texts.map(block => block.text.length),
         text_head: texts.length > 0 ? texts.at(-1).text.slice(0, DEBUG_TEXT_HEAD) : null,
         usage,
-        calls: traced.map(({ call, dup, content: result, isError }) => ({
-            name: call.name,
-            input: call.input,
-            dup,
-            is_error: isError,
-            result: summarizeToolResult(call.name, result, isError)
-        }))
+        calls: traced.map(({ call, dup, content: result, isError, answer }) => {
+            // Итоговый ответ: только исход, число блоков и длина basis, без самого ввода.
+            if (answer) return { name: call.name, answer_ok: answer.ok, blocks: answer.blocks, basis_chars: answer.basisChars };
+            return {
+                name: call.name,
+                input: call.input,
+                dup,
+                is_error: isError,
+                result: summarizeToolResult(call.name, result, isError)
+            };
+        })
     };
     if (answerOk !== undefined) entry.answer_ok = answerOk;
     return entry;
@@ -397,8 +439,11 @@ function describeRequest(request) {
 // signal. Возвращает { answer } или { error: { code, message } }, а для
 // ушедшего клиента - { aborted: true }.
 //
+// Ответ приходит вызовом give_answer (даже рядом с другими вызовами: те не
+// выполняются) либо, если модель закончила ход текстом, как текстовый ответ.
 // После maxToolRounds раундов инструментов не ошибка, а ещё один запрос с
-// tool_choice none и служебной репликой: Claude отвечает по уже полученному.
+// tool_choice none, служебной репликой и форматом вывода (JSON-схема только
+// здесь): Claude отвечает по уже полученному.
 // История только дописывается, system и tools остаются прежними. stats
 // (необязательный) заполняется для журнала: раунды, был ли последний запрос,
 // исходы вызовов - без вопроса, ввода и результатов. debug (необязательный,
@@ -429,7 +474,18 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
             stats.forced = true;
             conversation.push({ role: 'system', content: BUDGET_NOTE });
         }
-        const params = { ...baseParams, ...(forced ? { tool_choice: { type: 'none' } } : {}) };
+        // Формат вывода (JSON-схема) только на последнем запросе: вместе с tools на
+        // обычных раундах модель не умела закончить ход текстом. Смена
+        // output_config блоки размышления не обесценивает.
+        const params = {
+            ...baseParams,
+            ...(forced
+                ? {
+                    tool_choice: { type: 'none' },
+                    output_config: { ...baseParams.output_config, format: { type: 'json_schema', schema: buildAnswerSchema(data) } }
+                }
+                : {})
+        };
         // Копия массива: тот, что ушёл в запрос, не должен меняться задним числом.
         const request = { ...params, messages: [...conversation] };
         if (debug) stats.lastRequest = request;
@@ -445,6 +501,15 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
             if (calls.length === 0) {
                 traceRound();
                 return { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
+            }
+            // Итоговый ответ: остальные вызовы этого хода не выполняются, цикл кончается.
+            const given = calls.find(call => call.name === ANSWER_TOOL_NAME);
+            if (given) {
+                const answer = sanitizeAnswer(given.input, data);
+                stats.tools.push(ANSWER_TOOL_NAME);
+                if (debug) traced.push({ call: given, answer: { ok: Boolean(answer), blocks: answer ? answer.blocks.length : 0, basisChars: answer ? answer.basis.length : 0 } });
+                traceRound();
+                return answer ? { answer } : { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
             }
             // Запасной выход: с tool_choice none сюда попасть нельзя.
             if (forced) {
@@ -487,14 +552,7 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
             return { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
         }
         const textBlock = (Array.isArray(response.content) ? response.content : []).filter(block => block?.type === 'text').at(-1);
-        let answer = null;
-        if (typeof textBlock?.text === 'string') {
-            try {
-                answer = sanitizeAnswer(JSON.parse(textBlock.text), data);
-            } catch {
-                answer = null;
-            }
-        }
+        const answer = answerFromText(textBlock?.text, data, { forced });
         traceRound({ answerOk: Boolean(answer) });
         return answer ? { answer } : { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
     }
@@ -572,9 +630,10 @@ function createAskRouter({
             model: getModel(),
             max_tokens: MAX_TOKENS,
             cache_control: { type: 'ephemeral' },
-            output_config: { effort: 'medium', format: { type: 'json_schema', schema: buildAnswerSchema(data) } },
+            // Формат вывода сюда не входит: runAskLoop добавляет его только к последнему запросу.
+            output_config: { effort: 'medium' },
             system: buildSystemPrompt(data),
-            tools: buildToolDefinitions(data)
+            tools: [...buildToolDefinitions(data), buildAnswerTool(data)]
         };
 
         res.status(200).set({
@@ -672,10 +731,12 @@ module.exports = {
     normalizeAskText,
     buildSystemPrompt,
     buildAnswerSchema,
+    buildAnswerTool,
     sanitizeAnswer,
     sanitizeHistory,
     runAskLoop,
     formatAskLog,
     MAX_TOOL_ROUNDS,
+    ANSWER_TOOL_NAME,
     DEFAULT_MODEL
 };

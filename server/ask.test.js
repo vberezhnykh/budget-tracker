@@ -55,8 +55,12 @@ const answer = (patch = {}) => ({
     history: null,
     ...patch
 });
-const finalTurn = (value = answer()) => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(value) }] });
 const use = (id, name, input) => ({ type: 'tool_use', id, name, input });
+// Обычный итог: вызов give_answer. jsonTurn - ответ JSON-текстом (последний запрос
+// с форматом вывода), textTurn - модель закончила ход обычным текстом.
+const finalTurn = (value = answer()) => ({ stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'ans-1', name: 'give_answer', input: value }] });
+const jsonTurn = (value = answer()) => ({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(value) }] });
+const textTurn = (text) => ({ stop_reason: 'end_turn', content: [{ type: 'text', text }] });
 const toolTurn = (...uses) => ({ stop_reason: 'tool_use', content: [{ type: 'thinking', thinking: 'считаю', signature: 'sig-1' }, ...uses] });
 const sumInput = (patch = {}) => ({
     from: '2026-06-01', to: '2026-08-31', type: 'expense', category: 'Транспорт', account: null, company: null, group_by: 'none', ...patch
@@ -220,6 +224,18 @@ describe('buildSystemPrompt', () => {
         expect(prompt).toMatch(/Answer as soon as you have the numbers/);
         expect(prompt).toMatch(/one sum_operations call with group_by "category"/);
         expect(prompt).toMatch(/optionally plus one find_operations sorted by amount/);
+    });
+
+    it('ответ отдаётся вызовом give_answer; get_balances и get_typical_month - только по делу, без перепроверок', () => {
+        expect(prompt).toMatch(/calling give_answer exactly once/);
+        expect(prompt).toMatch(/write nothing after it/);
+        expect(prompt).toMatch(/one data call and then give_answer/);
+        expect(prompt).toMatch(/Call get_balances only for questions about current balances or how much money there is/);
+        expect(prompt).toMatch(/Call get_typical_month only for questions about the pace of spending or a typical month/);
+        expect(prompt).toMatch(/Never call a data tool to "double-check" a result you already have/);
+        expect(prompt).toMatch(/Answer format \(the arguments of give_answer\)/);
+        expect(prompt).not.toMatch(/enforced by the schema/);
+        expect(prompt).not.toMatch(/JSON/);
     });
 
     it('без операций говорит об этом', () => {
@@ -471,7 +487,7 @@ describe('POST /api/ask: цикл с инструментами', () => {
         expect(JSON.parse(result.content)).toMatchObject({ from: '2026-06-01', to: '2026-08-31', total: 65, count: 2, filters: { category: 'Транспорт' } });
     });
 
-    it('запрос к Claude: модель, лимит, структурированный вывод, инструменты, кэш; без чужих параметров', async () => {
+    it('запрос к Claude: модель, лимит, усилие без формата вывода, инструменты с give_answer, кэш; без чужих параметров', async () => {
         const createMessage = script(finalTurn());
         await post(makeApp({ createMessage }));
         const [params, options] = createMessage.mock.calls[0];
@@ -479,11 +495,16 @@ describe('POST /api/ask: цикл с инструментами', () => {
         expect(params.model).toBe('claude-sonnet-5-5');
         expect(params.max_tokens).toBe(8000);
         expect(params.cache_control).toEqual({ type: 'ephemeral' });
-        expect(params.output_config.effort).toBe('medium');
-        expect(params.output_config.format.type).toBe('json_schema');
-        expect(params.output_config.format.schema).toEqual(buildAnswerSchema(data));
-        expect(params.tools.map(tool => tool.name)).toEqual(['sum_operations', 'find_operations', 'get_balances', 'get_typical_month']);
+        // Формат вывода вместе с инструментами мешал модели закончить ход: на обычных раундах его нет.
+        expect(params.output_config).toEqual({ effort: 'medium' });
+        expect(params.tools.map(tool => tool.name)).toEqual(['sum_operations', 'find_operations', 'get_balances', 'get_typical_month', 'give_answer']);
         expect(params.tools.every(tool => tool.strict === true)).toBe(true);
+        const giveAnswer = params.tools.at(-1);
+        expect(giveAnswer.input_schema).toEqual(buildAnswerSchema(data));
+        expect(giveAnswer.input_schema.additionalProperties).toBe(false);
+        expect(giveAnswer.input_schema.required).toEqual(['blocks', 'basis', 'history']);
+        expect(giveAnswer.description).toMatch(/exactly once/);
+        expect(giveAnswer.description).toMatch(/nothing comes after it/);
         expect(params.system).toBe(buildSystemPrompt(data));
         for (const forbidden of ['temperature', 'top_p', 'top_k', 'thinking', 'tool_choice']) expect(params).not.toHaveProperty(forbidden);
         expect(options.signal).toBeInstanceOf(AbortSignal);
@@ -597,17 +618,128 @@ describe('POST /api/ask: цикл с инструментами', () => {
     });
 });
 
+describe('POST /api/ask: итоговый ответ give_answer', () => {
+    const unparsed = { type: 'error', code: 'ASK_UNPARSED', message: 'Не получилось ответить. Попробуйте спросить иначе.' };
+    const finalAnswer = { type: 'answer', blocks: answer().blocks, basis: answer().basis, history: null };
+
+    it('вызов данных, затем give_answer в следующем ответе: шаг, ответ, запрос к Claude без tool_choice', async () => {
+        const createMessage = script(toolTurn(use('u1', 'sum_operations', sumInput())), finalTurn());
+        const result = await post(makeApp({ createMessage }));
+        expect(result.events).toEqual([
+            { type: 'step', label: 'Транспорт, 1 июня – 31 августа 2026' },
+            { type: 'step_done' },
+            finalAnswer
+        ]);
+        expect(createMessage).toHaveBeenCalledTimes(2);
+        for (const [params] of createMessage.mock.calls) {
+            expect(params.output_config).not.toHaveProperty('format');
+            expect(params).not.toHaveProperty('tool_choice');
+        }
+    });
+
+    it('give_answer в первом ответе: ответ без единого шага', async () => {
+        const createMessage = script(finalTurn(answer({ history: { category: 'Транспорт', account: 'Revolut', type: 'expense', month: '2026-08' } })));
+        const result = await post(makeApp({ createMessage }));
+        expect(result.events).toEqual([{ ...finalAnswer, history: { category: 'Транспорт', account: 'acc-card', type: 'expense', month: '2026-08' } }]);
+        expect(createMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('give_answer рядом с вызовом данных: ответ, вызов не выполняется и шага нет', async () => {
+        const createMessage = script({
+            stop_reason: 'tool_use',
+            content: [
+                { type: 'thinking', thinking: 'считаю', signature: 'sig-1' },
+                use('u1', 'sum_operations', sumInput()),
+                use('ans-1', 'give_answer', answer()),
+                use('u2', 'get_balances', {})
+            ]
+        });
+        const log = vi.fn();
+        const result = await post(makeApp({ createMessage, log }));
+        expect(result.events).toEqual([finalAnswer]);
+        expect(createMessage).toHaveBeenCalledTimes(1);
+        expect(log.mock.calls[0][0]).toContain('tools=give_answer outcome=answer');
+    });
+
+    it('ввод give_answer чистится как любой ответ', async () => {
+        const createMessage = script(finalTurn(answer({
+            blocks: Array.from({ length: 14 }, (_, index) => ({ type: 'text', text: `абзац ${index}` })),
+            basis: 'о'.repeat(300),
+            history: { category: 'Рестораны', account: 'Revolut', type: null, month: null }
+        })));
+        const final = lastEvent(await post(makeApp({ createMessage })));
+        expect(final.blocks).toHaveLength(12);
+        expect(final.basis).toHaveLength(160);
+        expect(final.history).toEqual({ category: null, account: 'acc-card', type: null, month: null });
+    });
+
+    it('give_answer с неверным вводом - ASK_UNPARSED, остальные вызовы хода не выполняются', async () => {
+        const createMessage = script({
+            stop_reason: 'tool_use',
+            content: [use('u1', 'get_balances', {}), use('ans-1', 'give_answer', { blocks: 'ответ' })]
+        });
+        const result = await post(makeApp({ createMessage }));
+        expect(result.events).toEqual([unparsed]);
+        expect(createMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('give_answer не проверяется на повтор и не попадает в историю как результат', async () => {
+        const createMessage = script(toolTurn(use('u1', 'get_balances', {})), finalTurn());
+        await post(makeApp({ createMessage }));
+        expect(createMessage.mock.calls.at(-1)[0].messages.some(message => JSON.stringify(message).includes('give_answer'))).toBe(false);
+    });
+
+    it('конец хода обычным текстом - текстовый ответ без basis и фильтра', async () => {
+        const result = await post(makeApp({ createMessage: script(textTurn('  Расходы на транспорт: **€65**.\n\nВот так.  ')) }));
+        expect(result.events).toEqual([{ type: 'answer', blocks: [{ type: 'text', text: 'Расходы на транспорт: **€65**.\n\nВот так.' }], basis: '', history: null }]);
+    });
+
+    it('текстовый ответ режется по длине текстового блока и чистится от служебных символов', async () => {
+        const result = await post(makeApp({ createMessage: script(textTurn(`а\u0000б${'я'.repeat(2000)}`)) }));
+        const [block] = lastEvent(result).blocks;
+        expect(block.text).toHaveLength(1500);
+        expect(block.text.startsWith('а б')).toBe(true);
+    });
+
+    it('конец хода текстом после вызовов данных тоже ответ', async () => {
+        const createMessage = script(toolTurn(use('u1', 'get_balances', {})), textTurn('Остатки посчитаны.'));
+        const result = await post(makeApp({ createMessage }));
+        expect(result.events.map(event => event.type)).toEqual(['step', 'step_done', 'answer']);
+        expect(lastEvent(result).blocks[0].text).toBe('Остатки посчитаны.');
+    });
+
+    it('конец хода с JSON ответа в тексте - разобранный ответ', async () => {
+        const raw = answer({ history: { category: 'Транспорт', account: null, type: 'expense', month: '2026-08' } });
+        const result = await post(makeApp({ createMessage: script(jsonTurn(raw)) }));
+        expect(lastEvent(result)).toEqual({ type: 'answer', ...raw });
+    });
+
+    it('конец хода с пустым текстом - ASK_UNPARSED', async () => {
+        expect(lastEvent(await post(makeApp({ createMessage: script(textTurn('')) })))).toEqual(unparsed);
+        expect(lastEvent(await post(makeApp({ createMessage: script({ stop_reason: 'end_turn', content: [] }) })))).toEqual(unparsed);
+    });
+
+    it('give_answer на последнем запросе тоже принимается (запасной выход)', async () => {
+        const turns = [...Array.from({ length: 6 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index }))), finalTurn()];
+        const result = await post(makeApp({ createMessage: script(...turns) }));
+        expect(lastEvent(result).type).toBe('answer');
+    });
+});
+
 describe('POST /api/ask: ошибки Claude и пределы', () => {
     const unparsed = { type: 'error', code: 'ASK_UNPARSED', message: 'Не получилось ответить. Попробуйте спросить иначе.' };
 
     it.each([
         ['отказ', { stop_reason: 'refusal', content: [] }],
-        ['обрезанный ответ', { ...finalTurn(), stop_reason: 'max_tokens' }],
+        ['обрезанный ответ', { ...jsonTurn(), stop_reason: 'max_tokens' }],
         ['пауза', { stop_reason: 'pause_turn', content: [] }],
-        ['нет текстового блока', { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: '...' }] }],
-        ['невалидный JSON', { stop_reason: 'end_turn', content: [{ type: 'text', text: `{"blocks": ${KEY}` }] }],
-        ['JSON не того вида', { stop_reason: 'end_turn', content: [{ type: 'text', text: '"ответ"' }] }],
-        ['ответ без блоков', finalTurn({ blocks: [], basis: '', history: null })],
+        ['конец хода без текстового блока', { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: '...' }] }],
+        ['конец хода с пустым текстом', textTurn('  \n ')],
+        ['JSON-объект в тексте без блоков', jsonTurn({ blocks: [], basis: '', history: null })],
+        ['give_answer без блоков', finalTurn({ blocks: [], basis: '', history: null })],
+        ['give_answer с мусором вместо ответа', finalTurn('ответ')],
+        ['give_answer с пустым вводом', finalTurn({})],
+        ['give_answer с текстом из пробелов', finalTurn({ blocks: [{ type: 'text', text: '  ' }], basis: '', history: null })],
         ['tool_use без вызовов', { stop_reason: 'tool_use', content: [{ type: 'text', text: 'ок' }] }]
     ])('ASK_UNPARSED: %s', async (_name, message) => {
         const result = await post(makeApp({ createMessage: script(message) }));
@@ -617,12 +749,12 @@ describe('POST /api/ask: ошибки Claude и пределы', () => {
     });
 
     it('берёт последний текстовый блок после размышления', async () => {
-        const turn = { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: 'ага' }, ...finalTurn().content] };
+        const turn = { stop_reason: 'end_turn', content: [{ type: 'thinking', thinking: 'ага' }, ...jsonTurn().content] };
         expect(lastEvent(await post(makeApp({ createMessage: script(turn) }))).type).toBe('answer');
     });
 
     it('после 6 раундов инструментов - последний запрос без инструментов, а не ошибка', async () => {
-        const turns = [...Array.from({ length: 6 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index }))), finalTurn()];
+        const turns = [...Array.from({ length: 6 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index }))), jsonTurn()];
         const createMessage = script(...turns);
         const result = await post(makeApp({ createMessage }));
         expect(createMessage).toHaveBeenCalledTimes(7);
@@ -656,7 +788,10 @@ describe('POST /api/ask: ошибки Claude и пределы', () => {
         for (const params of calls.slice(0, 6)) {
             expect(params).not.toHaveProperty('tool_choice');
             expect(params.messages.some(message => message.role === 'system')).toBe(false);
+            expect(params.output_config).toEqual({ effort: 'medium' });
         }
+        // Формат вывода - только на последнем запросе, остальное без изменений.
+        expect(forcedParams.output_config).toEqual({ effort: 'medium', format: { type: 'json_schema', schema: buildAnswerSchema(data) } });
     });
 
     it('последний запрос: плохой JSON - ASK_UNPARSED', async () => {
@@ -666,6 +801,10 @@ describe('POST /api/ask: ошибки Claude и пределы', () => {
         const result = await post(makeApp({ createMessage }));
         expect(createMessage).toHaveBeenCalledTimes(7);
         expect(lastEvent(result)).toEqual({ type: 'error', code: 'ASK_UNPARSED', message: 'Не получилось ответить. Попробуйте спросить иначе.' });
+
+        // На последнем запросе формат вывода гарантирует JSON: обычный текст ответом не считается.
+        const plain = script(...turns.slice(0, 6), textTurn('Просто слова'));
+        expect(lastEvent(await post(makeApp({ createMessage: plain }))).code).toBe('ASK_UNPARSED');
     });
 
     it('последний запрос: снова tool_use (запасной выход) - ASK_TOO_COMPLEX, инструменты не выполняются', async () => {
@@ -822,14 +961,14 @@ describe('POST /api/ask: журнал', () => {
         expect(log).toHaveBeenCalledTimes(1);
         const match = LINE.exec(log.mock.calls[0][0]);
         expect(match).not.toBeNull();
-        expect(match.slice(1, 5)).toEqual(['2', 'false', 'sum_operations:ok,sum_operations:error,sum_operations:dup', 'answer']);
+        expect(match.slice(1, 5)).toEqual(['2', 'false', 'sum_operations:ok,sum_operations:error,sum_operations:dup,give_answer', 'answer']);
     });
 
     it('по умолчанию пишет через console.info', async () => {
         await post(makeApp({ createMessage: script(finalTurn()) }));
         expect(console.info).toHaveBeenCalledTimes(1);
         expect(console.info.mock.calls[0][0]).toMatch(LINE);
-        expect(console.info.mock.calls[0][0]).toContain('tools=- outcome=answer');
+        expect(console.info.mock.calls[0][0]).toContain('tools=give_answer outcome=answer');
     });
 
     it('принудительный ответ и ошибки отражены в исходе', async () => {
@@ -857,7 +996,7 @@ describe('POST /api/ask: журнал', () => {
         const log = vi.fn();
         const createMessage = script(
             toolTurn(use('u1', 'sum_operations', sumInput({ company: 'Bolt' })), use('u2', 'find_operations', { query: 'Сравни' })),
-            { stop_reason: 'end_turn', content: [{ type: 'text', text: `{"blocks": ${KEY}` }] }
+            finalTurn(answer({ blocks: [{ type: 'text', text: `Транспорт, Bolt, 3000 ${KEY}` }], basis: 'Сравни' }))
         );
         await post(makeApp({ createMessage, log }));
         const line = log.mock.calls[0][0];
@@ -886,7 +1025,7 @@ describe('POST /api/ask: подробный журнал ASK_DEBUG', () => {
     const scenario = () => script(
         toolTurn(toolUse('u1', sumInput())),
         toolTurn(toolUse('u2', sumInput()), toolUse('u3', sumInput({ group_by: 'month', category: null }))),
-        { ...finalTurn(), usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 100, cache_creation_input_tokens: 0, service_tier: 'standard' } }
+        { ...jsonTurn(), usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 100, cache_creation_input_tokens: 0, service_tier: 'standard' } }
     );
 
     it('по умолчанию (флаг выключен) - только строка итога', async () => {
@@ -973,7 +1112,7 @@ describe('POST /api/ask: подробный журнал ASK_DEBUG', () => {
                     use('u4', 'sum_operations', { group_by: 'nonsense' })
                 ]
             },
-            { stop_reason: 'end_turn', content: [{ type: 'text', text: 'не JSON' }] }
+            { stop_reason: 'end_turn', content: [{ type: 'text', text: '  ' }] }
         );
         await post(makeApp({ createMessage, log, getDebug: () => true }));
         const [first, last] = rounds(log);
@@ -991,6 +1130,27 @@ describe('POST /api/ask: подробный журнал ASK_DEBUG', () => {
         expect(last).toMatchObject({ stop_reason: 'end_turn', answer_ok: false });
     });
 
+    it('give_answer в журнале: имя, исход, число блоков и длина basis, без ввода', async () => {
+        const log = vi.fn();
+        const createMessage = script(
+            toolTurn(toolUse('u1', sumInput())),
+            toolTurn(use('ans-1', 'give_answer', answer()))
+        );
+        await post(makeApp({ createMessage, log, getDebug: () => true }));
+        const items = rounds(log);
+        expect(items).toHaveLength(2);
+        expect(items[1]).toMatchObject({ round: 2, forced: false, stop_reason: 'tool_use', blocks: ['thinking(text,signed)', 'tool_use'] });
+        expect(items[1].calls).toEqual([{ name: 'give_answer', answer_ok: true, blocks: 1, basis_chars: answer().basis.length }]);
+        expect(items[1]).not.toHaveProperty('answer_ok');
+        expect(log.mock.calls.at(-1)[0]).toMatch(/^\[ask\] rounds=1 forced=false tools=sum_operations:ok,give_answer outcome=answer /);
+
+        const bad = vi.fn();
+        await post(makeApp({ createMessage: script(toolTurn(use('ans-2', 'give_answer', { blocks: [] }))), log: bad, getDebug: () => true }));
+        expect(rounds(bad)[0].calls).toEqual([{ name: 'give_answer', answer_ok: false, blocks: 0, basis_chars: 0 }]);
+        expect(bad.mock.calls.at(-1)[0]).toMatch(/tools=give_answer outcome=ASK_UNPARSED/);
+        expect(JSON.stringify(bad.mock.calls)).not.toContain('"input"');
+    });
+
     it('текст головы обрезается до 300 знаков и берётся из последнего текстового блока', async () => {
         const log = vi.fn();
         const text = JSON.stringify(answer({ basis: 'я'.repeat(400) }));
@@ -1006,7 +1166,7 @@ describe('POST /api/ask: подробный журнал ASK_DEBUG', () => {
         const log = vi.fn();
         const same = toolTurn(use('u', 'sum_operations', sumInput()));
         const turns = Array.from({ length: 6 }, (_, index) => ({ ...same, content: [same.content[0], use(`u${index}`, 'sum_operations', sumInput())] }));
-        await post(makeApp({ createMessage: script(...turns, finalTurn()), log, getDebug: () => true }));
+        await post(makeApp({ createMessage: script(...turns, jsonTurn()), log, getDebug: () => true }));
         const items = rounds(log);
         expect(items).toHaveLength(7);
         expect(items.map(item => item.forced)).toEqual([false, false, false, false, false, false, true]);
@@ -1040,11 +1200,11 @@ describe('POST /api/ask: подробный журнал ASK_DEBUG', () => {
         }
         expect(shape).toMatchObject({
             tool_choice: null,
-            has_output_config_format: true,
+            has_output_config_format: false,
             system_chars: lastRequest.system.length,
             tools: lastRequest.tools.map(tool => tool.name)
         });
-        expect(shape.tools).toEqual(['sum_operations', 'find_operations', 'get_balances', 'get_typical_month']);
+        expect(shape.tools).toEqual(['sum_operations', 'find_operations', 'get_balances', 'get_typical_month', 'give_answer']);
         // Форма одна на вопрос и идёт перед строкой итога.
         expect(debugLines(log).filter(item => 'request_shape' in item)).toHaveLength(1);
         expect(log.mock.calls.at(-1)[0]).toMatch(/^\[ask\] /);
@@ -1054,9 +1214,10 @@ describe('POST /api/ask: подробный журнал ASK_DEBUG', () => {
     it('форма принудительного запроса: tool_choice none и служебная реплика', async () => {
         const log = vi.fn();
         const turns = Array.from({ length: 6 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index })));
-        await post(makeApp({ createMessage: script(...turns, finalTurn()), log, getDebug: () => true }));
+        await post(makeApp({ createMessage: script(...turns, jsonTurn()), log, getDebug: () => true }));
         const shape = shapeOf(log);
         expect(shape.tool_choice).toEqual({ type: 'none' });
+        expect(shape.has_output_config_format).toBe(true);
         expect(shape.messages).toHaveLength(14);
         expect(shape.messages.at(-1)).toEqual({ role: 'system', content: `string(${'The tool budget for this question is used up. Answer now from the tool results above. If something could not be computed, say so in the answer.'.length})` });
         expect(shape.messages.at(-2).content).toEqual([expect.stringMatching(/^tool_result\(u5,\d+\)$/)]);
