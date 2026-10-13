@@ -25,7 +25,9 @@ const { prepareData, executeTool, buildToolDefinitions, describeToolCall } = req
 const DEFAULT_MODEL = 'claude-sonnet-5-5';
 const ASK_TIMEOUT_MS = 60 * 1000;
 const ASK_RATE_WINDOW_MS = 60 * 1000;
-const MAX_ITERATIONS = 8;
+// Раундов с инструментами на вопрос. После последнего Claude получает ещё один
+// запрос без права вызывать инструменты и обязан ответить по тому, что есть.
+const MAX_TOOL_ROUNDS = 6;
 const MAX_TOKENS = 8000;
 
 const MIN_MESSAGES = 1;
@@ -49,6 +51,11 @@ const TOO_COMPLEX_MESSAGE = 'Вопрос оказался слишком сло
 const TIMEOUT_MESSAGE = 'Claude не ответил вовремя. Вопрос сохранен, его можно отправить еще раз.';
 const RATE_LIMITED_MESSAGE = 'Claude временно ограничил запросы. Попробуйте через минуту.';
 const FAILED_MESSAGE = 'Не удалось связаться с Claude. Попробуйте еще раз.';
+
+// Служебная реплика перед последним запросом (роль system внутри messages
+// Sonnet 5.5 понимает; идёт сразу за сообщением с результатами инструментов).
+const BUDGET_NOTE = 'The tool budget for this question is used up. Answer now from the tool results above. If something could not be computed, say so in the answer.';
+const DUPLICATE_NOTE = 'Same call as before; the result has not changed. Use it instead of calling again.';
 
 const isAskEnabled = isApiKeyConfigured;
 
@@ -120,6 +127,9 @@ function buildSystemPrompt(data) {
         'Rules.',
         '- Every number you state must come from a tool result. Never add up, average or estimate amounts yourself and never total a list from find_operations: call sum_operations (use group_by month/category/company/account for breakdowns, one call per period you compare). You may subtract two totals returned by tools and give a whole-number percentage from them.',
         '- find_operations is for showing individual operations (the largest, the latest, a merchant, a note). Its list is limited.',
+        '- Most questions need one or two tool calls. When several independent numbers are needed (for example two periods to compare), request them all in parallel in a single turn instead of one after another.',
+        '- Never repeat a call and never re-verify a result you already have: the tools are exact. Answer as soon as you have the numbers.',
+        '- For "what did I spend the most on in <month>" use one sum_operations call with group_by "category" for that month (optionally plus one find_operations sorted by amount for the largest single purchases), then answer.',
         '- Quote periods exactly as the tools computed them (the from/to in the result). If the period is not over yet, say that the figure is for the days so far.',
         '- Resolve relative periods ("этим летом", "в прошлом месяце", "за неделю") against today\'s date. Summer is June 1 to August 31.',
         '- If the data cannot answer the question (the period is before the first operation, no such category, nothing found, or the question is not about the user\'s money), say so plainly. Never invent numbers. Give no financial advice unless asked, and then only from the data.',
@@ -259,24 +269,63 @@ function untilAborted(promise, signal) {
     });
 }
 
+// Одинаковый ввод всегда даёт одну и ту же строку, как бы ни стояли ключи.
+function stableStringify(value) {
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value) ?? 'null';
+}
+
+// Повторный вызов получает прежний результат с пометкой; пометка остаётся
+// корректным JSON, даже если прежний результат был простым текстом ошибки.
+function duplicateContent(previous) {
+    let result = previous;
+    try {
+        result = JSON.parse(previous);
+    } catch {
+        // текст ошибки остаётся строкой
+    }
+    return JSON.stringify({ note: DUPLICATE_NOTE, result });
+}
+
 // Ведёт разговор с Claude, пока он вызывает инструменты. Ничего не знает про
 // HTTP: события уходят в emit, остановку (клиент ушёл, вышло время) сообщает
 // signal. Возвращает { answer } или { error: { code, message } }, а для
 // ушедшего клиента - { aborted: true }.
-async function runAskLoop({ send, baseParams, messages, data, emit, signal, state, maxIterations = MAX_ITERATIONS, timeoutMs }) {
+//
+// После maxToolRounds раундов инструментов не ошибка, а ещё один запрос с
+// tool_choice none и служебной репликой: Claude отвечает по уже полученному.
+// История только дописывается, system и tools остаются прежними. stats
+// (необязательный) заполняется для журнала: раунды, был ли последний запрос,
+// исходы вызовов - без вопроса, ввода и результатов.
+async function runAskLoop({ send, baseParams, messages, data, emit, signal, state, maxToolRounds = MAX_TOOL_ROUNDS, timeoutMs, stats = {} }) {
     const conversation = [...messages];
-    for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    const seen = new Map();
+    const known = new Set((baseParams.tools || []).map(tool => tool?.name));
+    stats.rounds = 0;
+    stats.forced = false;
+    stats.tools = [];
+    for (;;) {
         if (state.clientGone) return { aborted: true };
         if (state.timedOut) return { error: { code: 'ASK_TIMEOUT', message: TIMEOUT_MESSAGE } };
 
+        const forced = stats.rounds >= maxToolRounds;
+        if (forced) {
+            stats.forced = true;
+            conversation.push({ role: 'system', content: BUDGET_NOTE });
+        }
+        const params = { ...baseParams, ...(forced ? { tool_choice: { type: 'none' } } : {}) };
         // Копия массива: тот, что ушёл в запрос, не должен меняться задним числом.
-        const response = await untilAborted(send({ ...baseParams, messages: [...conversation] }, { signal, timeout: timeoutMs }), signal);
+        const response = await untilAborted(send({ ...params, messages: [...conversation] }, { signal, timeout: timeoutMs }), signal);
         if (state.clientGone) return { aborted: true };
 
         if (response?.stop_reason === 'tool_use') {
             const calls = (Array.isArray(response.content) ? response.content : []).filter(block => block?.type === 'tool_use');
             if (calls.length === 0) return { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
-            if (iteration === maxIterations) return { error: { code: 'ASK_TOO_COMPLEX', message: TOO_COMPLEX_MESSAGE } };
+            // Запасной выход: с tool_choice none сюда попасть нельзя.
+            if (forced) return { error: { code: 'ASK_TOO_COMPLEX', message: TOO_COMPLEX_MESSAGE } };
 
             // Ответ модели возвращается как есть (в нём могут быть блоки
             // размышления, которые API требует вернуть неизменными), а за ним
@@ -284,12 +333,24 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
             conversation.push({ role: 'assistant', content: response.content });
             const results = [];
             for (const call of calls) {
+                const toolName = known.has(call.name) ? call.name : 'unknown';
+                const key = `${call.name}\n${stableStringify(call.input)}`;
+                const previous = seen.get(key);
+                if (previous) {
+                    // Тот же вызов не выполняется и в интерфейсе второй раз не показывается.
+                    stats.tools.push(`${toolName}:dup`);
+                    results.push({ type: 'tool_result', tool_use_id: call.id, content: duplicateContent(previous.content), ...(previous.isError ? { is_error: true } : {}) });
+                    continue;
+                }
                 emit({ type: 'step', label: describeToolCall(call.name, call.input) });
                 const { content, isError } = executeTool(call.name, call.input, data);
                 emit({ type: 'step_done' });
+                seen.set(key, { content, isError });
+                stats.tools.push(`${toolName}:${isError ? 'error' : 'ok'}`);
                 results.push({ type: 'tool_result', tool_use_id: call.id, content, ...(isError ? { is_error: true } : {}) });
             }
             conversation.push({ role: 'user', content: results });
+            stats.rounds += 1;
             continue;
         }
 
@@ -305,7 +366,14 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
         }
         return answer ? { answer } : { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
     }
-    return { error: { code: 'ASK_TOO_COMPLEX', message: TOO_COMPLEX_MESSAGE } };
+}
+
+// Одна строка в журнал на вопрос: только счётчики, имена инструментов и исход.
+// Ни текста вопроса, ни ввода и результатов инструментов, ни сумм, ни тел
+// ошибок Anthropic.
+function formatAskLog({ stats, outcome, startedAt, finishedAt }) {
+    const tools = stats.tools.length > 0 ? stats.tools.join(',') : '-';
+    return `[ask] rounds=${stats.rounds} forced=${stats.forced} tools=${tools} outcome=${outcome} ms=${Math.max(0, finishedAt - startedAt)}`;
 }
 
 async function defaultLoadContext() {
@@ -331,7 +399,8 @@ function createAskRouter({
     dailyLimit = 100,
     now = () => Date.now(),
     timeoutMs = ASK_TIMEOUT_MS,
-    maxIterations = MAX_ITERATIONS
+    maxToolRounds = MAX_TOOL_ROUNDS,
+    log = (line) => console.info(line)
 } = {}) {
     const router = express.Router();
     const send = createClaudeSender({ createMessage, getApiKey });
@@ -398,6 +467,9 @@ function createAskRouter({
             controller.abort();
         }, timeoutMs);
 
+        const startedAt = Date.now();
+        const stats = { rounds: 0, forced: false, tools: [] };
+        let logOutcome = 'ASK_FAILED';
         const emit = (event) => {
             if (state.clientGone || res.writableEnded || res.destroyed) return;
             res.write(`${JSON.stringify(event)}\n`);
@@ -414,22 +486,34 @@ function createAskRouter({
                 emit,
                 signal: controller.signal,
                 state,
-                maxIterations,
-                timeoutMs
+                maxToolRounds,
+                timeoutMs,
+                stats
             });
+            if (outcome.answer) logOutcome = 'answer';
+            else if (outcome.error) logOutcome = outcome.error.code;
+            else logOutcome = 'client_gone';
             if (outcome.answer) emit({ type: 'answer', ...outcome.answer });
             else if (outcome.error) emit({ type: 'error', ...outcome.error });
         } catch (error) {
+            logOutcome = state.clientGone ? 'client_gone' : 'ASK_FAILED';
             if (!state.clientGone) {
                 // Только имя и статус: тело ошибки Anthropic может повторять запрос.
                 console.error('[ask] запрос к Claude не удался:', error?.name, error?.status);
                 const kind = classifyClaudeError(error, { aborted: state.timedOut });
-                if (kind === 'timeout') emit({ type: 'error', code: 'ASK_TIMEOUT', message: TIMEOUT_MESSAGE });
-                else emit({ type: 'error', code: 'ASK_FAILED', message: kind === 'rate_limit' ? RATE_LIMITED_MESSAGE : FAILED_MESSAGE });
+                if (kind === 'timeout') {
+                    logOutcome = 'ASK_TIMEOUT';
+                    emit({ type: 'error', code: 'ASK_TIMEOUT', message: TIMEOUT_MESSAGE });
+                } else emit({ type: 'error', code: 'ASK_FAILED', message: kind === 'rate_limit' ? RATE_LIMITED_MESSAGE : FAILED_MESSAGE });
             }
         } finally {
             clearTimeout(timer);
             if (!res.writableEnded) res.end();
+            try {
+                log(formatAskLog({ stats, outcome: logOutcome, startedAt, finishedAt: Date.now() }));
+            } catch {
+                // журнал не должен ломать ответ
+            }
         }
         return undefined;
     });
@@ -447,5 +531,7 @@ module.exports = {
     sanitizeAnswer,
     sanitizeHistory,
     runAskLoop,
+    formatAskLog,
+    MAX_TOOL_ROUNDS,
     DEFAULT_MODEL
 };

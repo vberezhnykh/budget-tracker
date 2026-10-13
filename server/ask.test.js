@@ -100,7 +100,10 @@ const post = (app, payload = body()) => request(app).post('/api/ask').send(paylo
 
 const lastEvent = (result) => result.events.at(-1);
 
-beforeEach(() => vi.spyOn(console, 'error').mockImplementation(() => {}));
+beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+});
 afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -208,6 +211,15 @@ describe('buildSystemPrompt', () => {
         expect(prompt).toMatch(/\*\*\.\.\.\*\* only inside text blocks/);
         expect(prompt).toMatch(/basis:/);
         expect(prompt).toMatch(/history:/);
+    });
+
+    it('правила экономии вызовов: один-два вызова, параллельно, без повторов, суммы по категориям за месяц', () => {
+        expect(prompt).toMatch(/Most questions need one or two tool calls/);
+        expect(prompt).toMatch(/in parallel in a single turn/);
+        expect(prompt).toMatch(/Never repeat a call and never re-verify a result you already have/);
+        expect(prompt).toMatch(/Answer as soon as you have the numbers/);
+        expect(prompt).toMatch(/one sum_operations call with group_by "category"/);
+        expect(prompt).toMatch(/optionally plus one find_operations sorted by amount/);
     });
 
     it('без операций говорит об этом', () => {
@@ -609,19 +621,76 @@ describe('POST /api/ask: ошибки Claude и пределы', () => {
         expect(lastEvent(await post(makeApp({ createMessage: script(turn) }))).type).toBe('answer');
     });
 
-    it('больше 8 шагов - ASK_TOO_COMPLEX, ровно 8 запросов', async () => {
-        const createMessage = script(toolTurn(use('u1', 'get_balances', {})));
+    it('после 6 раундов инструментов - последний запрос без инструментов, а не ошибка', async () => {
+        const turns = [...Array.from({ length: 6 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index }))), finalTurn()];
+        const createMessage = script(...turns);
         const result = await post(makeApp({ createMessage }));
-        expect(createMessage).toHaveBeenCalledTimes(8);
-        expect(lastEvent(result)).toEqual({ type: 'error', code: 'ASK_TOO_COMPLEX', message: 'Вопрос оказался слишком сложным. Попробуйте разбить его на части.' });
-        // 7 раундов инструментов выполнены, на восьмом запрос оборван
-        expect(result.events.filter(event => event.type === 'step')).toHaveLength(7);
+        expect(createMessage).toHaveBeenCalledTimes(7);
+        expect(lastEvent(result).type).toBe('answer');
+        expect(result.events.filter(event => event.type === 'step')).toHaveLength(6);
+
+        const calls = createMessage.mock.calls.map(([params]) => params);
+        const forcedParams = calls[6];
+        expect(forcedParams.tool_choice).toEqual({ type: 'none' });
+        expect(forcedParams.messages.at(-1)).toEqual({
+            role: 'system',
+            content: 'The tool budget for this question is used up. Answer now from the tool results above. If something could not be computed, say so in the answer.'
+        });
+        expect(forcedParams.messages.at(-2).role).toBe('user');
+        expect(forcedParams.messages.at(-2).content[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'u5' });
+        // Прежние сообщения не тронуты: ответы модели как есть, результаты по порядку.
+        const before = forcedParams.messages.slice(0, -1);
+        expect(before).toEqual(calls[5].messages.concat([
+            { role: 'assistant', content: turns[5].content },
+            { role: 'user', content: [expect.objectContaining({ type: 'tool_result', tool_use_id: 'u5' })] }
+        ]));
+        expect(before.filter(message => message.role === 'assistant').map(message => message.content)).toEqual(turns.slice(0, 6).map(turn => turn.content));
+        // История дописывается: у предыдущих запросов тот же префикс, system и tools те же.
+        for (let index = 1; index < calls.length; index += 1) {
+            expect(calls[index].messages.slice(0, calls[index - 1].messages.length)).toEqual(calls[index - 1].messages);
+            expect(calls[index].system).toBe(calls[0].system);
+            expect(calls[index].tools).toEqual(calls[0].tools);
+            expect(JSON.stringify(calls[index].tools)).toBe(JSON.stringify(calls[0].tools));
+        }
+        // До последнего запроса tool_choice не отправляется и служебной реплики нет.
+        for (const params of calls.slice(0, 6)) {
+            expect(params).not.toHaveProperty('tool_choice');
+            expect(params.messages.some(message => message.role === 'system')).toBe(false);
+        }
     });
 
-    it('восьмой запрос может быть ответом', async () => {
-        const turns = [...Array.from({ length: 7 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', {}))), finalTurn()];
-        const result = await post(makeApp({ createMessage: script(...turns) }));
+    it('последний запрос: плохой JSON - ASK_UNPARSED', async () => {
+        const turns = [...Array.from({ length: 6 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index }))),
+            { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"blocks":' }] }];
+        const createMessage = script(...turns);
+        const result = await post(makeApp({ createMessage }));
+        expect(createMessage).toHaveBeenCalledTimes(7);
+        expect(lastEvent(result)).toEqual({ type: 'error', code: 'ASK_UNPARSED', message: 'Не получилось ответить. Попробуйте спросить иначе.' });
+    });
+
+    it('последний запрос: снова tool_use (запасной выход) - ASK_TOO_COMPLEX, инструменты не выполняются', async () => {
+        const createMessage = script(...Array.from({ length: 8 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index }))));
+        const result = await post(makeApp({ createMessage }));
+        expect(createMessage).toHaveBeenCalledTimes(7);
+        expect(lastEvent(result)).toEqual({ type: 'error', code: 'ASK_TOO_COMPLEX', message: 'Вопрос оказался слишком сложным. Попробуйте разбить его на части.' });
+        expect(result.events.filter(event => event.type === 'step')).toHaveLength(6);
+    });
+
+    it('вопрос в 1-2 раунда не отправляет tool_choice', async () => {
+        const createMessage = script(toolTurn(use('u1', 'sum_operations', sumInput())), toolTurn(use('u2', 'get_balances', {})), finalTurn());
+        const result = await post(makeApp({ createMessage }));
         expect(lastEvent(result).type).toBe('answer');
+        for (const [params] of createMessage.mock.calls) {
+            expect(params).not.toHaveProperty('tool_choice');
+            expect(params.messages.some(message => message.role === 'system')).toBe(false);
+        }
+    });
+
+    it('седьмой запрос может быть ответом без служебной реплики, если инструментов хватило', async () => {
+        const turns = [...Array.from({ length: 5 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index }))), finalTurn()];
+        const createMessage = script(...turns);
+        expect(lastEvent(await post(makeApp({ createMessage }))).type).toBe('answer');
+        expect(createMessage.mock.calls.at(-1)[0]).not.toHaveProperty('tool_choice');
     });
 
     it('молчание дольше 60 секунд (здесь 40 мс) - ASK_TIMEOUT, запрос к Claude отменён', async () => {
@@ -640,7 +709,7 @@ describe('POST /api/ask: ошибки Claude и пределы', () => {
         });
         const result = await post(makeApp({ createMessage, timeoutMs: 100 }));
         expect(lastEvent(result).code).toBe('ASK_TIMEOUT');
-        expect(calls).toBeLessThan(8);
+        expect(calls).toBeLessThan(7);
     });
 
     it('таймаут SDK тоже ASK_TIMEOUT', async () => {
@@ -682,6 +751,127 @@ describe('POST /api/ask: ошибки Claude и пределы', () => {
         const createMessage = script(toolTurn(use('u1', 'sum_operations', sumInput())), finalTurn());
         await post(makeApp({ createMessage }));
         expect(console.error).not.toHaveBeenCalled();
+    });
+});
+
+describe('POST /api/ask: повторные вызовы', () => {
+    it('тот же вызов не выполняется заново: прежний результат с пометкой, второго шага нет', async () => {
+        const createMessage = script(
+            toolTurn(use('u1', 'sum_operations', sumInput())),
+            // тот же ввод, ключи в другом порядке
+            toolTurn(use('u2', 'sum_operations', Object.fromEntries(Object.entries(sumInput()).reverse()))),
+            finalTurn()
+        );
+        const result = await post(makeApp({ createMessage }));
+        expect(result.events.filter(event => event.type === 'step')).toHaveLength(1);
+        expect(lastEvent(result).type).toBe('answer');
+
+        const [first] = createMessage.mock.calls[1][0].messages.at(-1).content;
+        const [second] = createMessage.mock.calls[2][0].messages.at(-1).content;
+        expect(second).toMatchObject({ type: 'tool_result', tool_use_id: 'u2' });
+        expect(second).not.toHaveProperty('is_error');
+        expect(JSON.parse(second.content)).toEqual({
+            note: 'Same call as before; the result has not changed. Use it instead of calling again.',
+            result: JSON.parse(first.content)
+        });
+    });
+
+    it('другой ввод выполняется', async () => {
+        const createMessage = script(
+            toolTurn(use('u1', 'sum_operations', sumInput())),
+            toolTurn(use('u2', 'sum_operations', sumInput({ from: '2025-06-01', to: '2025-08-31' }))),
+            finalTurn()
+        );
+        const result = await post(makeApp({ createMessage }));
+        expect(result.events.filter(event => event.type === 'step')).toHaveLength(2);
+        const [second] = createMessage.mock.calls[2][0].messages.at(-1).content;
+        expect(JSON.parse(second.content)).toMatchObject({ from: '2025-06-01', total: 20 });
+        expect(JSON.parse(second.content)).not.toHaveProperty('note');
+    });
+
+    it('дубль внутри одного хода тоже не выполняется; повтор ошибки остаётся ошибкой и валидным JSON', async () => {
+        const bad = { group_by: 'nonsense' };
+        const createMessage = script(
+            toolTurn(use('u1', 'get_balances', {}), use('u2', 'get_balances', {}), use('u3', 'sum_operations', bad)),
+            toolTurn(use('u4', 'sum_operations', bad)),
+            finalTurn()
+        );
+        const result = await post(makeApp({ createMessage }));
+        expect(result.events.filter(event => event.type === 'step')).toHaveLength(2);
+        const [one, two, three] = createMessage.mock.calls[1][0].messages.at(-1).content;
+        expect(JSON.parse(two.content).note).toMatch(/^Same call as before/);
+        expect(JSON.parse(two.content).result).toEqual(JSON.parse(one.content));
+        expect(three.is_error).toBe(true);
+        const [repeat] = createMessage.mock.calls[2][0].messages.at(-1).content;
+        expect(repeat.is_error).toBe(true);
+        expect(JSON.parse(repeat.content)).toEqual({ note: expect.stringMatching(/^Same call as before/), result: three.content });
+    });
+});
+
+describe('POST /api/ask: журнал', () => {
+    const LINE = /^\[ask\] rounds=(\d+) forced=(true|false) tools=(\S+) outcome=(\S+) ms=(\d+)$/;
+
+    it('одна строка на вопрос: раунды, инструменты, исход, время', async () => {
+        const log = vi.fn();
+        const createMessage = script(
+            toolTurn(use('u1', 'sum_operations', sumInput()), use('u2', 'sum_operations', { group_by: 'nonsense' })),
+            toolTurn(use('u3', 'sum_operations', sumInput())),
+            finalTurn()
+        );
+        await post(makeApp({ createMessage, log }));
+        expect(log).toHaveBeenCalledTimes(1);
+        const match = LINE.exec(log.mock.calls[0][0]);
+        expect(match).not.toBeNull();
+        expect(match.slice(1, 5)).toEqual(['2', 'false', 'sum_operations:ok,sum_operations:error,sum_operations:dup', 'answer']);
+    });
+
+    it('по умолчанию пишет через console.info', async () => {
+        await post(makeApp({ createMessage: script(finalTurn()) }));
+        expect(console.info).toHaveBeenCalledTimes(1);
+        expect(console.info.mock.calls[0][0]).toMatch(LINE);
+        expect(console.info.mock.calls[0][0]).toContain('tools=- outcome=answer');
+    });
+
+    it('принудительный ответ и ошибки отражены в исходе', async () => {
+        const rounds = Array.from({ length: 6 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index })));
+        const log = vi.fn();
+        await post(makeApp({ createMessage: script(...rounds, { stop_reason: 'end_turn', content: [] }), log }));
+        expect(log.mock.calls[0][0]).toMatch(/rounds=6 forced=true tools=(get_balances:ok,){5}get_balances:ok outcome=ASK_UNPARSED ms=\d+$/);
+
+        const failing = vi.fn();
+        await post(makeApp({ createMessage: vi.fn(async () => { throw new Error('boom'); }), log: failing }));
+        expect(failing.mock.calls[0][0]).toMatch(/rounds=0 forced=false tools=- outcome=ASK_FAILED ms=\d+$/);
+
+        const timeout = vi.fn();
+        await post(makeApp({ createMessage: vi.fn(() => new Promise(() => {})), timeoutMs: 30, log: timeout }));
+        expect(timeout.mock.calls[0][0]).toMatch(/outcome=ASK_TIMEOUT/);
+    });
+
+    it('неизвестный инструмент в журнале - unknown, а не то, что прислала модель', async () => {
+        const log = vi.fn();
+        await post(makeApp({ createMessage: script(toolTurn(use('u1', 'secret_Транспорт_65', {})), finalTurn()), log }));
+        expect(log.mock.calls[0][0]).toContain('tools=unknown:error');
+    });
+
+    it('в строке нет ни вопроса, ни сумм, ни названий категорий, ни ввода и результатов инструментов', async () => {
+        const log = vi.fn();
+        const createMessage = script(
+            toolTurn(use('u1', 'sum_operations', sumInput({ company: 'Bolt' })), use('u2', 'find_operations', { query: 'Сравни' })),
+            { stop_reason: 'end_turn', content: [{ type: 'text', text: `{"blocks": ${KEY}` }] }
+        );
+        await post(makeApp({ createMessage, log }));
+        const line = log.mock.calls[0][0];
+        expect(line).toMatch(LINE);
+        for (const fragment of ['Сравни', 'транспорт', 'Транспорт', 'Кафе', 'Зарплата', 'Revolut', 'Bolt', '65', '3000', '2026', KEY]) {
+            expect(line).not.toContain(fragment);
+        }
+        expect(JSON.stringify(console.info.mock.calls)).not.toContain('Сравни');
+    });
+
+    it('сбой журнала не ломает ответ', async () => {
+        const log = vi.fn(() => { throw new Error('disk'); });
+        const result = await post(makeApp({ createMessage: script(finalTurn()), log }));
+        expect(lastEvent(result).type).toBe('answer');
     });
 });
 
