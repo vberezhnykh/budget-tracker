@@ -9,7 +9,9 @@
         "backup": "node backup.js",
         "restore": "node restore.js",
         "backup:check": "node check-backup-access.js",
-        "backup:verify": "node verify-backup.js"
+        "backup:verify": "node verify-backup.js",
+        "eval:ask": "node eval/ask.eval.js",
+        "eval:quick": "node eval/quickEntry.eval.js"
     },
     "keywords": [],
     "author": "",
