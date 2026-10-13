@@ -290,6 +290,108 @@ function duplicateContent(previous) {
     return JSON.stringify({ note: DUPLICATE_NOTE, result });
 }
 
+// --- Отладочный журнал (ASK_DEBUG=true) ---------------------------------------------
+//
+// Только по явному включению: в отличие от строки formatAskLog здесь есть ввод
+// и результаты инструментов, суммы, категории и начало текста модели. Нужен,
+// чтобы увидеть, что именно модель посылает и получает на каждом шаге.
+
+const DEBUG_PREFIX = '[ask:debug]';
+const DEBUG_TEXT_HEAD = 300;
+const DEBUG_ERROR_TEXT = 200;
+const DEBUG_TOP_GROUPS = 3;
+const USAGE_FIELDS = ['input_tokens', 'output_tokens', 'cache_read_input_tokens', 'cache_creation_input_tokens'];
+
+// Тип блока; у размышления ещё видно, пустой ли текст и есть ли подпись.
+function debugBlockLabel(block) {
+    if (block?.type !== 'thinking') return String(block?.type);
+    const empty = typeof block.thinking !== 'string' || block.thinking.length === 0;
+    const signed = typeof block.signature === 'string' && block.signature.length > 0;
+    return `thinking(${empty ? 'empty' : 'text'},${signed ? 'signed' : 'unsigned'})`;
+}
+
+// Краткое содержание результата инструмента: числа и размеры, не списки целиком.
+function summarizeToolResult(name, content, isError) {
+    const text = typeof content === 'string' ? content : String(content);
+    if (isError) return text.slice(0, DEBUG_ERROR_TEXT);
+    let parsed;
+    try {
+        parsed = JSON.parse(text);
+    } catch {
+        return text.slice(0, DEBUG_ERROR_TEXT);
+    }
+    const length = (value) => (Array.isArray(value) ? value.length : 0);
+    switch (name) {
+        case 'sum_operations':
+            return {
+                total: parsed.total,
+                count: parsed.count,
+                groups: length(parsed.groups),
+                top: (Array.isArray(parsed.groups) ? parsed.groups : []).slice(0, DEBUG_TOP_GROUPS).map(({ key, total }) => ({ key, total })),
+                note: parsed.note ?? null
+            };
+        case 'find_operations':
+            return { total_found: parsed.total_found, operations: length(parsed.operations) };
+        case 'get_balances':
+            return { accounts: length(parsed.accounts) };
+        case 'get_typical_month':
+            return Object.keys(parsed);
+        default:
+            return text.slice(0, DEBUG_ERROR_TEXT);
+    }
+}
+
+// Одна запись на запрос к Claude: что вернулась модель и что сделали с вызовами.
+function describeRound({ round, forced, response, traced, answerOk }) {
+    const content = Array.isArray(response?.content) ? response.content : [];
+    const texts = content.filter(block => block?.type === 'text' && typeof block.text === 'string');
+    const usage = {};
+    for (const field of USAGE_FIELDS) {
+        if (typeof response?.usage?.[field] === 'number') usage[field] = response.usage[field];
+    }
+    const entry = {
+        round,
+        forced,
+        stop_reason: response?.stop_reason ?? null,
+        blocks: content.map(debugBlockLabel),
+        text_chars: texts.map(block => block.text.length),
+        text_head: texts.length > 0 ? texts.at(-1).text.slice(0, DEBUG_TEXT_HEAD) : null,
+        usage,
+        calls: traced.map(({ call, dup, content: result, isError }) => ({
+            name: call.name,
+            input: call.input,
+            dup,
+            is_error: isError,
+            result: summarizeToolResult(call.name, result, isError)
+        }))
+    };
+    if (answerOk !== undefined) entry.answer_ok = answerOk;
+    return entry;
+}
+
+// Форма последнего запроса: достаточно, чтобы проверить, что результаты
+// инструментов стоят под своими tool_use_id, а история собрана правильно.
+function describeRequest(request) {
+    const messages = (Array.isArray(request?.messages) ? request.messages : []).map(({ role, content }) => {
+        if (typeof content === 'string') return { role, content: `string(${content.length})` };
+        return {
+            role,
+            content: (Array.isArray(content) ? content : []).map((block) => {
+                if (block?.type !== 'tool_result') return String(block?.type);
+                const length = typeof block.content === 'string' ? block.content.length : JSON.stringify(block.content ?? '').length;
+                return `tool_result(${block.tool_use_id},${length})`;
+            })
+        };
+    });
+    return {
+        messages,
+        tool_choice: request?.tool_choice ?? null,
+        has_output_config_format: Boolean(request?.output_config?.format),
+        system_chars: typeof request?.system === 'string' ? request.system.length : 0,
+        tools: (request?.tools || []).map(tool => tool?.name)
+    };
+}
+
 // Ведёт разговор с Claude, пока он вызывает инструменты. Ничего не знает про
 // HTTP: события уходят в emit, остановку (клиент ушёл, вышло время) сообщает
 // signal. Возвращает { answer } или { error: { code, message } }, а для
@@ -299,14 +401,25 @@ function duplicateContent(previous) {
 // tool_choice none и служебной репликой: Claude отвечает по уже полученному.
 // История только дописывается, system и tools остаются прежними. stats
 // (необязательный) заполняется для журнала: раунды, был ли последний запрос,
-// исходы вызовов - без вопроса, ввода и результатов.
-async function runAskLoop({ send, baseParams, messages, data, emit, signal, state, maxToolRounds = MAX_TOOL_ROUNDS, timeoutMs, stats = {} }) {
+// исходы вызовов - без вопроса, ввода и результатов. debug (необязательный,
+// только при ASK_DEBUG) получает по записи на каждый запрос к Claude, а в
+// stats.lastRequest остаётся последний отправленный запрос.
+async function runAskLoop({ send, baseParams, messages, data, emit, signal, state, maxToolRounds = MAX_TOOL_ROUNDS, timeoutMs, stats = {}, debug = null }) {
     const conversation = [...messages];
     const seen = new Map();
     const known = new Set((baseParams.tools || []).map(tool => tool?.name));
     stats.rounds = 0;
     stats.forced = false;
     stats.tools = [];
+    // Запись в отладочный журнал собирается лениво и не может сломать вопрос.
+    const trace = (build) => {
+        if (!debug) return;
+        try {
+            debug(build());
+        } catch {
+            // отладка не должна ломать ответ
+        }
+    };
     for (;;) {
         if (state.clientGone) return { aborted: true };
         if (state.timedOut) return { error: { code: 'ASK_TIMEOUT', message: TIMEOUT_MESSAGE } };
@@ -318,14 +431,26 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
         }
         const params = { ...baseParams, ...(forced ? { tool_choice: { type: 'none' } } : {}) };
         // Копия массива: тот, что ушёл в запрос, не должен меняться задним числом.
-        const response = await untilAborted(send({ ...params, messages: [...conversation] }, { signal, timeout: timeoutMs }), signal);
+        const request = { ...params, messages: [...conversation] };
+        if (debug) stats.lastRequest = request;
+        const response = await untilAborted(send(request, { signal, timeout: timeoutMs }), signal);
         if (state.clientGone) return { aborted: true };
+
+        const round = stats.rounds + 1;
+        const traced = [];
+        const traceRound = (extra = {}) => trace(() => describeRound({ round, forced, response, traced, ...extra }));
 
         if (response?.stop_reason === 'tool_use') {
             const calls = (Array.isArray(response.content) ? response.content : []).filter(block => block?.type === 'tool_use');
-            if (calls.length === 0) return { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
+            if (calls.length === 0) {
+                traceRound();
+                return { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
+            }
             // Запасной выход: с tool_choice none сюда попасть нельзя.
-            if (forced) return { error: { code: 'ASK_TOO_COMPLEX', message: TOO_COMPLEX_MESSAGE } };
+            if (forced) {
+                traceRound();
+                return { error: { code: 'ASK_TOO_COMPLEX', message: TOO_COMPLEX_MESSAGE } };
+            }
 
             // Ответ модели возвращается как есть (в нём могут быть блоки
             // размышления, которые API требует вернуть неизменными), а за ним
@@ -339,6 +464,7 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
                 if (previous) {
                     // Тот же вызов не выполняется и в интерфейсе второй раз не показывается.
                     stats.tools.push(`${toolName}:dup`);
+                    if (debug) traced.push({ call, dup: true, content: previous.content, isError: Boolean(previous.isError) });
                     results.push({ type: 'tool_result', tool_use_id: call.id, content: duplicateContent(previous.content), ...(previous.isError ? { is_error: true } : {}) });
                     continue;
                 }
@@ -347,14 +473,19 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
                 emit({ type: 'step_done' });
                 seen.set(key, { content, isError });
                 stats.tools.push(`${toolName}:${isError ? 'error' : 'ok'}`);
+                if (debug) traced.push({ call, dup: false, content, isError: Boolean(isError) });
                 results.push({ type: 'tool_result', tool_use_id: call.id, content, ...(isError ? { is_error: true } : {}) });
             }
             conversation.push({ role: 'user', content: results });
             stats.rounds += 1;
+            traceRound();
             continue;
         }
 
-        if (response?.stop_reason !== 'end_turn') return { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
+        if (response?.stop_reason !== 'end_turn') {
+            traceRound();
+            return { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
+        }
         const textBlock = (Array.isArray(response.content) ? response.content : []).filter(block => block?.type === 'text').at(-1);
         let answer = null;
         if (typeof textBlock?.text === 'string') {
@@ -364,6 +495,7 @@ async function runAskLoop({ send, baseParams, messages, data, emit, signal, stat
                 answer = null;
             }
         }
+        traceRound({ answerOk: Boolean(answer) });
         return answer ? { answer } : { error: { code: 'ASK_UNPARSED', message: UNPARSED_MESSAGE } };
     }
 }
@@ -400,6 +532,7 @@ function createAskRouter({
     now = () => Date.now(),
     timeoutMs = ASK_TIMEOUT_MS,
     maxToolRounds = MAX_TOOL_ROUNDS,
+    getDebug = () => process.env.ASK_DEBUG === 'true',
     log = (line) => console.info(line)
 } = {}) {
     const router = express.Router();
@@ -469,6 +602,15 @@ function createAskRouter({
 
         const startedAt = Date.now();
         const stats = { rounds: 0, forced: false, tools: [] };
+        // Подробный журнал (ASK_DEBUG): флаг читается один раз за вопрос.
+        const debugOn = Boolean(getDebug());
+        const writeDebug = (payload) => {
+            try {
+                log(`${DEBUG_PREFIX} ${JSON.stringify(payload)}`);
+            } catch {
+                // журнал не должен ломать ответ
+            }
+        };
         let logOutcome = 'ASK_FAILED';
         const emit = (event) => {
             if (state.clientGone || res.writableEnded || res.destroyed) return;
@@ -488,7 +630,8 @@ function createAskRouter({
                 state,
                 maxToolRounds,
                 timeoutMs,
-                stats
+                stats,
+                debug: debugOn ? writeDebug : null
             });
             if (outcome.answer) logOutcome = 'answer';
             else if (outcome.error) logOutcome = outcome.error.code;
@@ -509,6 +652,7 @@ function createAskRouter({
         } finally {
             clearTimeout(timer);
             if (!res.writableEnded) res.end();
+            if (debugOn && stats.lastRequest) writeDebug({ request_shape: describeRequest(stats.lastRequest) });
             try {
                 log(formatAskLog({ stats, outcome: logOutcome, startedAt, finishedAt: Date.now() }));
             } catch {

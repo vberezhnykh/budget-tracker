@@ -875,6 +875,209 @@ describe('POST /api/ask: журнал', () => {
     });
 });
 
+describe('POST /api/ask: подробный журнал ASK_DEBUG', () => {
+    const PREFIX = '[ask:debug] ';
+    const debugLines = (log) => log.mock.calls.map(([line]) => line).filter(line => line.startsWith(PREFIX)).map(line => JSON.parse(line.slice(PREFIX.length)));
+    const rounds = (log) => debugLines(log).filter(item => 'round' in item);
+    const shapeOf = (log) => debugLines(log).find(item => 'request_shape' in item).request_shape;
+
+    // Два раунда: один вызов, затем дубль и ещё один вызов с группировкой; потом ответ.
+    const toolUse = (id, input) => ({ type: 'tool_use', id, name: 'sum_operations', input });
+    const scenario = () => script(
+        toolTurn(toolUse('u1', sumInput())),
+        toolTurn(toolUse('u2', sumInput()), toolUse('u3', sumInput({ group_by: 'month', category: null }))),
+        { ...finalTurn(), usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 100, cache_creation_input_tokens: 0, service_tier: 'standard' } }
+    );
+
+    it('по умолчанию (флаг выключен) - только строка итога', async () => {
+        const log = vi.fn();
+        await post(makeApp({ createMessage: scenario(), log }));
+        expect(log).toHaveBeenCalledTimes(1);
+        expect(log.mock.calls[0][0]).toMatch(/^\[ask\] /);
+    });
+
+    it('флаг берётся из ASK_DEBUG: только точное true', async () => {
+        for (const [value, expected] of [['true', 3], ['1', 1], ['', 1]]) {
+            vi.stubEnv('ASK_DEBUG', value);
+            const log = vi.fn();
+            await post(makeApp({ createMessage: script(finalTurn()), log }));
+            expect(log).toHaveBeenCalledTimes(expected);
+        }
+    });
+
+    it('флаг читается один раз за вопрос', async () => {
+        const getDebug = vi.fn(() => true);
+        await post(makeApp({ createMessage: scenario(), log: vi.fn(), getDebug }));
+        expect(getDebug).toHaveBeenCalledTimes(1);
+    });
+
+    it('строка на каждый запрос: блоки, текст, расход, вызовы с результатами и дублями', async () => {
+        const log = vi.fn();
+        await post(makeApp({ createMessage: scenario(), log, getDebug: () => true }));
+        const items = rounds(log);
+        expect(items).toHaveLength(3);
+        expect(log.mock.calls.at(-1)[0]).toMatch(/^\[ask\] rounds=2 /);
+
+        expect(items[0]).toEqual({
+            round: 1,
+            forced: false,
+            stop_reason: 'tool_use',
+            blocks: ['thinking(text,signed)', 'tool_use'],
+            text_chars: [],
+            text_head: null,
+            usage: {},
+            calls: [{
+                name: 'sum_operations',
+                input: sumInput(),
+                dup: false,
+                is_error: false,
+                result: { total: 65, count: 2, groups: 0, top: [], note: null }
+            }]
+        });
+
+        expect(items[1].round).toBe(2);
+        expect(items[1].calls.map(call => [call.dup, call.is_error])).toEqual([[true, false], [false, false]]);
+        expect(items[1].calls[0].result).toEqual(items[0].calls[0].result);
+        expect(items[1].calls[1].input).toEqual(sumInput({ group_by: 'month', category: null }));
+        expect(items[1].calls[1].result).toMatchObject({ groups: 2, top: [{ key: '2026-07', total: 40 }, { key: '2026-06', total: 25 }] });
+        expect(Object.keys(items[1].calls[1].result.top[0])).toEqual(['key', 'total']);
+
+        expect(items[2]).toMatchObject({
+            round: 3,
+            forced: false,
+            stop_reason: 'end_turn',
+            blocks: ['text'],
+            usage: { input_tokens: 120, output_tokens: 30, cache_read_input_tokens: 100, cache_creation_input_tokens: 0 },
+            calls: [],
+            answer_ok: true
+        });
+        expect(items[2].usage).not.toHaveProperty('service_tier');
+        expect(items[2].text_chars).toEqual([JSON.stringify(answer()).length]);
+        expect(items[2].text_head).toBe(JSON.stringify(answer()).slice(0, 300));
+        expect(items[0]).not.toHaveProperty('answer_ok');
+    });
+
+    it('описание блоков размышления и сводки остальных инструментов, ошибка - текстом до 200 знаков', async () => {
+        const log = vi.fn();
+        const long = 'x'.repeat(300);
+        const createMessage = script(
+            {
+                stop_reason: 'tool_use',
+                content: [
+                    { type: 'thinking', thinking: '', signature: 'sig' },
+                    { type: 'thinking', thinking: 'мысль' },
+                    { type: 'text', text: long },
+                    use('u1', 'find_operations', { from: '2026-01-01', to: '2026-12-31' }),
+                    use('u2', 'get_balances', {}),
+                    use('u3', 'get_typical_month', { month: '2026-09' }),
+                    use('u4', 'sum_operations', { group_by: 'nonsense' })
+                ]
+            },
+            { stop_reason: 'end_turn', content: [{ type: 'text', text: 'не JSON' }] }
+        );
+        await post(makeApp({ createMessage, log, getDebug: () => true }));
+        const [first, last] = rounds(log);
+        expect(first.blocks).toEqual(['thinking(empty,signed)', 'thinking(text,unsigned)', 'text', 'tool_use', 'tool_use', 'tool_use', 'tool_use']);
+        expect(first.text_chars).toEqual([300]);
+        expect(first.text_head).toBe('x'.repeat(300));
+        const [find, balances, typical, bad] = first.calls;
+        expect(find.result).toEqual({ total_found: 3, operations: 3 });
+        expect(balances.result).toEqual({ accounts: 3 });
+        expect(typical.result).toEqual(expect.any(Array));
+        expect(typical.result).toContain('month');
+        expect(bad).toMatchObject({ is_error: true, dup: false });
+        expect(typeof bad.result).toBe('string');
+        expect(bad.result.length).toBeLessThanOrEqual(200);
+        expect(last).toMatchObject({ stop_reason: 'end_turn', answer_ok: false });
+    });
+
+    it('текст головы обрезается до 300 знаков и берётся из последнего текстового блока', async () => {
+        const log = vi.fn();
+        const text = JSON.stringify(answer({ basis: 'я'.repeat(400) }));
+        const createMessage = script({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'первый' }, { type: 'text', text }] });
+        await post(makeApp({ createMessage, log, getDebug: () => true }));
+        const [item] = rounds(log);
+        expect(item.text_chars).toEqual([6, text.length]);
+        expect(item.text_head).toHaveLength(300);
+        expect(item.text_head).toBe(text.slice(0, 300));
+    });
+
+    it('принудительный запрос после 6 раундов: forced и повторы в журнале', async () => {
+        const log = vi.fn();
+        const same = toolTurn(use('u', 'sum_operations', sumInput()));
+        const turns = Array.from({ length: 6 }, (_, index) => ({ ...same, content: [same.content[0], use(`u${index}`, 'sum_operations', sumInput())] }));
+        await post(makeApp({ createMessage: script(...turns, finalTurn()), log, getDebug: () => true }));
+        const items = rounds(log);
+        expect(items).toHaveLength(7);
+        expect(items.map(item => item.forced)).toEqual([false, false, false, false, false, false, true]);
+        expect(items.slice(0, 6).map(item => item.calls[0].dup)).toEqual([false, true, true, true, true, true]);
+        expect(items[6]).toMatchObject({ round: 7, stop_reason: 'end_turn', answer_ok: true });
+    });
+
+    it('форма последнего запроса: результаты стоят под своими tool_use_id', async () => {
+        const log = vi.fn();
+        const createMessage = script(
+            toolTurn(use('u1', 'sum_operations', sumInput())),
+            toolTurn(use('u2', 'sum_operations', sumInput()), use('u3', 'get_balances', {})),
+            finalTurn()
+        );
+        await post(makeApp({ createMessage, log, getDebug: () => true }));
+        const lastRequest = createMessage.mock.calls.at(-1)[0];
+        const shape = shapeOf(log);
+
+        expect(shape.messages).toEqual([
+            { role: 'user', content: `string(${QUESTION.length})` },
+            { role: 'assistant', content: ['thinking', 'tool_use'] },
+            { role: 'user', content: [`tool_result(u1,${lastRequest.messages[2].content[0].content.length})`] },
+            { role: 'assistant', content: ['thinking', 'tool_use', 'tool_use'] },
+            { role: 'user', content: [expect.stringMatching(/^tool_result\(u2,\d+\)$/), expect.stringMatching(/^tool_result\(u3,\d+\)$/)] }
+        ]);
+        // Каждый tool_result в форме идёт под тем же id, что tool_use перед ним.
+        for (let index = 1; index < shape.messages.length; index += 2) {
+            const useIds = lastRequest.messages[index].content.filter(block => block.type === 'tool_use').map(block => block.id);
+            const resultIds = shape.messages[index + 1].content.map(label => /^tool_result\(([^,]+),/.exec(label)[1]);
+            expect(resultIds).toEqual(useIds);
+        }
+        expect(shape).toMatchObject({
+            tool_choice: null,
+            has_output_config_format: true,
+            system_chars: lastRequest.system.length,
+            tools: lastRequest.tools.map(tool => tool.name)
+        });
+        expect(shape.tools).toEqual(['sum_operations', 'find_operations', 'get_balances', 'get_typical_month']);
+        // Форма одна на вопрос и идёт перед строкой итога.
+        expect(debugLines(log).filter(item => 'request_shape' in item)).toHaveLength(1);
+        expect(log.mock.calls.at(-1)[0]).toMatch(/^\[ask\] /);
+        expect(log.mock.calls.at(-2)[0]).toMatch(/^\[ask:debug\] \{"request_shape"/);
+    });
+
+    it('форма принудительного запроса: tool_choice none и служебная реплика', async () => {
+        const log = vi.fn();
+        const turns = Array.from({ length: 6 }, (_, index) => toolTurn(use(`u${index}`, 'get_balances', { n: index })));
+        await post(makeApp({ createMessage: script(...turns, finalTurn()), log, getDebug: () => true }));
+        const shape = shapeOf(log);
+        expect(shape.tool_choice).toEqual({ type: 'none' });
+        expect(shape.messages).toHaveLength(14);
+        expect(shape.messages.at(-1)).toEqual({ role: 'system', content: `string(${'The tool budget for this question is used up. Answer now from the tool results above. If something could not be computed, say so in the answer.'.length})` });
+        expect(shape.messages.at(-2).content).toEqual([expect.stringMatching(/^tool_result\(u5,\d+\)$/)]);
+    });
+
+    it('ошибка Claude: форма запроса всё равно записана', async () => {
+        const log = vi.fn();
+        await post(makeApp({ createMessage: vi.fn(async () => { throw new Error('boom'); }), log, getDebug: () => true }));
+        expect(rounds(log)).toHaveLength(0);
+        expect(shapeOf(log).messages).toEqual([{ role: 'user', content: `string(${QUESTION.length})` }]);
+    });
+
+    it('сбой журнала не ломает поток и вопрос', async () => {
+        const log = vi.fn(() => { throw new Error('disk'); });
+        const result = await post(makeApp({ createMessage: scenario(), log, getDebug: () => true }));
+        expect(lastEvent(result).type).toBe('answer');
+        // Сбой не мешает следующей записи: журнал вызван на каждый запрос, форму и итог.
+        expect(log).toHaveBeenCalledTimes(5);
+    });
+});
+
 describe('POST /api/ask: живой сервер', () => {
     let server;
     afterEach(() => new Promise(resolve => (server ? server.close(resolve) : resolve())));
