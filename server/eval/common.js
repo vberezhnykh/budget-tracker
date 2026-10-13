@@ -45,14 +45,18 @@ function getApiKey() {
 // Настоящий клиент Anthropic, который запоминает каждый запрос: модель, время,
 // расход токенов и причину остановки. createMessage передаётся в роутеры как
 // есть, поэтому они работают так же, как в приложении.
-function createTimedSender() {
+//
+// effort (--effort) перекрывает output_config.effort каждого запроса; format
+// и остальное в output_config остаются как есть.
+function createTimedSender({ effort = null } = {}) {
     let client = null;
     const state = { calls: [] };
     const createMessage = async (params, options) => {
         client ||= new Anthropic({ apiKey: getApiKey(), maxRetries: 1 });
         const startedAt = Date.now();
+        const sent = effort ? { ...params, output_config: { ...params.output_config, effort } } : params;
         try {
-            const response = await client.messages.create(params, options);
+            const response = await client.messages.create(sent, options);
             state.calls.push({ model: params.model, ms: Date.now() - startedAt, usage: response?.usage || null, stop_reason: response?.stop_reason ?? null });
             return response;
         } catch (error) {
@@ -119,9 +123,11 @@ function formatEuro(value) {
 
 // --- Аргументы ---------------------------------------------------------------------
 
-// --only a,b  --repeat N  --out dir  --model id  --dry
+// --only a,b  --repeat N  --out dir  --model id  --effort low|medium|high|xhigh|max  --dry
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
 function parseArgs(argv = process.argv.slice(2)) {
-    const args = { only: null, repeat: 1, out: process.env.EVAL_OUT_DIR || path.join(os.tmpdir(), 'budget-eval'), model: null, dry: false };
+    const args = { only: null, repeat: 1, out: process.env.EVAL_OUT_DIR || path.join(os.tmpdir(), 'budget-eval'), model: null, effort: null, dry: false };
     for (let index = 0; index < argv.length; index += 1) {
         const [flag, inline] = argv[index].split(/=(.*)/s);
         const value = () => (inline !== undefined ? inline : argv[++index]);
@@ -130,6 +136,15 @@ function parseArgs(argv = process.argv.slice(2)) {
             case '--repeat': args.repeat = Math.max(1, Number.parseInt(value(), 10) || 1); break;
             case '--out': args.out = path.resolve(String(value())); break;
             case '--model': args.model = String(value() || '') || null; break;
+            case '--effort': {
+                const effort = String(value() || '');
+                if (!EFFORTS.includes(effort)) {
+                    console.error(`--effort: одно из ${EFFORTS.join(', ')}`);
+                    process.exit(1);
+                }
+                args.effort = effort;
+                break;
+            }
             case '--dry': args.dry = true; break;
             default:
                 console.error(`Неизвестный аргумент: ${flag}`);

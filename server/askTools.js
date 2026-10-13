@@ -23,6 +23,7 @@ const MAX_GROUPS = 40;
 const DEFAULT_FIND_LIMIT = 15;
 const MAX_FIND_LIMIT = 30;
 const MAX_TEXT_LENGTH = 100;
+const MAX_COMPANIES = 10;
 const MAX_FIELD_LENGTH = 200;
 
 const GROUP_BY = ['none', 'month', 'category', 'company', 'account'];
@@ -123,6 +124,30 @@ function readText(value, field) {
     return { value: text };
 }
 
+// Список компаний для sum_operations: от одной до MAX_COMPANIES строк, каждая
+// как в readText. Одна строка вместо списка принимается за список из одной -
+// модель иногда путает форму. Повторы (по nameKey) убираются, пустой список - без фильтра.
+function readCompanies(value) {
+    if (isAbsent(value)) return { value: null };
+    const items = Array.isArray(value) ? value : [value];
+    if (items.length > MAX_COMPANIES) return { error: `Invalid 'company': at most ${MAX_COMPANIES} names.` };
+    const names = [];
+    const seen = new Set();
+    for (const item of items) {
+        const text = readText(item, 'company');
+        if (text.error) return text;
+        if (text.value === null) {
+            if (typeof item === 'string') continue;
+            return { error: "Invalid 'company': expected a list of non-empty strings." };
+        }
+        const key = nameKey(text.value);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        names.push(text.value);
+    }
+    return { value: names.length > 0 ? names : null };
+}
+
 // Первое же сообщение об ошибке: инструмент возвращает его модели как есть.
 const firstError = (...results) => results.find(result => result?.error)?.error || null;
 
@@ -134,16 +159,17 @@ function sumOperations(input, data) {
     const groupBy = readChoice(input.group_by ?? 'none', GROUP_BY, 'group_by');
     const category = readCategory(input.category, data, type.value);
     const account = readAccount(input.account, data);
-    const company = readText(input.company, 'company');
+    const company = readCompanies(input.company);
     const error = firstError(range, type, groupBy, category, account, company);
     if (error) return fail(error);
 
     const { from, to } = range;
+    const companyKeys = company.value === null ? null : new Set(company.value.map(nameKey));
     const sum = type.value === 'expense' ? (items) => -sumExpense(items) : sumIncome;
     const filtered = applyFilters(
         data.transactions.filter(t => t.date >= from && t.date <= to),
         { account: account.id, category: category.value, type: type.value }
-    ).filter(t => company.value === null || nameKey(companyOf(t)) === nameKey(company.value));
+    ).filter(t => companyKeys === null || companyKeys.has(nameKey(companyOf(t))));
     // В итог входит то, что экраны считают расходом или доходом (sumExpense,
     // sumIncome); сколько таких операций, проверяется теми же функциями.
     const counted = filtered.filter(t => sum([t]) !== 0);
@@ -186,8 +212,12 @@ function sumOperations(input, data) {
         }
     }
 
-    if (company.value !== null && counted.length === 0) {
-        result.note = 'No operation has exactly this company name. Check the spelling with find_operations (text) or group_by company.';
+    if (company.value !== null) {
+        const matched = new Set(counted.map(t => nameKey(companyOf(t))));
+        const unknown = company.value.filter(name => !matched.has(nameKey(name)));
+        if (unknown.length > 0) {
+            result.note = `No operation has exactly these company names: ${unknown.join(', ')}. Check the spelling with find_operations (text) or group_by company.`;
+        }
     }
     return { ok: true, result };
 }
@@ -387,7 +417,7 @@ function buildToolDefinitions({ categories = [], accounts = [] }) {
                 type: { type: 'string', enum: SUM_TYPES },
                 category: nameChoice(categoryNames, 'Only this category, or null for all.'),
                 account: nameChoice(accountNames, 'Only this account (by name), or null for all.'),
-                company: nullable({ type: 'string' }, 'Exact company/merchant name, case-insensitive, or null. To find the spelling use find_operations with text.'),
+                company: nullable({ type: 'array', items: { type: 'string' } }, 'Exact company/merchant names, case-insensitive; operations of any of them are counted together. null for all. At most 10 names. To find the spelling use find_operations with text or group_by company.'),
                 group_by: { type: 'string', enum: GROUP_BY, description: 'none for one total, or split by month, category, company or account.' }
             })
         },
@@ -470,7 +500,9 @@ function describeToolCall(name, input) {
             case 'sum_operations': {
                 const head = [
                     stepText(source.category) || (source.type === 'income' ? 'Доходы' : 'Расходы'),
-                    stepText(source.company),
+                    stepText(Array.isArray(source.company)
+                        ? source.company.filter(name => typeof name === 'string').join(', ')
+                        : source.company),
                     stepText(source.account)
                 ].filter(Boolean).join(' · ');
                 return `${head}, ${formatRangeRu(source.from, source.to)}`;

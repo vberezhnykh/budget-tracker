@@ -87,7 +87,7 @@ function buildSystemPrompt(context, today) {
         'Rules. Never invent data: when the phrase does not say something, use null.',
         '- amount: the amount in euros as a positive number. Evaluate simple arithmetic ("2 по 3.5" is 7). null if there is no amount.',
         '- type: "income" for salary, a refund or money received; "transfer" for moving money between the user\'s own accounts; otherwise "expense".',
-        '- category: only a name from the lists below, and only if it clearly fits the operation and its type; otherwise null.',
+        '- category: a name from the lists below whose meaning covers the operation and matches its type, judged by meaning rather than exact words (shoes belong to a clothing category, a pharmacy to a health category). null only when no category fits or two fit equally well.',
         '- account: only when the phrase clearly names it: an account name, "наличными" or "налом" when exactly one cash account exists, "с карты" or "картой" when exactly one card account exists. Otherwise null, never guess.',
         '- toAccount: only for a transfer, the destination account by the same rules; otherwise null.',
         '- date: resolve relative words ("вчера", "позавчера", "в пятницу") against today and answer YYYY-MM-DD; null if no date is mentioned.',

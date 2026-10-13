@@ -124,18 +124,57 @@ describe('sum_operations: итоги совпадают с функциями э
     });
 
     it('фильтр по компании: без регистра, и по описанию старой записи', () => {
-        const result = sum({ from: '2026-06-01', to: '2026-08-31', company: 'BOLT' }).json;
+        const result = sum({ from: '2026-06-01', to: '2026-08-31', company: ['BOLT'] }).json;
         // 25 + 40.25 и старая запись с описанием «bolt» (7); 500 не в статистике
         expect(result.total).toBe(72.25);
         expect(result.count).toBe(3);
-        expect(result.filters.company).toBe('BOLT');
-        expect(sum({ from: '2026-06-01', to: '2026-08-31', company: ' uber ' }).json.total).toBe(15);
+        expect(result.filters.company).toEqual(['BOLT']);
+        expect(result).not.toHaveProperty('note');
+        expect(sum({ from: '2026-06-01', to: '2026-08-31', company: [' uber '] }).json.total).toBe(15);
     });
 
-    it('компания, которой нет, возвращает ноль и подсказку', () => {
-        const result = sum({ company: 'Несуществующая' }).json;
+    it('несколько компаний считаются вместе: Bolt и Uber', () => {
+        const result = sum({ from: '2026-06-01', to: '2026-08-31', category: 'Транспорт', company: ['Bolt', 'Uber'] }).json;
+        expect(result).toMatchObject({ total: 87.25, count: 4, filters: { company: ['Bolt', 'Uber'] } });
+        expect(result).not.toHaveProperty('note');
+        // Регистр и порядок не важны, повтор не удваивает сумму
+        const mixed = sum({ from: '2026-06-01', to: '2026-08-31', category: 'Транспорт', company: ['uber', 'BOLT', ' bolt '] }).json;
+        expect(mixed).toMatchObject({ total: 87.25, count: 4, filters: { company: ['uber', 'BOLT'] } });
+    });
+
+    it('одна строка вместо списка принимается как список из одной компании', () => {
+        const result = sum({ from: '2026-06-01', to: '2026-08-31', company: 'bolt' }).json;
+        expect(result).toMatchObject({ total: 72.25, count: 3, filters: { company: ['bolt'] } });
+    });
+
+    it('пустой список и пустая строка - без фильтра по компании', () => {
+        const all = sum({ from: '2026-06-01', to: '2026-08-31' }).json;
+        expect(sum({ from: '2026-06-01', to: '2026-08-31', company: [] }).json).toEqual(all);
+        expect(sum({ from: '2026-06-01', to: '2026-08-31', company: '  ' }).json).toEqual(all);
+        expect(all.filters.company).toBeNull();
+    });
+
+    it('компания, которой нет, возвращает ноль и подсказку с её названием', () => {
+        const result = sum({ company: ['Несуществующая'] }).json;
         expect(result).toMatchObject({ total: 0, count: 0 });
-        expect(result.note).toMatch(/find_operations/);
+        expect(result.note).toBe('No operation has exactly these company names: Несуществующая. Check the spelling with find_operations (text) or group_by company.');
+    });
+
+    it('часть названий неизвестна: известные считаются, неизвестное названо в подсказке', () => {
+        const result = sum({ from: '2026-06-01', to: '2026-08-31', company: ['Bolt', 'Taxify', 'Uber', 'Gett'] }).json;
+        expect(result).toMatchObject({ total: 87.25, count: 4 });
+        expect(result.note).toMatch(/exactly these company names: Taxify, Gett\./);
+        expect(result.note).not.toMatch(/Bolt|Uber/);
+    });
+
+    it('группировка по компаниям вместе со списком компаний', () => {
+        const result = sum({ from: '2026-06-01', to: '2026-08-31', company: ['Bolt', 'Uber', 'Wolt'], group_by: 'company' }).json;
+        expect(result.groups).toEqual([
+            { key: 'Bolt', total: 72.25, count: 3 },
+            { key: 'Wolt', total: 18.4, count: 1 },
+            { key: 'Uber', total: 15, count: 1 }
+        ]);
+        expect(result.total).toBe(105.65);
     });
 });
 
@@ -352,7 +391,12 @@ describe('проверка ввода: ошибка как is_error, а не и�
         ['категория другого типа', { category: 'Зарплата' }, /category/],
         ['неизвестный счёт', { account: 'Тинькофф' }, /account/],
         ['неизвестная группировка', { group_by: 'week' }, /group_by/],
-        ['слишком длинная компания', { company: 'x'.repeat(101) }, /company/]
+        ['слишком длинная компания', { company: 'x'.repeat(101) }, /company/],
+        ['слишком длинная компания в списке', { company: ['Bolt', 'x'.repeat(101)] }, /company/],
+        ['больше десяти компаний', { company: Array.from({ length: 11 }, (_, index) => `Shop ${index}`) }, /at most 10/],
+        ['компания не строка', { company: 5 }, /company/],
+        ['в списке не строка', { company: ['Bolt', 5] }, /company/],
+        ['в списке null', { company: ['Bolt', null] }, /company/]
     ])('sum_operations: %s', (_name, patch, message) => {
         const outcome = executeTool('sum_operations', { ...valid, ...patch }, data);
         expect(outcome.isError).toBe(true);
@@ -423,7 +467,7 @@ describe('buildToolDefinitions', () => {
         const { properties } = tools[0].input_schema;
         expect(properties.category.anyOf).toEqual([{ type: 'string', enum: ['Транспорт', 'Кафе', 'Продукты', 'Прочее', 'Зарплата'] }, { type: 'null' }]);
         expect(properties.account.anyOf[0].enum).toEqual(['Revolut', 'Наличные', 'Залог']);
-        expect(properties.company.anyOf).toEqual([{ type: 'string' }, { type: 'null' }]);
+        expect(properties.company.anyOf).toEqual([{ type: 'array', items: { type: 'string' } }, { type: 'null' }]);
         expect(properties.group_by.enum).toEqual(['none', 'month', 'category', 'company', 'account']);
         expect(tools[3].input_schema.properties.category.anyOf[0].enum).toEqual(['Транспорт', 'Кафе', 'Продукты', 'Прочее']);
         expect(tools[2].input_schema.properties).toEqual({});
@@ -466,6 +510,8 @@ describe('подпись шага', () => {
         expect(describeToolCall('sum_operations', { from: '2026-06-01', to: '2026-08-31', type: 'expense', category: 'Транспорт' })).toBe('Транспорт, 1 июня – 31 августа 2026');
         expect(describeToolCall('sum_operations', { from: '2026-09-01', to: '2026-09-30', type: 'expense', category: null })).toBe('Расходы, сентябрь 2026');
         expect(describeToolCall('sum_operations', { from: '2026-09-01', to: '2026-09-30', type: 'income', category: null, account: 'Revolut' })).toBe('Доходы · Revolut, сентябрь 2026');
+        expect(describeToolCall('sum_operations', { from: '2026-06-01', to: '2026-08-31', type: 'expense', category: 'Транспорт', company: ['Bolt', 'Uber'] })).toBe('Транспорт · Bolt, Uber, 1 июня – 31 августа 2026');
+        expect(describeToolCall('sum_operations', { from: '2026-06-01', to: '2026-08-31', type: 'expense', category: null, company: 'Bolt' })).toBe('Расходы · Bolt, 1 июня – 31 августа 2026');
         expect(describeToolCall('find_operations', { text: 'такси', from: '2026-09-01', to: '2026-09-30' })).toBe('Поиск: такси, сентябрь 2026');
         expect(describeToolCall('find_operations', { category: 'Кафе', from: '2026-09-01', to: '2026-09-30' })).toBe('Операции: Кафе, сентябрь 2026');
         expect(describeToolCall('get_balances', {})).toBe('Остатки по счетам');
@@ -476,6 +522,8 @@ describe('подпись шага', () => {
     it('не падает на неверном вводе и неизвестном инструменте', () => {
         expect(describeToolCall('sum_operations', null)).toMatch(/Расходы/);
         expect(describeToolCall('sum_operations', { from: 5, to: {} })).toMatch(/Расходы/);
+        expect(describeToolCall('sum_operations', { from: '2026-01-01', to: '2026-01-02', company: [5, null, {}, 'Bolt'] })).toBe('Расходы · Bolt, 1 – 2 января 2026');
+        expect(describeToolCall('sum_operations', { from: '2026-01-01', to: '2026-01-02', company: ['К'.repeat(30), 'Л'.repeat(30)] }).length).toBeLessThan(90);
         expect(describeToolCall('what', {})).toBe('Расчёт');
         expect(describeToolCall('find_operations', { text: 'т'.repeat(100), from: '2026-01-01', to: '2026-01-02' }).length).toBeLessThan(80);
     });

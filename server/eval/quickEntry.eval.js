@@ -1,6 +1,6 @@
 // Оценка ввода фразой («кофе 3.50 старбакс вчера с карты») на настоящем Claude.
 //
-//   node server/eval/quickEntry.eval.js [--only id1,id2] [--repeat N] [--out dir] [--model id] [--dry]
+//   node server/eval/quickEntry.eval.js [--only id1,id2] [--repeat N] [--out dir] [--model id] [--effort low|medium|high|xhigh|max] [--dry]
 //
 // Роутер тот же, что в приложении (createQuickEntryRouter) со своим
 // defaultLoadContext поверх временной Mongo с fixtures.js; «сегодня» -
@@ -117,7 +117,7 @@ const show = (value) => (value === null || value === undefined ? 'null' : String
 
 function renderMarkdown({ args, model, records, summary }) {
     const lines = ['# Оценка ввода фразой', ''];
-    lines.push(`Модель: ${model}. Сегодня: ${TODAY}. Прогонов на фразу: ${args.repeat}.`, '');
+    lines.push(`Модель: ${model}. Effort: ${args.effort ?? 'как в приложении'}. Сегодня: ${TODAY}. Прогонов на фразу: ${args.repeat}.`, '');
     lines.push(`Полностью верно: ${summary.correct} из ${summary.runs}. Стоимость ${usd(summary.totalCost)}. Среднее время ${(summary.avgMs / 1000).toFixed(2)} с.`, '');
     lines.push(mdTable(['поле', 'верно', 'проверялось', 'точность'], FIELDS.filter(field => summary.perField[field])
         .map(field => [field, summary.perField[field].ok, summary.perField[field].total, `${Math.round(100 * summary.perField[field].ok / summary.perField[field].total)}%`])), '');
@@ -176,7 +176,7 @@ async function main() {
             return;
         }
 
-        const sender = createTimedSender();
+        const sender = createTimedSender({ effort: args.effort });
         const app = express();
         app.use(express.json());
         app.use('/api/quick-entry', createQuickEntryRouter({
@@ -217,7 +217,7 @@ async function main() {
         writeReport({
             outDir: args.out,
             name: 'quickEntry',
-            json: { createdAt: new Date().toISOString(), model, today: TODAY, args: { only: args.only ? [...args.only] : null, repeat: args.repeat }, summary, records },
+            json: { createdAt: new Date().toISOString(), model, today: TODAY, args: { only: args.only ? [...args.only] : null, repeat: args.repeat, effort: args.effort }, effort: args.effort, summary, records },
             markdown: renderMarkdown({ args, model, records, summary })
         });
     } finally {

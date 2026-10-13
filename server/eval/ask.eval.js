@@ -1,6 +1,6 @@
 // Оценка «Вопросов к данным» на настоящем Claude и детерминированных данных.
 //
-//   node server/eval/ask.eval.js [--only id1,id2] [--repeat N] [--out dir] [--model id] [--dry]
+//   node server/eval/ask.eval.js [--only id1,id2] [--repeat N] [--out dir] [--model id] [--effort low|medium|high|xhigh|max] [--dry]
 //
 // Роутер тот же, что в приложении (createAskRouter), база - временный mongod
 // с fixtures.js, «сегодня» - 2026-10-13. Ожидаемые числа считаются теми же
@@ -34,6 +34,8 @@ const find = (data, input) => must(findOperations({ type: null, category: null, 
 
 const amount = (label, value, extra = {}) => ({ label, kind: 'amount', value, ...extra });
 const text = (label, any, extra = {}) => ({ label, kind: 'text', any, ...extra });
+// Фильтр Истории в ответе (answer.history): field - month ('YYYY-MM'), category (имя) или type.
+const history = (label, field, value, extra = {}) => ({ label, kind: 'history', field, value, ...extra });
 
 const CAFE = 'Кафе и досуг';
 const MONTHS_GENITIVE = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -61,7 +63,11 @@ const CASES = [
     {
         id: 'sep_cafe',
         question: 'Сколько ушло на кафе в сентябре?',
-        checks: (data) => [amount('кафе, сентябрь 2026', sum(data, { from: '2026-09-01', to: '2026-09-30', category: CAFE }).total)]
+        checks: (data) => [
+            amount('кафе, сентябрь 2026', sum(data, { from: '2026-09-01', to: '2026-09-30', category: CAFE }).total),
+            history('история: месяц', 'month', '2026-09', { optional: true }),
+            history('история: категория', 'category', CAFE, { optional: true })
+        ]
     },
     {
         id: 'sep_cafe_followup',
@@ -92,8 +98,14 @@ const CASES = [
     {
         id: 'largest_2026',
         question: 'Какие были самые крупные покупки в этом году?',
-        checks: (data) => find(data, { from: '2026-01-01', to: TODAY, type: 'expense', sort: 'amount_desc', limit: 5 }).operations
-            .map((op, index) => amount(`#${index + 1}: ${op.company} ${op.date}`, op.amount, { optional: index >= 3 }))
+        checks: (data) => {
+            const operations = find(data, { from: '2026-01-01', to: TODAY, type: 'expense', sort: 'amount_desc', limit: 5 }).operations;
+            return [
+                ...operations.map((op, index) => amount(`#${index + 1}: ${op.company} ${op.date}`, op.amount, { optional: index >= 3 })),
+                // Месяц первой в списке операции (самой крупной)
+                history('история: месяц самой крупной', 'month', operations[0].date.slice(0, 7), { optional: true })
+            ];
+        }
     },
     {
         id: 'balances',
@@ -137,13 +149,42 @@ const CASES = [
         question: 'Сколько я потратил на такси в этом году?',
         checks: (data) => {
             const range = { from: '2026-01-01', to: TODAY };
-            const bolt = sum(data, { ...range, company: 'Bolt' }).total;
-            const uber = sum(data, { ...range, company: 'Uber' }).total;
+            const bolt = sum(data, { ...range, company: ['Bolt'] }).total;
+            const uber = sum(data, { ...range, company: ['Uber'] }).total;
             return {
                 alternatives: [
-                    { name: 'A: категория Транспорт', checks: [amount('Транспорт 2026', sum(data, { ...range, category: 'Транспорт' }).total)] },
+                    { name: 'A: Bolt+Uber вместе', checks: [amount('Bolt + Uber 2026', sum(data, { ...range, category: 'Транспорт', company: ['Bolt', 'Uber'] }).total)] },
                     { name: 'B: Bolt и Uber по отдельности', checks: [amount('Bolt 2026', bolt), amount('Uber 2026', uber)] },
-                    { name: 'C: сумма Bolt и Uber', checks: [amount('Bolt + Uber 2026', Math.round((bolt + uber) * 100) / 100)] }
+                    { name: 'C: весь Транспорт', checks: [amount('Транспорт 2026', sum(data, { ...range, category: 'Транспорт' }).total)] }
+                ]
+            };
+        }
+    },
+    {
+        id: 'fuel_2026',
+        question: 'Сколько ушло на бензин в этом году?',
+        checks: (data) => {
+            const range = { from: '2026-01-01', to: TODAY };
+            return {
+                alternatives: [
+                    { name: 'A: Shell+EKO вместе', checks: [amount('Shell + EKO 2026', sum(data, { ...range, category: 'Авто', company: ['Shell', 'EKO'] }).total)] },
+                    { name: 'B: Shell и EKO по отдельности', checks: [amount('Shell 2026', sum(data, { ...range, category: 'Авто', company: ['Shell'] }).total), amount('EKO 2026', sum(data, { ...range, category: 'Авто', company: ['EKO'] }).total)] },
+                    { name: 'C: весь Авто', checks: [amount('Авто 2026', sum(data, { ...range, category: 'Авто' }).total)] }
+                ]
+            };
+        }
+    },
+    {
+        id: 'pharmacy_2026',
+        question: 'Сколько я потратил в аптеках в этом году?',
+        // В фикстурах одна аптека («Аптека Пападопулос»), поэтому суммы групп совпадают:
+        // различить их можно только по тексту ответа и вызовам.
+        checks: (data) => {
+            const range = { from: '2026-01-01', to: TODAY };
+            return {
+                alternatives: [
+                    { name: 'A: аптеки вместе', checks: [amount('Аптека Пападопулос 2026', sum(data, { ...range, category: 'Здоровье', company: ['Аптека Пападопулос'] }).total)] },
+                    { name: 'B: весь Здоровье', checks: [amount('Здоровье 2026', sum(data, { ...range, category: 'Здоровье' }).total)] }
                 ]
             };
         }
@@ -156,7 +197,7 @@ const CASES = [
     {
         id: 'lidl_aug',
         question: 'Сколько я потратил в Lidl в августе?',
-        checks: (data) => [amount('Lidl, август 2026', sum(data, { from: '2026-08-01', to: '2026-08-31', company: 'Lidl' }).total)]
+        checks: (data) => [amount('Lidl, август 2026', sum(data, { from: '2026-08-01', to: '2026-08-31', company: ['Lidl'] }).total)]
     },
     {
         id: 'starbucks_last',
@@ -195,7 +236,8 @@ const CASES = [
             const top = sum(data, { from: '2026-01-01', to: TODAY, group_by: 'month' }).groups[0];
             return [
                 text(`месяц: ${top.key}`, MONTH_STEMS[Number(top.key.slice(5, 7)) - 1]),
-                amount(`расходы ${top.key}`, top.total)
+                amount(`расходы ${top.key}`, top.total),
+                history('история: месяц', 'month', top.key, { optional: true })
             ];
         }
     },
@@ -223,7 +265,7 @@ const CASES = [
         question: 'Сколько я потратил на рестораны в январе 2024?',
         // Данные начинаются 2024-10-01: честный ответ - «операций нет», без выдуманных сумм.
         checks: () => [
-            text('сказано, что данных нет', ['нет данных', 'нет операций', 'раньше', 'начинаются', 'не было', 'первая операция', 'ранняя операция', 'записей нет', 'нет записей', 'только с']),
+            text('сказано, что данных нет', ['нет данных', 'нет операций', 'раньше', 'начинаются', 'не было', 'первая операция', 'ранняя операция', 'самая ранняя', 'до первой', 'записей нет', 'нет записей', 'только с']),
             { label: 'нет сумм в ответе', kind: 'no_amounts' }
         ]
     }
@@ -236,17 +278,20 @@ const OK_STATUSES = new Set(['exact', 'rounded', 'ok']);
 // Похоже ли на сумму: знак евро, «12 евро» или число с копейками. Годы и даты не считаются.
 const looksLikeAmount = (answerText) => /€|\d\s*(?:евро|eur)\b|\d[.,]\d{2}(?!\d)/iu.test(answerText);
 
-function gradeGroup(checks, answerText, numbers) {
+function gradeGroup(checks, answerText, numbers, answerHistory) {
     const lower = answerText.toLowerCase();
     return checks.map((check) => {
         let status;
         if (check.kind === 'amount') status = matchAmount(check.value, numbers);
         else if (check.kind === 'text') status = check.any.some(needle => lower.includes(needle.toLowerCase())) ? 'ok' : 'missing';
+        else if (check.kind === 'history') status = (answerHistory?.[check.field] ?? null) === check.value ? 'ok' : 'missing';
         else status = looksLikeAmount(answerText) ? 'missing' : 'ok';
         return {
             label: check.label,
             kind: check.kind,
-            expected: check.kind === 'amount' ? check.value : (check.any ?? null),
+            expected: check.kind === 'amount' || check.kind === 'history' ? check.value : (check.any ?? null),
+            // Что ответ дал на самом деле (только для фильтра Истории)
+            ...(check.kind === 'history' ? { actual: answerHistory?.[check.field] ?? null } : {}),
             status,
             ok: OK_STATUSES.has(status),
             optional: Boolean(check.optional)
@@ -259,10 +304,10 @@ function normalizeGroups(checksResult) {
 }
 
 // pass: сошлась хотя бы одна группа; partial: часть обязательных проверок; fail: ничего.
-function gradeCase(groups, answerText) {
+function gradeCase(groups, answerText, answerHistory = null) {
     const numbers = extractNumbers(answerText);
     const graded = groups.map((group) => {
-        const results = gradeGroup(group.checks, answerText, numbers);
+        const results = gradeGroup(group.checks, answerText, numbers, answerHistory);
         const required = results.filter(result => !result.optional);
         const passed = required.filter(result => result.ok).length;
         return { name: group.name, results, passed, required: required.length, complete: passed === required.length };
@@ -377,7 +422,7 @@ async function runCase(testCase, { app, sender, data, model }) {
 
     const answerText = answerTextOf(answerEvent);
     const groups = normalizeGroups(testCase.checks(data));
-    const grade = answerEvent ? gradeCase(groups, answerText) : { ...gradeCase(groups, ''), status: 'fail' };
+    const grade = answerEvent ? gradeCase(groups, answerText, answerEvent.history ?? null) : { ...gradeCase(groups, ''), status: 'fail' };
 
     return {
         id: testCase.id,
@@ -430,7 +475,7 @@ function buildSummary(records) {
 function renderMarkdown({ args, model, records, summary }) {
     const lines = [];
     lines.push(`# Оценка «Вопросов к данным»`, '');
-    lines.push(`Модель: ${model}. Сегодня: ${TODAY}. Прогонов на кейс: ${args.repeat}. Кейсов: ${new Set(records.map(record => record.id)).size}.`, '');
+    lines.push(`Модель: ${model}. Effort: ${args.effort ?? 'как в приложении'}. Сегодня: ${TODAY}. Прогонов на кейс: ${args.repeat}. Кейсов: ${new Set(records.map(record => record.id)).size}.`, '');
     lines.push(`Итого: pass ${summary.pass} / partial ${summary.partial} / fail ${summary.fail} из ${summary.runs}. Стоимость ${usd(summary.totalCost)}. ` +
         `Время: среднее ${(summary.avgMs / 1000).toFixed(1)} с, медиана ${(summary.medianMs / 1000).toFixed(1)} с. ` +
         `Раундов в среднем ${summary.avgRounds.toFixed(2)} (принудительный последний: ${summary.forcedRuns}). Доля чтения из кэша ${(summary.cacheReadRatio * 100).toFixed(0)}%.`, '');
@@ -449,7 +494,11 @@ function renderMarkdown({ args, model, records, summary }) {
         lines.push(`Вопрос: ${record.question}`, '');
         if (record.error) lines.push(`Ошибка: ${record.error.code} ${record.error.message}`, '');
         lines.push(mdTable(['проверка', 'ожидалось', 'итог', 'обяз.'], (record.groups.find(group => group.name === record.selectedGroup) || record.groups[0]).results
-            .map(result => [result.label, Array.isArray(result.expected) ? result.expected.join(' / ') : result.expected, result.status, result.optional ? 'нет' : 'да'])), '');
+            .map(result => [
+                result.label, Array.isArray(result.expected) ? result.expected.join(' / ') : result.expected,
+                result.kind === 'history' ? `${result.status} (получено: ${result.actual ?? 'null'})` : result.status,
+                result.optional ? 'нет' : 'да'
+            ])), '');
         if (record.groups.length > 1) lines.push(`Группы: ${record.groups.map(group => `${group.name} ${group.complete ? '✓' : `${group.passed}/${group.required}`}`).join('; ')}`, '');
         lines.push('Ответ:', '', ...record.answerText.split('\n').map(line => `> ${line}`), '');
         lines.push(`Основание: ${record.basis ?? '-'}. Фильтр истории: ${JSON.stringify(record.history)}`, '');
@@ -478,7 +527,9 @@ function printDry(data, cases) {
         for (const group of groups) {
             const prefix = groups.length > 1 || group.name !== 'main' ? `  (${group.name})` : '';
             for (const check of group.checks) {
-                const value = check.kind === 'amount' ? check.value : (check.kind === 'text' ? `текст ${JSON.stringify(check.any)}` : 'без сумм');
+                const value = check.kind === 'amount'
+                    ? check.value
+                    : (check.kind === 'text' ? `текст ${JSON.stringify(check.any)}` : (check.kind === 'history' ? `история ${check.field} = ${check.value}` : 'без сумм'));
                 rows.push(`  ${prefix}${prefix ? ' ' : ''}${check.label}${check.optional ? ' (опц.)' : ''}: ${value}`);
             }
         }
@@ -510,7 +561,7 @@ async function main() {
             return;
         }
 
-        const sender = createTimedSender();
+        const sender = createTimedSender({ effort: args.effort });
         const app = express();
         app.use(express.json());
         app.use('/api/ask', createAskRouter({
@@ -556,7 +607,7 @@ async function main() {
         writeReport({
             outDir: args.out,
             name: 'ask',
-            json: { createdAt: new Date().toISOString(), model, today: TODAY, args: { only: args.only ? [...args.only] : null, repeat: args.repeat }, summary, records },
+            json: { createdAt: new Date().toISOString(), model, today: TODAY, args: { only: args.only ? [...args.only] : null, repeat: args.repeat, effort: args.effort }, effort: args.effort, summary, records },
             markdown: renderMarkdown({ args, model, records, summary })
         });
     } finally {
