@@ -131,6 +131,9 @@ function buildSystemPrompt(data) {
         'Rules.',
         '- Every number you state must come from a tool result. Never add up, average or estimate amounts yourself and never total a list from find_operations: call sum_operations (use group_by month/category/company/account for breakdowns, one call per period you compare). You may subtract two totals returned by tools and give a whole-number percentage from them.',
         '- find_operations is for showing individual operations (the largest, the latest, a merchant, a note). Its list is limited.',
+        '- When the question names a kind of spending or income ("кафе", "такси", "продукты", "зарплата"), first map it to the closest category from the lists above (by meaning, not exact spelling: "кафе" matches a category containing "Кафе") and use sum_operations with that category. If several categories fit, sum each of them (in parallel) or group by category.',
+        '- The text of find_operations searches only company names and notes. Use it for a specific merchant or note, not for a kind of spending.',
+        '- If a text search finds nothing, check the matching category with sum_operations before saying there was no such spending. Say there was none only when the category total is also zero or no category fits.',
         '- Most questions need one or two tool calls. When several independent numbers are needed (for example two periods to compare), request them all in parallel in a single turn instead of one after another.',
         '- Never repeat a call and never re-verify a result you already have: the tools are exact. Answer as soon as you have the numbers.',
         `- Deliver the final answer by calling ${ANSWER_TOOL_NAME} exactly once, as soon as you have the numbers, and write nothing after it. A typical question needs one data call and then ${ANSWER_TOOL_NAME}.`,
@@ -369,7 +372,7 @@ function summarizeToolResult(name, content, isError) {
                 note: parsed.note ?? null
             };
         case 'find_operations':
-            return { total_found: parsed.total_found, operations: length(parsed.operations) };
+            return { total_found: parsed.total_found, operations: length(parsed.operations), ...(parsed.note ? { note: parsed.note } : {}) };
         case 'get_balances':
             return { accounts: length(parsed.accounts) };
         case 'get_typical_month':
@@ -411,6 +414,13 @@ function describeRound({ round, forced, response, traced, answerOk }) {
     return entry;
 }
 
+// Длина текста системы: строка или сумма текстовых блоков.
+function systemChars(system) {
+    if (typeof system === 'string') return system.length;
+    if (!Array.isArray(system)) return 0;
+    return system.reduce((sum, block) => sum + (typeof block?.text === 'string' ? block.text.length : 0), 0);
+}
+
 // Форма последнего запроса: достаточно, чтобы проверить, что результаты
 // инструментов стоят под своими tool_use_id, а история собрана правильно.
 function describeRequest(request) {
@@ -429,7 +439,7 @@ function describeRequest(request) {
         messages,
         tool_choice: request?.tool_choice ?? null,
         has_output_config_format: Boolean(request?.output_config?.format),
-        system_chars: typeof request?.system === 'string' ? request.system.length : 0,
+        system_chars: systemChars(request?.system),
         tools: (request?.tools || []).map(tool => tool?.name)
     };
 }
@@ -632,7 +642,11 @@ function createAskRouter({
             cache_control: { type: 'ephemeral' },
             // Формат вывода сюда не входит: runAskLoop добавляет его только к последнему запросу.
             output_config: { effort: 'medium' },
-            system: buildSystemPrompt(data),
+            // Блоком с точкой кэша: порядок отрисовки tools -> system -> messages, поэтому
+            // эта точка кэширует инструменты и систему и между разными вопросами
+            // (текст системы одинаков, пока те же данные и тот же день). Верхний
+            // cache_control выше кэширует растущий разговор внутри вопроса. Точек две из четырёх.
+            system: [{ type: 'text', text: buildSystemPrompt(data), cache_control: { type: 'ephemeral' } }],
             tools: [...buildToolDefinitions(data), buildAnswerTool(data)]
         };
 

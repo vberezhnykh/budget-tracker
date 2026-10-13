@@ -208,6 +208,20 @@ describe('find_operations', () => {
         expect(find({ text: 'такси' }).json.operations[0]).toMatchObject({ date: '2026-07-02', amount: 7 });
     });
 
+    it('текст без совпадений: в результате подсказка про категории; с совпадениями и без текста её нет', () => {
+        const empty = find({ text: 'кофе' }).json;
+        expect(empty.total_found).toBe(0);
+        expect(empty.operations).toEqual([]);
+        expect(empty.note).toBe('No operation has this text in its company name or note. Text search does not look at categories: for a kind of spending use sum_operations with the closest category.');
+
+        expect(find({ text: 'bolt' }).json).not.toHaveProperty('note');
+        expect(find({ text: null }).json).not.toHaveProperty('note');
+        // Пустой результат без текста (другой фильтр) подсказки не получает.
+        const noText = find({ from: '2020-01-01', to: '2020-01-02' }).json;
+        expect(noText.total_found).toBe(0);
+        expect(noText).not.toHaveProperty('note');
+    });
+
     it('сортирует: новые первыми или крупные первыми, и ограничивает число', () => {
         const newest = find({ category: 'Транспорт', from: '2026-01-01', limit: 3 }).json;
         expect(newest.total_found).toBe(7 - 1);

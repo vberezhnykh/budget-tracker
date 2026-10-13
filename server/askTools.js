@@ -242,17 +242,19 @@ function findOperations(input, data) {
         ? (a, b) => b.amount - a.amount || b.date.localeCompare(a.date) || byId(a, b)
         : (a, b) => b.date.localeCompare(a.date) || byId(a, b));
 
-    return {
-        ok: true,
-        result: {
-            from,
-            to,
-            filters: { type: type.value, category: category.value, account: account.value, text: text.value },
-            sort: sort.value,
-            total_found: found.length,
-            operations: found.slice(0, limit).map(t => describeOperation(t, data))
-        }
+    const result = {
+        from,
+        to,
+        filters: { type: type.value, category: category.value, account: account.value, text: text.value },
+        sort: sort.value,
+        total_found: found.length,
+        operations: found.slice(0, limit).map(t => describeOperation(t, data))
     };
+    // Текст ищет только по компании и описанию: вид трат модель должна искать по категории.
+    if (text.value !== null && found.length === 0) {
+        result.note = 'No operation has this text in its company name or note. Text search does not look at categories: for a kind of spending use sum_operations with the closest category.';
+    }
+    return { ok: true, result };
 }
 
 // --- Инструмент: остатки ------------------------------------------------------

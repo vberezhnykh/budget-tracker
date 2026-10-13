@@ -238,6 +238,21 @@ describe('buildSystemPrompt', () => {
         expect(prompt).not.toMatch(/JSON/);
     });
 
+    it('правила категорий: вид трат - в категорию, текстовый поиск только по компании и заметке, пустой поиск проверяется категорией', () => {
+        expect(prompt).toMatch(/names a kind of spending or income/);
+        expect(prompt).toMatch(/map it to the closest category from the lists above \(by meaning, not exact spelling/);
+        expect(prompt).toMatch(/use sum_operations with that category/);
+        expect(prompt).toMatch(/sum each of them \(in parallel\) or group by category/);
+        expect(prompt).toMatch(/text of find_operations searches only company names and notes/);
+        expect(prompt).toMatch(/not for a kind of spending/);
+        expect(prompt).toMatch(/If a text search finds nothing, check the matching category with sum_operations/);
+        expect(prompt).toMatch(/only when the category total is also zero or no category fits/);
+    });
+
+    it('текст системы не содержит ничего изменчивого, кроме даты: одни данные и день дают ту же строку', () => {
+        expect(buildSystemPrompt(prepareData({ docs, accounts, categories, today: TODAY }))).toBe(prompt);
+    });
+
     it('без операций говорит об этом', () => {
         expect(buildSystemPrompt(prepareData({ docs: [], accounts, categories, today: TODAY }))).toContain('There are no operations');
     });
@@ -505,7 +520,7 @@ describe('POST /api/ask: цикл с инструментами', () => {
         expect(giveAnswer.input_schema.required).toEqual(['blocks', 'basis', 'history']);
         expect(giveAnswer.description).toMatch(/exactly once/);
         expect(giveAnswer.description).toMatch(/nothing comes after it/);
-        expect(params.system).toBe(buildSystemPrompt(data));
+        expect(params.system).toEqual([{ type: 'text', text: buildSystemPrompt(data), cache_control: { type: 'ephemeral' } }]);
         for (const forbidden of ['temperature', 'top_p', 'top_k', 'thinking', 'tool_choice']) expect(params).not.toHaveProperty(forbidden);
         expect(options.signal).toBeInstanceOf(AbortSignal);
         expect(params.messages).toEqual([{ role: 'user', content: QUESTION }]);
@@ -577,6 +592,27 @@ describe('POST /api/ask: цикл с инструментами', () => {
         );
         await post(makeApp({ createMessage }));
         expect(createMessage.mock.calls.map(call => call[0].messages.length)).toEqual([1, 3, 5]);
+    });
+
+    it('кэш: system - блок с точкой кэша, одинаковый на всех шагах и в двух вопросах; верхний cache_control остаётся', async () => {
+        const createMessage = script(
+            toolTurn(use('u1', 'get_balances', {})),
+            finalTurn(),
+            finalTurn()
+        );
+        const app = makeApp({ createMessage });
+        await post(app);
+        await post(app);
+        const calls = createMessage.mock.calls.map(call => call[0]);
+        expect(calls).toHaveLength(3);
+        const expected = [{ type: 'text', text: buildSystemPrompt(data), cache_control: { type: 'ephemeral' } }];
+        for (const params of calls) {
+            expect(params.system).toEqual(expected);
+            expect(JSON.stringify(params.system)).toBe(JSON.stringify(calls[0].system));
+            expect(params.cache_control).toEqual({ type: 'ephemeral' });
+        }
+        // Два отдельных вопроса: префикс tools + system побайтно тот же.
+        expect(JSON.stringify(calls[2].tools)).toBe(JSON.stringify(calls[0].tools));
     });
 
     it('система, инструменты и параметры байт-в-байт одни и те же на всех шагах', async () => {
@@ -1201,7 +1237,7 @@ describe('POST /api/ask: подробный журнал ASK_DEBUG', () => {
         expect(shape).toMatchObject({
             tool_choice: null,
             has_output_config_format: false,
-            system_chars: lastRequest.system.length,
+            system_chars: lastRequest.system[0].text.length,
             tools: lastRequest.tools.map(tool => tool.name)
         });
         expect(shape.tools).toEqual(['sum_operations', 'find_operations', 'get_balances', 'get_typical_month', 'give_answer']);
