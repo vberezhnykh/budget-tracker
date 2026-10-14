@@ -16,6 +16,8 @@ const Transaction = require('./models/Transaction');
 const PlannedPayment = require('./models/PlannedPayment');
 const Category = require('./models/Category');
 const Account = require('./models/Account');
+// Модель разбора месяца подключается здесь, чтобы её уникальный индекс строился при старте.
+require('./models/MonthReview');
 const { BankAccount } = require('./banking/models');
 const { createBankingService } = require('./banking/service');
 const { createBankingRouter } = require('./banking/router');
@@ -29,6 +31,7 @@ const { createOperationalRouter } = require('./operational');
 const { createMerchantSearchRouter } = require('./merchantSearch');
 const { createQuickEntryRouter, isQuickEntryEnabled } = require('./quickEntry');
 const { createAskRouter, isAskEnabled } = require('./ask');
+const { createMonthReviewRouter, isMonthReviewEnabled } = require('./monthReview');
 const { createCompaniesRouter } = require('./companies');
 const { activeTransactionFilter } = require('./ledgerState');
 const { validateAccountReferences } = require('./accountRefs');
@@ -218,6 +221,7 @@ app.use('/api/planned-payments', createPlannedPaymentsRouter());
 app.use('/api/merchants', createMerchantSearchRouter());
 app.use('/api/quick-entry', createQuickEntryRouter());
 app.use('/api/ask', createAskRouter());
+app.use('/api/month-review', createMonthReviewRouter());
 app.use('/api/companies', createCompaniesRouter());
 
 // ---- Auth ----
@@ -512,7 +516,7 @@ app.get('/api/settings', async (req, res) => {
         const settings = await getCanonicalSettings();
         res.set('Cache-Control', 'no-store');
         res.json({ monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT,
-            features: { banking: isBankingEnabled(), quickEntry: isQuickEntryEnabled(), ask: isAskEnabled() } });
+            features: { banking: isBankingEnabled(), quickEntry: isQuickEntryEnabled(), ask: isAskEnabled(), monthReview: isMonthReviewEnabled() } });
     } catch (err) {
         if (err.code === 'SETTINGS_INTEGRITY') {
             return res.status(409).json({ message: err.message });

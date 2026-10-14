@@ -18,9 +18,11 @@ const Account = require('../models/Account');
 const Category = require('../models/Category');
 const Company = require('../models/Company');
 const Transaction = require('../models/Transaction');
+const MonthReview = require('../models/MonthReview');
+const { saveCanonicalSettings } = require('../settingsSingleton');
 const { activeTransactionFilter } = require('../ledgerState');
 const { prepareData } = require('../askTools');
-const { buildFixtures } = require('./fixtures');
+const { buildFixtures, MONTHLY_LIMIT } = require('./fixtures');
 
 async function startEvalDb() {
     // Первый запуск может качать mongod несколько минут; дальше берётся из кэша.
@@ -34,6 +36,8 @@ async function startEvalDb() {
     await Category.insertMany(fixtures.categories);
     await Company.insertMany(fixtures.companies);
     await Transaction.insertMany(fixtures.transactions, { ordered: true });
+    // Месячный лимит, как его сохранило бы приложение (единственный документ настроек).
+    await saveCanonicalSettings(MONTHLY_LIMIT);
 
     return {
         fixtures,
@@ -60,4 +64,9 @@ async function loadAskData(today) {
     return prepareData({ ...(await loadAskContext()), today });
 }
 
-module.exports = { startEvalDb, loadAskData, loadAskContext };
+// Сохранённые разборы месяца стираются между прогонами, чтобы каждый заново шёл в Claude.
+async function clearMonthReviews() {
+    await MonthReview.deleteMany({});
+}
+
+module.exports = { startEvalDb, loadAskData, loadAskContext, clearMonthReviews };

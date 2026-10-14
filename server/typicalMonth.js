@@ -162,4 +162,4 @@ function computeTypicalMonth(transactions, { month, today, account = null, categ
     };
 }
 
-module.exports = { computeTypicalMonth };
+module.exports = { computeTypicalMonth, median };

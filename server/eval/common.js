@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const Anthropic = require('@anthropic-ai/sdk');
+const { extractNumbers } = require('../numbersInText');
 
 // $ за 1M токенов.
 const PRICES = {
@@ -74,37 +75,7 @@ function createTimedSender({ effort = null } = {}) {
 
 // --- Числа из русского текста ----------------------------------------------------
 
-const SPACE = '[ \\u00A0\\u202F\\u2009]';
-const NUMBER_PATTERN = new RegExp([
-    // 1.234,50 (точка как разделитель тысяч)
-    '\\d{1,3}(?:\\.\\d{3})+,\\d+',
-    // 1 234,50 / 1 234 567
-    `\\d{1,3}(?:${SPACE}\\d{3})+(?:[.,]\\d+)?`,
-    // 412 / 1234.5 / 12,5
-    '\\d+(?:[.,]\\d+)?'
-].join('|'), 'gu');
-
-// Числа из текста ответа (по модулю). Даты вроде «2026» и «13 октября» тоже
-// попадут в список: проверяется только, что ожидаемое число там есть.
-function extractNumbers(text) {
-    const numbers = [];
-    for (const [token] of String(text ?? '').matchAll(NUMBER_PATTERN)) {
-        const compact = token.replace(new RegExp(SPACE, 'gu'), '');
-        const value = /^\d{1,3}(?:\.\d{3})+,\d+$/.test(compact)
-            ? Number(compact.replace(/\./g, '').replace(',', '.'))
-            : Number(compact.replace(',', '.'));
-        if (Number.isFinite(value)) numbers.push(value);
-        // «412 1 234» без знака валюты между ними неотличимо от «412 1234»:
-        // обычные пробелы между группами дополнительно читаются как отдельные числа.
-        if (token.includes(' ') && /^\d{1,3}(?: \d{3})+/.test(token)) {
-            for (const part of token.split(' ')) {
-                const partValue = Number(part.replace(',', '.'));
-                if (Number.isFinite(partValue)) numbers.push(partValue);
-            }
-        }
-    }
-    return numbers;
-}
+// Разбор чисел общий с сервером (numbersInText.js): здесь он лишь реэкспортируется.
 
 // exact: совпало до цента; rounded: до целого евро (ответ без копеек); missing.
 function matchAmount(expected, numbers) {

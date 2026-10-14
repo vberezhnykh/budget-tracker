@@ -750,6 +750,8 @@ module.exports = {
     buildAnswerTool,
     sanitizeAnswer,
     sanitizeHistory,
+    cleanString,
+    stableStringify,
     runAskLoop,
     formatAskLog,
     MAX_TOOL_ROUNDS,

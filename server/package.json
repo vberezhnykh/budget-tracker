@@ -11,7 +11,8 @@
         "backup:check": "node check-backup-access.js",
         "backup:verify": "node verify-backup.js",
         "eval:ask": "node eval/ask.eval.js",
-        "eval:quick": "node eval/quickEntry.eval.js"
+        "eval:quick": "node eval/quickEntry.eval.js",
+        "eval:month": "node eval/monthReview.eval.js"
     },
     "keywords": [],
     "author": "",

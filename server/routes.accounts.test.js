@@ -200,7 +200,7 @@ describe('Настройки', () => {
         vi.stubEnv('BANKING_ENABLED', undefined);
         vi.stubEnv('ANTHROPIC_API_KEY', undefined);
         const response = await agent.get('/api/settings');
-        expect(response.body).toEqual({ monthlyLimit: 7000, features: { banking: false, quickEntry: false, ask: false } });
+        expect(response.body).toEqual({ monthlyLimit: 7000, features: { banking: false, quickEntry: false, ask: false, monthReview: false } });
         expect(response.headers['cache-control']).toBe('no-store');
         expect(await Settings.countDocuments()).toBe(0);
     });
@@ -210,9 +210,9 @@ describe('Настройки', () => {
         vi.stubEnv('ANTHROPIC_API_KEY', undefined);
         const saved = await agent.put('/api/settings').send({ monthlyLimit: 4321, features: { banking: true } });
         expect(saved.status).toBe(200);
-        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: false, quickEntry: false, ask: false } });
+        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: false, quickEntry: false, ask: false, monthReview: false } });
         vi.stubEnv('BANKING_ENABLED', 'true');
-        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: true, quickEntry: false, ask: false } });
+        expect((await agent.get('/api/settings')).body).toEqual({ monthlyLimit: 4321, features: { banking: true, quickEntry: false, ask: false, monthReview: false } });
         expect(await Settings.findOne().lean()).not.toHaveProperty('features');
     });
 
@@ -230,6 +230,13 @@ describe('Настройки', () => {
         expect((await agent.get('/api/settings')).body.features.ask).toBe(false);
         vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test');
         expect((await agent.get('/api/settings')).body.features.ask).toBe(true);
+    });
+
+    it('разбор месяца включается тем же серверным ключом', async () => {
+        vi.stubEnv('ANTHROPIC_API_KEY', '  ');
+        expect((await agent.get('/api/settings')).body.features.monthReview).toBe(false);
+        vi.stubEnv('ANTHROPIC_API_KEY', 'sk-ant-test');
+        expect((await agent.get('/api/settings')).body.features.monthReview).toBe(true);
     });
 
     it('до первого сохранения отдаёт значение по умолчанию, не создавая документ', async () => {

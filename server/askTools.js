@@ -540,5 +540,8 @@ module.exports = {
     getBalances,
     getTypicalMonth,
     companyOf,
+    descriptionOf,
+    nameKey,
+    clip,
     MAX_GROUPS
 };

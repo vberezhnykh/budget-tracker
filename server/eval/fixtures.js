@@ -12,6 +12,8 @@ const mongoose = require('mongoose');
 const { normalizeCompanyName } = require('../companies');
 
 const TODAY = '2026-10-13';
+// Месячный лимит в настройках (для разбора месяца).
+const MONTHLY_LIMIT = 3500;
 const FIRST_MONTH = { year: 2024, month: 10 };
 const LAST_MONTH = { year: 2026, month: 10 };
 const LAST_DAY_OF_LAST_MONTH = 12;
@@ -164,9 +166,12 @@ function buildFixtures() {
         // Регулярные платежи.
         expense(year, month, 1, { company: 'Арендодатель', category: 'Жилье', amount: 1100, pay: 'Alpha Bank', description: `Аренда за ${monthName}` });
         if (onDay(12)) expense(year, month, 12, { company: 'ΔΕΗ', category: 'Жилье', amount: money(60, 110), pay: 'Alpha Bank', description: `Электричество за ${monthName}` });
-        if (onDay(5)) expense(year, month, 5, { company: 'Cosmote', category: 'Связь и подписки', amount: chance(0.25) ? 49.9 : 44.9, pay: 'Alpha Bank', description: 'Интернет и мобильная связь' });
-        if (onDay(8)) expense(year, month, 8, { company: 'Netflix', category: 'Связь и подписки', amount: 13.99, pay: 'Revolut' });
-        if (onDay(10)) expense(year, month, 10, { company: 'Spotify', category: 'Связь и подписки', amount: 10.99, pay: 'Revolut' });
+        // Cosmote - фиксированный платёж. Бросок chance() оставлен, чтобы не сдвигать остальные случайные числа набора.
+        chance(0.25);
+        if (onDay(5)) expense(year, month, 5, { company: 'Cosmote', category: 'Связь и подписки', amount: 44.9, pay: 'Alpha Bank', description: 'Интернет и мобильная связь' });
+        // Netflix подорожал с сентября 2026; Spotify в сентябре 2026 не списался (до и после - 10,99).
+        if (onDay(8)) expense(year, month, 8, { company: 'Netflix', category: 'Связь и подписки', amount: ym >= 202609 ? 15.99 : 13.99, pay: 'Revolut' });
+        if (onDay(10) && ym !== 202609) expense(year, month, 10, { company: 'Spotify', category: 'Связь и подписки', amount: 10.99, pay: 'Revolut' });
         expense(year, month, 2, { company: 'OASA', category: 'Транспорт', amount: 30, pay: 'Wise', description: 'Месячный проездной' });
 
         // Продукты.
@@ -354,4 +359,4 @@ function buildFixtures() {
     return { accounts, categories, companies, transactions };
 }
 
-module.exports = { TODAY, buildFixtures, MONTH_NAMES };
+module.exports = { TODAY, MONTHLY_LIMIT, buildFixtures, MONTH_NAMES };
