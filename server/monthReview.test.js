@@ -5,6 +5,7 @@ import {
     buildMonthFacts,
     buildMonthReviewPrompt,
     buildReviewSchema,
+    findUnknownDates,
     findUnknownNumbers,
     generateMonthReview,
     hashFacts,
@@ -102,9 +103,14 @@ describe('buildMonthFacts: итоги', () => {
         expect(facts.income).toEqual({ total: 3200, count: 1, typical: 3000, diff: 200, diff_pct: 7 });
     });
 
-    it('лимит: остаток со знаком, процент целым', () => {
-        expect(facts.limit).toEqual({ amount: 3500, spent: 2385.99, left: 1114.01, used_pct: 68 });
-        expect(build(scenarioDocs(), { monthlyLimit: 2000 }).limit).toMatchObject({ left: -385.99, used_pct: 119 });
+    it('лимит входит в факты, только когда превышен: остаток со знаком, процент целым', () => {
+        expect(build(scenarioDocs(), { monthlyLimit: 2000 }).limit).toEqual({ amount: 2000, spent: 2385.99, left: -385.99, used_pct: 119 });
+    });
+
+    it('лимит не превышен или потрачен ровно - limit null', () => {
+        expect(facts.limit).toBeNull();
+        expect(build(scenarioDocs(), { monthlyLimit: 2385.99 }).limit).toBeNull();
+        expect(build(scenarioDocs(), { monthlyLimit: 2385.98 }).limit).toMatchObject({ left: -0.01 });
     });
 
     it('без допустимого лимита limit - null', () => {
@@ -301,6 +307,34 @@ describe('buildMonthFacts: регулярные платежи', () => {
     });
 });
 
+describe('findUnknownDates', () => {
+    it('дата из фактов (в любом поле) допустима, в любой форме и регистре', () => {
+        expect(findUnknownDates('Отель забронирован 14 сентября', facts)).toEqual([]);
+        expect(findUnknownDates('Spotify не списался, последний раз 10 августа.', facts)).toEqual([]);
+        expect(findUnknownDates('20 Сентября и 01 сентября', facts)).toEqual([]);
+        expect(findUnknownDates('Без дат: 14 штук и €1 200', facts)).toEqual([]);
+    });
+
+    it('день из фактов, но другой месяц - чужая дата', () => {
+        expect(findUnknownDates('Ноутбук в Public 14 августа', facts)).toEqual(['14 августа']);
+        expect(findUnknownDates('14 сентября и 14 мая, 14 мая', facts)).toEqual(['14 мая']);
+    });
+
+    it('все двенадцать родительных падежей читаются как месяцы', () => {
+        const names = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+        const found = findUnknownDates(names.map(name => `3 ${name}`).join(', '), { dates: ['2026-08-05'] });
+        expect(found).toEqual(names.map(name => `3 ${name}`));
+        expect(findUnknownDates('3 июня', { dates: ['2026-06-03'] })).toEqual([]);
+        // не месяц: «3 мая» не находится внутри «3 маяка»
+        expect(findUnknownDates('3 маяка', { dates: [] })).toEqual([]);
+    });
+
+    it('с годом сверяется и год', () => {
+        expect(findUnknownDates('Аренда 1 сентября 2026', facts)).toEqual([]);
+        expect(findUnknownDates('Аренда 1 сентября 2025', facts)).toEqual(['1 сентября 2025']);
+    });
+});
+
 describe('allowedNumbers и findUnknownNumbers', () => {
     it('числа фактов, их модули и округление до евро', () => {
         expect(findUnknownNumbers('Расходы €2 385,99, обычно €1 174,98, на €1 211,01 больше (103%)', facts)).toEqual([]);
@@ -389,6 +423,18 @@ describe('подсказка и схема', () => {
         expect(system).toContain('whole euros');
     });
 
+    it('правила про нулевое «обычное» и про лимит', () => {
+        const { system } = buildMonthReviewPrompt(facts, names);
+        expect(system).not.toContain('обычно здесь 0, траты были');
+        expect(system).toContain('never write «обычно здесь 0», «обычно 0»');
+        expect(system).toContain('за полгода до этого траты здесь были только в одном месяце');
+        expect(system).toContain('в предыдущие полгода трат здесь не было');
+        expect(system).toContain('«за предыдущие N месяцев»');
+        expect(system).toContain('only when months_with_spending is 0');
+        expect(system).toContain('mention the limit only when the facts contain it');
+        expect(system).toContain('never make two points about the same category or the same operation');
+    });
+
     it('схема строгая, категория - перечисление или null', () => {
         const schema = buildReviewSchema(names);
         expect(schema.additionalProperties).toBe(false);
@@ -439,6 +485,42 @@ describe('generateMonthReview', () => {
         expect(retry).toHaveLength(3);
         expect(retry[1]).toEqual({ role: 'assistant', content: JSON.stringify(invented) });
         expect(retry[2]).toEqual({ role: 'user', content: 'These numbers are not in the facts: 777. Rewrite the review using only numbers that appear in the facts.' });
+    });
+
+    it('чужая дата: один повтор с перечнем дат, число 14 при этом допустимо', async () => {
+        const wrong = { ...good, points: [{ text: 'Отель Booking.com на €1 200 забронирован 14 августа.', category: 'Отпуск' }, good.points[0]] };
+        const fixed = { ...good, points: [{ text: 'Отель Booking.com на €1 200 забронирован 14 сентября.', category: 'Отпуск' }, good.points[0]] };
+        const send = vi.fn()
+            .mockResolvedValueOnce(reply(wrong))
+            .mockResolvedValueOnce(reply(fixed));
+        const result = await run(send);
+
+        expect(result).toMatchObject({ review: fixed, attempts: 2, unknownFirst: [] });
+        const retry = send.mock.calls[1][0].messages;
+        expect(retry[2].role).toBe('user');
+        expect(retry[2].content).toContain('These dates are not in the facts: 14 августа.');
+        expect(retry[2].content).not.toContain('These numbers');
+    });
+
+    it('чужие число и дата вместе: в одной просьбе, а если дата осталась - unknown_numbers', async () => {
+        const both = { ...good, headline: 'Сентябрь: на €777 больше обычного', points: [{ text: 'Отель 14 августа.', category: null }] };
+        const stillWrongDate = { ...good, points: [{ text: 'Отель 14 августа.', category: null }] };
+        const send = vi.fn()
+            .mockResolvedValueOnce(reply(both))
+            .mockResolvedValueOnce(reply(stillWrongDate));
+        const result = await run(send);
+
+        const content = send.mock.calls[1][0].messages[2].content;
+        expect(content).toContain('These numbers are not in the facts: 777.');
+        expect(content).toContain('These dates are not in the facts: 14 августа.');
+        expect(result).toMatchObject({ error: 'unknown_numbers', attempts: 2 });
+        expect(send).toHaveBeenCalledTimes(2);
+    });
+
+    it('верная дата с годом проходит без повтора', async () => {
+        const dated = { ...good, points: [{ text: 'Аренда 1 сентября 2026 на €1 000.', category: null }] };
+        const send = vi.fn(async () => reply(dated));
+        expect(await run(send)).toMatchObject({ review: dated, attempts: 1 });
     });
 
     it('повтор тоже с чужим числом - unknown_numbers, третьего запроса нет', async () => {

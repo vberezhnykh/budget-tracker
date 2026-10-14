@@ -233,7 +233,8 @@ function buildMonthFacts({ docs, accounts, monthlyLimit, month, today }) {
         reference_months_count: reference.length,
         expense: { total: expenseTotal, count: monthExpense.length, typical: expenseTypical, ...expenseCmp },
         income: { total: incomeTotal, count: monthIncome.length, typical: incomeTypical, ...incomeCmp },
-        limit: limitValid
+        // Лимит попадает в факты, только когда превышен: пока он не превышен, про него нечего сказать.
+        limit: limitValid && expenseTotal > monthlyLimit
             ? { amount: round2(monthlyLimit), spent: expenseTotal, left: round2(monthlyLimit - expenseTotal), used_pct: Math.round((expenseTotal / monthlyLimit) * 100) }
             : null,
         categories: categories.slice(0, MAX_CATEGORIES),
@@ -293,6 +294,38 @@ function findUnknownNumbers(text, facts) {
     return unknown;
 }
 
+// Даты словами в тексте («14 августа», «1 сентября 2026»), которых нет среди дат
+// фактов (все строки YYYY-MM-DD, где бы они ни стояли). Одной проверки чисел
+// мало: день 14 в фактах есть, а у операции дата другого месяца. Если в тексте
+// указан год, он тоже должен совпасть. Без повторов, в порядке появления, в том
+// виде, как написано в тексте.
+const GENITIVE_MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const DATE_MENTION = new RegExp(`(?<!\\d)(\\d{1,2})\\s+(${GENITIVE_MONTHS.join('|')})(?![а-яё])(?:\\s+(20\\d{2})(?!\\d))?`, 'gi');
+
+function findUnknownDates(text, facts) {
+    const known = new Set();
+    const walk = (value) => {
+        if (typeof value === 'string') {
+            for (const [date] of value.matchAll(/\d{4}-\d{2}-\d{2}/g)) known.add(date);
+        } else if (Array.isArray(value)) {
+            value.forEach(walk);
+        } else if (value && typeof value === 'object') {
+            Object.values(value).forEach(walk);
+        }
+    };
+    walk(facts);
+    const knownDayMonth = new Set([...known].map(date => date.slice(5)));
+
+    const unknown = [];
+    for (const [mention, day, monthName, year] of String(text).matchAll(DATE_MENTION)) {
+        const monthNumber = GENITIVE_MONTHS.indexOf(monthName.toLowerCase()) + 1;
+        const dayMonth = `${String(monthNumber).padStart(2, '0')}-${String(Number(day)).padStart(2, '0')}`;
+        const exists = year ? known.has(`${year}-${dayMonth}`) : knownDayMonth.has(dayMonth);
+        if (!exists && !unknown.includes(mention)) unknown.push(mention);
+    }
+    return unknown;
+}
+
 // --- Подсказка, схема, разбор ответа ---------------------------------------------------
 
 const quoted = (names) => (names.length > 0 ? names.map(name => `- ${JSON.stringify(name)}`).join('\n') : '- (none)');
@@ -301,14 +334,15 @@ function buildMonthReviewPrompt(facts, categoryNames) {
     const system = [
         'You write a short review of the user\'s finished month for a household budgeting app. Answer in Russian. Address the user as «вы». Currency: euro.',
         '',
-        'The user message holds the facts about the month as JSON inside <facts>. Amounts are euros, percents are whole numbers. "typical" is the median over reference_months, so typical 0 does NOT mean there was no spending: months_with_spending is the number of reference months (of reference_months_count) in which the category had any spending. Say that there was no such spending in the usual or previous months only when months_with_spending is 0; otherwise say e.g. «обычно здесь 0, траты были в 1 из 6 месяцев». diff is signed (positive means more than typical); diff_pct is diff as a percent of typical. categories are expense categories; largest are the biggest single expenses of the month (one_off: the company had no expenses in the reference months, or this one is at least 3 times its largest expense there); recurring.changed are regular payments that cost a different amount than the month before, recurring.missing are regular payments that did not happen this month.',
+        'The user message holds the facts about the month as JSON inside <facts>. Amounts are euros, percents are whole numbers. "typical" is the median over reference_months, so typical 0 does NOT mean there was no spending: months_with_spending is the number of reference months (of reference_months_count) in which the category had any spending. When the typical of a category is 0, never write «обычно здесь 0», «обычно 0» or anything similar; describe how often there was spending in the previous reference months in natural Russian, e.g. «за полгода до этого траты здесь были только в одном месяце», «в двух месяцах из шести», «в предыдущие полгода трат здесь не было». If reference_months_count is not 6, say «за предыдущие N месяцев» (N is reference_months_count) instead of «за полгода». Say that there was no such spending in the usual or previous months only when months_with_spending is 0. The limit is in the facts only when the expenses of the month exceeded it; mention the limit only when the facts contain it. diff is signed (positive means more than typical); diff_pct is diff as a percent of typical. categories are expense categories; largest are the biggest single expenses of the month (one_off: the company had no expenses in the reference months, or this one is at least 3 times its largest expense there); recurring.changed are regular payments that cost a different amount than the month before, recurring.missing are regular payments that did not happen this month.',
         '',
         'Expense categories (the only values allowed in a point\'s category):',
         quoted(categoryNames),
         '',
         'Rules.',
         '- Use only the facts. Every number you write must appear in the facts exactly (an amount may be rounded to whole euros). Never add, subtract, divide or estimate numbers yourself; percents and differences are already in the facts. A date may be written in words ("14 августа"); its day and month must match the facts.',
-        '- Pick the 2 to 4 most notable things, most important first: large deviations of the month or of a category from the typical month (look at diff and diff_pct), one-off large purchases (one_off), regular payments that changed or did not happen, the limit. Skip small deviations. Do not list every category.',
+        '- Pick the 2 to 4 most notable things, most important first: large deviations of the month or of a category from the typical month (look at diff and diff_pct), one-off large purchases (one_off), regular payments that changed or did not happen, an exceeded limit. Skip small deviations. Do not list every category.',
+        '- Each point is about a different topic: never make two points about the same category or the same operation.',
         '- Explain a deviation by a concrete operation from largest when it plainly explains it (a hotel booking in the vacation category).',
         '- If nothing stands out, say in one point that the month was close to usual, with the total and the typical amount.',
         '- No advice, no judgement words like «плохо» or «отлично», no exclamation marks. Calm and factual. Do not describe numbers in approximate words («почти вдвое», «заметно») unless it follows directly from two numbers you state.',
@@ -412,14 +446,19 @@ async function generateMonthReview({ send, model, facts, categoryNames, timeoutM
         }
         if (!review) return fail('unparsed');
 
-        const unknown = findUnknownNumbers(reviewText(review), facts);
-        if (unknown.length === 0) return { review, attempts: attempt, usage, unknownFirst };
+        const text = reviewText(review);
+        const unknown = findUnknownNumbers(text, facts);
+        const unknownDates = findUnknownDates(text, facts);
+        if (unknown.length === 0 && unknownDates.length === 0) return { review, attempts: attempt, usage, unknownFirst };
         if (attempt === 2) return fail('unknown_numbers');
 
         unknownFirst = unknown;
+        const complaints = [];
+        if (unknown.length > 0) complaints.push(`These numbers are not in the facts: ${unknown.join(', ')}. Rewrite the review using only numbers that appear in the facts.`);
+        if (unknownDates.length > 0) complaints.push(`These dates are not in the facts: ${unknownDates.join(', ')}. Rewrite the review using only dates that appear in the facts (day and month must match a fact date).`);
         messages.push(
             { role: 'assistant', content: response.text },
-            { role: 'user', content: `These numbers are not in the facts: ${unknown.join(', ')}. Rewrite the review using only numbers that appear in the facts.` }
+            { role: 'user', content: complaints.join(' ') }
         );
     }
     return { error: 'failed', attempts: 2, usage, unknownFirst };
@@ -601,6 +640,7 @@ module.exports = {
     hashFacts,
     allowedNumbers,
     findUnknownNumbers,
+    findUnknownDates,
     buildMonthReviewPrompt,
     buildReviewSchema,
     sanitizeReview,

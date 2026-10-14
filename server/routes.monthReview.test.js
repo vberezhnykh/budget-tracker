@@ -117,23 +117,23 @@ describe('POST /api/month-review: генерация и хранение', () =>
         expect(lines[0]).toMatch(/^\[month-review\] month=2026-09 outcome=generated attempts=1 ms=\d+$/);
     });
 
-    it('в Claude уходят факты из базы: активные операции, лимит по умолчанию', async () => {
+    it('в Claude уходят факты из базы: активные операции, лимит по умолчанию (не превышен - в фактах его нет)', async () => {
         await Transaction.create(expense('2026-09-20', 5000, 'Отпуск', 'Удалённая', { deletedAt: new Date('2026-09-21T00:00:00Z') }));
         const { post, createMessage } = setup();
         await post({ month: '2026-09', today: TODAY });
 
         const facts = factsOf(createMessage);
         expect(facts.expense).toMatchObject({ total: 300, typical: 100, diff: 200, diff_pct: 200 });
-        expect(facts.limit).toMatchObject({ amount: 7000, spent: 300 });
+        expect(facts.limit).toBeNull();
         expect(facts.largest[0]).toMatchObject({ company: 'Booking.com', one_off: true });
     });
 
     it('лимит берётся из настроек', async () => {
-        await saveCanonicalSettings(3500);
+        await saveCanonicalSettings(200);
         const { post, createMessage } = setup();
         await post({ month: '2026-09', today: TODAY });
 
-        expect(factsOf(createMessage).limit).toEqual({ amount: 3500, spent: 300, left: 3200, used_pct: 9 });
+        expect(factsOf(createMessage).limit).toEqual({ amount: 200, spent: 300, left: -100, used_pct: 150 });
     });
 
     it('MONTH_REVIEW_MODEL задаёт модель', async () => {

@@ -1,5 +1,6 @@
 import { Check, List } from 'lucide-react';
 import AccountStrip from '../components/AccountStrip';
+import MonthReviewCard from '../components/MonthReviewCard';
 import OverviewHero from '../components/OverviewHero';
 import PeriodPicker from '../components/PeriodPicker';
 import TransactionList from '../components/TransactionList';
@@ -69,6 +70,12 @@ export default function OverviewScreen({
   // onAddExpense() - «Добавить расход» в пустом списке операций.
   onOpenPreviousMonth,
   onAddExpense,
+  // Итоги прошлого месяца: { month, headline, points } или null, пока показывать
+  // нечего. Решает App (см. utils/useMonthReview); onDismissMonthReview скрывает
+  // карточку, onOpenMonthReviewCategory(category) открывает Историю по категории.
+  monthReview,
+  onDismissMonthReview,
+  onOpenMonthReviewCategory,
   // Последние операции: запрос и счётчик обновления - те же, что у Истории
   request,
   historyRevision,
@@ -138,6 +145,16 @@ export default function OverviewScreen({
           onOpenHistory={onOpenHistory}
         />
       </SummaryFrame>
+
+      {monthReview && (
+        <MonthReviewCard
+          month={monthReview.month}
+          headline={monthReview.headline}
+          points={monthReview.points}
+          onOpenCategory={onOpenMonthReviewCategory}
+          onDismiss={onDismissMonthReview}
+        />
+      )}
 
       <section aria-labelledby="overview-accounts" style={{ marginBottom: 'var(--space-6)' }}>
         <div style={SECTION_HEADER_STYLE}>

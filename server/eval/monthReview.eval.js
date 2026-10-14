@@ -35,7 +35,7 @@ function summarizeFacts(facts) {
     const lines = [
         `расход ${formatEuro(expense.total)} при обычных ${formatEuro(expense.typical)} (${pct(expense.diff_pct)}), операций ${expense.count}`,
         `доход ${formatEuro(income.total)} при обычных ${formatEuro(income.typical)} (${pct(income.diff_pct)})`,
-        limit ? `лимит ${formatEuro(limit.amount)}: потрачено ${limit.used_pct}%, остаток ${formatEuro(limit.left)}` : 'лимита нет',
+        limit ? `лимит ${formatEuro(limit.amount)}: потрачено ${limit.used_pct}%, остаток ${formatEuro(limit.left)}` : 'лимит не превышен',
         `категории по |diff|: ${facts.categories.slice(0, 3).map(c => `${c.name} ${formatEuro(c.total)} (обычно ${formatEuro(c.typical)}, ${pct(c.diff_pct)}, месяцев с тратами ${c.months_with_spending}/${facts.reference_months_count})`).join('; ') || '-'}`
     ];
     const oneOff = facts.largest.filter(item => item.one_off);

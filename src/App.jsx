@@ -25,6 +25,7 @@ import { formatMoney } from './utils/money'
 import usePagedHistory from './utils/usePagedHistory'
 import useHashScreen from './utils/useHashScreen'
 import useAskConversation from './utils/useAskConversation'
+import useMonthReview from './utils/useMonthReview'
 import { useModalOpen } from './utils/useBodyScrollLock'
 import { useAppUpdate, reloadPage } from './utils/appUpdate'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
@@ -87,6 +88,7 @@ function App() {
   const [bankingEnabled, setBankingEnabled] = useState(false);
   const [quickEntryEnabled, setQuickEntryEnabled] = useState(false);
   const [askEnabled, setAskEnabled] = useState(false);
+  const [monthReviewEnabled, setMonthReviewEnabled] = useState(false);
   const [banking, setBanking] = useState(null);
   const [bankingReview, setBankingReview] = useState({ items: [], total: 0 });
   const [bankingLoading, setBankingLoading] = useState(false);
@@ -260,8 +262,10 @@ function App() {
     setBankingEnabled(false);
     setQuickEntryEnabled(false);
     setAskEnabled(false);
+    setMonthReviewEnabled(false);
     // Ответы Claude - те же личные данные: разговор не переживает выход.
     ask.reset();
+    monthReview.reset();
     setBanking(null);
     setBankingReview({ items: [], total: 0 });
     setBankingLoading(false);
@@ -325,6 +329,18 @@ function App() {
   // «Вопросы к данным»: разговор живёт здесь, а не в экране, чтобы из чата
   // можно было уйти в Историю и вернуться, а идущий запрос не обрывался.
   const ask = useAskConversation({ request: apiFetch });
+
+  // «Итоги» прошлого месяца на Обзоре в первые дни нового: запрос уходит, только
+  // пока карточка нужна на экране, и не чаще раза за месяц (см. useMonthReview).
+  const monthReview = useMonthReview({
+    request: apiFetch,
+    enabled: monthReviewEnabled,
+    today: toLocalDateInput(),
+    timeRange,
+    selectedMonth,
+    selectedAccount,
+    active: screen === 'overview',
+  });
 
   const readJson = async (url, fallbackMessage, { allowMissing = false } = {}) => {
     const res = await apiFetch(url);
@@ -437,6 +453,7 @@ function App() {
         setBankingEnabled(loadedSettings?.features?.banking === true);
         setQuickEntryEnabled(loadedSettings?.features?.quickEntry === true);
         setAskEnabled(loadedSettings?.features?.ask === true);
+        setMonthReviewEnabled(loadedSettings?.features?.monthReview === true);
       }
       if (historyRefreshNeededRef.current) {
         setHistoryRevision(value => value + 1);
@@ -1507,6 +1524,9 @@ function App() {
             onOpenAllHistory={() => setScreen('history')}
             onOpenPreviousMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
             onAddExpense={() => openAddModal('expense')}
+            monthReview={monthReview.review ? { month: monthReview.month, ...monthReview.review } : null}
+            onDismissMonthReview={monthReview.dismiss}
+            onOpenMonthReviewCategory={(category) => openHistoryFromAsk({ category, type: 'expense', month: monthReview.month })}
             request={apiFetch}
             historyRevision={historyRevision}
             openEditModal={openEditModal}

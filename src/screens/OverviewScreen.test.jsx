@@ -111,4 +111,31 @@ describe('OverviewScreen empty states', () => {
             expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить операции');
         });
     });
+
+    describe('month review card', () => {
+        const monthReview = { month: '2026-10', headline: 'Октябрь: как обычно', points: [{ text: 'Расходы близки к обычным.', category: null }] };
+
+        it('sits between the hero and the accounts section, and is absent without a review', () => {
+            const { rerender } = render(<OverviewScreen {...baseProps} />);
+            expect(screen.queryByTestId('month-review-card')).not.toBeInTheDocument();
+
+            rerender(<OverviewScreen {...baseProps} monthReview={monthReview} />);
+            const card = screen.getByTestId('month-review-card');
+            const accounts = screen.getByRole('heading', { name: 'Счета' }).closest('section');
+            expect(card.compareDocumentPosition(accounts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(card).toHaveStyle({ marginBottom: 'var(--space-6)' });
+        });
+
+        it('passes the dismiss and category taps up', () => {
+            const onDismissMonthReview = vi.fn();
+            const onOpenMonthReviewCategory = vi.fn();
+            const withCategory = { ...monthReview, points: [{ text: 'Отпуск вырос.', category: 'Отпуск' }] };
+            render(<OverviewScreen {...baseProps} monthReview={withCategory} onDismissMonthReview={onDismissMonthReview} onOpenMonthReviewCategory={onOpenMonthReviewCategory} />);
+
+            fireEvent.click(screen.getByRole('button', { name: /Отпуск вырос/ }));
+            expect(onOpenMonthReviewCategory).toHaveBeenCalledWith('Отпуск');
+            fireEvent.click(screen.getByRole('button', { name: 'Скрыть итоги месяца' }));
+            expect(onDismissMonthReview).toHaveBeenCalledTimes(1);
+        });
+    });
 });
