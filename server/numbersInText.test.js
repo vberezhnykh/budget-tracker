@@ -17,6 +17,25 @@ describe('extractNumbers', () => {
         expect(extractNumbers('1 234 567')).toEqual([1234567]);
     });
 
+    it('точка как разделитель тысяч: «€7.000» - это 7000, а не 7', () => {
+        expect(extractNumbers('€7.000')).toEqual([7000]);
+        expect(extractNumbers('€1.210 при обычных €1.000.')).toEqual([1210, 1000]);
+        expect(extractNumbers('1.234.567')).toEqual([1234567]);
+        expect(extractNumbers('€1.234,50')).toEqual([1234.5]);
+        expect(extractNumbers('€7.000, а не €500')).toEqual([7000, 500]);
+    });
+
+    it('точка не из групп по три цифры остаётся десятичной', () => {
+        expect(extractNumbers('12.5')).toEqual([12.5]);
+        expect(extractNumbers('€3.75')).toEqual([3.75]);
+        expect(extractNumbers('1234.567')).toEqual([1234.567]);
+        expect(extractNumbers('0.5')).toEqual([0.5]);
+    });
+
+    it('даты с точкой не склеиваются в большие числа', () => {
+        expect(extractNumbers('01.09.2026')).toEqual([1.09, 2026]);
+    });
+
     it('обычные пробелы между группами читаются и целым, и отдельными числами', () => {
         expect(extractNumbers('412 1 234')).toEqual([412, 1234, 1, 234]);
     });
@@ -48,5 +67,17 @@ describe('readNumbers', () => {
             { value: 1234, parts: [1, 234] },
             { value: 5678, parts: null }
         ]);
+    });
+
+    it('одна группа «1.210» без запятой имеет десятичное прочтение alt', () => {
+        expect(readNumbers('€1.210')).toEqual([{ value: 1210, parts: null, alt: 1.21 }]);
+        expect(readNumbers('7.000')).toEqual([{ value: 7000, parts: null, alt: 7 }]);
+    });
+
+    it('alt нет у однозначных чисел', () => {
+        expect(readNumbers('1.234.567')).toEqual([{ value: 1234567, parts: null }]);
+        expect(readNumbers('1.234,50')).toEqual([{ value: 1234.5, parts: null }]);
+        expect(readNumbers('12.5 и 3.75')).toEqual([{ value: 12.5, parts: null }, { value: 3.75, parts: null }]);
+        expect(readNumbers('€1 210')).toEqual([{ value: 1210, parts: [1, 210] }]);
     });
 });

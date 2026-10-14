@@ -84,11 +84,11 @@ function matchAmount(expected, numbers) {
     return 'missing';
 }
 
-// «€1 234,50» без копеек, если их нет.
+// «€1.234,50» (как formatMoney в приложении) без копеек, если их нет.
 function formatEuro(value) {
     const rounded = Math.round((value + Number.EPSILON) * 100) / 100;
     const [whole, fraction] = Math.abs(rounded).toFixed(2).split('.');
-    const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
     return `${rounded < 0 ? '-' : ''}€${grouped}${fraction === '00' ? '' : `,${fraction}`}`;
 }
 

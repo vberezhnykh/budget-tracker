@@ -362,6 +362,15 @@ describe('allowedNumbers и findUnknownNumbers', () => {
         expect(findUnknownNumbers('Отель за €1 300', facts)).toEqual([1300]);
     });
 
+    it('формат приложения: точка тысяч и запятая копеек', () => {
+        const own = { expenses: { total: 2689, typical: 1210.4 }, netflix: { price: 15.99 } };
+        expect(findUnknownNumbers('Расходы €2.689 при обычных €1.210, Netflix €15,99', own)).toEqual([]);
+        // «€1.210» может быть и 1,21: допустимо, если подходит любое прочтение
+        expect(findUnknownNumbers('Это €1.210', { value: 1.21 })).toEqual([]);
+        expect(findUnknownNumbers('Отель за €1.300', own)).toEqual([1300]);
+        expect(findUnknownNumbers('Это €7.000 и €1.234.567', { a: 7000, b: 1234567 })).toEqual([]);
+    });
+
     it('допуск 0,011: копейки считаются', () => {
         expect(findUnknownNumbers('€15,99', facts)).toEqual([]);
         expect(findUnknownNumbers('€15,9', facts)).toEqual([15.9]);
