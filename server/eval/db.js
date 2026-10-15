@@ -24,14 +24,14 @@ const { activeTransactionFilter } = require('../ledgerState');
 const { prepareData } = require('../askTools');
 const { buildFixtures, MONTHLY_LIMIT } = require('./fixtures');
 
-async function startEvalDb() {
+async function startEvalDb({ fixtures: custom = null } = {}) {
     // Первый запуск может качать mongod несколько минут; дальше берётся из кэша.
     const server = await MongoMemoryServer.create({ instance: { launchTimeout: 120_000 } });
     await mongoose.connect(server.getUri(), { dbName: 'budget_eval' });
     // Уникальные индексы строятся асинхронно: до их готовности дубликат записался бы молча.
     await Promise.all(Object.values(mongoose.models).map(model => model.init()));
 
-    const fixtures = buildFixtures();
+    const fixtures = custom || buildFixtures();
     await Account.insertMany(fixtures.accounts);
     await Category.insertMany(fixtures.categories);
     await Company.insertMany(fixtures.companies);

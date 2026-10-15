@@ -12,7 +12,8 @@
         "backup:verify": "node verify-backup.js",
         "eval:ask": "node eval/ask.eval.js",
         "eval:quick": "node eval/quickEntry.eval.js",
-        "eval:month": "node eval/monthReview.eval.js"
+        "eval:month": "node eval/monthReview.eval.js",
+        "eval:cleanup": "node eval/descriptionCleanup.eval.js"
     },
     "keywords": [],
     "author": "",
