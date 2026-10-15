@@ -82,6 +82,85 @@ describe('MoreScreen', () => {
         expect(screen.getByRole('button', { name: /Лимит трат в месяц/ })).toHaveTextContent('Не задан');
     });
 
+    describe('«Старые описания» row', () => {
+        const NOW = new Date('2026-10-15T12:00:00');
+        const undo = (overrides = {}) => ({ runId: 'r1', undoUntil: '2026-11-14T12:00:00.000Z', stats: {}, ...overrides });
+        const rowOf = () => screen.getByRole('button', { name: /Старые описания/ });
+
+        it('is absent without the feature handler, whatever the summary says', () => {
+            renderMenu({ cleanupSummary: { legacyCount: 40, run: null } });
+            expect(screen.queryByText('Старые описания')).not.toBeInTheDocument();
+        });
+
+        it('is absent while the summary is unknown or has nothing to show', () => {
+            const { unmount } = renderMenu({ onOpenCleanup: () => { }, cleanupSummary: null });
+            expect(screen.queryByText('Старые описания')).not.toBeInTheDocument();
+            unmount();
+
+            renderMenu({ onOpenCleanup: () => { }, cleanupSummary: { legacyCount: 0, run: { status: 'reverted' } } });
+            expect(screen.queryByText('Старые описания')).not.toBeInTheDocument();
+        });
+
+        it.each([
+            [1, '1 операция без компании'],
+            [3, '3 операции без компании'],
+            [12, '12 операций без компании'],
+            [21, '21 операция без компании'],
+        ])('counts %i legacy operations in Russian', (legacyCount, subtitle) => {
+            renderMenu({ onOpenCleanup: () => { }, cleanupSummary: { legacyCount, run: null } });
+            expect(rowOf()).toHaveTextContent(subtitle);
+        });
+
+        it('shows the legacy count after a failed or reverted run', () => {
+            renderMenu({ onOpenCleanup: () => { }, cleanupSummary: { legacyCount: 5, run: { status: 'failed' } } });
+            expect(rowOf()).toHaveTextContent('5 операций без компании');
+        });
+
+        it('says Claude is working while the batch is submitted', () => {
+            renderMenu({ onOpenCleanup: () => { }, cleanupSummary: { legacyCount: 40, run: { status: 'submitted' } } });
+            expect(rowOf()).toHaveTextContent('Claude разбирает описания');
+        });
+
+        it('says the list is ready for review', () => {
+            renderMenu({ onOpenCleanup: () => { }, cleanupSummary: { legacyCount: 40, run: { status: 'ready' } } });
+            expect(rowOf()).toHaveTextContent('Готово к просмотру');
+        });
+
+        it('offers the undo date once applied, even with nothing left to clean', () => {
+            vi.useFakeTimers({ toFake: ['Date'] });
+            vi.setSystemTime(NOW);
+            try {
+                renderMenu({ onOpenCleanup: () => { }, cleanupSummary: { legacyCount: 0, run: { status: 'applied' }, undo: undo() } });
+                expect(rowOf()).toHaveTextContent('Можно отменить до 14 ноября');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('falls back to the count once the undo window is over', () => {
+            vi.useFakeTimers({ toFake: ['Date'] });
+            vi.setSystemTime(NOW);
+            try {
+                renderMenu({ onOpenCleanup: () => { }, cleanupSummary: { legacyCount: 2, run: { status: 'applied' }, undo: null } });
+                expect(rowOf()).toHaveTextContent('2 операции без компании');
+            } finally {
+                vi.useRealTimers();
+            }
+        });
+
+        it('puts a run waiting for review before the undo date', () => {
+            renderMenu({ onOpenCleanup: () => { }, cleanupSummary: { legacyCount: 2, run: { status: 'ready' }, undo: undo() } });
+            expect(rowOf()).toHaveTextContent('Готово к просмотру');
+        });
+
+        it('opens the cleanup screen', () => {
+            const onOpenCleanup = vi.fn();
+            renderMenu({ onOpenCleanup, cleanupSummary: { legacyCount: 4, run: null } });
+            fireEvent.click(rowOf());
+            expect(onOpenCleanup).toHaveBeenCalledTimes(1);
+        });
+    });
+
     it('does not offer a banks row', () => {
         renderMenu();
         expect(screen.queryByText(/Банк/)).not.toBeInTheDocument();

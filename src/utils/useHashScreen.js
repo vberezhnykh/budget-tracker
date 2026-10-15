@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 // Экран живёт в location.hash. Вкладки: `#history`, `#analytics`, `#more`;
 // Обзор - без хэша вовсе. Внутренние экраны лежат под своей вкладкой: под «Ещё»
-// - `#more/accounts`, `#more/categories`, `#more/trash`, под «Аналитикой» -
+// - `#more/accounts`, `#more/categories`, `#more/trash`, `#more/cleanup`, под «Аналитикой» -
 // `#analytics/ask` (вопросы к данным). Так обновление страницы возвращает на тот
 // же экран, а ссылку на него можно открыть напрямую.
 const TAB_SCREENS = ['history', 'analytics', 'more'];
 const INNER_SCREENS = {
-  more: ['accounts', 'categories', 'trash'],
+  more: ['accounts', 'categories', 'trash', 'cleanup'],
   analytics: ['ask'],
 };
 

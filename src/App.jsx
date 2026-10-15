@@ -19,6 +19,7 @@ import AccountEditSheet from './screens/settings/AccountEditSheet'
 import CategoriesScreen from './screens/settings/CategoriesScreen'
 import LimitSheet from './screens/settings/LimitSheet'
 import TrashScreen from './screens/settings/TrashScreen'
+import CleanupScreen from './screens/settings/CleanupScreen'
 import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput, formatSyncStatus } from './utils/period'
 import { transformTransactions } from './utils/finance'
 import { formatMoney } from './utils/money'
@@ -38,6 +39,7 @@ const CATEGORIES_URL = '/api/categories';
 const ACCOUNTS_URL = '/api/accounts';
 const SETTINGS_URL = '/api/settings';
 const TRASH_URL = '/api/trash';
+const CLEANUP_URL = '/api/description-cleanup';
 const BANKING_URL = '/api/banking';
 // Used until the server's settings document has loaded (or if it 404s on an
 // older deployment) - mirrors the server's own default in server/app.js.
@@ -89,6 +91,13 @@ function App() {
   const [quickEntryEnabled, setQuickEntryEnabled] = useState(false);
   const [askEnabled, setAskEnabled] = useState(false);
   const [monthReviewEnabled, setMonthReviewEnabled] = useState(false);
+  // «Старые описания»: включена ли чистка (features.descriptionCleanup) и
+  // последний ответ GET /api/description-cleanup. Пока ответа нет, summary null:
+  // строка в «Ещё» скрыта, а экран показывает загрузку.
+  const [cleanupEnabled, setCleanupEnabled] = useState(false);
+  const [cleanupSummary, setCleanupSummary] = useState(null);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupError, setCleanupError] = useState('');
   const [banking, setBanking] = useState(null);
   const [bankingReview, setBankingReview] = useState({ items: [], total: 0 });
   const [bankingLoading, setBankingLoading] = useState(false);
@@ -100,6 +109,7 @@ function App() {
   const sessionGenerationRef = useRef(0);
   const loadGenerationRef = useRef(0);
   const trashGenerationRef = useRef(0);
+  const cleanupGenerationRef = useRef(0);
   const hasSnapshotRef = useRef(false);
   const historyRefreshNeededRef = useRef(false);
   const undoTimeoutRef = useRef(null);
@@ -263,6 +273,11 @@ function App() {
     setQuickEntryEnabled(false);
     setAskEnabled(false);
     setMonthReviewEnabled(false);
+    setCleanupEnabled(false);
+    setCleanupSummary(null);
+    setCleanupLoading(false);
+    setCleanupError('');
+    cleanupGenerationRef.current += 1;
     // Ответы Claude - те же личные данные: разговор не переживает выход.
     ask.reset();
     monthReview.reset();
@@ -454,6 +469,7 @@ function App() {
         setQuickEntryEnabled(loadedSettings?.features?.quickEntry === true);
         setAskEnabled(loadedSettings?.features?.ask === true);
         setMonthReviewEnabled(loadedSettings?.features?.monthReview === true);
+        setCleanupEnabled(loadedSettings?.features?.descriptionCleanup === true);
       }
       if (historyRefreshNeededRef.current) {
         setHistoryRevision(value => value + 1);
@@ -1016,6 +1032,86 @@ function App() {
     // fetchTrash пересоздаётся на каждый рендер; важны только эти условия.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen, trashScreenOpen, isAuthenticated]);
+
+  // «Старые описания»: состояние чистки читается при каждом заходе на «Ещё» (ради
+  // строки меню) и при открытии самого экрана; на экране - еще и при возврате в
+  // приложение (см. CleanupScreen). Ответ целиком кладется в cleanupSummary.
+  const fetchCleanup = async () => {
+    const session = sessionGenerationRef.current;
+    const generation = ++cleanupGenerationRef.current;
+    const isCurrent = () => session === sessionGenerationRef.current
+      && generation === cleanupGenerationRef.current;
+    setCleanupLoading(true);
+    setCleanupError('');
+    try {
+      const res = await apiFetch(CLEANUP_URL);
+      if (!isCurrent()) return false;
+      const data = await res.json().catch(() => null);
+      if (!isCurrent()) return false;
+      if (!res.ok || !data || typeof data !== 'object' || Array.isArray(data)) {
+        throw new DataLoadError((data && data.message) || 'Не удалось загрузить состояние чистки');
+      }
+      setCleanupSummary(data);
+      return true;
+    } catch (err) {
+      if (!isCurrent()) return false;
+      console.error('Description cleanup load error:', err);
+      setCleanupError(err instanceof DataLoadError ? err.message : 'Не удалось загрузить состояние чистки');
+      return false;
+    } finally {
+      if (isCurrent()) setCleanupLoading(false);
+    }
+  };
+
+  const cleanupScreenOpen = inner === 'cleanup';
+  useEffect(() => {
+    if (screen === 'more' && isAuthenticated === true && cleanupEnabled) fetchCleanup();
+    // fetchCleanup пересоздается на каждый рендер; важны только эти условия.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen, cleanupScreenOpen, isAuthenticated, cleanupEnabled]);
+
+  // POST к чистке. После успеха обновляются и операции (история, итоги), и
+  // состояние чистки; после 409/410 состояние перечитывается, потому что оно
+  // изменилось без нас (пакет закончился, срок отмены вышел).
+  const cleanupAction = async (path, body, fallback) => {
+    const session = sessionGenerationRef.current;
+    try {
+      const res = await apiFetch(`${CLEANUP_URL}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      const data = await res.json().catch(() => null);
+      if (session !== sessionGenerationRef.current) return { ok: false, error: 'Сессия завершена' };
+      if (!res.ok) {
+        if (res.status === 409 || res.status === 410) await fetchCleanup();
+        return { ok: false, error: (data && data.message) || fallback };
+      }
+      return { ok: true, data: data || {} };
+    } catch (err) {
+      console.error('Description cleanup error:', err);
+      return { ok: false, error: fallback };
+    }
+  };
+
+  const handleCleanupStart = async () => {
+    const result = await cleanupAction('/start', null, 'Не удалось отправить описания в Claude. Попробуйте позже.');
+    if (result.ok) await fetchCleanup();
+    return result;
+  };
+
+  const handleCleanupApply = async (keys) => {
+    const result = await cleanupAction('/apply', { keys }, 'Не удалось применить изменения. Попробуйте позже.');
+    if (result.ok) await Promise.all([loadData({ initial: false }), fetchCleanup()]);
+    return result;
+  };
+
+  const handleCleanupRevert = async () => {
+    const result = await cleanupAction('/revert', null, 'Не удалось отменить чистку. Попробуйте позже.');
+    if (result.ok) await Promise.all([loadData({ initial: false }), fetchCleanup()]);
+    return result;
+  };
 
   const refreshAfterTrashMutation = async () => {
     await Promise.all([loadData({ initial: false }), fetchTrash()]);
@@ -1587,7 +1683,7 @@ function App() {
             onOpenCategory={openHistoryOfCategory}
           />
         )}
-        {screen === 'more' && !inner && (
+        {screen === 'more' && (!inner || (inner === 'cleanup' && !cleanupEnabled)) && (
           <MoreScreen
             monthlyLimit={monthlyLimit}
             accountsCount={accounts.length}
@@ -1600,6 +1696,8 @@ function App() {
             onOpenAccounts={() => openInner('accounts')}
             onOpenCategories={() => openInner('categories')}
             onOpenTrash={() => openInner('trash')}
+            cleanupSummary={cleanupSummary}
+            onOpenCleanup={cleanupEnabled ? () => openInner('cleanup') : undefined}
             onOpenBanking={bankingEnabled ? openBanking : undefined}
             pendingBankingCount={banking?.pendingReviewCount || 0}
             onRefresh={() => loadData({ initial: false })}
@@ -1636,6 +1734,16 @@ function App() {
             onRetry={fetchTrash}
             onRestore={handleRestoreTrash}
             onPurge={handlePurgeTrash}
+          />
+        )}
+        {screen === 'more' && inner === 'cleanup' && cleanupEnabled && (
+          <CleanupScreen
+            state={{ summary: cleanupSummary, loading: cleanupLoading, error: cleanupError }}
+            onBack={closeInner}
+            onRefresh={fetchCleanup}
+            onStart={handleCleanupStart}
+            onApply={handleCleanupApply}
+            onRevert={handleCleanupRevert}
           />
         )}
       </main>

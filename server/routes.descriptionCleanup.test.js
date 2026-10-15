@@ -486,6 +486,54 @@ describe('POST /revert', () => {
         expect((await ctx.revert()).status).toBe(410);
     });
 
+    it('GET отдает undo, пока можно отменить, даже когда последний прогон - новый', async () => {
+        const { ctx } = await readyRun();
+        expect((await ctx.get()).body.undo).toBeNull();
+        await ctx.apply(ALL_KEYS);
+        const applied = await ctx.get();
+        expect(applied.body.undo).toMatchObject({
+            appliedAt: new Date(NOW).toISOString(),
+            undoUntil: new Date(NOW + 30 * DAY).toISOString(),
+            stats: { apply: { updated: 9, companiesCreated: 1, skippedChanged: 0 } }
+        });
+        expect(applied.body.undo.runId).toBe(applied.body.run.id);
+
+        // Остался один непринятый текст: новый разбор начать можно, отмена при этом остается.
+        await Transaction.create(tx({ title: 'Вольт', amount: 2 }));
+        ctx.clock.now += 1000;
+        ctx.transport.ended = false;
+        expect((await ctx.start()).status).toBe(200);
+        const submitted = await ctx.get();
+        expect(submitted.body.run.status).toBe('submitted');
+        expect(submitted.body.undo.runId).toBe(applied.body.run.id);
+
+        ctx.transport.ended = true;
+        const ready = await ctx.get();
+        expect(ready.body.run.status).toBe('ready');
+        expect(ready.body.undo.runId).toBe(applied.body.run.id);
+
+        // /revert откатывает именно эту чистку.
+        const res = await ctx.revert();
+        expect(res.status).toBe(200);
+        expect(res.body.restored).toBe(9);
+        expect((await DescriptionCleanup.findById(applied.body.run.id).lean()).status).toBe('reverted');
+        expect((await ctx.get()).body.undo).toBeNull();
+    });
+
+    it('undo пропадает после срока', async () => {
+        const { ctx } = await readyRun();
+        await ctx.apply(ALL_KEYS);
+        await Transaction.create(tx({ title: 'Вольт', amount: 2 }));
+        ctx.clock.now += 1000;
+        await ctx.start();
+
+        ctx.clock.now = NOW + 29 * DAY;
+        expect((await ctx.get()).body.undo).not.toBeNull();
+        ctx.clock.now = NOW + 30 * DAY + 1000;
+        expect((await ctx.get()).body.undo).toBeNull();
+        expect((await ctx.revert()).status).toBe(410);
+    });
+
     it('без применённой чистки - 409', async () => {
         const res = await setup().revert();
         expect(res.status).toBe(409);

@@ -105,7 +105,7 @@ describe('useHashScreen', () => {
             window.dispatchEvent(new PopStateEvent('popstate'));
         });
 
-        it.each(['accounts', 'categories', 'trash'])('reads #more/%s as the «Ещё» tab with that inner screen', (name) => {
+        it.each(['accounts', 'categories', 'trash', 'cleanup'])('reads #more/%s as the «Ещё» tab with that inner screen', (name) => {
             window.history.replaceState(null, '', `/#more/${name}`);
             const { result } = renderHook(() => useHashScreen());
 

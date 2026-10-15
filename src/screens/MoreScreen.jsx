@@ -1,7 +1,8 @@
-import { Building2, Download, Gauge, Landmark, RefreshCw, Tags, Trash2 } from 'lucide-react';
+import { Building2, BrushCleaning, Download, Gauge, Landmark, RefreshCw, Tags, Trash2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import ListRow from '../components/ui/ListRow';
 import ScreenHeader from '../components/ui/ScreenHeader';
+import { cleanupRowSubtitle } from '../utils/cleanupReview';
 import { formatMoney } from '../utils/money';
 
 // Содержимое вкладки «Ещё»: настройки и служебные действия, собранные в
@@ -75,6 +76,8 @@ export default function MoreScreen({
   onOpenAccounts,
   onOpenCategories,
   onOpenTrash,
+  cleanupSummary = null,
+  onOpenCleanup,
   onOpenBanking,
   pendingBankingCount = 0,
   onRefresh,
@@ -83,6 +86,9 @@ export default function MoreScreen({
 }) {
   const hasLimit = Number(monthlyLimit) > 0;
   const hasTrashCount = typeof trashCount === 'number';
+  // Строка «Старые описания» есть, только когда App передал onOpenCleanup (включена
+  // функция) и сервер сообщил, что есть что разбирать, проверять или отменять.
+  const cleanupSubtitle = onOpenCleanup ? cleanupRowSubtitle(cleanupSummary) : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
@@ -121,9 +127,19 @@ export default function MoreScreen({
           subtitle="Удалённые операции можно восстановить"
           trailing={hasTrashCount ? muted(trashCount) : null}
           chevron
-          divider={Boolean(onOpenBanking)}
+          divider={Boolean(cleanupSubtitle || onOpenBanking)}
           onClick={onOpenTrash}
         />
+        {cleanupSubtitle && (
+          <ListRow
+            leading={<Tile icon={<BrushCleaning size={18} />} color="var(--color-icon-pink)" background="var(--color-icon-pink-bg)" />}
+            title="Старые описания"
+            subtitle={cleanupSubtitle}
+            chevron
+            divider={Boolean(onOpenBanking)}
+            onClick={onOpenCleanup}
+          />
+        )}
         {/* Банковский модуль остаётся в коде без входа в интерфейсе: строка
             есть только когда App передал onOpenBanking (включён флаг). */}
         {onOpenBanking && (

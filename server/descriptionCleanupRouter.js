@@ -247,10 +247,17 @@ function createDescriptionCleanupRouter({
             let run = await Run.findOne().sort({ createdAt: -1 }).lean();
             if (run && run.status === 'submitted') run = await settleSubmitted(run);
             if (run) run = await expireUndo(run);
+            // Отмена не зависит от последнего прогона: новый разбор после применения не прячет ее.
+            // Берется та же применённая чистка, что откатывает /revert.
+            let undo = await Run.findOne({ status: 'applied' }).sort({ appliedAt: -1 }).lean();
+            if (undo) undo = await expireUndo(undo);
             return reply(res, startedAt, 'status', groups.length, 200, {
                 legacyCount: groups.reduce((total, group) => total + group.count, 0),
                 legacyTexts: groups.length,
-                run: run ? summaryOf(run, { withProposals: run.status === 'ready' }) : null
+                run: run ? summaryOf(run, { withProposals: run.status === 'ready' }) : null,
+                undo: undo && !undo.undoExpired && Array.isArray(undo.backup) && undo.backup.length > 0
+                    ? { runId: String(undo._id), appliedAt: iso(undo.appliedAt), undoUntil: iso(undo.undoUntil), stats: undo.stats || {} }
+                    : null
             }, run ? run.status : 'no_run');
         } catch (error) {
             console.error('[description-cleanup] не удалось загрузить состояние:', error?.name);
