@@ -45,7 +45,9 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     const gate = new Promise(resolve => { release = resolve; });
     let summaryRequests = 0;
     await page.route('**/api/stats/dashboard?*', async route => {
-      summaryRequests += 1;
+      // Фоновая подгрузка Аналитики (analytics=1) не в счет: считаем только
+      // запросы итогов Обзора.
+      if (!route.request().url().includes('analytics=1')) summaryRequests += 1;
       await gate;
       await route.fallback();
     });

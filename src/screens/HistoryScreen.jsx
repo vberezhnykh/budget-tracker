@@ -76,6 +76,8 @@ export default function HistoryScreen({
   const hasMore = history.nextCursor !== null;
   const hasNewer = history.previousCursor !== null;
   const { loadMore, loadNewer } = history;
+  // Обновление после записи: прежний список остается, пока идет первая страница.
+  const historyRefreshing = Boolean(history.refreshing);
   const groups = history.transactions;
   const scrollKey = `${historyKey}:${positionKey}`;
 
@@ -337,7 +339,8 @@ export default function HistoryScreen({
             formatDate={formatDate}
           />}
           <div ref={moreRef} style={{ padding: 'var(--space-4) 0', textAlign: 'center' }}>
-            {historyLoading && historyDirection !== 'newer' && <ListSkeleton label="Загрузка операций…" rows={Object.keys(groups || {}).length > 0 ? 2 : 5} />}
+            {historyRefreshing && <div role="status" style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Обновление…</div>}
+            {historyLoading && !historyRefreshing && historyDirection !== 'newer' && <ListSkeleton label="Загрузка операций…" rows={Object.keys(groups || {}).length > 0 ? 2 : 5} />}
             {historyError && historyDirection !== 'newer' && <div role="alert">{historyError}</div>}
             {!historyLoading && (hasMore || (historyError && historyDirection !== 'newer')) && (
               <Button onClick={loadMore}>

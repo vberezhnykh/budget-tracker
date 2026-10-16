@@ -30,6 +30,7 @@ import useMonthReview from './utils/useMonthReview'
 import { useModalOpen } from './utils/useBodyScrollLock'
 import { useAppUpdate, reloadPage } from './utils/appUpdate'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
+import { scheduleIdle } from './utils/prefetch'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
 
@@ -234,6 +235,13 @@ function App() {
   const [dashboard, setDashboard] = useState(null);
   const [dashboardCache, setDashboardCache] = useState({});
   const [dashboardReads] = useState(() => createDashboardCache());
+  // Фоновая подгрузка Аналитики (analytics=1): отмена отложенного запуска, номер
+  // идущей полной загрузки (0 - нет) и актуальные экран/ключ выбора, которые
+  // отложенный запуск читает уже в момент срабатывания.
+  const prefetchCancelRef = useRef(null);
+  const fullLoadGenerationRef = useRef(0);
+  const screenRef = useRef(null);
+  const statsKeyRef = useRef('');
   const [historyRevision, setHistoryRevision] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -259,6 +267,8 @@ function App() {
     setAccounts([]);
     accountsRef.current = [];
     setDashboard(null);
+    prefetchCancelRef.current?.();
+    prefetchCancelRef.current = null;
     dashboardReads.clear();
     setDashboardCache({});
     setIsExporting(false);
@@ -387,6 +397,42 @@ function App() {
     revision: historyRevision, request: apiFetch, searching: Boolean(searchQuery.trim()),
   });
 
+  const fetchDashboard = async key => {
+    const data = await readJson(`/api/stats/dashboard?${key}`, 'Не удалось загрузить итоги');
+    if (!data?.balances?.byAccount || !Number.isFinite(data.balances.total)
+      || !data.monthlyTotals || !data.month || !data.yearly || !data.lifetime) {
+      throw new DataLoadError('Сервер вернул некорректные итоги');
+    }
+    return data;
+  };
+
+  // Вкладку «Аналитика» открывают часто, а ее данные (analytics=1) приходят
+  // отдельным запросом и без подготовки показывали бы скелетон. Поэтому после
+  // успешной загрузки и смены выбора на Обзоре читаем их заранее, в простое.
+  // Это тихое чтение: без isRefreshing и без syncWarning, ошибка не показывается
+  // (при открытии вкладки обычный путь повторит запрос). Результат не попадает в
+  // кеш, если тот успели сбросить (запись/выход) - см. dashboardCache.
+  const scheduleAnalyticsPrefetch = () => {
+    prefetchCancelRef.current?.();
+    const session = sessionGenerationRef.current;
+    prefetchCancelRef.current = scheduleIdle(() => {
+      prefetchCancelRef.current = null;
+      if (session !== sessionGenerationRef.current || screenRef.current === 'analytics'
+        || fullLoadGenerationRef.current !== 0) return;
+      const params = new URLSearchParams(statsKeyRef.current);
+      params.set('analytics', '1');
+      const key = params.toString();
+      const cached = dashboardReads.get(key);
+      if (cached && Date.now() - cached.updatedAt < DASHBOARD_FRESH_MS) return;
+      const version = dashboardReads.version;
+      dashboardReads.load(key, () => fetchDashboard(key)).then(() => {
+        if (session === sessionGenerationRef.current && version === dashboardReads.version) {
+          setDashboardCache(dashboardReads.snapshot());
+        }
+      }, () => {});
+    });
+  };
+
   // Summaries contain complete totals, never calculated from a partial page.
   // Loading the first history page does not block the dashboard.
   const loadData = async ({ initial = !hasSnapshotRef.current, onlyStats = false, retry = false } = {}) => {
@@ -397,6 +443,9 @@ function App() {
     const generation = ++loadGenerationRef.current;
     if (!onlyStats) {
       historyRefreshNeededRef.current = true;
+      fullLoadGenerationRef.current = generation;
+      prefetchCancelRef.current?.();
+      prefetchCancelRef.current = null;
       dashboardReads.clear();
       setDashboardCache({});
     }
@@ -413,6 +462,7 @@ function App() {
       setDashboardCache(dashboardReads.snapshot());
       setIsRefreshing(false);
       setSyncWarning(null);
+      scheduleAnalyticsPrefetch();
       return true;
     }
 
@@ -433,14 +483,7 @@ function App() {
       if (!isCurrent()) return false;
 
       const [loadedDashboard, loadedCategories, loadedSettings] = await Promise.all([
-        dashboardReads.load(statsKey, async () => {
-          const data = await readJson(`/api/stats/dashboard?${statsKey}`, 'Не удалось загрузить итоги');
-          if (!data?.balances?.byAccount || !Number.isFinite(data.balances.total)
-            || !data.monthlyTotals || !data.month || !data.yearly || !data.lifetime) {
-            throw new DataLoadError('Сервер вернул некорректные итоги');
-          }
-          return data;
-        }),
+        dashboardReads.load(statsKey, () => fetchDashboard(statsKey)),
         onlyStats ? categories : readJson(CATEGORIES_URL, 'Не удалось загрузить категории'),
         // Compatibility with deployments from before shared settings: a 404
         // means the documented default, while network/5xx failures still make
@@ -480,6 +523,8 @@ function App() {
       setInitialLoadError(null);
       setIsAuthenticated(true);
       hasSnapshotRef.current = true;
+      if (fullLoadGenerationRef.current === generation) fullLoadGenerationRef.current = 0;
+      scheduleAnalyticsPrefetch();
       return true;
     } catch (err) {
       if (!isCurrent()) return false;
@@ -495,6 +540,7 @@ function App() {
       }
       return false;
     } finally {
+      if (fullLoadGenerationRef.current === generation) fullLoadGenerationRef.current = 0;
       if (onlyStats && session === sessionGenerationRef.current && cacheVersion === dashboardReads.version) {
         setDashboardCache(dashboardReads.snapshot());
       }
@@ -518,9 +564,19 @@ function App() {
   // Fetch data on mount.
   useEffect(() => {
     loadData({ initial: true });
-    return () => { loadGenerationRef.current += 1; sessionGenerationRef.current += 1; };
+    return () => {
+      loadGenerationRef.current += 1;
+      sessionGenerationRef.current += 1;
+      prefetchCancelRef.current?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Актуальные экран и выбор для отложенной подгрузки (читаются при запуске).
+  useEffect(() => {
+    screenRef.current = screen;
+    statsKeyRef.current = statsKey;
+  });
 
   useEffect(() => {
     if (hasSnapshotRef.current) loadData({ initial: false, onlyStats: true });

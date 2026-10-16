@@ -183,6 +183,20 @@ describe('HistoryScreen', () => {
         });
     });
 
+    describe('refresh after a write', () => {
+        it('keeps the previous rows with a small status instead of the skeleton', () => {
+            renderScreen({ history: makeHistory({ loading: true, refreshing: true }) });
+            expect(screen.getByRole('status')).toHaveTextContent('Обновление…');
+            expect(screen.queryByRole('status', { name: 'Загрузка операций…' })).not.toBeInTheDocument();
+            expect(screen.getAllByRole('button', { name: /,/ }).length).toBeGreaterThan(0);
+        });
+
+        it('still shows the skeleton for a plain load', () => {
+            renderScreen({ history: makeHistory({ transactions: {}, loading: true }) });
+            expect(screen.getByRole('status', { name: 'Загрузка операций…' })).toBeInTheDocument();
+        });
+    });
+
     describe('empty month', () => {
         const emptyMonth = { history: makeHistory({ transactions: {}, count: 0 }) };
 

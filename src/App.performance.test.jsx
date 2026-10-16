@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { readApi } from '../server/test/readApi.mjs';
 import App from './App';
 import { SAVE_BUTTON_NAME } from './test/queries';
+import { flushIdle } from './test/idle';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }, { _id: 'cash', name: 'Наличные', type: 'cash' }];
 const response = body => ({ ok: true, status: 200, json: async () => body });
@@ -142,5 +143,92 @@ describe('instant account summaries', () => {
     expect(statsCalls().filter(([url]) => url.includes('account=cash') && url.includes('analytics=1'))).toHaveLength(2);
     goTo('Обзор');
     expect(screen.getByRole('button', { name: /Расход:.*75/ })).toBeVisible();
+  });
+
+  describe('background analytics prefetch', () => {
+    const analyticsCalls = () => statsCalls().filter(([url]) => url.includes('analytics=1'));
+
+    it('reads analytics in idle time after the overview loads, so the tab opens without a skeleton', async () => {
+      render(<App />);
+      await screen.findByTestId('accounts-row');
+      expect(analyticsCalls()).toHaveLength(0);
+      await flushIdle();
+      expect(analyticsCalls()).toHaveLength(1);
+      const count = statsCalls().length;
+      goTo('Аналитика');
+      expect(skeleton()).not.toBeInTheDocument();
+      await act(async () => {});
+      expect(statsCalls()).toHaveLength(count);
+    });
+
+    it('prefetches again for a changed selection and skips keys that are already fresh', async () => {
+      render(<App />);
+      await screen.findByTestId('accounts-row');
+      await flushIdle();
+      select('Наличные');
+      await act(async () => {});
+      await flushIdle();
+      expect(analyticsCalls().filter(([url]) => url.includes('account=cash'))).toHaveLength(1);
+      select('Все счета');
+      await act(async () => {});
+      await flushIdle();
+      expect(analyticsCalls()).toHaveLength(2);
+    });
+
+    it('refills analytics after a write instead of leaving it empty, without showing the old numbers', async () => {
+      const base = request.getMockImplementation();
+      request.mockImplementation((url, options) => {
+        if (url === '/api/transactions/cash-expense' && options?.method === 'PUT') {
+          const changes = JSON.parse(options.body);
+          transactions = transactions.map(t => t._id === 'cash-expense' ? { ...t, ...changes } : t);
+          return Promise.resolve(response({ ...changes, _id: 'cash-expense' }));
+        }
+        return base(url, options);
+      });
+      render(<App />);
+      await screen.findByTestId('accounts-row');
+      await flushIdle();
+      expect(analyticsCalls()).toHaveLength(1);
+      goTo('История');
+      fireEvent.click(await screen.findByRole('button', { name: /^Кофе,/ }));
+      fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '75' } });
+      fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Редактировать' })).not.toBeInTheDocument());
+      // Полная перезагрузка сбросила кеш; новая подгрузка еще не запускалась.
+      await flushIdle();
+      expect(analyticsCalls()).toHaveLength(2);
+      goTo('Аналитика');
+      expect(skeleton()).not.toBeInTheDocument();
+    });
+
+    it('stays silent when the prefetch fails', async () => {
+      render(<App />);
+      await screen.findByTestId('accounts-row');
+      const base = request.getMockImplementation();
+      request.mockImplementation((url, options) => url.includes('analytics=1')
+        ? Promise.resolve({ ok: false, status: 500, json: async () => ({ message: 'boom' }) })
+        : base(url, options));
+      await flushIdle();
+      expect(analyticsCalls()).toHaveLength(1);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByText(/boom/)).not.toBeInTheDocument();
+      expect(skeleton()).not.toBeInTheDocument();
+    });
+
+    it('does not prefetch while the analytics tab itself is open', async () => {
+      window.history.replaceState(null, '', '/#analytics');
+      render(<App />);
+      await waitFor(() => expect(analyticsCalls()).toHaveLength(1));
+      await flushIdle();
+      expect(analyticsCalls()).toHaveLength(1);
+    });
+
+    it('does not start after unmount', async () => {
+      const { unmount } = render(<App />);
+      await screen.findByTestId('accounts-row');
+      unmount();
+      await flushIdle();
+      expect(analyticsCalls()).toHaveLength(0);
+    });
   });
 });

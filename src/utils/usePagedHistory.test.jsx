@@ -58,4 +58,72 @@ describe('history request lifecycle', () => {
     expect(result.current.transactions['2026-09-24'].items).toEqual([{ id: 'newest' }, { id: 'middle' }]);
     expect(request.mock.calls[2][0]).toContain('cursor=newer&direction=newer');
   });
+
+  describe('revision refresh', () => {
+    const items = result => result.current.transactions['2026-09-24']?.items;
+
+    it('keeps the previous rows while the first page is reloaded after a revision bump', async () => {
+      let finish;
+      const request = vi.fn().mockResolvedValueOnce(response(page('old')))
+        .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      const { result, rerender } = renderHook(({ revision }) => usePagedHistory({ url: '/api/history?continuous=1', enabled: true, request, revision, searching: false }), { initialProps: { revision: 0 } });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.refreshing).toBe(false);
+      rerender({ revision: 1 });
+      expect(items(result)).toEqual([{ id: 'old' }]);
+      expect(result.current.loading).toBe(true);
+      expect(result.current.refreshing).toBe(true);
+      await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+      expect(items(result)).toEqual([{ id: 'old' }]);
+      expect(result.current.refreshing).toBe(true);
+      await act(async () => finish(response(page('new'))));
+      expect(items(result)).toEqual([{ id: 'new' }]);
+      expect(result.current.loading).toBe(false);
+      expect(result.current.refreshing).toBe(false);
+    });
+
+    it('does not show the old list when the url changes', async () => {
+      let finish;
+      const request = vi.fn().mockResolvedValueOnce(response(page('old')))
+        .mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      const { result, rerender } = renderHook(({ url }) => usePagedHistory({ url, enabled: true, request, revision: 0, searching: false }), { initialProps: { url: '/api/history?month=2026-09' } });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      rerender({ url: '/api/history?month=2026-08' });
+      expect(result.current.transactions).toEqual({});
+      expect(result.current.refreshing).toBe(false);
+      await waitFor(() => expect(request).toHaveBeenCalledTimes(2));
+      expect(result.current.transactions).toEqual({});
+      expect(result.current.loading).toBe(true);
+      expect(result.current.refreshing).toBe(false);
+      await act(async () => finish(response(page('august'))));
+      expect(items(result)).toEqual([{ id: 'august' }]);
+    });
+
+    it('keeps the old rows and shows the error when a revision refresh fails, then retries the first page', async () => {
+      const request = vi.fn().mockResolvedValueOnce(response(page('old', 'cursor')))
+        .mockRejectedValueOnce(new Error('offline'))
+        .mockResolvedValueOnce(response(page('new')));
+      const { result, rerender } = renderHook(({ revision }) => usePagedHistory({ url: '/api/history?continuous=1', enabled: true, request, revision, searching: false }), { initialProps: { revision: 0 } });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      rerender({ revision: 1 });
+      await waitFor(() => expect(result.current.error).toBeTruthy());
+      expect(items(result)).toEqual([{ id: 'old' }]);
+      expect(result.current.loading).toBe(false);
+      expect(result.current.refreshing).toBe(false);
+      act(() => result.current.loadMore());
+      await waitFor(() => expect(result.current.error).toBe(''));
+      expect(request.mock.calls[2][0]).not.toContain('cursor=');
+      expect(items(result)).toEqual([{ id: 'new' }]);
+    });
+
+    it('does not carry rows over a logout', async () => {
+      const request = vi.fn().mockResolvedValue(response(page('old')));
+      const { result, rerender } = renderHook(({ enabled, revision }) => usePagedHistory({ url: '/api/history?continuous=1', enabled, request, revision, searching: false }), { initialProps: { enabled: true, revision: 0 } });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      rerender({ enabled: false, revision: 1 });
+      rerender({ enabled: true, revision: 2 });
+      expect(result.current.transactions).toEqual({});
+      expect(result.current.refreshing).toBe(false);
+    });
+  });
 });
