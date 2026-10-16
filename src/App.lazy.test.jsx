@@ -38,27 +38,38 @@ async function openHistory() {
 }
 
 describe('lazy budget reads', () => {
-  it('loads 40 operations while totals include the whole ledger, then appends on demand', async () => {
+  it('loads the whole list in one request while totals include the whole ledger, and shows only a window', async () => {
+    // Сторож под списком: IntersectionObserver в jsdom нет.
+    const observers = [];
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback) { this.callback = callback; observers.push(this); }
+      observe() {}
+      disconnect() { this.gone = true; }
+    });
     render(<App />);
-    // Итоги - на Обзоре, они считаются по всей книге, а не по первой странице.
+    // Итоги - на Обзоре, они считаются по всей книге, а не по списку Истории.
     await screen.findByTestId('accounts-row');
     expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);
     const history = await openHistory();
-    expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(40);
+    const historyUrls = () => request.mock.calls.map(([url]) => url).filter(url => url.startsWith('/api/history?') && !url.includes('limit=5'));
+    expect(historyUrls()).toEqual(['/api/history?continuous=1&all=1']);
+    // 85 покупок одного дня - окно считает строки, но дни не режет.
+    expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(85);
     expect(history.getByText('\u2212€850,00')).toBeInTheDocument();
+    expect(history.queryByText('Старая зарплата')).not.toBeInTheDocument();
     expect(request.mock.calls.some(([url]) => url === '/api/transactions')).toBe(false);
     expect(request.mock.calls.some(([url]) => url.includes('analytics=1'))).toBe(false);
 
-    fireEvent.click(history.getByRole('button', { name: 'Загрузить еще' }));
-    await waitFor(() => expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(80));
-    expect(history.getByText('\u2212€850,00')).toBeInTheDocument();
-    fireEvent.click(history.getByRole('button', { name: 'Загрузить еще' }));
-    await waitFor(() => expect(history.getAllByRole('button', { name: /^Покупка \d+,/ })).toHaveLength(85));
+    // Старые дни дорисовываются локально, без запроса.
+    await waitFor(() => expect(observers.some(observer => !observer.gone)).toBe(true));
+    act(() => observers.filter(observer => !observer.gone).at(-1).callback([{ isIntersecting: true }]));
+    expect(await history.findByText('Старая зарплата')).toBeInTheDocument();
+    expect(historyUrls()).toHaveLength(1);
     expect(history.queryByRole('button', { name: 'Загрузить еще' })).not.toBeInTheDocument();
     fireEvent.click(history.getByRole('button', { name: /^Покупка 0,/ }));
     expect(screen.getByRole('dialog', { name: 'Редактировать' })).toBeInTheDocument();
     expect(screen.getByPlaceholderText('0')).toHaveValue('10');
-    // Подгрузка страниц итоги не трогает.
+    // Открытие операции итоги не трогает.
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: 'Обзор' }));
     expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);

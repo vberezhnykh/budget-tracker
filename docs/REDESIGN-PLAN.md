@@ -41,7 +41,7 @@
 заменяется на `screen`, внутренние экраны - через `location.hash`. Разметка из
 `App.jsx` выносится в `OverviewScreen`, `HistoryScreen`, `AnalyticsScreen`,
 `MoreScreen`; загрузка данных пока остаётся в `App`. История - экран вместо
-шторки, на `TransactionList` и `usePagedHistory`.
+шторки, на `TransactionList` и `useHistoryList` (раньше `usePagedHistory`).
 
 ### [x] 2. Серверный расчёт «обычного месяца»
 

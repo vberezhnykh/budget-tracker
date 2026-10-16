@@ -292,6 +292,20 @@ describe('Lazy dashboard and history routes', () => {
         expect((await agent.get('/api/history').query({ q: 'Лидл' })).body.count).toBe(0);
     });
 
+    it('returns the whole filtered list in one response with all=1', async () => {
+        const all = await agent.get('/api/history?continuous=1&all=1&month=2026-08&limit=1');
+        expect(all.status).toBe(200);
+        expect(all.body).toMatchObject({ nextCursor: null, previousCursor: null, complete: true });
+        const rows = Object.values(all.body.transactions).flatMap(day => day.items);
+        expect(rows).toHaveLength(all.body.count);
+        expect(Object.keys(all.body.transactions).some(date => !date.startsWith('2026-08'))).toBe(true);
+        const filtered = await agent.get('/api/history').query({ continuous: 1, all: 1, account: card._id.toString() });
+        expect(filtered.body.count).toBeLessThan(all.body.count);
+        const search = await agent.get('/api/history').query({ continuous: 1, all: 1, q: 'Лидл' });
+        expect(search.body.complete).toBe(true);
+        expect(search.body.count).toBeGreaterThan(0);
+    });
+
     it('returns a complete split group with the full daily total on a one-row page', async () => {
         await Transaction.create([
             tx({ account: card._id.toString(), date: '2026-08-15', splitId: 'split_page', amount: 10 }),

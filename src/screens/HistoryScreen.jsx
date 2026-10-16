@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Download, Search, X } from 'lucide-react';
 import HistoryTimeline from '../components/HistoryTimeline';
 import { NAV_OFFSET } from '../components/BottomNav';
@@ -9,6 +9,7 @@ import Chip from '../components/ui/Chip';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import { ListSkeleton } from '../components/ui/Skeleton';
 import { describeEmptySearch, hasActiveFilters } from '../utils/historyEmpty';
+import { extendNewer, extendOlder, listDays, sliceWindow, windowFor } from '../utils/historyWindow';
 
 // Вкладка «История»: обычный экран со списком операций и его механикой
 // прокрутки.
@@ -21,6 +22,14 @@ import { describeEmptySearch, hasActiveFilters } from '../utils/historyEmpty';
 //
 // Экран монтируется, только пока вкладка открыта, поэтому флага «открыт ли
 // он» нет - открыт всегда.
+//
+// Данные: history.transactions - ВЕСЬ список под фильтр (один запрос, кэш в
+// useHistoryList). В DOM рисуется только окно из ~60 строк (utils/historyWindow):
+// нижний сторож дорисовывает более старые дни, прокрутка вверх у начала - более
+// новые с сохранением места на экране. Прыжок к месяцу и смена месяца из App
+// (initialMonth) переставляют окно на этот месяц; запросов во всех этих случаях
+// нет. Окно хранится датами границ, поэтому фоновое обновление списка его не
+// сбрасывает и прокрутку не трогает.
 
 const FILTER_CHIP_STYLE = {
   flexShrink: 0,
@@ -72,14 +81,35 @@ export default function HistoryScreen({
   const mountedRef = useRef(false);
   const prependRef = useRef(null);
 
-  const { loading: historyLoading, error: historyError, direction: historyDirection, key: historyKey } = history;
-  const hasMore = history.nextCursor !== null;
-  const hasNewer = history.previousCursor !== null;
-  const { loadMore, loadNewer } = history;
-  // Обновление после записи: прежний список остается, пока идет первая страница.
+  const { loading: historyLoading, error: historyError, dataKey, retry } = history;
+  // Обновление после записи: прежний список остается, пока идет повторный запрос.
   const historyRefreshing = Boolean(history.refreshing);
   const groups = history.transactions;
-  const scrollKey = `${historyKey}:${positionKey}`;
+  const searching = Boolean(searchQuery.trim());
+  const scrollKey = `${dataKey}:${initialMonth}:${positionKey}`;
+
+  // Окно по дням. Хранится датами границ вместе с ключом прокрутки: смена
+  // списка, месяца или поиска строит окно заново, а обновление данных - нет.
+  // Положение окна живёт и в positionRef, чтобы пережить уход с вкладки.
+  const days = useMemo(() => listDays(groups), [groups]);
+  const [windowState, setWindowState] = useState(() => ({
+    key: scrollKey,
+    win: positionRef.current.key === scrollKey ? positionRef.current.win ?? null : null,
+  }));
+  let win = windowState.key === scrollKey ? windowState.win : null;
+  if (!win && days.length) {
+    // Данные пришли (или якорь сменился): окно строится один раз от месяца.
+    win = windowFor(days, searching ? '' : initialMonth);
+    setWindowState({ key: scrollKey, win });
+  }
+  const shown = useMemo(() => (win ? sliceWindow(win, days) : { days: [], hasNewer: false, hasOlder: false, start: 0 }), [win, days]);
+  const hasNewer = shown.hasNewer;
+  const hasOlder = shown.hasOlder;
+  const windowGroups = useMemo(() => Object.fromEntries(shown.days.map(day => [day.date, groups[day.date]])), [shown, groups]);
+  const changeWindow = useCallback(change => setWindowState(previous => (
+    previous.key === scrollKey && previous.win ? { key: scrollKey, win: change(previous.win) } : previous
+  )), [scrollKey]);
+  const showOlder = useCallback(() => changeWindow(current => extendOlder(current, days)), [changeWindow, days]);
 
   const monthElement = month => scrollRef.current?.querySelector(`[data-history-month="${month}"]`);
   const scrollToMonth = month => {
@@ -91,12 +121,18 @@ export default function HistoryScreen({
     return true;
   };
   const selectMonth = month => {
-    // A loaded destination is a scroll, not a new query: all adjacent rows stay.
-    const firstMonth = Object.keys(groups || {}).sort().reverse()[0]?.slice(0, 7);
-    if ((month !== firstMonth || !hasNewer) && scrollToMonth(month)) return;
-    onSelectMonth?.(month);
-    // The URL may already point here after scrolling into newer months.
-    if (month === initialMonth) scrollToMonth(month);
+    // Самый верхний месяц окна может быть показан не с начала: выше есть более
+    // новые дни того же месяца. Такой месяц надо собрать заново.
+    const firstMonth = shown.days[0]?.date.slice(0, 7);
+    const topCut = hasNewer && firstMonth === month && days[shown.start - 1]?.date.slice(0, 7) === month;
+    if (!topCut && scrollToMonth(month)) return;
+    if (month === initialMonth) {
+      // Якорь тот же, App ничего не изменит: переставляем окно здесь.
+      positionRef.current.pending = true;
+      setWindowState({ key: scrollKey, win: windowFor(days, month) });
+    } else {
+      onSelectMonth?.(month);
+    }
   };
   const captureAnchor = () => {
     const scroll = scrollRef.current;
@@ -107,10 +143,10 @@ export default function HistoryScreen({
     const attribute = item ? 'data-history-item' : 'data-history-month';
     return anchor ? { attribute, value: anchor.getAttribute(attribute), offset: anchor.getBoundingClientRect().top - top } : null;
   };
-  const requestNewer = () => {
-    if (!hasNewer || historyLoading) return;
+  const showNewer = () => {
+    if (!hasNewer) return;
     prependRef.current = captureAnchor();
-    loadNewer?.();
+    changeWindow(current => extendNewer(current, days));
   };
   const handleScroll = () => {
     const scroll = scrollRef.current;
@@ -118,9 +154,10 @@ export default function HistoryScreen({
     positionRef.current.top = scroll.scrollTop;
     if (prependRef.current) prependRef.current = captureAnchor();
     const firstSection = scroll.querySelector('[data-history-month]');
-    if (!historyError && scroll.scrollTop < previousTop && firstSection
-      && firstSection.getBoundingClientRect().top >= scroll.getBoundingClientRect().top - 100) requestNewer();
+    if (scroll.scrollTop < previousTop && firstSection
+      && firstSection.getBoundingClientRect().top >= scroll.getBoundingClientRect().top - 100) showNewer();
   };
+  const rowsLoaded = days.length > 0;
   useLayoutEffect(() => {
     const saved = positionRef.current;
     const scroll = scrollRef.current;
@@ -130,10 +167,11 @@ export default function HistoryScreen({
       saved.pending = true;
       prependRef.current = null;
     }
+    saved.win = win;
     if (scroll) {
-      if (saved.pending && !historyLoading && !historyError) {
+      if (saved.pending && !historyLoading && (!historyError || rowsLoaded)) {
         scroll.scrollTop = 0;
-        if (!searchQuery.trim()) scrollToMonth(initialMonth);
+        if (!searching) scrollToMonth(initialMonth);
         saved.top = scroll.scrollTop;
         saved.pending = false;
       } else if (!mountedRef.current) {
@@ -149,28 +187,30 @@ export default function HistoryScreen({
     }
     mountedRef.current = true;
     // Geometry is restored after DOM updates, before the browser paints.
+    // Данные (groups) в зависимостях нет намеренно: фоновое обновление списка
+    // не должно трогать прокрутку, только смена окна, ключа или якоря.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scrollKey, groups, historyLoading, historyError, initialMonth, searchQuery]);
+  }, [scrollKey, win, historyLoading, historyError, initialMonth, searching]);
   useEffect(() => {
-    if (!hasMore || historyLoading || historyError || !moreRef.current || typeof IntersectionObserver === 'undefined') return;
+    if (!hasOlder || !moreRef.current || typeof IntersectionObserver === 'undefined') return;
+    // Пересоздаётся при каждом сдвиге окна: если сторож после дорисовки всё ещё
+    // в зоне видимости (короткие дни), наблюдатель сообщит об этом сразу.
     const observer = new IntersectionObserver(entries => {
-      if (entries.some(entry => entry.isIntersecting)) loadMore?.();
+      if (entries.some(entry => entry.isIntersecting)) showOlder();
     }, { root: scrollRef.current, rootMargin: '200px' });
     observer.observe(moreRef.current);
     return () => observer.disconnect();
-  }, [hasMore, historyLoading, historyError, loadMore]);
+  }, [hasOlder, win, showOlder]);
 
   const toggleCategory = name => setHistoryCategory(historyCategory === name ? null : name);
   const isIncome = historyType === 'income';
 
-  const searching = Boolean(searchQuery.trim());
   const filtersActive = hasActiveFilters({ account: historyAccount, category: historyCategory, type: historyType });
   const resetFilters = () => {
     setHistoryAccount(null);
     setHistoryCategory(null);
     setHistoryType(null);
   };
-  const rowsLoaded = Object.keys(groups || {}).length > 0;
   // Список пуст целиком: ничего не загружено и ничего не грузится. Тогда
   // выгружать нечего, а поиск без результатов показывает своё пустое состояние.
   const listEmpty = !rowsLoaded && !historyLoading;
@@ -301,11 +341,11 @@ export default function HistoryScreen({
         {/* Своей белой карточки у списка нет: карточки - это дни внутри него,
            а серый фон под ними даёт сам контейнер. */}
         <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {hasNewer && <div style={{ padding: 'var(--space-4) 0', textAlign: 'center' }}>
-            <Button disabled={historyLoading} onClick={requestNewer}>
-              {historyLoading && historyDirection === 'newer' ? 'Загрузка…' : 'Загрузить более новые'}
-            </Button>
-            {historyError && historyDirection === 'newer' && <div role="alert">{historyError}</div>}
+          {/* Окно начинается с выбранного месяца, и прокручивать вверх некуда
+              (scrollTop уже 0), поэтому более новые дни открываются кнопкой;
+              прокрутка вверх у начала списка делает то же самое сама. */}
+          {hasNewer && <div style={{ padding: 'var(--space-2) 0', textAlign: 'center' }}>
+            <Button tone="text" size="sm" onClick={showNewer}>Показать более новые</Button>
           </div>}
           {searchEmpty && (
             <EmptyState
@@ -326,7 +366,7 @@ export default function HistoryScreen({
             />
           )}
           {!searchEmpty && ((!historyLoading && !historyError) || rowsLoaded) && <HistoryTimeline
-            groups={groups}
+            groups={windowGroups}
             initialMonth={initialMonth}
             onSelectMonth={selectMonth}
             searching={searching}
@@ -340,12 +380,12 @@ export default function HistoryScreen({
           />}
           <div ref={moreRef} style={{ padding: 'var(--space-4) 0', textAlign: 'center' }}>
             {historyRefreshing && <div role="status" style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Обновление…</div>}
-            {historyLoading && !historyRefreshing && historyDirection !== 'newer' && <ListSkeleton label="Загрузка операций…" rows={Object.keys(groups || {}).length > 0 ? 2 : 5} />}
-            {historyError && historyDirection !== 'newer' && <div role="alert">{historyError}</div>}
-            {!historyLoading && (hasMore || (historyError && historyDirection !== 'newer')) && (
-              <Button onClick={loadMore}>
-                {historyError ? 'Повторить загрузку' : 'Загрузить еще'}
-              </Button>
+            {historyLoading && <ListSkeleton label="Загрузка операций…" rows={5} />}
+            {historyError && (
+              <div>
+                <div role="alert">{historyError}</div>
+                <Button onClick={retry}>Повторить загрузку</Button>
+              </div>
             )}
           </div>
         </div>

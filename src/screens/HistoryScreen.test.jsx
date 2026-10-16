@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import HistoryScreen from './HistoryScreen';
 
@@ -35,20 +35,30 @@ const groups = {
     }
 };
 
-// Результат usePagedHistory в том виде, в каком его отдаёт App.
+// Результат useHistoryList в том виде, в каком его отдаёт App.
 const makeHistory = (overrides = {}) => ({
     transactions: groups,
     count: 2,
-    nextCursor: null,
-    previousCursor: null,
     loading: false,
+    refreshing: false,
     error: '',
-    direction: 'older',
-    key: 'history',
-    loadMore: () => { },
-    loadNewer: () => { },
+    dataKey: 'history',
+    retry: () => { },
+    reset: () => { },
     ...overrides
 });
+
+// Длинная лента: по одной операции в день, дни подряд вниз от 2026-03-31
+// (март, февраль, январь... 2025 года), чтобы окно было меньше списка.
+const longList = (n = 300, perDay = 1) => {
+    const result = {};
+    for (let i = 0; i < n; i += 1) {
+        const date = new Date(Date.UTC(2026, 2, 31) - i * 86400000).toISOString().slice(0, 10);
+        result[date] = { dailySum: -perDay, items: Array.from({ length: perDay }, (_, k) => ({ id: `row-${String(i).padStart(3, '0')}${perDay > 1 ? `-${k}` : ''}`, title: `Row ${i}`, description: `Row ${i}`, type: 'expense', account: 'card', category: 'Food', visualAmount: -1, excludeFromStats: false })) };
+    }
+    return result;
+};
+const rowIds = () => [...document.querySelectorAll('[data-history-item]')].map(element => element.getAttribute('data-history-item'));
 
 const baseProps = {
     history: makeHistory(),
@@ -185,7 +195,7 @@ describe('HistoryScreen', () => {
 
     describe('refresh after a write', () => {
         it('keeps the previous rows with a small status instead of the skeleton', () => {
-            renderScreen({ history: makeHistory({ loading: true, refreshing: true }) });
+            renderScreen({ history: makeHistory({ refreshing: true }) });
             expect(screen.getByRole('status')).toHaveTextContent('Обновление…');
             expect(screen.queryByRole('status', { name: 'Загрузка операций…' })).not.toBeInTheDocument();
             expect(screen.getAllByRole('button', { name: /,/ }).length).toBeGreaterThan(0);
@@ -325,62 +335,149 @@ describe('HistoryScreen', () => {
         });
     });
 
-    describe('paging', () => {
-        it('offers «Загрузить еще» only while an older page exists and calls loadMore', () => {
-            const loadMore = vi.fn();
-            const { rerender } = renderScreen({ history: makeHistory({ nextCursor: 'next', loadMore }) });
+    describe('window over the whole list', () => {
+        const observer = () => {
+            const instances = [];
+            vi.stubGlobal('IntersectionObserver', class {
+                constructor(callback) { this.callback = callback; instances.push(this); }
+                observe() { }
+                disconnect() { this.gone = true; }
+            });
+            return instances;
+        };
+        afterEach(() => vi.unstubAllGlobals());
 
-            fireEvent.click(screen.getByRole('button', { name: 'Загрузить еще' }));
-            expect(loadMore).toHaveBeenCalledTimes(1);
+        it('renders only a window of ~60 rows starting at the anchor month', () => {
+            const history = makeHistory({ transactions: longList(), count: 300 });
+            renderScreen({ history, initialMonth: '2026-02', positionKey: '2026-02' });
+            const ids = rowIds();
+            expect(ids.length).toBeGreaterThanOrEqual(60);
+            expect(ids.length).toBeLessThan(100);
+            // 28 февральских дней идут первыми, март выше окна.
+            expect(document.querySelector('[data-history-month="2026-03"]')).toBeNull();
+            expect(document.querySelector('[data-history-month="2026-02"]')).not.toBeNull();
+            expect(ids[0]).toBe('row-031');
+        });
 
-            rerender(<HistoryScreen {...baseProps} history={makeHistory({ nextCursor: null, loadMore })} />);
+        it('draws older days when the sentinel below the list scrolls into view', () => {
+            const instances = observer();
+            const history = makeHistory({ transactions: longList(), count: 300 });
+            renderScreen({ history, initialMonth: '2026-03', positionKey: '2026-03' });
+            const before = rowIds().length;
+            const active = () => instances.filter(instance => !instance.gone).at(-1);
+            act(() => active().callback([{ isIntersecting: false }]));
+            expect(rowIds()).toHaveLength(before);
+            act(() => active().callback([{ isIntersecting: true }]));
+            expect(rowIds().length).toBeGreaterThanOrEqual(before + 60);
+            // Новый наблюдатель на каждый сдвиг окна; в конце списка сторож не нужен.
+            for (let i = 0; i < 10; i += 1) act(() => active()?.callback([{ isIntersecting: true }]));
+            expect(rowIds()).toHaveLength(300);
+            expect(instances.every(instance => instance.gone)).toBe(true);
+        });
+
+        it('never asks for more data: no load buttons and no retry without an error', () => {
+            renderScreen({ history: makeHistory({ transactions: longList(), count: 300 }), initialMonth: '2026-03' });
             expect(screen.queryByRole('button', { name: 'Загрузить еще' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Загрузить более новые' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Повторить загрузку' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: 'Показать более новые' })).not.toBeInTheDocument();
         });
 
-        it('offers «Загрузить более новые» when a newer page exists and calls loadNewer', () => {
-            const loadNewer = vi.fn();
-            renderScreen({ history: makeHistory({ previousCursor: 'prev', loadNewer }) });
-
-            fireEvent.click(screen.getByRole('button', { name: 'Загрузить более новые' }));
-            expect(loadNewer).toHaveBeenCalledTimes(1);
+        it('opens newer days with a button when the window starts at an older month, keeping the screen position', () => {
+            const history = makeHistory({ transactions: longList(), count: 300 });
+            renderScreen({ history, initialMonth: '2026-02', positionKey: '2026-02' });
+            const scroll = screen.getByTestId('history-scroll');
+            // Строка row-031 стоит на экране 40px от верха; после дорисовки новых
+            // дней сверху она окажется на 1240px ниже, и прокрутка должна это скомпенсировать.
+            vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function () {
+                const id = this.getAttribute?.('data-history-item');
+                const pushed = document.querySelector('[data-history-item="row-000"]') ? 1240 : 0;
+                const top = id === 'row-031' ? 40 + pushed : 0;
+                return { top, bottom: top + 10, left: 0, right: 0, width: 0, height: 10 };
+            });
+            const before = rowIds().length;
+            fireEvent.click(screen.getByRole('button', { name: 'Показать более новые' }));
+            expect(rowIds().length).toBeGreaterThanOrEqual(before + 28);
+            expect(rowIds()).toContain('row-000');
+            expect(scroll.scrollTop).toBe(1240);
+            expect(screen.queryByRole('button', { name: 'Показать более новые' })).not.toBeInTheDocument();
         });
 
-        it('keeps the rows on screen and offers a retry when a later page fails', () => {
-            const loadMore = vi.fn();
-            renderScreen({ history: makeHistory({ nextCursor: 'next', error: 'Не удалось загрузить операции. Повторите попытку.', loadMore }) });
+        it('opens newer days when scrolling up near the top of the list', () => {
+            const history = makeHistory({ transactions: longList(), count: 300 });
+            renderScreen({ history, initialMonth: '2026-01', positionKey: '2026-01' });
+            const scroll = screen.getByTestId('history-scroll');
+            scroll.scrollTop = 800;
+            fireEvent.scroll(scroll);
+            const before = rowIds().length;
+            scroll.scrollTop = 20;
+            fireEvent.scroll(scroll);
+            expect(rowIds().length).toBeGreaterThan(before);
+        });
 
+        it('shows a retry for a failed refresh while keeping the rows', () => {
+            const retry = vi.fn();
+            renderScreen({ history: makeHistory({ error: 'Не удалось загрузить операции. Повторите попытку.', retry }) });
             expect(screen.getByText('Coffee')).toBeInTheDocument();
             expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить операции');
             fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }));
-            expect(loadMore).toHaveBeenCalledTimes(1);
+            expect(retry).toHaveBeenCalledTimes(1);
         });
 
-        it('shows a loading skeleton while the first page is loading', () => {
+        it('shows a loading skeleton only while loading with no data', () => {
             renderScreen({ history: makeHistory({ transactions: {}, count: 0, loading: true }) });
             expect(screen.getByRole('status', { name: 'Загрузка операций…' })).toBeInTheDocument();
         });
 
-        it('loads the next page when the sentinel below the list scrolls into view', () => {
-            let notify;
-            const observe = vi.fn();
-            const disconnect = vi.fn();
-            vi.stubGlobal('IntersectionObserver', class {
-                constructor(callback, options) { notify = callback; this.options = options; }
-                observe(...args) { observe(...args); }
-                disconnect() { disconnect(); }
-            });
-            const loadMore = vi.fn();
-            const { unmount } = renderScreen({ history: makeHistory({ nextCursor: 'next', loadMore }) });
+        it('starts a search at the top with no month anchor', () => {
+            renderScreen({ history: makeHistory({ transactions: longList(), count: 300, dataKey: 'search' }), searchQuery: 'row', initialMonth: '2026-01' });
+            expect(rowIds()[0]).toBe('row-000');
+            expect(screen.queryByRole('button', { name: 'Показать более новые' })).not.toBeInTheDocument();
+        });
 
-            expect(observe).toHaveBeenCalledTimes(1);
-            notify([{ isIntersecting: false }]);
-            expect(loadMore).not.toHaveBeenCalled();
-            notify([{ isIntersecting: true }]);
-            expect(loadMore).toHaveBeenCalledTimes(1);
+        it('re-anchors the window to a new month without any request and scrolls there', () => {
+            const history = makeHistory({ transactions: longList(), count: 300 });
+            const { rerender } = renderScreen({ history, initialMonth: '2026-03', positionKey: '2026-03' });
+            expect(rowIds()[0]).toBe('row-000');
+            rerender(<HistoryScreen {...baseProps} history={history} initialMonth="2025-10" positionKey="2026-03" />);
+            expect(rowIds()[0]).toBe('row-151');
+            expect(document.querySelector('[data-history-month="2026-03"]')).toBeNull();
+            expect(screen.getByTestId('history-scroll').scrollTop).toBe(0);
+        });
 
-            unmount();
-            expect(disconnect).toHaveBeenCalled();
-            vi.unstubAllGlobals();
+        it('keeps the window and the scroll position when the data is refreshed in the background', () => {
+            const instances = observer();
+            const history = makeHistory({ transactions: longList(), count: 300 });
+            const { rerender } = renderScreen({ history, initialMonth: '2026-03', positionKey: '2026-03' });
+            act(() => instances.filter(instance => !instance.gone).at(-1).callback([{ isIntersecting: true }]));
+            const scroll = screen.getByTestId('history-scroll');
+            scroll.scrollTop = 700;
+            fireEvent.scroll(scroll);
+            const ids = rowIds();
+            // Обновление: новый объект списка с той же лентой и одной новой строкой в окне.
+            const refreshed = longList();
+            refreshed['2026-03-31'] = { ...refreshed['2026-03-31'], items: [...refreshed['2026-03-31'].items, { ...refreshed['2026-03-31'].items[0], id: 'row-new' }] };
+            rerender(<HistoryScreen {...baseProps} history={{ ...history, transactions: refreshed, refreshing: true }} initialMonth="2026-03" positionKey="2026-03" />);
+            expect(scroll.scrollTop).toBe(700);
+            expect(rowIds()).toHaveLength(ids.length + 1);
+            expect(rowIds()).toContain('row-new');
+            expect(screen.getByRole('status')).toHaveTextContent('Обновление…');
+        });
+
+        it('restores the same window and position when the tab is opened again', () => {
+            const instances = observer();
+            const positionRef = { current: { key: null, top: 0, pending: true } };
+            const history = makeHistory({ transactions: longList(), count: 300 });
+            const first = renderScreen({ history, positionRef, initialMonth: '2026-03', positionKey: '2026-03' });
+            act(() => instances.filter(instance => !instance.gone).at(-1).callback([{ isIntersecting: true }]));
+            const ids = rowIds();
+            const scroll = screen.getByTestId('history-scroll');
+            scroll.scrollTop = 900;
+            fireEvent.scroll(scroll);
+            first.unmount();
+            renderScreen({ history, positionRef, initialMonth: '2026-03', positionKey: '2026-03' });
+            expect(rowIds()).toEqual(ids);
+            expect(screen.getByTestId('history-scroll').scrollTop).toBe(900);
         });
     });
 
@@ -390,7 +487,7 @@ describe('HistoryScreen', () => {
             '2026-01-05': groups['2026-01-05']
         };
 
-        it('scrolls to a month that is already loaded instead of asking for a new query', () => {
+        it('scrolls to a month that is already shown instead of asking App', () => {
             const onSelectMonth = vi.fn();
             renderScreen({ history: makeHistory({ transactions: twoMonths }), initialMonth: '2026-02', positionKey: '2026-02', onSelectMonth });
             const scroll = screen.getByTestId('history-scroll');
@@ -407,7 +504,7 @@ describe('HistoryScreen', () => {
             expect(onSelectMonth).not.toHaveBeenCalled();
         });
 
-        it('asks App to load a month that is not in the list yet', () => {
+        it('hands a month outside the window to App, which re-anchors the window locally', () => {
             const onSelectMonth = vi.fn();
             renderScreen({ history: makeHistory({ transactions: twoMonths }), initialMonth: '2026-02', positionKey: '2026-02', onSelectMonth });
             const february = screen.getByTestId('history-scroll').querySelector('[data-history-month="2026-02"]');
@@ -416,6 +513,20 @@ describe('HistoryScreen', () => {
             fireEvent.click(screen.getByRole('button', { name: 'Декабрь', exact: true }));
 
             expect(onSelectMonth).toHaveBeenCalledWith('2025-12');
+        });
+
+        it('rebuilds the top month from its first day when newer days were opened only partly above', () => {
+            const onSelectMonth = vi.fn();
+            const history = makeHistory({ transactions: longList(300, 2), count: 600 });
+            renderScreen({ history, initialMonth: '2026-02', positionKey: '2026-02', onSelectMonth });
+            // 60 строк = 30 дней вверх от 28 февраля: март показан не с 31-го числа.
+            fireEvent.click(screen.getByRole('button', { name: 'Показать более новые' }));
+            expect(rowIds()).not.toContain('row-000-0');
+            expect(rowIds()).toContain('row-001-0');
+            const march = screen.getByTestId('history-scroll').querySelector('[data-history-month="2026-03"]');
+            fireEvent.click(within(march).getByRole('button', { name: /^Месяц истории:/ }));
+            fireEvent.click(screen.getByRole('button', { name: 'Март', exact: true }));
+            expect(onSelectMonth).toHaveBeenCalledWith('2026-03');
         });
     });
 

@@ -23,7 +23,7 @@ import CleanupScreen from './screens/settings/CleanupScreen'
 import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput, formatSyncStatus } from './utils/period'
 import { transformTransactions } from './utils/finance'
 import { formatMoney } from './utils/money'
-import usePagedHistory from './utils/usePagedHistory'
+import useHistoryList from './utils/useHistoryList'
 import useHashScreen from './utils/useHashScreen'
 import useAskConversation from './utils/useAskConversation'
 import useMonthReview from './utils/useMonthReview'
@@ -273,6 +273,8 @@ function App() {
     setDashboardCache({});
     setIsExporting(false);
     setHistoryRevision(value => value + 1);
+    history.reset();
+    historyPositionRef.current = { key: null, top: 0, pending: true };
     setCategories([]);
     setTrashGroups([]);
     setTrashError('');
@@ -387,13 +389,12 @@ function App() {
   if (selectedAccount) statsParams.set('account', selectedAccount);
   const statsKey = statsParams.toString();
   const summaryFilterKey = JSON.stringify([selectedAccount]);
-  const historyParams = new URLSearchParams({ month: historyMonth, continuous: '1', limit: '40' });
-  if (historyAccount) historyParams.set('account', historyAccount);
-  if (historyCategory) historyParams.set('category', historyCategory);
-  if (historyType) historyParams.set('type', historyType);
-  if (searchQuery.trim()) historyParams.set('q', searchQuery.trim());
-  const history = usePagedHistory({
-    url: `/api/history?${historyParams}`, enabled: isAuthenticated === true,
+  // История грузит всю ленту под фильтр одним запросом и держит последние 8
+  // фильтров в памяти. Месяц в запрос не входит: historyMonth решает только,
+  // где в готовом списке встать экрану.
+  const history = useHistoryList({
+    filters: { account: historyAccount, category: historyCategory, type: historyType, q: searchQuery },
+    enabled: isAuthenticated === true,
     revision: historyRevision, request: apiFetch, searching: Boolean(searchQuery.trim()),
   });
 

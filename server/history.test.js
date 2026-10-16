@@ -92,6 +92,56 @@ describe('paged history', () => {
         expect(filter.date.$lt.toISOString()).toBe('2027-01-01T00:00:00.000Z');
     });
 
+    describe('whole list (all=1)', () => {
+        const docs = [tx(1, { date: '2025-12-31', description: 'Кофе' }), tx(2, { date: '2026-01-01', description: 'Кофе' }),
+            tx(3, { date: '2026-09-30' }), tx(4, { date: '2026-10-01', account: 'cash' }), tx(5, { date: '2026-10-01', type: 'income' }),
+            tx(6, { date: '2026-10-02', category: 'Дом' })];
+        const whole = query => buildHistoryPage(docs, accounts, parseHistoryQuery({ continuous: '1', all: '1', ...query }));
+
+        it('returns every row across months in one response without cursors or a limit', () => {
+            const page = whole({ month: '2026-01', limit: '1' });
+            expect(rows(page).map(t => t.id)).toEqual(['006', '005', '004', '003', '002', '001']);
+            expect(Object.keys(page.transactions)).toEqual(['2026-10-02', '2026-10-01', '2026-09-30', '2026-01-01', '2025-12-31']);
+            expect(page).toMatchObject({ count: 6, nextCursor: null, previousCursor: null, complete: true });
+        });
+
+        it('accepts and ignores the month, even a malformed one, and a cursor', () => {
+            const expected = whole({});
+            expect(whole({ month: '1999-03' })).toEqual(expected);
+            expect(parseHistoryQuery({ continuous: '1', all: '1', month: 'bad', cursor: 'bad', timeRange: 'week' }).error).toBeUndefined();
+            expect(whole({ cursor: JSON.stringify({ date: '2026-09-30', id: '003' }) })).toEqual(expected);
+        });
+
+        it('applies account, category and type filters', () => {
+            expect(rows(whole({ account: 'card', category: 'Еда', type: 'expense' })).map(t => t.id)).toEqual(['003', '002', '001']);
+            expect(whole({ account: 'cash' }).count).toBe(1);
+        });
+
+        it('returns all search results regardless of months', () => {
+            const page = whole({ q: 'Кофе', month: '2026-10' });
+            expect(rows(page).map(t => t.id)).toEqual(['002', '001']);
+            expect(page).toMatchObject({ count: 2, nextCursor: null, previousCursor: null, complete: true });
+        });
+
+        it('keeps the daily totals and split groups exactly as in paged mode', () => {
+            const many = [tx(1, { splitId: 'split_1' }), tx(2, { splitId: 'split_1', amount: 25 }), tx(3), tx(4, { date: '2026-08-01', amount: 7 })];
+            const paged = buildHistoryPage(many, accounts, parseHistoryQuery({ month: '2026-09', continuous: '1', limit: '1' }));
+            const page = buildHistoryPage(many, accounts, parseHistoryQuery({ continuous: '1', all: '1' }));
+            expect(page.transactions['2026-09-20'].dailySum).toBe(paged.transactions['2026-09-20'].dailySum);
+            expect(page.transactions['2026-09-20'].dailySum).toBe(-45);
+            const split = rows(page).find(t => t.type === 'split_group');
+            expect(split).toMatchObject({ visualAmount: -35 });
+            expect(split.items).toHaveLength(2);
+            expect(page.transactions['2026-08-01'].dailySum).toBe(-7);
+        });
+
+        it('does not change paged mode without all=1', () => {
+            const paged = buildHistoryPage(docs, accounts, parseHistoryQuery({ continuous: '1', month: '2026-09', limit: '2' }));
+            expect(paged.complete).toBeUndefined();
+            expect(paged.nextCursor).not.toBeNull();
+        });
+    });
+
     it.each([{ limit: '0' }, { limit: '101' }, { limit: 'a' }, { month: '2026-13' }, { timeRange: 'week' }, { cursor: 'bad' }, { cursor: '{}' }])('rejects malformed pagination: %j', query => {
         expect(parseHistoryQuery(query).error).toBeTruthy();
     });

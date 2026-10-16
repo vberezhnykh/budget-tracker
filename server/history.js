@@ -9,15 +9,19 @@ function parseHistoryQuery(query) {
     const timeRange = str('timeRange') || 'month';
     const q = str('q').trim();
     const continuous = str('continuous') === '1';
+    // all=1: вся лента под фильтр одним ответом, без месяца, лимита и курсоров.
+    const all = continuous && str('all') === '1';
     const direction = str('direction') || 'older';
     if (!['older', 'newer'].includes(direction)) return { error: 'Некорректное направление истории' };
-    if (!['month', 'year', 'lifetime'].includes(timeRange) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    // В режиме all месяц, лимит и курсор принимаются и игнорируются: список
+    // целиком не привязан ни к якорю, ни к странице.
+    if (!all && (!['month', 'year', 'lifetime'].includes(timeRange) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month))) {
         return { error: 'Некорректный период' };
     }
-    const limit = query.limit === undefined ? 40 : Number(query.limit);
+    const limit = all ? 40 : query.limit === undefined ? 40 : Number(query.limit);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) return { error: 'limit должен быть от 1 до 100' };
     let cursor = null;
-    if (query.cursor !== undefined) {
+    if (!all && query.cursor !== undefined) {
         try {
             cursor = JSON.parse(str('cursor'));
             if (!cursor || !/^\d{4}-\d{2}-\d{2}$/.test(cursor.date) || typeof cursor.id !== 'string' || cursor.id.length > 200) throw new Error();
@@ -26,11 +30,11 @@ function parseHistoryQuery(query) {
     const dates = continuous || q || timeRange === 'lifetime' ? {} : timeRange === 'year'
         ? { from: `${month.slice(0, 4)}-01`, to: `${month.slice(0, 4)}-12` }
         : { from: month, to: month };
-    return { month, timeRange, q, limit, cursor, continuous, direction, account: str('account'), category: str('category'), type: str('type'), filter: parseTransactionQuery(dates).filter };
+    return { month, timeRange, q, limit, cursor, continuous, all, direction, account: str('account'), category: str('category'), type: str('type'), filter: parseTransactionQuery(dates).filter };
 }
 
 function buildHistoryPage(docs, accounts, options) {
-    const { month, timeRange, q, account, category, type, limit = 40, cursor, continuous, direction = 'older' } = options;
+    const { month, timeRange, q, account, category, type, limit = 40, cursor, continuous, all, direction = 'older' } = options;
     const transactions = transformTransactions(docs, accounts);
     const result = q
         ? computeSearchResults(transactions, q, account, category, type)
@@ -40,6 +44,16 @@ function buildHistoryPage(docs, accounts, options) {
         .flatMap(([date, group]) => group.items
             .slice().sort((a, b) => String(b.id).localeCompare(String(a.id)))
             .map(item => ({ date, item })));
+    if (continuous && all) {
+        // Вся лента одним ответом: те же группы по дням, те же dailySum и
+        // склейки покупок, только без среза и курсоров.
+        const groups = {};
+        for (const { date, item } of rows) {
+            if (!groups[date]) groups[date] = { items: [], dailySum: result.transactions[date].dailySum };
+            groups[date].items.push(item);
+        }
+        return { transactions: groups, count: q ? result.count : rows.length, nextCursor: null, previousCursor: null, complete: true };
+    }
     // A stable date/id cursor avoids duplicates when a new row is inserted
     // ahead of the current page. Groups have their own stable split ID.
     const compare = ({ date, item }, boundary) => date.localeCompare(boundary.date)

@@ -712,6 +712,9 @@ describe('App Integration Tests', () => {
             .map(([url]) => url)
             .filter(url => typeof url === 'string' && url.startsWith('/api/stats/dashboard'));
 
+        // Месяц в запрос не входит: он решает, с какого месяца начинается экран.
+        const topMonth = () => screen.getByTestId('history-scroll').querySelector('[data-history-month]')?.getAttribute('data-history-month');
+
         // Месяц Истории переключается её собственным выбором месяца.
         const pickHistoryMonth = async (monthName) => {
             const section = await screen.findByTestId('history-scroll');
@@ -750,8 +753,10 @@ describe('App Integration Tests', () => {
             await waitFor(() => {
                 const last = historyUrls().at(-1);
                 expect(last).toContain('category=Housing');
-                expect(last).toContain('month=2026-01');
+                expect(last).toContain('continuous=1&all=1');
+                expect(last).not.toContain('month=');
             });
+            expect(topMonth()).toBe('2026-01');
         });
 
         it('resets the type filter and the search when opening a category', async () => {
@@ -779,14 +784,17 @@ describe('App Integration Tests', () => {
             render(<App />);
             await waitForOverview();
             await openHistory();
+            const requestsBefore = historyUrls().length;
             await pickHistoryMonth('Декабрь');
-            await waitFor(() => expect(historyUrls().at(-1)).toContain('month=2025-12'));
+            expect(topMonth()).toBe('2025-12');
+            // Прыжок к месяцу локальный: нового запроса нет.
+            expect(historyUrls()).toHaveLength(requestsBefore);
 
             await openAnalytics();
             fireEvent.click(await screen.findByRole('button', { name: /^Housing: €/ }));
 
-            await waitFor(() => expect(historyUrls().at(-1)).toContain('month=2026-01'));
-            expect(historyUrls().at(-1)).toContain('category=Housing');
+            await waitFor(() => expect(historyUrls().at(-1)).toContain('category=Housing'));
+            await waitFor(() => expect(topMonth()).toBe('2026-01'));
         });
 
         it('keeps the month of the history when the analytics period is a year', async () => {
@@ -800,14 +808,12 @@ describe('App Integration Tests', () => {
 
             await openHistory();
             await pickHistoryMonth('Декабрь');
-            await waitFor(() => expect(historyUrls().at(-1)).toContain('month=2025-12'));
+            expect(topMonth()).toBe('2025-12');
             await openAnalytics();
             fireEvent.click(await screen.findByRole('button', { name: /^Housing: €/ }));
 
-            await waitFor(() => {
-                expect(historyUrls().at(-1)).toContain('category=Housing');
-                expect(historyUrls().at(-1)).toContain('month=2025-12');
-            });
+            await waitFor(() => expect(historyUrls().at(-1)).toContain('category=Housing'));
+            await waitFor(() => expect(topMonth()).toBe('2025-12'));
         });
 
         it('never sends a category parameter with the summary requests', async () => {
@@ -1092,7 +1098,7 @@ describe('App Integration Tests', () => {
         await openHistory();
         expect(await screen.findByText('Подарки')).toBeInTheDocument();
         expect(screen.queryByText('Salary')).not.toBeInTheDocument();
-        fireEvent.click(screen.getByRole('button', { name: 'Загрузить более новые' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Показать более новые' }));
         expect(await screen.findByText('Salary')).toBeInTheDocument();
     });
 

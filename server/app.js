@@ -691,6 +691,8 @@ app.get('/api/suggestions/descriptions', async (req, res) => {
 
 // Filter and group before pagination: a split purchase stays together and
 // daily totals always cover the whole day, including rows on later pages.
+// continuous=1&all=1 отдаёт всю ленту под фильтр одним ответом (месяц, limit и
+// курсоры игнорируются) - так её читает История на телефоне.
 app.get('/api/history', async (req, res) => {
     const options = parseHistoryQuery(req.query);
     if (options.error) return res.status(400).json({ message: options.error });

@@ -150,10 +150,13 @@ describe('Вопросы к данным в приложении', () => {
       const historyUrls = fetch.mock.calls.map(([url]) => url).filter((url) => url.startsWith('/api/history'));
       const params = new URL(historyUrls.at(-1), 'http://localhost').searchParams;
       expect(params.get('category')).toBe('Кафе');
-      expect(params.get('month')).toBe('2026-08');
+      expect(params.get('all')).toBe('1');
+      expect(params.get('month')).toBeNull();
       expect(params.get('type')).toBe('expense');
       expect(params.get('account')).toBeNull();
     });
+    // Месяц ответа - якорь экрана, а не часть запроса.
+    expect(screen.getByTestId('history-scroll').querySelector('[data-history-month]')).toHaveAttribute('data-history-month', '2026-08');
     await waitFor(() => expect(screen.queryByText('Загрузка операций…')).not.toBeInTheDocument());
     expect(await screen.findByText('Латте')).toBeInTheDocument();
     expect(screen.queryByText('Продукты')).not.toBeInTheDocument();
