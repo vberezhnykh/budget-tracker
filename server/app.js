@@ -19,6 +19,8 @@ const Account = require('./models/Account');
 // Модель разбора месяца подключается здесь, чтобы её уникальный индекс строился при старте.
 require('./models/MonthReview');
 require('./models/DescriptionCleanup');
+// Замеры скорости: модель подключается здесь, чтобы TTL-индекс строился при старте.
+require('./models/PerfSample');
 const { BankAccount } = require('./banking/models');
 const { createBankingService } = require('./banking/service');
 const { createBankingRouter } = require('./banking/router');
@@ -44,6 +46,8 @@ const { computeBalances, computeMonthlyTotals } = require('./stats');
 const { transformTransactions } = require('./transform');
 const { buildDashboard } = require('./dashboard');
 const { serverTiming, timed, timedSync } = require('./serverTiming');
+const { createServerSampleRecorder } = require('./perfLog');
+const { createPerfRouter } = require('./perfRouter');
 const { parseHistoryQuery, buildHistoryPage } = require('./history');
 const {
     computeSearchResults,
@@ -185,7 +189,8 @@ app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 // Замер идёт для всего /api и стартует до проверки входа: total в заголовке
 // Server-Timing включает время авторизации, а не только работу обработчика.
-app.use('/api', serverTiming());
+// Тот же замер уходит в базу (см. perfLog.js) - буфером, мимо ответа.
+app.use('/api', serverTiming({ onFinish: createServerSampleRecorder() }));
 
 const bankingService = createBankingService();
 const bankingRouters = createBankingRouter({ service: bankingService });
@@ -222,6 +227,8 @@ app.use('/api/banking', bankingRouters.apiRouter);
 // release even with an expired session. Client error reports pass through
 // the auth gate above like business APIs.
 app.use('/api', createOperationalRouter({ mongoose }));
+// Приём замеров с телефона и отчёт: за проверкой входа, как и client-errors.
+app.use('/api/perf', createPerfRouter());
 app.use('/api/trash', createTrashRouter());
 app.use('/api/planned-payments', createPlannedPaymentsRouter());
 app.use('/api/merchants', createMerchantSearchRouter());

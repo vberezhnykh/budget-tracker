@@ -2,8 +2,10 @@
 // сеет пустую базу и только потом начинает слушать порт. Само приложение - в
 // server/app.js, засев - в server/seed.js; импорт этого файла ничего не запускает.
 
+const { performance } = require('node:perf_hooks');
 const dotenv = require('dotenv');
 const { isBankingEnabled } = require('./banking/feature');
+const { getPerfLog } = require('./perfLog');
 const {
     closeHttpServer,
     loadServerEnv,
@@ -69,20 +71,41 @@ function startSelfPing() {
     selfPingTimer.unref?.();
 }
 
+// Один раз за запуск процесса, когда порт уже слушается. Запись идёт в тот же
+// буфер, что и замеры запросов, и ничего не ломает, если база недоступна.
+function recordBootSample({ connectMs, seedMs }) {
+    const round = value => Math.round(value * 10) / 10;
+    getPerfLog().add({
+        kind: 'boot',
+        at: new Date(),
+        connectMs: round(connectMs),
+        seedMs: round(seedMs),
+        sinceProcessStartMs: Math.round(process.uptime() * 1000)
+    });
+}
+
 async function startServer() {
     loadConfig();
     logStartupConfigStatus(isProduction, authDisabled);
+    // Сколько ушло на каждый шаг запуска: после засыпания Koyeb это и есть
+    // наша часть цены пробуждения (остальное - запуск контейнера и Node).
+    let connectMs = null;
+    let seedMs = null;
     httpServer = await startAfterDependencies({
         connect: async () => {
             if (!process.env.MONGODB_URI) throw new Error('Не задан MONGODB_URI.');
+            const startedAt = performance.now();
             await mongoose.connect(process.env.MONGODB_URI, dbOptions);
+            connectMs = performance.now() - startedAt;
             console.log(`MongoDB Connected (${isProduction ? 'Production' : 'Development: budget-tracker-dev'})`);
         },
         seed: async () => {
+            const startedAt = performance.now();
             await seedDefaults();
             // Durable bank identifiers must be unique before the first
             // consent callback or scheduled fetch can write proposals.
             if (isBankingEnabled()) await Promise.all(Object.values(require('./banking/models')).map(model => model.init()));
+            seedMs = performance.now() - startedAt;
         },
         listen,
         isCancelled: () => shuttingDown,
@@ -90,6 +113,7 @@ async function startServer() {
     });
 
     console.log(`Server running on port ${PORT}`);
+    recordBootSample({ connectMs, seedMs });
     startSelfPing();
     if (isBankingEnabled()) {
         app.locals.bankingService.kickDueSyncs();
@@ -112,6 +136,17 @@ async function shutdown(signal = null) {
         process.exitCode = 1;
     } finally {
         httpServer = null;
+    }
+
+    // Остаток замеров уходит в базу, пока подключение не закрыто. Лучшее, что
+    // можно сделать: ждать дольше пары секунд ради диагностики незачем.
+    try {
+        await Promise.race([
+            getPerfLog().stop(),
+            new Promise(resolve => setTimeout(resolve, 2000).unref?.())
+        ]);
+    } catch {
+        // Замеры необязательны.
     }
 
     try {

@@ -44,6 +44,8 @@ describe('Гейт /api/*', () => {
             ['get', '/api/stats/monthly'],
             ['post', '/api/transactions'],
             ['post', '/api/client-errors'],
+            ['post', '/api/perf/client'],
+            ['get', '/api/perf/report'],
             ['put', '/api/settings']
         ];
 

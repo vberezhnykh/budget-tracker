@@ -31,7 +31,7 @@ import { useModalOpen } from './utils/useBodyScrollLock'
 import { useAppUpdate, reloadPage } from './utils/appUpdate'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
 import { scheduleIdle } from './utils/prefetch'
-import { markDataReady, readLoadTiming } from './utils/loadTiming'
+import { markDataReady } from './utils/loadTiming'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
 
@@ -525,7 +525,8 @@ function App() {
       setInitialLoadError(null);
       setIsAuthenticated(true);
       hasSnapshotRef.current = true;
-      // Отметка для замера на экране «Ещё»: запоминается только первая.
+      // Отметка для замера скорости запуска: запоминается только первая, а
+      // отправка замера откладывается на простой (см. loadTiming.js).
       markDataReady();
       if (fullLoadGenerationRef.current === generation) fullLoadGenerationRef.current = 0;
       scheduleAnalyticsPrefetch();
@@ -1772,7 +1773,6 @@ function App() {
             onRefresh={() => loadData({ initial: false })}
             onExport={exportToCSV}
             onLogout={handleLogout}
-            readLoadTiming={readLoadTiming}
           />
         )}
         {screen === 'more' && inner === 'accounts' && (

@@ -668,8 +668,7 @@ describe('App Integration Tests', () => {
         const failRefreshFromMore = async control => {
             control.failRefresh();
             goTo('Ещё');
-            // Точное имя: рядом есть кнопка «Обновить замеры» в блоке скорости загрузки.
-            fireEvent.click(screen.getByRole('button', { name: 'Обновить' }));
+            fireEvent.click(screen.getByRole('button', { name: /Обновить/ }));
             return screen.findByText(/^Не удалось обновить\. Показаны данные на /);
         };
 

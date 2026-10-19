@@ -34,10 +34,19 @@ function formatServerTiming(entries, totalMs) {
     return parts.join(', ');
 }
 
-function serverTiming() {
+// onFinish (необязательный) получает итог запроса, когда ответ ушёл: так же
+// замеренный total, что и в заголовке, и те же этапы. Нужен для записи замеров
+// в базу (server/perfLog.js); сам заголовок от него не зависит.
+function serverTiming({ onFinish } = {}) {
     return (req, res, next) => {
         const start = performance.now();
+        const startedAt = Date.now();
+        const startUptime = process.uptime();
         res.locals.serverTiming = new Map();
+        // total берётся в момент отправки заголовков, а не на 'finish': это то
+        // самое число, которое браузер увидит в Server-Timing, и вычитать его
+        // из длительности запроса на телефоне нужно именно в таком виде.
+        let totalMs = null;
 
         const writeHead = res.writeHead;
         res.writeHead = function patchedWriteHead(...args) {
@@ -45,12 +54,32 @@ function serverTiming() {
             // уже ушли, и setHeader бросил бы исключение.
             res.writeHead = writeHead;
             if (!res.headersSent) {
-                const value = formatServerTiming(res.locals.serverTiming, performance.now() - start);
+                totalMs = performance.now() - start;
+                const value = formatServerTiming(res.locals.serverTiming, totalMs);
                 const existing = res.getHeader(HEADER);
                 res.setHeader(HEADER, existing ? `${existing}, ${value}` : value);
             }
             return writeHead.apply(this, args);
         };
+        if (onFinish) {
+            res.on('finish', () => {
+                // Запись замера не должна влиять на ответ, который уже ушёл.
+                try {
+                    onFinish({
+                        method: req.method,
+                        url: req.originalUrl,
+                        status: res.statusCode,
+                        startedAt,
+                        uptime: startUptime,
+                        totalMs: totalMs ?? performance.now() - start,
+                        entries: res.locals.serverTiming,
+                        contentLength: res.getHeader('Content-Length')
+                    });
+                } catch {
+                    // Диагностика необязательна: без неё приложение работает как раньше.
+                }
+            });
+        }
         next();
     };
 }

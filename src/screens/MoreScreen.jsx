@@ -1,11 +1,9 @@
-import { useState } from 'react';
 import { Building2, BrushCleaning, Download, Gauge, Landmark, RefreshCw, Tags, Trash2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import ListRow from '../components/ui/ListRow';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import { cleanupRowSubtitle } from '../utils/cleanupReview';
 import { formatMoney } from '../utils/money';
-import { describeRequest, formatMs } from '../utils/loadTiming';
 
 // Содержимое вкладки «Ещё»: настройки и служебные действия, собранные в
 // группы по смыслу. Каждая группа - маленькая подпись и белая карточка со
@@ -66,72 +64,6 @@ function Section({ id, title, children }) {
   );
 }
 
-const timingLineStyle = {
-  padding: 'var(--space-2) 0',
-  fontSize: 'var(--text-base)',
-  fontVariantNumeric: 'tabular-nums',
-  // Путь запроса без пробелов длинный: на узком экране он переносится, а не
-  // раздвигает карточку.
-  overflowWrap: 'anywhere',
-};
-
-const timingSubcaptionStyle = {
-  margin: 0,
-  padding: 'var(--space-2) 0 0',
-  fontSize: 'var(--text-xs)',
-  fontWeight: 'var(--weight-label)',
-  color: 'var(--color-text-muted)',
-};
-
-function RequestList({ title, requests }) {
-  if (requests.length === 0) return null;
-  return (
-    <>
-      <h3 style={timingSubcaptionStyle}>{title}</h3>
-      <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-        {requests.map((request, index) => (
-          <li key={`${request.startTime}-${index}`} style={timingLineStyle}>{describeRequest(request)}</li>
-        ))}
-      </ul>
-    </>
-  );
-}
-
-// Замер читается один раз при открытии экрана (он монтируется заново при
-// каждом входе во вкладку) и по кнопке: без опроса и без хранения.
-function LoadTimingSection({ readTiming }) {
-  const [timing, setTiming] = useState(() => readTiming());
-  const { page, dataReadyAt, startupRequests, recentRequests } = timing;
-
-  return (
-    <Section id="more-timing" title="Скорость загрузки">
-      <div style={{ padding: 'var(--space-2) 0 var(--space-3)' }}>
-        <div style={timingLineStyle}>
-          {page?.responseStart != null
-            ? `Страница: ${formatMs(page.responseStart)}${page.fromCache ? ' (из кеша)' : ''}`
-            : 'Страница: нет данных'}
-        </div>
-        <div style={timingLineStyle}>
-          {dataReadyAt != null
-            ? `Первые данные: ${formatMs(dataReadyAt)} после запуска`
-            : 'Первые данные: еще не получены'}
-        </div>
-        <RequestList title="Запросы при запуске" requests={startupRequests} />
-        <RequestList title="Последние запросы" requests={recentRequests} />
-        <Button
-          tone="text"
-          size="sm"
-          aria-label="Обновить замеры"
-          onClick={() => setTiming(readTiming())}
-          style={{ marginTop: 'var(--space-2)' }}
-        >
-          Обновить
-        </Button>
-      </div>
-    </Section>
-  );
-}
-
 export default function MoreScreen({
   monthlyLimit,
   accountsCount,
@@ -151,7 +83,6 @@ export default function MoreScreen({
   onRefresh,
   onExport,
   onLogout,
-  readLoadTiming,
 }) {
   const hasLimit = Number(monthlyLimit) > 0;
   const hasTrashCount = typeof trashCount === 'number';
@@ -244,8 +175,6 @@ export default function MoreScreen({
           style={isExporting ? { opacity: 0.6, cursor: 'default' } : undefined}
         />
       </Section>
-
-      {readLoadTiming && <LoadTimingSection readTiming={readLoadTiming} />}
 
       <Button
         tone="text"
