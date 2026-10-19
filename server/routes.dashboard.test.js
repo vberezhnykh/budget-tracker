@@ -57,6 +57,23 @@ describe('GET /api/stats/dashboard', () => {
         ]);
     });
 
+    it('отдаёт Server-Timing с этапами db и calc и общим временем', async () => {
+        const res = await dashboard();
+
+        expect(res.status).toBe(200);
+        expect(res.headers['server-timing']).toMatch(
+            /^db;dur=\d+\.\d, calc;dur=\d+\.\d, total;dur=\d+\.\d$/
+        );
+    });
+
+    it('Server-Timing есть и у истории, и у справочников', async () => {
+        for (const url of ['/api/history?month=2026-08', '/api/accounts', '/api/categories', '/api/settings']) {
+            const res = await agent.get(url);
+            expect(res.status, url).toBe(200);
+            expect(res.headers['server-timing'], url).toMatch(/db;dur=\d+\.\d.*total;dur=\d+\.\d$/);
+        }
+    });
+
     it('typicalMonth: объект для месяца, null для года и при нехватке истории', async () => {
         // История в исходных данных начинается с 5 июля: полных месяцев нет.
         const short = await dashboard();

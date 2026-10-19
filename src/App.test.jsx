@@ -592,6 +592,50 @@ describe('App Integration Tests', () => {
         consoleSpy.mockRestore();
     });
 
+    it('closes the form as soon as the write is confirmed, while the refresh GET is still pending', async () => {
+        currentCategories = [{ _id: 'food', name: 'Продукты', type: 'expense', order: 1 }];
+        const normalFetch = createFetchMock();
+        let writeDone = false;
+        let releaseDashboard;
+        fetchMock.mockImplementation((url, options) => {
+            if (url === '/api/transactions' && options?.method === 'POST') {
+                currentTransactions = [...currentTransactions, {
+                    _id: 'new-expense', amount: 25, type: 'expense', account: 'card',
+                    category: 'Продукты', description: 'Новая покупка', date: '2026-01-15T00:00:00Z',
+                }];
+                writeDone = true;
+                return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(currentTransactions.at(-1)) });
+            }
+            // Итоги после записи держим: ответ придёт только по команде теста.
+            if (writeDone && typeof url === 'string' && url.startsWith('/api/stats/dashboard?')) {
+                return new Promise(resolve => {
+                    releaseDashboard = () => normalFetch(url, options).then(resolve);
+                });
+            }
+            return normalFetch(url, options);
+        });
+
+        render(<App />);
+        await waitForOverview();
+        expect(screen.getAllByText(/4\.000/)[0]).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
+        fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '25' } });
+        fireEvent.click(screen.getByText('Продукты'));
+        fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
+        fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
+
+        // Итоги ещё не пришли, но форма уже закрыта, а старые цифры на месте.
+        await waitFor(() => expect(releaseDashboard).toBeDefined());
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Новый расход' })).not.toBeInTheDocument());
+        expect(screen.getAllByText(/4\.000/)[0]).toBeInTheDocument();
+        expect(screen.queryByText(/3\.975/)).not.toBeInTheDocument();
+
+        await act(async () => releaseDashboard());
+        await waitFor(() => expect(screen.getAllByText(/3\.975/)[0]).toBeInTheDocument());
+        expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions' && options?.method === 'POST')).toHaveLength(1);
+    });
+
     describe('sync warning strip', () => {
         // Общая подготовка: данные загружены, дальше обновление падает.
         const renderWithFailingRefresh = async ({ holdRetry = false } = {}) => {
@@ -624,7 +668,8 @@ describe('App Integration Tests', () => {
         const failRefreshFromMore = async control => {
             control.failRefresh();
             goTo('Ещё');
-            fireEvent.click(screen.getByRole('button', { name: /Обновить/ }));
+            // Точное имя: рядом есть кнопка «Обновить замеры» в блоке скорости загрузки.
+            fireEvent.click(screen.getByRole('button', { name: 'Обновить' }));
             return screen.findByText(/^Не удалось обновить\. Показаны данные на /);
         };
 

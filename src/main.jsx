@@ -4,8 +4,11 @@ import './index.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { installUnhandledRejectionReporter } from './utils/clientErrorReporter.js'
+import { initLoadTiming } from './utils/loadTiming.js'
 
 installUnhandledRejectionReporter()
+// Буфер замеров запросов расширяется до первого запроса приложения.
+initLoadTiming()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -31,6 +31,7 @@ import { useModalOpen } from './utils/useBodyScrollLock'
 import { useAppUpdate, reloadPage } from './utils/appUpdate'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
 import { scheduleIdle } from './utils/prefetch'
+import { markDataReady, readLoadTiming } from './utils/loadTiming'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
 
@@ -524,6 +525,8 @@ function App() {
       setInitialLoadError(null);
       setIsAuthenticated(true);
       hasSnapshotRef.current = true;
+      // Отметка для замера на экране «Ещё»: запоминается только первая.
+      markDataReady();
       if (fullLoadGenerationRef.current === generation) fullLoadGenerationRef.current = 0;
       scheduleAnalyticsPrefetch();
       return true;
@@ -551,6 +554,16 @@ function App() {
         setIsRetrying(false);
       }
     }
+  };
+
+  // Обновление после записи не ждём: запись уже надёжно сохранена на сервере,
+  // поэтому форма должна закрыться сразу, а не после трёх повторных GET. Старые
+  // цифры остаются на экране с индикатором «обновляется», пока не придут новые;
+  // если обновление не удалось, loadData сам покажет плашку «не удалось
+  // обновить» с повтором. catch здесь только страхует от unhandled rejection,
+  // который глобальный репортер ошибок принял бы за сбой приложения.
+  const refreshInBackground = () => {
+    loadData({ initial: false }).catch(() => {});
   };
 
   const beginAuthenticatedSession = () => {
@@ -1029,7 +1042,7 @@ function App() {
         // The write is already durable. If the following GET refresh fails,
         // loadData keeps the old snapshot and exposes a retry that performs
         // GETs only; returning true closes the form without duplicating POST.
-        await loadData({ initial: false });
+        refreshInBackground();
         return true;
       }
       // Причину показывает сама форма плашкой над кнопкой, поэтому общего
@@ -1236,7 +1249,7 @@ function App() {
         undoDeletionIdRef.current = null;
         setUndoDeletion(null);
       }
-      await loadData({ initial: false });
+      refreshInBackground();
     } catch (err) {
       console.error('Undo delete error:', err);
       if (session === sessionGenerationRef.current) {
@@ -1260,7 +1273,7 @@ function App() {
         return { error: 'Операция уже изменена. Обновите данные и повторите попытку.' };
       }
       if (res.ok) {
-        await loadData({ initial: false });
+        refreshInBackground();
         return true;
       }
       const data = await res.json().catch(() => null);
@@ -1281,8 +1294,7 @@ function App() {
         const data = await res.json().catch(() => null);
         if (session !== sessionGenerationRef.current) return false;
         if (data?.trashId) showUndoDeletion(data.trashId, Number(data.count) || 1);
-        await loadData({ initial: false });
-        if (session !== sessionGenerationRef.current) return true;
+        refreshInBackground();
         setEditingTransaction(null);
         return true;
       }
@@ -1760,6 +1772,7 @@ function App() {
             onRefresh={() => loadData({ initial: false })}
             onExport={exportToCSV}
             onLogout={handleLogout}
+            readLoadTiming={readLoadTiming}
           />
         )}
         {screen === 'more' && inner === 'accounts' && (

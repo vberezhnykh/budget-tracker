@@ -43,6 +43,7 @@ const { parseTransactionQuery } = require('./transactionQuery');
 const { computeBalances, computeMonthlyTotals } = require('./stats');
 const { transformTransactions } = require('./transform');
 const { buildDashboard } = require('./dashboard');
+const { serverTiming, timed, timedSync } = require('./serverTiming');
 const { parseHistoryQuery, buildHistoryPage } = require('./history');
 const {
     computeSearchResults,
@@ -182,6 +183,9 @@ const corsOptionsDelegate = function (req, callback) {
 app.use(cors(corsOptionsDelegate));
 app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
+// Замер идёт для всего /api и стартует до проверки входа: total в заголовке
+// Server-Timing включает время авторизации, а не только работу обработчика.
+app.use('/api', serverTiming());
 
 const bankingService = createBankingService();
 const bankingRouters = createBankingRouter({ service: bankingService });
@@ -266,7 +270,7 @@ app.post('/api/logout', (req, res) => {
 // Get all accounts
 app.get('/api/accounts', async (req, res) => {
     try {
-        const accounts = await Account.find().sort({ order: 1 });
+        const accounts = await timed(res, 'db', Account.find().sort({ order: 1 }));
         res.json(accounts);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -382,7 +386,7 @@ app.delete('/api/accounts/:id', async (req, res) => {
 // Get all categories
 app.get('/api/categories', async (req, res) => {
     try {
-        const categories = await Category.find().sort({ type: 1, order: 1 });
+        const categories = await timed(res, 'db', Category.find().sort({ type: 1, order: 1 }));
         res.json(categories);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -516,7 +520,7 @@ const DEFAULT_MONTHLY_LIMIT = 7000;
 // one and silently losing another saved limit.
 app.get('/api/settings', async (req, res) => {
     try {
-        const settings = await getCanonicalSettings();
+        const settings = await timed(res, 'db', getCanonicalSettings());
         res.set('Cache-Control', 'no-store');
         res.json({ monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT,
             features: { banking: isBankingEnabled(), quickEntry: isQuickEntryEnabled(), ask: isAskEnabled(), monthReview: isMonthReviewEnabled(), descriptionCleanup: isDescriptionCleanupEnabled() } });
@@ -632,14 +636,14 @@ app.get('/api/stats/dashboard', async (req, res) => {
             return res.status(400).json({ message: 'Некорректное значение today: ожидается YYYY-MM-DD' });
         }
 
-        const [docs, accounts] = await Promise.all([
+        const [docs, accounts] = await timed(res, 'db', Promise.all([
             Transaction.find(activeTransactionFilter()).lean(),
             Account.find().lean()
-        ]);
-        res.json(buildDashboard(docs, accounts, {
+        ]));
+        res.json(timedSync(res, 'calc', () => buildDashboard(docs, accounts, {
             month, timeRange, account, category, type, today,
             analytics: req.query.analytics !== '0'
-        }));
+        })));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -697,12 +701,12 @@ app.get('/api/history', async (req, res) => {
     const options = parseHistoryQuery(req.query);
     if (options.error) return res.status(400).json({ message: options.error });
     try {
-        const [docs, accounts] = await Promise.all([
+        const [docs, accounts] = await timed(res, 'db', Promise.all([
             Transaction.find(activeTransactionFilter(options.filter)).sort({ date: -1, _id: -1 }).lean(),
             Account.find().lean()
-        ]);
+        ]));
         res.set('Cache-Control', 'no-store');
-        res.json(buildHistoryPage(docs, accounts, options));
+        res.json(timedSync(res, 'calc', () => buildHistoryPage(docs, accounts, options)));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
