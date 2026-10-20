@@ -347,6 +347,10 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
 
     const scroll = page.getByTestId('history-scroll');
     await expect(scroll.getByRole('button', { name: /^Покупка \d+,/ }).first()).toBeVisible();
+    // Экран вкладки подъезжает на 6px (.screen-enter): мерить геометрию можно
+    // только после того, как появление закончилось, иначе первая отметка
+    // строки поиска снята посреди сдвига.
+    await page.waitForFunction(() => document.getAnimations().every(animation => animation.playState !== 'running'));
     const nav = page.getByRole('navigation', { name: 'Основная навигация' });
 
     // Страница под экраном стоит: документ не выше окна.

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import AccountIcon from './AccountIcon';
 import { formatMoney } from '../utils/money';
+import AnimatedMoney from './AnimatedMoney';
 import './accountThemes.css';
 import './AccountStrip.css';
 
@@ -8,6 +9,10 @@ import './AccountStrip.css';
 // (порядок задаёт App в slides). Одиночный выбор нажатием, как и раньше;
 // прокрутка ленты выбор не меняет - раньше карточка, осевшая по центру,
 // выбиралась сама, и пролистать ленту, не сменив счёт, было нельзя.
+// Минус только у ушедшего в минус баланса: «−€6.890,00», а не «€-6.890,00».
+// Функцией от числа, чтобы знак пересчитывался на каждом кадре анимации.
+const formatBalance = amount => formatMoney(amount, { sign: amount < 0 ? 'minus' : 'none' });
+
 export default function AccountStrip({ slides, selectedAccount, onSelect }) {
   const rowRef = useRef(null);
 
@@ -24,8 +29,7 @@ export default function AccountStrip({ slides, selectedAccount, onSelect }) {
     <div ref={rowRef} data-testid="accounts-row" className="account-strip no-scrollbar">
       {slides.map((slide) => {
         const isActive = slide.filter === selectedAccount;
-        // Минус только у ушедшего в минус баланса: «−€6.890,00», а не «€-6.890,00».
-        const balanceText = formatMoney(slide.amount, { sign: slide.amount < 0 ? 'minus' : 'none' });
+        const balanceText = formatBalance(slide.amount);
         return (
           <button
             key={slide.key}
@@ -40,7 +44,10 @@ export default function AccountStrip({ slides, selectedAccount, onSelect }) {
               <AccountIcon icon={slide.icon} type={slide.type} size={18} />
             </span>
             <span className="account-chip__name">{slide.name}</span>
-            <span className="account-chip__balance">{balanceText}</span>
+            {/* Ключ - сам счёт: баланс того же счёта меняется плавно, а новая или
+                переставленная карточка показывает свою цифру сразу. aria-label кнопки
+                несёт итоговую сумму. */}
+            <span className="account-chip__balance"><AnimatedMoney value={slide.amount} valueKey={slide.key} format={formatBalance} /></span>
             {slide.note && <span className="account-chip__note">{slide.note}</span>}
           </button>
         );

@@ -8,6 +8,7 @@ import EmptyState from '../components/ui/EmptyState';
 import Chip from '../components/ui/Chip';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import { ListSkeleton } from '../components/ui/Skeleton';
+import useFadeIn from '../utils/useFadeIn';
 import { describeEmptySearch, hasActiveFilters } from '../utils/historyEmpty';
 import { extendNewer, extendOlder, listDays, sliceWindow, windowFor } from '../utils/historyWindow';
 
@@ -217,8 +218,16 @@ export default function HistoryScreen({
   const searchEmpty = searching && listEmpty && !historyError;
   const accountName = accounts.find(account => account._id === historyAccount)?.name;
 
+  // Список проявляется, когда скелетон сменился днями. Без сдвига (flat):
+  // сразу после появления layout-эффект выше ставит прокрутку по
+  // getBoundingClientRect, и сдвиг в несколько пикселей сбил бы позицию.
+  // Фоновое обновление с rowsLoaded не включает ожидание, список не мигает.
+  const timelineVisible = !searchEmpty && ((!historyLoading && !historyError) || rowsLoaded);
+  const timelineFade = useFadeIn(!timelineVisible, { flat: true });
+
   return (
     <div
+      className="screen-enter"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -365,7 +374,7 @@ export default function HistoryScreen({
               ) : null}
             />
           )}
-          {!searchEmpty && ((!historyLoading && !historyError) || rowsLoaded) && <HistoryTimeline
+          {timelineVisible && <div className={timelineFade}><HistoryTimeline
             groups={windowGroups}
             initialMonth={initialMonth}
             onSelectMonth={selectMonth}
@@ -377,7 +386,7 @@ export default function HistoryScreen({
             openEditModal={openEditModal}
             getAccountDisplay={getAccountDisplay}
             formatDate={formatDate}
-          />}
+          /></div>}
           <div ref={moreRef} style={{ padding: 'var(--space-4) 0', textAlign: 'center' }}>
             {historyRefreshing && <div role="status" style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Обновление…</div>}
             {historyLoading && <ListSkeleton label="Загрузка операций…" rows={5} />}

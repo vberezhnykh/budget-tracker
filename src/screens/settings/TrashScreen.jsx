@@ -10,6 +10,7 @@ import ScreenHeader from '../../components/ui/ScreenHeader';
 import { ListSkeleton } from '../../components/ui/Skeleton';
 import { formatMoney } from '../../utils/money';
 import { pluralForm } from '../../utils/plural';
+import useFadeIn from '../../utils/useFadeIn';
 
 // Корзина как вложенный экран «Ещё → Корзина». Раньше это был лист
 // (TrashSheet) с window.confirm; теперь подтверждение удаления навсегда
@@ -200,10 +201,12 @@ export default function TrashScreen({ groups, loading, error, onBack, onRetry, o
   };
 
   const items = groups || [];
+  // Корзина проявляется, когда скелетон сменился карточками или пустым состоянием.
+  const contentFade = useFadeIn(loading);
   const failure = actionError || error;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+    <div className="screen-enter" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <ScreenHeader title="Корзина" backLabel="Ещё" onBack={onBack} />
       <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
         Операции лежат здесь, пока вы не удалите их навсегда. В итогах и истории они не учитываются.
@@ -221,13 +224,15 @@ export default function TrashScreen({ groups, loading, error, onBack, onRetry, o
       {loading ? (
         <ListSkeleton label="Загрузка корзины…" />
       ) : items.length === 0 && !error ? (
-        <EmptyState
-          icon={<Trash2 size={24} />}
-          title="Корзина пуста"
-          description="Сюда попадают удалённые операции. Их можно вернуть, пока вы не удалите их навсегда."
-        />
+        <div className={contentFade}>
+          <EmptyState
+            icon={<Trash2 size={24} />}
+            title="Корзина пуста"
+            description="Сюда попадают удалённые операции. Их можно вернуть, пока вы не удалите их навсегда."
+          />
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <div className={contentFade} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {items.map(group => (
             <TrashCard
               key={group.id}

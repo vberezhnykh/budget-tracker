@@ -18,7 +18,7 @@ import SummaryFrame from './SummaryFrame';
 export default function AnalyticsScreen({ summaryFrame, onAsk, ...analyticsProps }) {
   const { timeRange, selectedMonth, onChangePeriod } = analyticsProps;
   return (
-    <>
+    <div className="screen-enter">
       <div style={{ marginBottom: 'var(--space-3)' }}>
         <ScreenHeader
           title="Аналитика"
@@ -33,6 +33,6 @@ export default function AnalyticsScreen({ summaryFrame, onAsk, ...analyticsProps
       <SummaryFrame {...summaryFrame} skeleton={{ monthly: timeRange === 'month', analytics: true }}>
         <AnalyticsView {...analyticsProps} />
       </SummaryFrame>
-    </>
+    </div>
   );
 }

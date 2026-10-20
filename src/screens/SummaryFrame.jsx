@@ -1,5 +1,6 @@
 import Card from '../components/ui/Card';
 import { SummarySkeleton } from '../components/ui/Skeleton';
+import useFadeIn from '../utils/useFadeIn';
 
 // Общая обёртка сводки Обзора и Аналитики. Состояние ожидания (размытие,
 // inert, aria-busy), скелетон до первых данных и сообщение «Итоги
@@ -10,6 +11,9 @@ import { SummarySkeleton } from '../components/ui/Skeleton';
 // только эта обёртка. Пока pending, цифры внутри (data-account-value) размыты
 // фиксированно.
 export default function SummaryFrame({ pending, ready, syncWarning, isRefreshing, skeleton, children }) {
+  // Первые данные занимают место скелетона плавным появлением. Фоновое
+  // обновление при ready == true класс не трогает, и цифры не мигают.
+  const fade = useFadeIn(!ready);
   return (
     <div
       data-testid="account-summary"
@@ -25,7 +29,7 @@ export default function SummaryFrame({ pending, ready, syncWarning, isRefreshing
       </div>}
       {/* Содержимое остаётся в дереве и пока данных нет: загрузка не должна
           сбрасывать состояние внутри (прокрутку, открытый лист периода). */}
-      <div aria-hidden={!ready || undefined} style={{ gridArea: '1 / 1', minWidth: 0, visibility: ready ? 'visible' : 'hidden' }}>
+      <div className={fade} aria-hidden={!ready || undefined} style={{ gridArea: '1 / 1', minWidth: 0, visibility: ready ? 'visible' : 'hidden' }}>
         {children}
       </div>
     </div>

@@ -7,6 +7,7 @@ import InlineAlert from '../../components/ui/InlineAlert';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import { ListSkeleton } from '../../components/ui/Skeleton';
 import { NAV_OFFSET } from '../../components/BottomNav';
+import useFadeIn from '../../utils/useFadeIn';
 import {
     activeUndo,
     companiesLabel,
@@ -459,6 +460,11 @@ export default function CleanupScreen({ state, onBack, onRefresh, onStart, onApp
         />
     );
 
+    // Разбор проявляется, когда скелетон сменился данными. Ожидание - пока нет
+    // summary: обновление поверх уже показанного скелетон не возвращает.
+    // Без сдвига: внутри панель position: fixed.
+    const bodyFade = useFadeIn(!summary, { flat: true });
+
     let body;
     if (!summary) {
         body = loading || !error ? <ListSkeleton label="Загрузка…" rows={3} amounts={false} /> : null;
@@ -545,11 +551,13 @@ export default function CleanupScreen({ state, onBack, onRefresh, onStart, onApp
     ) : null;
 
     return (
-        <div style={stackStyle}>
+        // Только прозрачность (flat): в теле есть панель position: fixed, и сдвиг
+        // экрана увёл бы её с места на время анимации.
+        <div className="screen-enter screen-enter--flat" style={stackStyle}>
             <ScreenHeader title="Старые описания" backLabel="Ещё" onBack={onBack} />
             {loadFailure}
             {notice && <InlineAlert tone="neutral">{notice}</InlineAlert>}
-            {body}
+            {body && <div className={bodyFade} style={stackStyle}>{body}</div>}
         </div>
     );
 }

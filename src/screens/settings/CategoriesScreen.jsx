@@ -280,7 +280,7 @@ export default function CategoriesScreen({ categories = [], categoryUsage = {}, 
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+    <div className="screen-enter" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <ScreenHeader
         title="Категории"
         backLabel="Ещё"

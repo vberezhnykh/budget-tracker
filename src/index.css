@@ -340,3 +340,84 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .account-summary [data-account-value] { transition: none; }
 }
+
+/* Плавное появление контента. Скелетон не плавно, а мгновенно заменяется
+   настоящими данными, и без этого блок на 150-500 мс после ответа сервера
+   выскакивал бы резким скачком. Анимируются только opacity и transform:
+   на iPhone они идут без перерасчёта раскладки.
+   Конечное состояние кадров совпадает с обычным видом элемента (opacity 1,
+   transform: none): если анимация оборвалась или не запустилась, контент
+   всё равно виден. Fill-mode именно backwards, а не both: after-фаза держала
+   бы последний кадр, а анимируемый transform (в браузере он читается как
+   matrix, а не none) делает элемент containing block для position: fixed
+   потомков и оставляет слой на видеокарте. С backwards после конца
+   анимация снимается, и элемент снова обычный. Первый кадр до старта
+   backwards и так закрывает.
+   --fade-in-shift - на сколько элемент подъезжает снизу; у экранов вкладок
+   сдвиг больше, чем у блоков внутри экрана. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--fade-in-shift, 4px));
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Вариант без сдвига - только прозрачность. Нужен там, где внутри есть
+   position: fixed (поле «Вопросов», панель очистки: на время сдвига они
+   поехали бы вместе с экраном, а не с окном) или где сразу после появления
+   код меряет положение элементов (список Истории: getBoundingClientRect
+   в расчёте прокрутки увидел бы лишние пиксели сдвига). */
+@keyframes fade-in-flat {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.fade-in {
+  animation: fade-in 180ms ease-out backwards;
+}
+
+.fade-in--flat {
+  animation-name: fade-in-flat;
+}
+
+/* Экран вкладки появляется чуть заметнее блока: сдвиг 6px. Уходящий экран не
+   анимируется - он размонтируется сразу, чтобы переключение не ждало. Сама
+   нижняя панель вне экранов и не участвует. */
+.screen-enter {
+  --fade-in-shift: 6px;
+  animation: fade-in 180ms ease-out backwards;
+}
+
+.screen-enter--flat {
+  animation-name: fade-in-flat;
+}
+
+/* Текст только для скринридера: на экране его нет, но читается. Нужен, пока
+   видимые цифры суммы бегут к итоговому значению (components/AnimatedMoney). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Бегущие цифры одной ширины, чтобы сумма не дрожала от смены знаков. */
+.animated-money {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in,
+  .screen-enter {
+    animation: none;
+  }
+}

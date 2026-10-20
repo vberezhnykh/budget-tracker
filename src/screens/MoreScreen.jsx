@@ -91,7 +91,7 @@ export default function MoreScreen({
   const cleanupSubtitle = onOpenCleanup ? cleanupRowSubtitle(cleanupSummary) : null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+    <div className="screen-enter" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       <ScreenHeader title="Ещё" />
 
       <Section id="more-budget" title="Бюджет">

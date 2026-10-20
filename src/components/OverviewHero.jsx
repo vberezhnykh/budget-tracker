@@ -3,6 +3,7 @@ import Card from './ui/Card';
 import InlineAlert from './ui/InlineAlert';
 import { formatMonthName, formatPeriodPhrase, getCurrentMonth } from '../utils/period';
 import { formatMoney } from '../utils/money';
+import AnimatedMoney from './AnimatedMoney';
 
 // Главная карточка Обзора: расход за период одним крупным числом, под ним
 // (для месяца) полоса лимита и остаток, затем доход и сальдо. Месяц выбирается
@@ -38,6 +39,13 @@ const columnAmountStyle = (text) => ({
   overflow: 'hidden',
   textOverflow: 'ellipsis',
 });
+
+// Форматы бегущих сумм. Функциями, а не готовыми строками: сальдо на ходу
+// может сменить знак, и «+»/«−» берутся от числа на каждом кадре. Доход
+// всегда с «+», даже нулевой: sign: 'auto' нуль оставил бы без знака.
+const formatPlain = value => formatMoney(value);
+const formatIncome = value => `+${formatMoney(value)}`;
+const formatSaldo = value => formatMoney(value, { sign: 'auto' });
 
 // Итог прошлого месяца под полосой в начале нового: «Октябрь закрыт: €6.890
 // из €7.000» и вторая строка «Уложились, запас €110». Суммы в целых евро - это
@@ -112,13 +120,17 @@ export default function OverviewHero({
   onOpenPreviousMonth,
   // Открывает Историю с фильтром: onOpenHistory('income' | 'expense').
   onOpenHistory,
+  // Личность показанных цифр: «месяц + счёт». Пока она та же, новая сумма -
+  // обновление (после сохранения операции) и плавно переезжает; сменилась -
+  // это другое число и оно появляется сразу. null, пока итоги не готовы:
+  // тогда цифры не анимируются вовсе (см. utils/useAnimatedNumber).
+  valueKey = null,
 }) {
   const expenseAbs = Math.abs(expense);
   const saldo = income + expense;
   const expenseText = formatMoney(expenseAbs);
-  // Доход всегда с «+», даже нулевой: sign: 'auto' нуль оставил бы без знака.
-  const incomeText = `+${formatMoney(income)}`;
-  const saldoText = formatMoney(saldo, { sign: 'auto' });
+  const incomeText = formatIncome(income);
+  const saldoText = formatSaldo(saldo);
 
   // Лимит месячный, поэтому полоса есть только у месяца; у года и «всего
   // времени» он ничего не значит. Негодный лимит (0, NaN) полосу тоже
@@ -172,7 +184,7 @@ export default function OverviewHero({
                 whiteSpace: 'nowrap',
               }}
             >
-              {expenseText}
+              <AnimatedMoney value={expenseAbs} valueKey={valueKey} format={formatPlain} />
             </span>
           </button>
           {withLimit && (
@@ -226,7 +238,7 @@ export default function OverviewHero({
               >
                 {isOverLimit ? 'сверх лимита ' : 'осталось '}
                 <strong style={{ fontWeight: 'var(--weight-strong)', color: isOverLimit ? 'inherit' : 'var(--color-text-main)' }}>
-                  {formatMoney(limitDelta)}
+                  <AnimatedMoney value={limitDelta} valueKey={valueKey} format={formatPlain} />
                 </strong>
               </span>
               <span data-account-value style={{ whiteSpace: 'nowrap' }}>{percent}%</span>
@@ -260,13 +272,13 @@ export default function OverviewHero({
         >
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>Доход</div>
           <div data-account-value style={{ ...columnAmountStyle(incomeText), color: 'var(--color-positive)' }}>
-            {incomeText}
+            <AnimatedMoney value={income} valueKey={valueKey} format={formatIncome} />
           </div>
         </button>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginBottom: 'var(--space-1)' }}>Сальдо</div>
           <div data-account-value style={{ ...columnAmountStyle(saldoText), color: saldo < 0 ? 'var(--color-negative)' : 'var(--color-text-main)' }}>
-            {saldoText}
+            <AnimatedMoney value={saldo} valueKey={valueKey} format={formatSaldo} />
           </div>
         </div>
       </div>

@@ -159,7 +159,7 @@ export default function AccountsScreen({ accounts, balances, onBack, onAdd, onEd
   const sectionProps = { themes, balances, sensors, onEdit, onDragEnd };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+    <div className="screen-enter" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <ScreenHeader
         title="Счета"
         backLabel="Ещё"

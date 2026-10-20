@@ -11,6 +11,7 @@ import { ListSkeleton } from '../components/ui/Skeleton';
 import { getLatePlaque } from '../utils/latePlaque';
 import { isMonthInHistory, getPreviousMonth } from '../utils/monthNames';
 import { getCurrentMonth } from '../utils/period';
+import useFadeIn from '../utils/useFadeIn';
 import useRecentTransactions from '../utils/useRecentTransactions';
 import SummaryFrame from './SummaryFrame';
 
@@ -112,8 +113,18 @@ export default function OverviewScreen({
 
   const hasRecent = Object.keys(recent.groups).length > 0;
 
+  // Цифры карточки и счетов анимируются только при обновлении той же величины:
+  // ключ - месяц и счёт, а пока итоги не готовы (смена счёта, периода), его
+  // нет, и новые цифры появляются сразу, без бега от значения-заглушки.
+  const valueKey = summaryFrame.ready ? `${timeRange}:${selectedMonth}:${selectedAccount ?? ''}` : null;
+
+  // Блок операций проявляется, когда скелетон сменился данными. Старый список
+  // при обновлении после записи остаётся на экране (loading не включается),
+  // поэтому не мигает.
+  const recentFade = useFadeIn(recent.loading);
+
   return (
-    <>
+    <div className="screen-enter">
       {/* Заголовок экрана - сам выбор периода; названия приложения здесь нет. */}
       <header style={{
         display: 'flex',
@@ -143,6 +154,7 @@ export default function OverviewScreen({
           previousMonth={previousMonth}
           onOpenPreviousMonth={onOpenPreviousMonth}
           onOpenHistory={onOpenHistory}
+          valueKey={valueKey}
         />
       </SummaryFrame>
 
@@ -172,43 +184,45 @@ export default function OverviewScreen({
         {/* Состояния «загрузка / ошибка / пусто» живут в своей белой
             карточке, а у самого списка внешней карточки нет: карточки в нём -
             это дни. */}
-        {(recent.loading || recent.error || !hasRecent) && (
-          <Card padding="none" style={{ overflow: 'hidden' }}>
-            {recent.loading && (
-              <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
-                <ListSkeleton label="Загрузка операций…" rows={3} />
-              </div>
-            )}
-            {recent.error && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-                <span role="alert">Не удалось загрузить операции</span>
-                <Button tone="text" onClick={recent.retry} style={SECTION_ACTION_STYLE}>Повторить</Button>
-              </div>
-            )}
-            {!recent.loading && !recent.error && !hasRecent && (
-              <EmptyState
-                icon={<List size={24} />}
-                title="Операций пока нет"
-                description="Новые расходы и доходы появятся здесь"
-                actions={(
-                  <>
-                    {onAddExpense && <Button size="sm" onClick={onAddExpense}>Добавить расход</Button>}
-                    <Button size="sm" tone="secondary" onClick={onOpenAllHistory}>Открыть историю</Button>
-                  </>
-                )}
-              />
-            )}
-          </Card>
-        )}
-        {hasRecent && (
-          <TransactionList
-            groups={recent.groups}
-            openEditModal={openEditModal}
-            getAccountDisplay={getAccountDisplay}
-            formatDate={formatDate}
-          />
-        )}
+        <div className={recentFade}>
+          {(recent.loading || recent.error || !hasRecent) && (
+            <Card padding="none" style={{ overflow: 'hidden' }}>
+              {recent.loading && (
+                <div style={{ padding: 'var(--space-3) var(--space-4)' }}>
+                  <ListSkeleton label="Загрузка операций…" rows={3} />
+                </div>
+              )}
+              {recent.error && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-4)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
+                  <span role="alert">Не удалось загрузить операции</span>
+                  <Button tone="text" onClick={recent.retry} style={SECTION_ACTION_STYLE}>Повторить</Button>
+                </div>
+              )}
+              {!recent.loading && !recent.error && !hasRecent && (
+                <EmptyState
+                  icon={<List size={24} />}
+                  title="Операций пока нет"
+                  description="Новые расходы и доходы появятся здесь"
+                  actions={(
+                    <>
+                      {onAddExpense && <Button size="sm" onClick={onAddExpense}>Добавить расход</Button>}
+                      <Button size="sm" tone="secondary" onClick={onOpenAllHistory}>Открыть историю</Button>
+                    </>
+                  )}
+                />
+              )}
+            </Card>
+          )}
+          {hasRecent && (
+            <TransactionList
+              groups={recent.groups}
+              openEditModal={openEditModal}
+              getAccountDisplay={getAccountDisplay}
+              formatDate={formatDate}
+            />
+          )}
+        </div>
       </section>
-    </>
+    </div>
   );
 }
