@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ledgerInvalidationPlugin } = require('../ledgerCachePlugin');
 const { normalizeMerchantDomain } = require('../merchantDomain');
 
 const TransactionSchema = new mongoose.Schema({
@@ -158,5 +159,10 @@ TransactionSchema.index({ toAccount: 1 }, { sparse: true });
 // Удаление всей группы разделённой операции: deleteMany({ splitId }).
 TransactionSchema.index({ splitId: 1 }, { sparse: true });
 TransactionSchema.index({ deletionBatchId: 1 }, { sparse: true });
+
+// Любая запись сбрасывает кэш операций и счетов в памяти сервера (см.
+// server/ledgerCache.js); хук на схеме, а не вызовы в роутах - чтобы ни одна
+// запись, откуда бы она ни пришла, не осталась незамеченной.
+TransactionSchema.plugin(ledgerInvalidationPlugin);
 
 module.exports = mongoose.model('Transaction', TransactionSchema);

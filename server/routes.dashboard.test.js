@@ -57,12 +57,12 @@ describe('GET /api/stats/dashboard', () => {
         ]);
     });
 
-    it('отдаёт Server-Timing с этапами db и calc и общим временем', async () => {
+    it('отдаёт Server-Timing с этапами db и calc, состоянием кэша и общим временем', async () => {
         const res = await dashboard();
 
         expect(res.status).toBe(200);
         expect(res.headers['server-timing']).toMatch(
-            /^db;dur=\d+\.\d, calc;dur=\d+\.\d, total;dur=\d+\.\d$/
+            /^db;dur=\d+\.\d, calc;dur=\d+\.\d, cache;desc=(hit|miss|stale), total;dur=\d+\.\d$/
         );
     });
 

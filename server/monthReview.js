@@ -475,18 +475,20 @@ const FAILURES = {
 
 async function defaultLoadContext() {
     // Модели берём здесь, а не при загрузке модуля: тесты роутера обходятся без Mongo.
-    const Transaction = require('./models/Transaction');
     const Category = require('./models/Category');
     const Account = require('./models/Account');
-    const { activeTransactionFilter } = require('./ledgerState');
+    const { ledgerCache } = require('./ledgerCache');
     const { getCanonicalSettings } = require('./settingsSingleton');
-    const [docs, accounts, categories, settings] = await Promise.all([
-        Transaction.find(activeTransactionFilter()).lean(),
+    // Операции берутся из общего снимка в памяти (тот же запрос, что был здесь
+    // раньше); buildMonthFacts их только читает. Счета читаются отдельно: здесь
+    // они нужны в порядке order, а в снимке лежат в естественном.
+    const [{ snapshot }, accounts, categories, settings] = await Promise.all([
+        ledgerCache.get(),
         Account.find().sort({ order: 1 }).lean(),
         Category.find().sort({ type: 1, order: 1 }).lean(),
         getCanonicalSettings()
     ]);
-    return { docs, accounts, categories, monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT };
+    return { docs: snapshot.docs, accounts, categories, monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT };
 }
 
 const reviewOf = (doc) => ({

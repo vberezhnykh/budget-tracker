@@ -46,6 +46,10 @@ export async function connectTestDb(dbName) {
     // статический import подняли бы наверх файла, и модель успела бы
     // зарегистрироваться раньше, чем выставлены переменные окружения выше.
     const app = (await import('../app.js')).default;
+    currentApp = app;
+    // Кэш операций - состояние модуля, а база от файла к файлу своя: чистый
+    // старт гарантирует, что снимок прежнего файла не доживёт до этого.
+    resetLedgerCaches(app);
 
     // Уникальные индексы (Category { name, type }, Account { name }) строятся
     // асинхронно и в свежей базе к первому запросу ещё не готовы. Без этого
@@ -60,6 +64,8 @@ export async function connectTestDb(dbName) {
 // Инстанс базы общий на прогон и останавливается в globalSetup - здесь
 // закрывается только своё подключение.
 export async function disconnectTestDb() {
+    resetLedgerCaches();
+    currentApp = null;
     await Promise.all([...servers].map(server => new Promise(resolve => {
         server.closeAllConnections();
         server.close(() => resolve());
@@ -68,11 +74,23 @@ export async function disconnectTestDb() {
     await mongoose.disconnect();
 }
 
+// Приложение, поднятое connectTestDb: через него доступны кэши в памяти.
+let currentApp = null;
+
+// Кэш операций и ответов живёт в процессе, а не в базе. Тесты чистят коллекции
+// и пишут фикстуры в обход хуков записи (драйвером напрямую), поэтому между
+// тестами кэш сбрасывается явно.
+function resetLedgerCaches(app = currentApp) {
+    app?.locals?.ledgerCache?.reset();
+    app?.locals?.responseMemo?.clear();
+}
+
 // dropDatabase() пересоздал бы коллекции без индексов, поэтому чистим
 // документы, а индексы оставляем на месте.
 export async function clearCollections() {
     const collections = await mongoose.connection.db.collections();
     await Promise.all(collections.map(collection => collection.deleteMany({})));
+    resetLedgerCaches();
 }
 
 // Серверы, поднятые под клиентов loginAgent; закрываются в disconnectTestDb.

@@ -22,6 +22,8 @@ const WARN_INTERVAL_MS = 5 * 60 * 1000;
 // одна «ядовитая» запись блокировала бы все следующие.
 const MAX_FAILED_FLUSHES = 3;
 
+const CACHE_STATES = ['hit', 'miss', 'stale'];
+
 const MAX_PATH_SEGMENTS = 8;
 const MAX_PATH_LENGTH = 200;
 
@@ -241,6 +243,8 @@ function createServerSampleRecorder({ perfLog = null } = {}) {
         const calc = info.entries?.get('calc');
         if (Number.isFinite(db)) sample.dbMs = round1(db);
         if (Number.isFinite(calc)) sample.calcMs = round1(calc);
+        // Как ответ связан с кэшем операций: по нему отчёт считает долю попаданий.
+        if (CACHE_STATES.includes(info.cache)) sample.cache = info.cache;
         // Content-Length бывает не у каждого ответа (потоковые его не имеют):
         // нет заголовка - нет и поля.
         const bytes = Number(info.contentLength);

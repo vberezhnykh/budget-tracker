@@ -6,6 +6,7 @@ const { performance } = require('node:perf_hooks');
 const dotenv = require('dotenv');
 const { isBankingEnabled } = require('./banking/feature');
 const { getPerfLog } = require('./perfLog');
+const { ledgerCache } = require('./ledgerCache');
 const {
     closeHttpServer,
     loadServerEnv,
@@ -114,6 +115,11 @@ async function startServer() {
 
     console.log(`Server running on port ${PORT}`);
     recordBootSample({ connectMs, seedMs });
+    // Первый же запрос сводки после пробуждения не должен платить за чтение
+    // всей истории: кэш операций греется в фоне, пока телефон ещё грузит
+    // страницу. Ошибка прогрева только пишется в лог (один раз) - первый запрос
+    // тогда прочитает базу сам.
+    ledgerCache.warm();
     startSelfPing();
     if (isBankingEnabled()) {
         app.locals.bankingService.kickDueSyncs();

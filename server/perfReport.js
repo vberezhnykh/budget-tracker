@@ -187,6 +187,16 @@ function serverRequestsSection(servers) {
         lines.push(key);
         lines.push(`  запросов ${formatCount(items.length)}${failures ? ` (ошибок 5xx: ${formatCount(failures)})` : ''}; всего: медиана ${formatMs(median(pick(items, 'totalMs')))}, p90 ${formatMs(p90(pick(items, 'totalMs')))}`);
         lines.push(`  база ${formatMs(median(pick(items, 'dbMs')))}, расчет ${formatMs(median(pick(items, 'calcMs')))}`);
+        // Доля обращений, которым хватило кэша в памяти: только у роутов, которые
+        // его используют, и считается по записям, где состояние кэша известно.
+        const cached = items.filter(item => typeof item.cache === 'string');
+        if (cached.length > 0) {
+            const hits = cached.filter(item => item.cache === 'hit').length;
+            const stale = cached.filter(item => item.cache === 'stale').length;
+            const misses = cached.length - hits - stale;
+            const share = Math.round((hits / cached.length) * 100);
+            lines.push(`  кэш: из памяти ${formatCount(hits)} из ${formatCount(cached.length)} (${share}%), устаревший ${formatCount(stale)}, из базы ${formatCount(misses)}`);
+        }
     }
 
     const cold = servers.filter(item => Number.isFinite(item.uptime) && item.uptime < COLD_UPTIME_SECONDS);

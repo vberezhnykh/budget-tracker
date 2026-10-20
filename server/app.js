@@ -45,7 +45,9 @@ const { parseTransactionQuery } = require('./transactionQuery');
 const { computeBalances, computeMonthlyTotals } = require('./stats');
 const { transformTransactions } = require('./transform');
 const { buildDashboard } = require('./dashboard');
-const { serverTiming, timed, timedSync } = require('./serverTiming');
+const { serverTiming, timed, timedSync, setCacheState } = require('./serverTiming');
+const { ledgerCache, docsByDateDesc } = require('./ledgerCache');
+const { responseMemo, sendJson } = require('./responseMemo');
 const { createServerSampleRecorder } = require('./perfLog');
 const { createPerfRouter } = require('./perfRouter');
 const { parseHistoryQuery, buildHistoryPage } = require('./history');
@@ -68,6 +70,9 @@ const {
 } = require('./auth');
 
 const app = express();
+// Для тестов: сброс кэша между файлами и проверка его состояния.
+app.locals.ledgerCache = ledgerCache;
+app.locals.responseMemo = responseMemo;
 
 const isProduction = process.env.NODE_ENV === 'production';
 // Only ever intended for local development: explicitly opts an unconfigured
@@ -577,15 +582,30 @@ app.put('/api/settings', async (req, res) => {
 // excludeFromStats и замороженные счета) проверены на контрольном наборе
 // данных в server/stats.test.js.
 
+// Снимок активных операций и счетов из памяти сервера (см. ledgerCache.js).
+// Читать из него можно, менять - нет: он общий для всех запросов. Время
+// чтения идёт в этап db заголовка Server-Timing, поэтому попадание в кэш
+// видно там как db около нуля, а состояние кэша - отдельной записью cache.
+async function readLedger(res) {
+    const { snapshot, state } = await timed(res, 'db', ledgerCache.get());
+    setCacheState(res, state);
+    return { snapshot, state };
+}
+
+// Готовый ответ из responseMemo или расчёт. Выключенный кэш (state 'off') ответы
+// не запоминает: версии у такого снимка нет, и тогда роут ведёт себя как раньше.
+function memoizedJson(res, group, params, { snapshot, state }, compute) {
+    return timedSync(res, 'calc', () => (state === 'off'
+        ? compute()
+        : responseMemo.getJson(group, params, snapshot.version, compute)));
+}
+
 // Остатки по счетам, по типам счетов, общий капитал и сумма на замороженных
 // счетах - всё, из чего собрана карусель капитала в шапке.
 app.get('/api/stats/balances', async (req, res) => {
     try {
-        const [transactions, accounts] = await Promise.all([
-            Transaction.find(activeTransactionFilter()).lean(),
-            Account.find().lean()
-        ]);
-        res.json(computeBalances(transactions, accounts));
+        const { snapshot } = await readLedger(res);
+        res.json(computeBalances(snapshot.docs, snapshot.accounts));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -599,11 +619,8 @@ app.get('/api/stats/monthly', async (req, res) => {
         const account = typeof req.query.account === 'string' && req.query.account ? req.query.account : null;
         const category = typeof req.query.category === 'string' && req.query.category ? req.query.category : null;
 
-        const [transactions, accounts] = await Promise.all([
-            Transaction.find(activeTransactionFilter()).lean(),
-            Account.find().lean()
-        ]);
-        res.json(computeMonthlyTotals(transactions, accounts, { account, category }));
+        const { snapshot } = await readLedger(res);
+        res.json(computeMonthlyTotals(snapshot.docs, snapshot.accounts, { account, category }));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -643,14 +660,16 @@ app.get('/api/stats/dashboard', async (req, res) => {
             return res.status(400).json({ message: 'Некорректное значение today: ожидается YYYY-MM-DD' });
         }
 
-        const [docs, accounts] = await timed(res, 'db', Promise.all([
-            Transaction.find(activeTransactionFilter()).lean(),
-            Account.find().lean()
-        ]));
-        res.json(timedSync(res, 'calc', () => buildDashboard(docs, accounts, {
-            month, timeRange, account, category, type, today,
-            analytics: req.query.analytics !== '0'
-        })));
+        const ledger = await readLedger(res);
+        const analytics = req.query.analytics !== '0';
+        // Ключ - все параметры, от которых зависит ответ; month и today уже
+        // приведены к значениям по умолчанию, поэтому «без month» и «с текущим
+        // month» дают один ключ.
+        sendJson(res, memoizedJson(res, 'dashboard',
+            { month, timeRange, account, category, type, today, analytics }, ledger,
+            () => JSON.stringify(buildDashboard(ledger.snapshot.docs, ledger.snapshot.accounts, {
+                month, timeRange, account, category, type, today, analytics
+            }))));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -667,11 +686,8 @@ app.get('/api/search', async (req, res) => {
             return res.json({ transactions: {}, count: 0 });
         }
 
-        const [docs, accounts] = await Promise.all([
-            Transaction.find(activeTransactionFilter()).lean(),
-            Account.find().lean()
-        ]);
-        const transactions = transformTransactions(docs, accounts);
+        const { snapshot } = await readLedger(res);
+        const transactions = transformTransactions(snapshot.docs, snapshot.accounts);
 
         res.json(computeSearchResults(transactions, query, str('account'), str('category'), str('type')));
     } catch (err) {
@@ -688,17 +704,68 @@ app.get('/api/suggestions/descriptions', async (req, res) => {
             return res.json([]);
         }
 
-        const [docs, accounts] = await Promise.all([
-            Transaction.find(activeTransactionFilter()).lean(),
-            Account.find().lean()
-        ]);
-        const transactions = transformTransactions(docs, accounts);
+        const { snapshot } = await readLedger(res);
+        const transactions = transformTransactions(snapshot.docs, snapshot.accounts);
 
         res.json(computeDescriptionSuggestions(transactions, category, str('type')));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
 });
+
+// Период из фильтра истории в виде, пригодном для отбора в памяти: {} - без
+// ограничения, { gte, lt } - полуинтервал по дате. null - фильтр другой формы,
+// которую в памяти не повторить, и тогда читается база.
+function memoryDateRange(filter) {
+    const keys = Object.keys(filter || {});
+    if (keys.length === 0) return {};
+    if (keys.length !== 1 || keys[0] !== 'date') return null;
+    const { $gte: gte, $lt: lt, ...rest } = filter.date;
+    if (Object.keys(rest).length > 0 || (gte !== undefined && !(gte instanceof Date)) || (lt !== undefined && !(lt instanceof Date))) {
+        return null;
+    }
+    return { gte, lt };
+}
+
+// Операции для истории: тот же отбор и тот же порядок { date: -1, _id: -1 },
+// что давал запрос к базе. Отбор по периоду повторяет сравнение Mongo: у
+// документа без даты (или с не-датой) условие по дате не выполняется. Кэш
+// выключен или фильтр нестандартный - прежнее чтение базы без изменений.
+async function readHistoryLedger(res, options) {
+    const range = ledgerCache.isEnabled() ? memoryDateRange(options.filter) : null;
+    if (!range) {
+        const [docs, accounts] = await timed(res, 'db', Promise.all([
+            Transaction.find(activeTransactionFilter(options.filter)).sort({ date: -1, _id: -1 }).lean(),
+            Account.find().lean()
+        ]));
+        return { snapshot: null, state: 'off', docs, accounts };
+    }
+    const { snapshot, state } = await readLedger(res);
+    const sorted = docsByDateDesc(snapshot);
+    const { gte, lt } = range;
+    const docs = gte === undefined && lt === undefined
+        ? sorted
+        : sorted.filter(doc => doc.date instanceof Date
+            && (gte === undefined || doc.date >= gte) && (lt === undefined || doc.date < lt));
+    return { snapshot, state, docs, accounts: snapshot.accounts };
+}
+
+// Параметры, от которых зависит страница истории. В режиме «вся лента»
+// (continuous=1&all=1) месяц, период, лимит, курсор и направление
+// игнорируются (см. buildHistoryPage), поэтому в ключ не входят: иначе
+// каждый новый месяц делал бы тот же ответ новым.
+function historyMemoParams(options) {
+    const { q, account, category, type, continuous, all } = options;
+    const common = { q, account, category, type, continuous, all };
+    return all ? common : {
+        ...common,
+        month: options.month,
+        timeRange: options.timeRange,
+        limit: options.limit,
+        cursor: options.cursor,
+        direction: options.direction
+    };
+}
 
 // Filter and group before pagination: a split purchase stays together and
 // daily totals always cover the whole day, including rows on later pages.
@@ -708,12 +775,15 @@ app.get('/api/history', async (req, res) => {
     const options = parseHistoryQuery(req.query);
     if (options.error) return res.status(400).json({ message: options.error });
     try {
-        const [docs, accounts] = await timed(res, 'db', Promise.all([
-            Transaction.find(activeTransactionFilter(options.filter)).sort({ date: -1, _id: -1 }).lean(),
-            Account.find().lean()
-        ]));
+        const ledger = await readHistoryLedger(res, options);
         res.set('Cache-Control', 'no-store');
-        res.json(timedSync(res, 'calc', () => buildHistoryPage(docs, accounts, options)));
+        // Поиск (q) не запоминается: каждая строка поиска - свой ключ, и
+        // несколько таких запросов вытеснили бы из небольшой группы историю
+        // целиком, ради которой память и держится.
+        const compute = () => JSON.stringify(buildHistoryPage(ledger.docs, ledger.accounts, options));
+        sendJson(res, options.q
+            ? timedSync(res, 'calc', compute)
+            : memoizedJson(res, 'history', historyMemoParams(options), ledger, compute));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

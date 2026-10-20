@@ -93,6 +93,24 @@ describe('buildPerfReport', () => {
         expect(report).toContain('Период: 18.10.2026 15:00 — 19.10.2026 15:00 (последние 24 ч, Europe/Bucharest)');
     });
 
+    it('показывает долю обращений из кэша в памяти только там, где состояние известно', () => {
+        const cached = text(buildPerfReport([
+            serverSample({ cache: 'miss', totalMs: 900 }),
+            serverSample({ cache: 'hit', totalMs: 5 }),
+            serverSample({ cache: 'hit', totalMs: 6 }),
+            serverSample({ cache: 'stale', totalMs: 7 }),
+            serverSample({ path: '/api/accounts', totalMs: 8 })
+        ], { now: NOW, hours: 24 }));
+
+        expect(cached).toContain('кэш: из памяти 2 из 4 (50%), устаревший 1, из базы 1');
+        const start = cached.indexOf('GET /api/accounts');
+        const accounts = cached.slice(start, cached.indexOf('GET /api/stats/dashboard'));
+        expect(accounts).toContain('запросов 1');
+        expect(accounts).not.toContain('кэш:');
+        // В основном отчёте записей без состояния кэша строки нет.
+        expect(report).not.toContain('кэш:');
+    });
+
     it('считает записи по видам', () => {
         expect(report).toContain('Всего: 11');
         expect(report).toContain('запросы на сервере: 4');

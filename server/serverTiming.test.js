@@ -3,12 +3,17 @@
 import { describe, it, expect, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { serverTiming, timed, timedSync, formatServerTiming } from './serverTiming.js';
+import { serverTiming, timed, timedSync, formatServerTiming, setCacheState } from './serverTiming.js';
 
 describe('formatServerTiming', () => {
     it('пишет длительности с одним знаком и ставит total последним', () => {
         const entries = new Map([['db', 12.34], ['calc', 0.05]]);
         expect(formatServerTiming(entries, 20.06)).toBe('db;dur=12.3, calc;dur=0.1, total;dur=20.1');
+    });
+
+    it('состояние кэша идёт записью без длительности перед total', () => {
+        const entries = new Map([['db', 0.2]]);
+        expect(formatServerTiming(entries, 3, 'hit')).toBe('db;dur=0.2, cache;desc=hit, total;dur=3.0');
     });
 
     it('без этапов отдаёт один total', () => {
@@ -45,6 +50,17 @@ describe('timed и timedSync', () => {
     });
 });
 
+describe('setCacheState', () => {
+    it('запоминает только известные состояния', () => {
+        const res = { locals: {} };
+        setCacheState(res, 'off');
+        expect(res.locals.cacheState).toBeUndefined();
+        setCacheState(res, 'stale');
+        expect(res.locals.cacheState).toBe('stale');
+        expect(() => setCacheState({}, 'hit')).not.toThrow();
+    });
+});
+
 describe('serverTiming middleware', () => {
     const makeApp = () => {
         const app = express();
@@ -66,6 +82,22 @@ describe('serverTiming middleware', () => {
         const fail = await request(makeApp()).get('/fail');
         expect(fail.status).toBe(500);
         expect(fail.headers['server-timing']).toMatch(/^total;dur=\d+\.\d$/);
+    });
+
+    it('пишет состояние кэша в заголовок и отдаёт его в onFinish', async () => {
+        const onFinish = vi.fn();
+        const app = express();
+        app.use(serverTiming({ onFinish }));
+        app.get('/cached', (req, res) => { setCacheState(res, 'hit'); res.json({}); });
+        app.get('/plain', (req, res) => { res.json({}); });
+
+        const cached = await request(app).get('/cached');
+        const plain = await request(app).get('/plain');
+
+        expect(cached.headers['server-timing']).toMatch(/^cache;desc=hit, total;dur=\d+\.\d$/);
+        expect(plain.headers['server-timing']).not.toContain('cache');
+        await vi.waitFor(() => expect(onFinish).toHaveBeenCalledTimes(2));
+        expect(onFinish.mock.calls.map(([info]) => info.cache)).toEqual(['hit', undefined]);
     });
 
     it('добавляется к уже выставленному Server-Timing, а не затирает его', async () => {

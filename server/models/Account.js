@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ledgerInvalidationPlugin } = require('../ledgerCachePlugin');
 
 const AccountSchema = new mongoose.Schema({
     name: {
@@ -32,5 +33,10 @@ const AccountSchema = new mongoose.Schema({
         default: 0
     }
 });
+
+// Любая запись сбрасывает кэш операций и счетов в памяти сервера (см.
+// server/ledgerCache.js); хук на схеме, а не вызовы в роутах - чтобы ни одна
+// запись, откуда бы она ни пришла, не осталась незамеченной.
+AccountSchema.plugin(ledgerInvalidationPlugin);
 
 module.exports = mongoose.model('Account', AccountSchema);

@@ -580,16 +580,17 @@ function formatAskLog({ stats, outcome, startedAt, finishedAt }) {
 
 async function defaultLoadContext() {
     // Модели берём здесь, а не при загрузке модуля: тесты роутера обходятся без Mongo.
-    const Transaction = require('./models/Transaction');
     const Category = require('./models/Category');
     const Account = require('./models/Account');
-    const { activeTransactionFilter } = require('./ledgerState');
-    const [docs, accounts, categories] = await Promise.all([
-        Transaction.find(activeTransactionFilter()).lean(),
+    const { ledgerCache } = require('./ledgerCache');
+    // Операции - из общего снимка в памяти (тот же запрос, что был здесь раньше;
+    // prepareData их только читает), счета - отдельно: нужны в порядке order.
+    const [{ snapshot }, accounts, categories] = await Promise.all([
+        ledgerCache.get(),
         Account.find().sort({ order: 1 }).lean(),
         Category.find().sort({ type: 1, order: 1 }).lean()
     ]);
-    return { docs, accounts, categories };
+    return { docs: snapshot.docs, accounts, categories };
 }
 
 function createAskRouter({

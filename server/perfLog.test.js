@@ -268,6 +268,17 @@ describe('createServerSampleRecorder', () => {
         expect(JSON.stringify(perfLog.add.mock.calls[0][0])).not.toContain('секрет');
     });
 
+    it('сохраняет состояние кэша, только если оно известно', () => {
+        const { perfLog, record } = makeRecorder();
+        record(info({ cache: 'hit' }));
+        record(info({ cache: 'miss' }));
+        record(info({ cache: 'stale' }));
+        record(info({ cache: 'off' }));
+        record(info({ cache: undefined }));
+        expect(perfLog.add.mock.calls.map(([sample]) => sample.cache)).toEqual(['hit', 'miss', 'stale', undefined, undefined]);
+        expect(perfLog.add.mock.calls[3][0]).not.toHaveProperty('cache');
+    });
+
     it('без этапов и Content-Length этих полей нет', () => {
         const { perfLog, record } = makeRecorder();
         record(info({ entries: new Map(), contentLength: undefined }));

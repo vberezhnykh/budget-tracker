@@ -43,6 +43,10 @@ const PerfSampleSchema = new mongoose.Schema({
     totalMs: ms,
     dbMs: ms,
     calcMs: ms,
+    // Кэш операций в памяти сервера: hit - данные были в памяти, stale - отданы
+    // устаревшие с обновлением в фоне, miss - читали базу. Нет поля - роут кэш
+    // не использует.
+    cache: { type: String, enum: ['hit', 'miss', 'stale'] },
     // Content-Length ответа, если он был выставлен.
     bytes: ms,
     // process.uptime() в секундах на начало запроса: видно, какие запросы

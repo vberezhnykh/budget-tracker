@@ -28,8 +28,13 @@ function record(res, name, ms) {
 // Несколько замеров одного этапа (два чтения базы подряд) складываются в одну
 // запись: в заголовке две записи с одним именем браузер показал бы как две
 // отдельные строки, а читать нужно общее время этапа.
-function formatServerTiming(entries, totalMs) {
+//
+// cacheState (необязательный) - как ответ связан с кэшем операций в памяти
+// (hit / miss / stale, см. ledgerCache.js): запись без длительности, только с
+// описанием, стоит перед total.
+function formatServerTiming(entries, totalMs, cacheState = null) {
     const parts = [...entries].map(([name, ms]) => `${name};dur=${round(ms)}`);
+    if (cacheState) parts.push(`cache;desc=${cacheState}`);
     parts.push(`total;dur=${round(totalMs)}`);
     return parts.join(', ');
 }
@@ -55,7 +60,7 @@ function serverTiming({ onFinish } = {}) {
             res.writeHead = writeHead;
             if (!res.headersSent) {
                 totalMs = performance.now() - start;
-                const value = formatServerTiming(res.locals.serverTiming, totalMs);
+                const value = formatServerTiming(res.locals.serverTiming, totalMs, res.locals.cacheState);
                 const existing = res.getHeader(HEADER);
                 res.setHeader(HEADER, existing ? `${existing}, ${value}` : value);
             }
@@ -73,6 +78,7 @@ function serverTiming({ onFinish } = {}) {
                         uptime: startUptime,
                         totalMs: totalMs ?? performance.now() - start,
                         entries: res.locals.serverTiming,
+                        cache: res.locals.cacheState,
                         contentLength: res.getHeader('Content-Length')
                     });
                 } catch {
@@ -82,6 +88,15 @@ function serverTiming({ onFinish } = {}) {
         }
         next();
     };
+}
+
+// Кэш операций в памяти: hit - данные уже были, stale - отданы устаревшие с
+// обновлением в фоне, miss - пришлось читать базу. Состояние 'off' (кэш
+// выключен) не пишется: сравнивать не с чем.
+const CACHE_STATES = new Set(['hit', 'miss', 'stale']);
+
+function setCacheState(res, state) {
+    if (res.locals && CACHE_STATES.has(state)) res.locals.cacheState = state;
 }
 
 // Асинхронный этап (чтение базы): замеряется и тогда, когда промис отклонён,
@@ -105,4 +120,4 @@ function timedSync(res, name, fn) {
     }
 }
 
-module.exports = { serverTiming, timed, timedSync, formatServerTiming };
+module.exports = { serverTiming, timed, timedSync, formatServerTiming, setCacheState };
