@@ -26,21 +26,34 @@
 // 3. Запись не через этот процесс. Скрипты в server/*.js (восстановление,
 //    правки данных) запускаются отдельно и кэш не уведомляют. Защита по
 //    возрасту: после SOFT_TTL_MS снимок ещё отдаётся, но тут же обновляется в
-//    фоне (stale-while-revalidate), после HARD_TTL_MS - перечитывается
-//    синхронно, как будто снимка нет.
+//    фоне (stale-while-revalidate). Читатель при этом не ждет Atlas никогда,
+//    пока снимок есть: раньше через час простоя запрос перечитывал историю
+//    синхронно (полсекунды-секунда на M0), а это ровно тот запрос, которым
+//    открывается приложение утром. Верхней границы возраста нет намеренно:
+//    единственный источник отставания - правки скриптами вне сервера (свои
+//    записи сбрасывают снимок сразу), и лучше отдать вчерашнюю картину, чем
+//    ошибку, когда Atlas недоступен. Чтобы отставание не прошло молча, каждая
+//    неудачная фоновая загрузка пишется в лог с возрастом снимка.
+//    Дождаться загрузки приходится, только когда снимка нет совсем: старт до
+//    окончания прогрева и первое чтение после записи.
+//
+//    Фоновое обновление не считается заменой данных автоматически: новый набор
+//    сравнивается со снимком по отпечатку (см. fingerprintLedger). Не
+//    изменился - версия остается, и готовые ответы responseMemo остаются
+//    действительными (иначе каждое обновление раз в 10 минут заставляло бы
+//    следующий запрос считать сводку заново). Изменился - ставится снимок с
+//    новой версией.
 //
 // Объекты снимка читатели менять не вправе: он общий для всех запросов.
 // Все потребители (transformTransactions, buildDashboard и остальные) только
 // читают документы; это проверяется тестом на замороженном снимке.
 
+const crypto = require('node:crypto');
+
 // Через сколько снимок считается устаревшим: отдаётся как есть, а перечитывается
 // в фоне. Правки скриптами вне сервера редки, поэтому десяти минут достаточно,
 // чтобы они доехали сами, без перезапуска процесса.
 const SOFT_TTL_MS = 10 * 60 * 1000;
-
-// Через сколько снимку не верим совсем: фоновое обновление могло не завершиться
-// (база недоступна), а отдавать часовые данные молча нельзя.
-const HARD_TTL_MS = 60 * 60 * 1000;
 
 // Пауза перед фоновой перезагрузкой после записи. Приложение после сохранения
 // само просит свежую сводку и историю, и к этому моменту снимок уже должен
@@ -59,13 +72,36 @@ function isLedgerCacheEnabled(env = process.env) {
     return String(env.LEDGER_CACHE || '').trim().toLowerCase() !== 'off';
 }
 
+// Отпечаток набора: по нему видно, что фоновая загрузка принесла те же данные.
+// У операций нет updatedAt (скрипт, правящий сумму, ничего больше не трогает), а
+// _id при правке не меняется, так что «число и максимальный _id» правку не
+// увидели бы. Поэтому хешируется содержимое каждого документа целиком.
+//
+// Хеши документов складываются через XOR, а не в одну строку подряд: порядок,
+// в котором база отдает документы без сортировки, не гарантирован, и смена
+// порядка без смены данных не должна считаться изменением. Ложное «изменилось»
+// безвредно (версия вырастет, ответы посчитаются заново), а ложное «не
+// изменилось» опасно, поэтому в хеш идет весь документ, включая __v.
+// JSON.stringify для ObjectId и Date дает строку через их toJSON.
+function fingerprintLedger({ docs, accounts }) {
+    const part = (items) => {
+        const sum = Buffer.alloc(20);
+        for (const item of items) {
+            const digest = crypto.createHash('sha1').update(JSON.stringify(item)).digest();
+            for (let i = 0; i < sum.length; i += 1) sum[i] ^= digest[i];
+        }
+        return `${items.length}:${sum.toString('hex')}`;
+    };
+    return `${part(docs)}|${part(accounts)}`;
+}
+
 function createLedgerCache({
     load,
     now = () => Date.now(),
     softTtlMs = SOFT_TTL_MS,
-    hardTtlMs = HARD_TTL_MS,
     reloadDebounceMs = RELOAD_DEBOUNCE_MS,
     isEnabled = () => isLedgerCacheEnabled(),
+    fingerprint = fingerprintLedger,
     logger = console
 } = {}) {
     if (typeof load !== 'function') throw new TypeError('createLedgerCache требует функцию load');
@@ -84,13 +120,28 @@ function createLedgerCache({
     // запись в базу без единого чтения (скрипт, тест) тянула бы историю зря.
     let inUse = false;
     let lastErrorLogAt = null;
+    // Отпечаток снимка считается не при установке, а при первом сравнении:
+    // большинство снимков заменяет запись, и до сравнения дело не доходит.
+    const fingerprints = new WeakMap();
+
+    function fingerprintOf(snap) {
+        let value = fingerprints.get(snap);
+        if (value === undefined) {
+            value = fingerprint(snap);
+            fingerprints.set(snap, value);
+        }
+        return value;
+    }
 
     function logBackgroundError(error) {
         const time = now();
         if (lastErrorLogAt !== null && time - lastErrorLogAt < ERROR_LOG_INTERVAL_MS) return;
         lastErrorLogAt = time;
         try {
-            logger.warn('Не удалось загрузить кэш операций:', error?.message || error);
+            // Снимок при этом продолжает отдаваться: читатель увидит данные
+            // без ошибки, и только лог говорит, насколько они отстали.
+            const age = snapshot ? ` Снимок отдается устаревшим (${Math.round((time - snapshot.loadedAt) / 60000)} мин).` : '';
+            logger.warn(`Не удалось загрузить кэш операций:${age}`, error?.message || error);
         } catch {
             // Лог не должен ломать приложение.
         }
@@ -110,11 +161,21 @@ function createLedgerCache({
                 // вызвавшему он отдаётся, но на место снимка не встаёт.
                 if (version === startVersion) {
                     // Заменяется живой снимок той же версии (фоновое обновление
-                    // или перечитывание по возрасту): данные могли измениться
-                    // без единой записи через этот процесс, а ответы,
-                    // посчитанные по старому снимку, привязаны к его версии. Новая
-                    // версия не даёт их выдать за ответы по новым данным.
+                    // по возрасту): данные могли измениться без единой записи
+                    // через этот процесс, а ответы, посчитанные по старому
+                    // снимку, привязаны к его версии. Новая версия не дает их
+                    // выдать за ответы по новым данным.
                     if (snapshot && snapshot.version === version) {
+                        if (fingerprintOf(snapshot) === fingerprint(data)) {
+                            // Те же данные: снимок и версия остаются, а значит
+                            // остаются действительными и готовые ответы. Меняется
+                            // только отметка свежести. Поле меняется на месте:
+                            // это служебная отметка кэша, документы и счета
+                            // читатели видят прежними, а запомненная на снимок
+                            // сортировка истории (docsByDateDesc) не теряется.
+                            snapshot.loadedAt = startedAt;
+                            return snapshot;
+                        }
                         version += 1;
                         installedVersion = version;
                     }
@@ -148,8 +209,8 @@ function createLedgerCache({
 
     return {
         // Возвращает { snapshot, state }. state: 'hit' - снимок свежий,
-        // 'stale' - отдан устаревший, обновление пошло в фоне, 'miss' -
-        // пришлось ждать загрузку, 'off' - кэш выключен, данные прочитаны из базы.
+        // 'stale' - отдан устаревший (любого возраста), обновление пошло в фоне,
+        // 'miss' - снимка не было и пришлось ждать загрузку, 'off' - кэш выключен, данные прочитаны из базы.
         async get() {
             if (!isEnabled()) {
                 const data = await load();
@@ -157,12 +218,9 @@ function createLedgerCache({
             }
             inUse = true;
             if (snapshot) {
-                const age = now() - snapshot.loadedAt;
-                if (age < hardTtlMs) {
-                    if (age < softTtlMs) return { snapshot, state: 'hit' };
-                    loadInBackground();
-                    return { snapshot, state: 'stale' };
-                }
+                if (now() - snapshot.loadedAt < softTtlMs) return { snapshot, state: 'hit' };
+                loadInBackground();
+                return { snapshot, state: 'stale' };
             }
             return { snapshot: await startLoad(), state: 'miss' };
         },
@@ -261,9 +319,9 @@ const ledgerCache = createLedgerCache({ load: loadFromDatabase });
 
 module.exports = {
     SOFT_TTL_MS,
-    HARD_TTL_MS,
     RELOAD_DEBOUNCE_MS,
     createLedgerCache,
+    fingerprintLedger,
     isLedgerCacheEnabled,
     docsByDateDesc,
     ledgerCache

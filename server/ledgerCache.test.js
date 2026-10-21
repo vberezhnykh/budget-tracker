@@ -2,8 +2,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
-    SOFT_TTL_MS, HARD_TTL_MS, RELOAD_DEBOUNCE_MS,
-    createLedgerCache, isLedgerCacheEnabled, docsByDateDesc
+    SOFT_TTL_MS, RELOAD_DEBOUNCE_MS,
+    createLedgerCache, fingerprintLedger, isLedgerCacheEnabled, docsByDateDesc
 } from './ledgerCache.js';
 
 const MINUTE = 60 * 1000;
@@ -155,7 +155,7 @@ describe('createLedgerCache', () => {
         const fresh = await cache.get();
         expect(fresh.state).toBe('hit');
         expect(fresh.snapshot.docs).toEqual([{ _id: 'b' }]);
-        // Версия новая: ответы, посчитанные по прежнему снимку, не подойдут.
+        // Данные изменились: версия новая, ответы по прежнему снимку не подойдут.
         expect(fresh.snapshot.version).toBeGreaterThan(old.version);
     });
 
@@ -172,22 +172,156 @@ describe('createLedgerCache', () => {
         expect(load).toHaveBeenCalledTimes(1);
     });
 
-    it('после HARD_TTL ждёт синхронную перезагрузку', async () => {
+    it('устаревший снимок отдается сразу при любом возрасте, читатель не ждет базу', async () => {
         const { cache, clock, load, calls } = makeCache();
         const first = cache.get();
         await flush();
         calls[0].resolve(data('a'));
-        await first;
+        const { snapshot: old } = await first;
 
-        clock.time += HARD_TTL_MS + 1;
-        const pending = cache.get();
+        // Сутки простоя: раньше уже час заставлял ждать синхронную загрузку.
+        clock.time += 24 * 60 * MINUTE;
+        // Загрузка еще не завершена (calls[1] не выполнен) - ответ все равно готов.
+        const stale = await cache.get();
+
+        expect(stale.state).toBe('stale');
+        expect(stale.snapshot).toBe(old);
         await flush();
         expect(load).toHaveBeenCalledTimes(2);
-        calls[1].resolve(data('b'));
-        const result = await pending;
+    });
 
-        expect(result.state).toBe('miss');
-        expect(result.snapshot.docs).toEqual([{ _id: 'b' }]);
+    describe('фоновое обновление по возрасту сравнивает данные', () => {
+        async function agedCache() {
+            const made = makeCache();
+            const first = made.cache.get();
+            await flush();
+            made.calls[0].resolve(data('a'));
+            const { snapshot } = await first;
+            made.clock.time += SOFT_TTL_MS + 1;
+            return { ...made, snapshot };
+        }
+
+        it('те же данные: версия и снимок остаются, обновляется только отметка свежести', async () => {
+            const { cache, clock, calls, snapshot } = await agedCache();
+            const versionBefore = cache.getVersion();
+            const sortedBefore = docsByDateDesc(snapshot);
+
+            await cache.get();
+            await flush();
+            calls[1].resolve(data('a'));
+            await flush();
+
+            expect(cache.getVersion()).toBe(versionBefore);
+            const again = await cache.get();
+            expect(again.state).toBe('hit');
+            expect(again.snapshot).toBe(snapshot);
+            expect(again.snapshot.version).toBe(snapshot.version);
+            expect(again.snapshot.loadedAt).toBe(clock.time);
+            // Запомненная сортировка истории не пропала.
+            expect(docsByDateDesc(again.snapshot)).toBe(sortedBefore);
+        });
+
+        it('те же данные: готовые ответы responseMemo остаются действительными', async () => {
+            const { createResponseMemo } = await import('./responseMemo.js');
+            const memo = createResponseMemo();
+            const { cache, calls } = await agedCache();
+            const compute = vi.fn(() => '{"total":1}');
+            const key = { month: '2026-08' };
+            memo.getJson('dashboard', key, cache.peek().version, compute);
+
+            await cache.get();
+            await flush();
+            calls[1].resolve(data('a'));
+            await flush();
+            memo.getJson('dashboard', key, (await cache.get()).snapshot.version, compute);
+
+            expect(compute).toHaveBeenCalledTimes(1);
+        });
+
+        it('изменились данные: версия растет, готовые ответы пересчитываются', async () => {
+            const { createResponseMemo } = await import('./responseMemo.js');
+            const memo = createResponseMemo();
+            const { cache, calls, snapshot } = await agedCache();
+            const compute = vi.fn(() => '{"total":1}');
+            const key = { month: '2026-08' };
+            memo.getJson('dashboard', key, snapshot.version, compute);
+
+            await cache.get();
+            await flush();
+            calls[1].resolve({ docs: [{ _id: 'a', amount: 5 }], accounts: [{ _id: 'acc-a' }] });
+            await flush();
+            const fresh = (await cache.get()).snapshot;
+            memo.getJson('dashboard', key, fresh.version, compute);
+
+            expect(fresh.version).toBeGreaterThan(snapshot.version);
+            expect(compute).toHaveBeenCalledTimes(2);
+        });
+
+        it('правка скриптом вне сервера (только значение поля) подхватывается после обновления', async () => {
+            // Документ тот же, _id и число документов те же, меняется одна сумма:
+            // ни счетчик, ни максимальный _id этого бы не увидели.
+            const made = makeCache();
+            const first = made.cache.get();
+            await flush();
+            made.calls[0].resolve({ docs: [{ _id: 'x1', amount: 100 }, { _id: 'x2', amount: 200 }], accounts: [{ _id: 'acc' }] });
+            await first;
+
+            made.clock.time += SOFT_TTL_MS + 1;
+            const stale = await made.cache.get();
+            expect(stale.state).toBe('stale');
+            expect(stale.snapshot.docs[0].amount).toBe(100);
+            await flush();
+            made.calls[1].resolve({ docs: [{ _id: 'x1', amount: 150 }, { _id: 'x2', amount: 200 }], accounts: [{ _id: 'acc' }] });
+            await flush();
+
+            // Следующий читатель видит правку.
+            const next = await made.cache.get();
+            expect(next.state).toBe('hit');
+            expect(next.snapshot.docs[0].amount).toBe(150);
+        });
+
+        it('изменение только в счетах тоже считается изменением', async () => {
+            const { cache, calls, snapshot } = await agedCache();
+
+            await cache.get();
+            await flush();
+            calls[1].resolve({ docs: [{ _id: 'a' }], accounts: [{ _id: 'acc-a', excludeFromTotal: true }] });
+            await flush();
+
+            expect(cache.peek().version).toBeGreaterThan(snapshot.version);
+            expect(cache.peek().accounts[0].excludeFromTotal).toBe(true);
+        });
+
+        it('сравнение не зависит от порядка документов', async () => {
+            const made = makeCache();
+            const first = made.cache.get();
+            await flush();
+            made.calls[0].resolve({ docs: [{ _id: 'x1' }, { _id: 'x2' }], accounts: [] });
+            const { snapshot } = await first;
+
+            made.clock.time += SOFT_TTL_MS + 1;
+            await made.cache.get();
+            await flush();
+            made.calls[1].resolve({ docs: [{ _id: 'x2' }, { _id: 'x1' }], accounts: [] });
+            await flush();
+
+            expect(made.cache.peek()).toBe(snapshot);
+        });
+
+        it('запись во время обновления: его результат не ставится, версия записи сохраняется', async () => {
+            const { cache, calls } = await agedCache();
+
+            await cache.get();
+            await flush();
+            cache.invalidate({ reload: false });
+            const versionAfterWrite = cache.getVersion();
+            // Обновление, начатое до записи, возвращает те же данные, что и были.
+            calls[1].resolve(data('a'));
+            await flush();
+
+            expect(cache.peek()).toBeNull();
+            expect(cache.getVersion()).toBe(versionAfterWrite);
+        });
     });
 
     it('ошибка фоновой перезагрузки по возрасту не ломает устаревший снимок и пишется в лог раз', async () => {
@@ -208,6 +342,8 @@ describe('createLedgerCache', () => {
         await flush();
 
         expect(logger.warn).toHaveBeenCalledTimes(1);
+        // В логе виден возраст снимка, который продолжает отдаваться.
+        expect(logger.warn.mock.calls[0][0]).toMatch(/Снимок отдается устаревшим \(10 мин\)/);
         expect((await cache.get()).snapshot.docs).toEqual([{ _id: 'a' }]);
     });
 
@@ -390,6 +526,19 @@ describe('createLedgerCache', () => {
         await pending;
 
         expect(cache.peek()).toBeNull();
+    });
+});
+
+describe('fingerprintLedger', () => {
+    it('одинаковый для одинаковых данных и разный при любой правке', () => {
+        const base = { docs: [{ _id: 'a', amount: 1 }, { _id: 'b', amount: 2 }], accounts: [{ _id: 'c', order: 1 }] };
+
+        expect(fingerprintLedger({ docs: [...base.docs], accounts: [...base.accounts] })).toBe(fingerprintLedger(base));
+        expect(fingerprintLedger({ ...base, docs: [{ _id: 'a', amount: 1 }, { _id: 'b', amount: 3 }] })).not.toBe(fingerprintLedger(base));
+        expect(fingerprintLedger({ ...base, docs: base.docs.slice(0, 1) })).not.toBe(fingerprintLedger(base));
+        expect(fingerprintLedger({ ...base, accounts: [{ _id: 'c', order: 2 }] })).not.toBe(fingerprintLedger(base));
+        // Документ, перешедший из операций в счета, - не то же самое.
+        expect(fingerprintLedger({ docs: [], accounts: [{ _id: 'a' }] })).not.toBe(fingerprintLedger({ docs: [{ _id: 'a' }], accounts: [] }));
     });
 });
 

@@ -14,6 +14,7 @@ import { connectTestDb, disconnectTestDb, clearCollections, loginAgent, tx, DB_H
 import { buildHistoryPage, parseHistoryQuery } from './history.js';
 import { activeTransactionFilter } from './ledgerState.js';
 import { computeBalances } from './stats.js';
+import * as ledgerCacheModule from './ledgerCache.js';
 
 let app;
 let agent;
@@ -399,6 +400,60 @@ describe('Server-Timing и тёплый кэш после записи', () => {
         expect(cacheState(second)).toBe('hit');
         const dbMs = Number(/db;dur=([\d.]+)/.exec(second.headers['server-timing'])[1]);
         expect(dbMs).toBeLessThan(5);
+    });
+});
+
+describe('запись не через сервер и возраст снимка', () => {
+    const { SOFT_TTL_MS } = ledgerCacheModule;
+
+    // Состарить снимок можно только его собственной отметкой: ждать десять минут
+    // в тесте нельзя, а фальшивые часы кэша отсюда недоступны.
+    const age = (ms) => { ledgerCache.peek().loadedAt -= ms; };
+    const settle = () => new Promise(resolve => setTimeout(resolve, 300));
+
+    it('правка в обход Mongoose видна после фонового обновления, а читатель не ждет базу', async () => {
+        await warm();
+        // Как скрипт из server/*.js: драйвером напрямую, кэш об этом не знает.
+        await Transaction.collection.insertOne({
+            title: 'скрипт', amount: 100, type: 'expense', category: 'Продукты', account: cardId, date: new Date('2026-08-06T00:00:00.000Z')
+        });
+        age(24 * 60 * 60 * 1000);
+
+        // Сутки простоя: ответ все равно из памяти, со старыми цифрами.
+        const stale = await dashboard();
+        expect(cacheState(stale)).toBe('stale');
+        expect(stale.body.balances.total).toBe(1000);
+        await settle();
+
+        const fresh = await dashboard();
+        expect(cacheState(fresh)).toBe('hit');
+        expect(fresh.body.balances.total).toBe(900);
+    });
+
+    it('правка суммы того же документа (счетчик и _id те же) тоже подхватывается', async () => {
+        await warm();
+        await Transaction.collection.updateOne({}, { $set: { amount: 400 } });
+        age(SOFT_TTL_MS + 1);
+
+        await dashboard();
+        await settle();
+
+        expect((await dashboard()).body.balances.total).toBe(400);
+    });
+
+    it('обновление без изменений данных не сбрасывает готовые ответы', async () => {
+        await warm();
+        const version = ledgerCache.getVersion();
+        const computes = responseMemo.stats().computes;
+        age(SOFT_TTL_MS + 1);
+
+        expect(cacheState(await dashboard())).toBe('stale');
+        await settle();
+
+        const again = await dashboard();
+        expect(cacheState(again)).toBe('hit');
+        expect(ledgerCache.getVersion()).toBe(version);
+        expect(responseMemo.stats().computes).toBe(computes);
     });
 });
 
