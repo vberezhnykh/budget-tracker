@@ -124,7 +124,7 @@ export default function OverviewScreen({
   const recentFade = useFadeIn(recent.loading);
 
   return (
-    <div className="screen-enter">
+    <>
       {/* Заголовок экрана - сам выбор периода; названия приложения здесь нет. */}
       <header style={{
         display: 'flex',
@@ -223,6 +223,6 @@ export default function OverviewScreen({
           )}
         </div>
       </section>
-    </div>
+    </>
   );
 }

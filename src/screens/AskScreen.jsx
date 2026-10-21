@@ -95,9 +95,8 @@ export default function AskScreen({ turns, onSend, onRetry, onStop, onReset, onB
 
   const canSend = draft.trim().length >= MIN_QUESTION_LENGTH;
 
-  // Только прозрачность: внутри поле ввода с position: fixed, и сдвиг экрана увёл бы его с места на время анимации.
   return (
-    <div className="screen-enter screen-enter--flat">
+    <>
       <ScreenHeader
         title="Вопросы к данным"
         backLabel="Аналитика"
@@ -206,6 +205,6 @@ export default function AskScreen({ turns, onSend, onRetry, onStop, onReset, onB
           </button>
         )}
       </form>
-    </div>
+    </>
   );
 }

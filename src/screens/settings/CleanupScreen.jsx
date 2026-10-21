@@ -551,9 +551,7 @@ export default function CleanupScreen({ state, onBack, onRefresh, onStart, onApp
     ) : null;
 
     return (
-        // Только прозрачность (flat): в теле есть панель position: fixed, и сдвиг
-        // экрана увёл бы её с места на время анимации.
-        <div className="screen-enter screen-enter--flat" style={stackStyle}>
+        <div style={stackStyle}>
             <ScreenHeader title="Старые описания" backLabel="Ещё" onBack={onBack} />
             {loadFailure}
             {notice && <InlineAlert tone="neutral">{notice}</InlineAlert>}

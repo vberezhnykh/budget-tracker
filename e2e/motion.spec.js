@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { mockApi, transactions, accounts, categories } from './fixtures.js';
 
-// Плавность коротких загрузок: появление экранов, подмена скелетона данными и
-// бегущие цифры. jsdom анимаций и раскладки не считает, поэтому проверяем в
-// настоящем браузере: что вкладки не двигают нижнюю панель, что после
-// анимации на экране не остаётся ни прозрачности, ни transform (иначе
+// Плавность коротких загрузок: подмена скелетона данными и бегущие цифры.
+// jsdom анимаций и раскладки не считает, поэтому проверяем в настоящем
+// браузере: что экраны вкладок появляются сразу, без анимации (общее
+// проявление экрана владелец отклонил: от него уставали глаза), что после
+// проявления блоков не остается ни прозрачности, ни transform (иначе
 // position: fixed и sticky внутри поехали бы), и что цифры бегут только при
 // обновлении той же величины.
 
@@ -16,14 +17,14 @@ const purchase = (id, date, title = id) => ({
 });
 
 // Все корни анимации экрана закончили и вернулись к обычному виду.
-const settled = page => page.evaluate(() => [...document.querySelectorAll('.screen-enter, .fade-in')]
+const settled = page => page.evaluate(() => [...document.querySelectorAll('.fade-in')]
   .every(el => {
     const style = getComputedStyle(el);
     return style.opacity === '1' && style.transform === 'none';
   }));
 
 test.describe('Motion on short loads (mobile, real browser)', () => {
-  test('a tab switch fades the incoming screen in without touching the bottom nav, and leaves no transform behind', async ({ page }) => {
+  test('a tab switch shows the incoming screen at once, without touching the bottom nav', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-10-02T12:00:00Z'));
     await mockApi(page, { transactions: [
       ...Array.from({ length: 10 }, (_, i) => purchase(`oct-${i}`, '2026-10-01', `Октябрь ${i}`)),
@@ -37,14 +38,14 @@ test.describe('Motion on short loads (mobile, real browser)', () => {
     const before = await navigation.boundingBox();
     await goTo(page, 'История');
 
-    // Сразу после нажатия экран ещё едет, а панель стоит на месте.
+    // Экран вкладки не анимируется, панель стоит на месте.
     const root = page.getByTestId('history-scroll').locator('xpath=..');
-    expect(await root.evaluate(el => getComputedStyle(el).animationName)).toBe('fade-in');
+    expect(await root.evaluate(el => getComputedStyle(el).animationName)).toBe('none');
     expect(await navigation.boundingBox()).toEqual(before);
     await expect(page.getByText('Октябрь 0', { exact: true })).toBeVisible();
 
-    // После анимации экран в обычном виде: transform: none не держит containing
-    // block для fixed (нижняя панель) и не ломает sticky заголовков месяцев.
+    // После проявления списка экран в обычном виде: transform: none не держит
+    // containing block для fixed (нижняя панель) и не ломает sticky заголовков.
     await expect.poll(() => settled(page)).toBe(true);
     expect(await navigation.boundingBox()).toEqual(before);
     expect(await root.evaluate(el => getComputedStyle(el).transform)).toBe('none');
@@ -64,14 +65,14 @@ test.describe('Motion on short loads (mobile, real browser)', () => {
     expect(await navigation.boundingBox()).toEqual(before);
   });
 
-  test('inner screens under «Ещё» fade in too', async ({ page }) => {
+  test('inner screens under «Ещё» open at once, without a fade', async ({ page }) => {
     await mockApi(page);
     await page.goto('/');
     await goTo(page, 'Ещё');
     await page.getByRole('button', { name: /Категории/ }).click();
     await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible();
-    const root = page.locator('.screen-enter');
-    await expect(root).toHaveCount(1);
+    const root = page.getByRole('heading', { name: 'Категории' }).locator('xpath=ancestor::main/*[1]');
+    expect(await root.evaluate(el => getComputedStyle(el).animationName)).toBe('none');
     await expect.poll(() => settled(page)).toBe(true);
   });
 
@@ -81,9 +82,10 @@ test.describe('Motion on short loads (mobile, real browser)', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await mockApi(page);
     await page.goto('/');
-    await goTo(page, 'История');
-    await expect(page.getByTestId('history-scroll')).toBeVisible();
-    const names = await page.evaluate(() => [...document.querySelectorAll('.screen-enter, .fade-in')]
+    // «Последние операции» на Обзоре при запуске сменяют скелетон и получают
+    // класс проявления: на нем и проверяем, что анимации нет.
+    await expect(page.locator('.fade-in').first()).toBeAttached();
+    const names = await page.evaluate(() => [...document.querySelectorAll('.fade-in')]
       .map(el => getComputedStyle(el).animationName));
     expect(names.length).toBeGreaterThan(0);
     expect(names.every(name => name === 'none')).toBe(true);

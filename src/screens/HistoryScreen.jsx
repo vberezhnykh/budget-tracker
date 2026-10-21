@@ -227,7 +227,6 @@ export default function HistoryScreen({
 
   return (
     <div
-      className="screen-enter"
       style={{
         display: 'flex',
         flexDirection: 'column',

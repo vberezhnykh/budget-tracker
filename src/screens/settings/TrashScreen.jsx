@@ -206,7 +206,7 @@ export default function TrashScreen({ groups, loading, error, onBack, onRetry, o
   const failure = actionError || error;
 
   return (
-    <div className="screen-enter" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <ScreenHeader title="Корзина" backLabel="Ещё" onBack={onBack} />
       <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' }}>
         Операции лежат здесь, пока вы не удалите их навсегда. В итогах и истории они не учитываются.
