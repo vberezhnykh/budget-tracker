@@ -63,6 +63,9 @@ export default function BottomNav({ active, onChange, onAdd }) {
         paddingBottom: NAV_BOTTOM_GAP,
         display: 'grid',
         gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+        // Своё имя в view transition: панель выпадает из снимка экрана и во
+        // время выезда нового экрана стоит на месте (см. index.css).
+        viewTransitionName: 'bottom-nav',
       }}
     >
       {TABS.map(tab => {

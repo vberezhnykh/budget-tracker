@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { X } from 'lucide-react';
 
 // Всплывающее уведомление: «Операция удалена» с отменой, «Сохранено».
@@ -13,6 +14,10 @@ import { X } from 'lucide-react';
 // с белым текстом, они читаются на любом фоне.
 
 export default function Toast({ message, tone = 'neutral', action, onClose, bottomOffset = 104 }) {
+    // Имя в view transition должно быть уникальным на странице, а тостов бывает
+    // несколько сразу, поэтому оно строится из useId (двоеточия в имени не
+    // годятся для CSS-идентификатора).
+    const transitionName = `toast-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
     return (
         <div
             role={tone === 'danger' ? 'alert' : 'status'}
@@ -34,6 +39,8 @@ export default function Toast({ message, tone = 'neutral', action, onClose, bott
                 background: 'var(--color-text-main)',
                 color: 'var(--color-text-inverse)',
                 boxShadow: 'var(--shadow-toast)',
+                // Тост не должен ехать вместе со сменой экрана (см. index.css).
+                viewTransitionName: transitionName,
                 fontSize: 'var(--text-md)',
             }}
         >

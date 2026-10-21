@@ -25,6 +25,10 @@ test('history loads the whole list in one request and reveals older days locally
   await mockApi(page, { transactions: purchases(300) });
   await page.goto('/');
   await goTo(page, 'История');
+  // Экран меняется внутри view transition, на кадр позже нажатия: до этого в
+  // DOM ещё Обзор, а его блок «Последние операции» тоже состоит из строк
+  // «Покупка N» (пять штук), и подсчёт ниже поймал бы их.
+  await expect(page.getByTestId('history-scroll')).toBeVisible();
   const rows = rowsOf(page);
   await expect(rows.first()).toBeVisible();
   // В DOM только окно (~60 строк), а не все 300.

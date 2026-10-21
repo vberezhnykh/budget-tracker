@@ -385,9 +385,65 @@ button {
   animation-name: fade-in-flat;
 }
 
-/* Экраны вкладок и внутренние экраны «Ещё» появляются сразу, без анимации:
-   общее проявление экрана при каждом переключении владелец пробовал, и от
-   него уставали глаза. Плавно проявляются только блоки, сменившие скелетон. */
+/* Смена экрана: новый выезжает сбоку поверх старого, старый стоит на месте и
+   не гаснет. Это View Transitions API (useHashScreen ставит на <html>
+   data-nav-direction: forward - справа, back - слева); без API экран меняется
+   сразу. Общее проявление экрана (fade с подъёмом) владелец пробовал, и от
+   него уставали глаза, поэтому здесь только сдвиг. Плавно проявляются, как и
+   раньше, лишь блоки, сменившие скелетон (.fade-in).
+
+   UA-стили по умолчанию тут не годятся: они перекрёстно гасят старый снимок и
+   складывают снимки через mix-blend-mode: plus-lighter, а сложение двух
+   непрозрачных экранов даёт белёсую полосу там, где они перекрываются.
+   Поэтому анимация и режим смешивания заданы явно для всех снимков.
+
+   Всё, у чего есть свой view-transition-name (нижняя панель, тосты), едет
+   отдельной группой над корнем и не двигается: анимации групп и старого
+   снимка выключены, новый снимок лежит на месте. Старый снимок таких групп
+   прячем - иначе рядом с новым он давал бы двойную тень. */
+::view-transition-group(*) {
+  animation: none;
+}
+
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(*) {
+  display: none;
+}
+
+::view-transition-old(root) {
+  display: block;
+}
+
+:root[data-nav-direction="forward"]::view-transition-new(root),
+:root[data-nav-direction="back"]::view-transition-new(root) {
+  animation: 280ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+:root[data-nav-direction="forward"]::view-transition-new(root) {
+  animation-name: screen-from-right;
+  /* Тень на передней кромке: показывает, что экран лежит поверх. */
+  box-shadow: -10px 0 24px rgba(21, 23, 28, 0.14);
+}
+
+:root[data-nav-direction="back"]::view-transition-new(root) {
+  animation-name: screen-from-left;
+  box-shadow: 10px 0 24px rgba(21, 23, 28, 0.14);
+}
+
+@keyframes screen-from-right {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes screen-from-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
 
 /* Текст только для скринридера: на экране его нет, но читается. Нужен, пока
    видимые цифры суммы бегут к итоговому значению (components/AnimatedMoney). */
