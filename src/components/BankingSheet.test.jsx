@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BankingSheet from './BankingSheet';
 import App from '../App';
+import { withBootstrap } from '../test/bootstrap';
 import { SAVE_BUTTON_NAME } from '../test/queries';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card', icon: '💳' }, { _id: 'cash', name: 'Наличные', type: 'cash' }, { _id: 'other', name: 'Второй банк', type: 'card' }];
@@ -221,7 +222,7 @@ function response(body, status = 200) {
 }
 
 function appFetch(override = () => undefined) {
-  const fetchMock = vi.fn(async (url, options) => {
+  const fetchMock = vi.fn(withBootstrap(async (url, options) => {
     const custom = override(url, options);
     if (custom !== undefined) return custom;
     const data = !options?.method ? readApi(url, [], accounts) : undefined;
@@ -235,7 +236,7 @@ function appFetch(override = () => undefined) {
     if (url === '/api/banking') return response(bankData);
     if (url === '/api/banking/review') return response({ items: [proposal], total: 1 });
     throw new Error(`Unexpected mock URL ${url}`);
-  });
+  }));
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }
@@ -346,7 +347,8 @@ describe('App banking integration', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Добавить в бюджет' })).not.toBeInTheDocument());
     expect(await screen.findByRole('alert')).toHaveTextContent('Обновление временно недоступно');
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/banking/review/entry/resolve')).toHaveLength(1);
-    expect(fetchMock.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?'))).toHaveLength(2);
+    // Сводка приходит в составе стартового снимка: запуск и обновление после одобрения.
+    expect(fetchMock.mock.calls.filter(([url]) => url.startsWith('/api/bootstrap?'))).toHaveLength(2);
   });
 
   it('refreshes a conflicting proposal without automatically retrying the resolution', async () => {

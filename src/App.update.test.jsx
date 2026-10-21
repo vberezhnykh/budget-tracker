@@ -2,7 +2,9 @@ import { readApi } from '../server/test/readApi.mjs';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { withBootstrap } from './test/bootstrap';
 import { reloadPage } from './utils/appUpdate';
+import { flushIdle } from './test/idle';
 
 // Перезагрузку подменяем: window.location.reload в jsdom не переопределить,
 // а проверять нужно именно факт вызова.
@@ -31,7 +33,7 @@ function makeApi({ serverVersion = NEWER } = {}) {
     trash: [],
   };
 
-  const fetch = vi.fn(async (url, options = {}) => {
+  const fetch = vi.fn(withBootstrap(async (url, options = {}) => {
     const method = options.method || 'GET';
     if (url === '/api/version') return ok({ version: state.version });
     const data = method === 'GET' ? readApi(url, state.transactions, state.accounts) : undefined;
@@ -54,7 +56,7 @@ function makeApi({ serverVersion = NEWER } = {}) {
       return ok({ count: group.count });
     }
     return ok({});
-  });
+  }));
 
   return { state, fetch };
 }
@@ -188,5 +190,74 @@ describe('Обновление приложения при возвращени�
     // Отмена удаления убирает тост, и обновление применяется.
     fireEvent.click(within(undoToast).getByRole('button', { name: 'Отменить' }));
     await waitFor(() => expect(reloadPage).toHaveBeenCalledTimes(1));
+  });
+
+  describe('проверка при запуске (оболочка могла прийти из кеша прошлой сборки)', () => {
+    it('спрашивает версию не раньше, чем данные на экране и браузер свободен, и перезагружает, если она новее', async () => {
+      const api = makeApi();
+      await renderApp(api);
+      // Данные уже показаны, но простоя еще не было: проверка не конкурирует с запуском.
+      expect(versionCalls(api)).toHaveLength(0);
+      expect(reloadPage).not.toHaveBeenCalled();
+
+      await flushIdle();
+
+      await waitFor(() => expect(reloadPage).toHaveBeenCalledTimes(1));
+      expect(versionCalls(api)).toHaveLength(1);
+    });
+
+    it('не ходит за версией, пока данные не загружены', async () => {
+      const api = makeApi();
+      let finish;
+      const base = api.fetch.getMockImplementation();
+      api.fetch.mockImplementation((url, options) => (url.startsWith('/api/bootstrap?')
+        ? new Promise(resolve => { finish = () => resolve(base(url, options)); })
+        : base(url, options)));
+      vi.stubGlobal('fetch', api.fetch);
+      render(<App />);
+
+      await flushIdle();
+      expect(versionCalls(api)).toHaveLength(0);
+
+      await act(async () => finish());
+      await screen.findByTestId('accounts-row');
+      await flushIdle();
+      expect(versionCalls(api)).toHaveLength(1);
+    });
+
+    it('если после перезагрузки страница все еще старая, на ту же версию второй раз не перезагружается', async () => {
+      // Перезагрузка ради этой версии уже была в этой вкладке.
+      window.sessionStorage.setItem('budgetpro-reloaded-for', NEWER);
+      const api = makeApi();
+      await renderApp(api);
+
+      await flushIdle();
+
+      await waitFor(() => expect(versionCalls(api)).toHaveLength(1));
+      await act(async () => {});
+      expect(reloadPage).not.toHaveBeenCalled();
+    });
+
+    it('при открытой форме на запуске показывает плашку, а не перезагружает', async () => {
+      const api = makeApi();
+      await renderApp(api);
+      fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
+
+      await flushIdle();
+
+      await screen.findByText(UPDATE_TOAST);
+      expect(reloadPage).not.toHaveBeenCalled();
+    });
+
+    it('совпавшая версия: ничего не происходит', async () => {
+      const api = makeApi({ serverVersion: CURRENT });
+      await renderApp(api);
+
+      await flushIdle();
+
+      await waitFor(() => expect(versionCalls(api)).toHaveLength(1));
+      expect(reloadPage).not.toHaveBeenCalled();
+      expect(screen.queryByText(UPDATE_TOAST)).not.toBeInTheDocument();
+    });
   });
 });

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from './App';
 import { computeAccountReorder, handleAccountDragEnd } from './utils/accountReorder';
 import { SAVE_BUTTON_NAME } from './test/queries';
+import { bootstrapFetch } from './test/bootstrap';
 
 // Mock the API response
 const mockTransactions = [
@@ -41,7 +42,7 @@ let currentCategories = [];
 // the accountReorder tests below.
 let fetchMock;
 function createFetchMock() {
-    return vi.fn((url, options) => {
+    return bootstrapFetch(vi, (url, options) => {
         const data = !options?.method ? readApi(url, currentTransactions, currentAccounts) : undefined;
         if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
         if (typeof url === 'string' && url.includes('/api/accounts')) {
@@ -258,39 +259,45 @@ describe('App Integration Tests', () => {
         consoleSpy.mockRestore();
     });
 
-    it('starts categories and settings while the summary request is still pending', async () => {
-        let resolveTransactions;
-        const pendingTransactions = new Promise(resolve => { resolveTransactions = resolve; });
-        const categoriesJson = vi.fn().mockResolvedValue([]);
-        const settingsJson = vi.fn().mockResolvedValue({ monthlyLimit: 7000 });
-
-        fetchMock.mockImplementation((url) => {
-            if (url === '/api/accounts') {
-                return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(currentAccounts) });
-            }
-            if (url.startsWith('/api/stats/dashboard?')) return pendingTransactions;
-            if (url === '/api/categories') {
-                return Promise.resolve({ ok: true, status: 200, json: categoriesJson });
-            }
-            if (url === '/api/settings') {
-                return Promise.resolve({ ok: true, status: 200, json: settingsJson });
-            }
-            return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
+    it('starts with one bootstrap request instead of separate accounts, categories, settings and summary requests', async () => {
+        let resolveBootstrap;
+        const pendingBootstrap = new Promise(resolve => { resolveBootstrap = resolve; });
+        // Без обертки bootstrapFetch: здесь важен сам адрес запроса, а не его
+        // сборка из ответов по отдельным адресам.
+        const rawFetch = vi.fn(url => {
+            if (url.startsWith('/api/bootstrap?')) return pendingBootstrap;
+            const data = readApi(url, currentTransactions, currentAccounts);
+            return Promise.resolve({ ok: true, status: 200, json: async () => data ?? [] });
         });
+        vi.stubGlobal('fetch', rawFetch);
+        fetchMock = rawFetch;
 
         render(<App />);
 
-        await waitFor(() => {
-            expect(categoriesJson).toHaveBeenCalledTimes(1);
-            expect(settingsJson).toHaveBeenCalledTimes(1);
-        });
         expect(screen.getByRole('status', { name: 'Загрузка приложения…' })).toBeInTheDocument();
         expect(screen.queryByText('Загрузка...')).not.toBeInTheDocument();
+        const startupUrls = () => fetchMock.mock.calls.map(([url]) => url).filter(url => !url.startsWith('/api/history?'));
+        expect(startupUrls()).toHaveLength(1);
+        expect(startupUrls()[0]).toMatch(/^\/api\/bootstrap\?month=2026-01&timeRange=month&today=2026-01-15&analytics=0$/);
 
         await act(async () => {
-            resolveTransactions({ ok: true, status: 200, json: async () => readApi('/api/stats/dashboard?month=2026-01&today=2026-01-15', currentTransactions, currentAccounts) });
+            resolveBootstrap({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    accounts: currentAccounts,
+                    categories: currentCategories,
+                    settings: { monthlyLimit: 7000 },
+                    dashboard: readApi('/api/stats/dashboard?month=2026-01&today=2026-01-15', currentTransactions, currentAccounts),
+                }),
+            });
         });
         await waitForOverview();
+        for (const path of ['/api/accounts', '/api/categories', '/api/settings']) {
+            expect(fetchMock.mock.calls.filter(([url]) => url === path)).toHaveLength(0);
+        }
+        expect(fetchMock.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?'))).toHaveLength(0);
+        expect(fetchMock.mock.calls.filter(([url]) => url.startsWith('/api/bootstrap?'))).toHaveLength(1);
     });
 
     it('changes the month from the period title in the header', async () => {
@@ -1897,7 +1904,7 @@ describe('App Integration Tests', () => {
     // leave state alone, rather than crashing or staying silently blank.
     it('shows the server message in the initial error state when /api/accounts responds with a non-array body', async () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        vi.stubGlobal('fetch', vi.fn((url) => {
+        vi.stubGlobal('fetch', bootstrapFetch(vi, (url) => {
             const data = readApi(url, currentTransactions, currentAccounts);
             if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/accounts')) {
@@ -1933,7 +1940,7 @@ describe('App Integration Tests', () => {
     // the render-side guard is what actually has to catch it here.
     it('rejects an invalid settings response instead of treating the default limit as synchronized', async () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-        vi.stubGlobal('fetch', vi.fn((url) => {
+        vi.stubGlobal('fetch', bootstrapFetch(vi, (url) => {
             const data = readApi(url, currentTransactions, currentAccounts);
             if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/settings')) {
@@ -1971,7 +1978,7 @@ describe('App Integration Tests', () => {
 
         const failLogout = async () => {
             const baseMock = fetchMock;
-            vi.stubGlobal('fetch', vi.fn((url, options) => {
+            vi.stubGlobal('fetch', bootstrapFetch(vi, (url, options) => {
                 if (typeof url === 'string' && url.includes('/api/logout')) {
                     return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
                 }
@@ -2044,7 +2051,7 @@ describe('App Integration Tests', () => {
             await waitForOverview();
 
             const baseMock = fetchMock;
-            vi.stubGlobal('fetch', vi.fn((url, options) => {
+            vi.stubGlobal('fetch', bootstrapFetch(vi, (url, options) => {
                 if (typeof url === 'string' && url.includes('/api/logout')) {
                     return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ message: 'boom' }) });
                 }
@@ -2081,7 +2088,7 @@ describe('App Integration Tests', () => {
             await waitForOverview();
 
             const baseMock = fetchMock;
-            vi.stubGlobal('fetch', vi.fn((url, options) => {
+            vi.stubGlobal('fetch', bootstrapFetch(vi, (url, options) => {
                 if (typeof url === 'string' && url.includes('/api/logout')) {
                     return Promise.reject(new Error('network down'));
                 }
@@ -2312,7 +2319,7 @@ describe('Authentication flow', () => {
         const initialAccounts = [{ _id: 'initial', name: 'Начальный счёт', type: 'card', icon: '💳' }];
         const freshAccounts = [{ _id: 'fresh', name: 'Свежий счёт', type: 'card', icon: '💳' }];
 
-        vi.stubGlobal('fetch', vi.fn((url, options) => {
+        vi.stubGlobal('fetch', bootstrapFetch(vi, (url, options) => {
             if (url === '/api/accounts' && options?.method === 'POST') {
                 return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve({ _id: 'saved' }) });
             }
@@ -2351,6 +2358,11 @@ describe('Authentication flow', () => {
         fireEvent.change(screen.getByLabelText('Пароль'), { target: { value: 'family-secret' } });
         fireEvent.click(screen.getByRole('button', { name: 'Войти' }));
         await waitFor(() => screen.getByText('Свежий счёт'));
+        // Запрос обновления старого сеанса (его счета еще в пути) собирал свою
+        // сводку параллельно, поэтому к этому моменту прочитано три сводки:
+        // запуск, обновление старого сеанса и запуск нового.
+        const readsBeforeStaleResponse = transactionGets;
+        expect(readsBeforeStaleResponse).toBe(3);
 
         await act(async () => {
             resolveOldAccounts({
@@ -2362,13 +2374,13 @@ describe('Authentication flow', () => {
 
         expect(screen.getByText('Свежий счёт')).toBeInTheDocument();
         expect(screen.queryByText('Устаревший счёт')).not.toBeInTheDocument();
-        // Initial session + fresh session only. The stale accounts response
-        // must stop before it launches child requests under the new session.
-        expect(transactionGets).toBe(2);
+        // The stale response is dropped without launching any further
+        // requests under the new session.
+        expect(transactionGets).toBe(readsBeforeStaleResponse);
     });
 
     it('shows the login screen when the initial accounts fetch comes back 401', async () => {
-        vi.stubGlobal('fetch', vi.fn((url) => {
+        vi.stubGlobal('fetch', bootstrapFetch(vi, (url) => {
             const data = readApi(url, currentTransactions, currentAccounts);
             if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/accounts')) {
@@ -2392,7 +2404,7 @@ describe('Authentication flow', () => {
 
     it('reveals the app after a successful login', async () => {
         let authenticated = false;
-        vi.stubGlobal('fetch', vi.fn((url) => {
+        vi.stubGlobal('fetch', bootstrapFetch(vi, (url) => {
             const data = readApi(url, currentTransactions, currentAccounts);
             if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/login')) {
@@ -2432,7 +2444,7 @@ describe('Authentication flow', () => {
 
     it('returns to the login screen when a mid-session request comes back 401 (expired/cleared session)', async () => {
         let accountsCallCount = 0;
-        vi.stubGlobal('fetch', vi.fn((url) => {
+        vi.stubGlobal('fetch', bootstrapFetch(vi, (url) => {
             const data = readApi(url, currentTransactions, currentAccounts);
             if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/accounts')) {
@@ -2471,7 +2483,7 @@ describe('Authentication flow', () => {
     });
 
     it('does not claim the session expired after the user logged out on purpose', async () => {
-        vi.stubGlobal('fetch', vi.fn((url) => {
+        vi.stubGlobal('fetch', bootstrapFetch(vi, (url) => {
             const data = readApi(url, currentTransactions, currentAccounts);
             if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/logout')) {
@@ -2498,7 +2510,7 @@ describe('Authentication flow', () => {
 
     it('goes back to the plain subtitle after signing in again', async () => {
         let authenticated = true;
-        vi.stubGlobal('fetch', vi.fn((url) => {
+        vi.stubGlobal('fetch', bootstrapFetch(vi, (url) => {
             const data = readApi(url, currentTransactions, currentAccounts);
             if (data !== undefined) return Promise.resolve({ ok: true, status: 200, json: async () => data });
             if (typeof url === 'string' && url.includes('/api/login')) {

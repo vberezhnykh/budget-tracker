@@ -40,6 +40,7 @@ describe('Гейт /api/*', () => {
             ['get', '/api/accounts'],
             ['get', '/api/categories'],
             ['get', '/api/settings'],
+            ['get', '/api/bootstrap'],
             ['get', '/api/stats/balances'],
             ['get', '/api/stats/monthly'],
             ['post', '/api/transactions'],

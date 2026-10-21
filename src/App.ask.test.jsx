@@ -2,6 +2,7 @@ import { readApi } from '../server/test/readApi.mjs';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { withBootstrap } from './test/bootstrap';
 
 Element.prototype.scrollIntoView = vi.fn();
 
@@ -44,7 +45,7 @@ function askStream(signal) {
 
 function setupApi({ features } = {}) {
   const streams = [];
-  const fetch = vi.fn(async (url, options = {}) => {
+  const fetch = vi.fn(withBootstrap(async (url, options = {}) => {
     const method = options.method || 'GET';
     if (url === '/api/ask') {
       const next = askStream(options.signal);
@@ -59,7 +60,7 @@ function setupApi({ features } = {}) {
     if (url === '/api/transactions') return ok(transactions);
     if (url === '/api/trash') return ok([]);
     return ok({});
-  });
+  }));
   vi.stubGlobal('fetch', fetch);
   return { fetch, streams };
 }

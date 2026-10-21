@@ -12,17 +12,27 @@ import { mockApi } from './fixtures.js';
 //
 // Возвращение из фона эмулируется событием visibilitychange: страница в
 // тесте и так видима, поэтому достаточно его бросить.
+//
+// Приложение проверяет версию и при запуске (когда данные на экране и браузер
+// свободен), поэтому страница открывается при версии сервера, равной своей, а
+// «выкат» делает тест - сменой server.version уже после загрузки. Запуск на
+// другой версии проверяется отдельным тестом.
 
 const CURRENT = '/assets/index-OLD.js';
 
-async function openAsBuild(page, serverVersion) {
+// Подменяет сервер: версия сборки из server.version, страница «из сборки OLD».
+async function installBuild(page, initialServerVersion = CURRENT) {
+  const server = { version: initialServerVersion, versionRequests: 0 };
   await mockApi(page);
   // Позже зарегистрированный роут важнее: перекрывает версию из mockApi.
-  await page.route('**/api/version', route => route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ version: serverVersion }),
-  }));
+  await page.route('**/api/version', (route) => {
+    server.versionRequests += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ version: server.version }),
+    });
+  });
   await page.route(`**${CURRENT}`, route => route.fulfill({ status: 200, contentType: 'text/javascript', body: '' }));
   await page.route('**/', async (route) => {
     if (route.request().resourceType() !== 'document') return route.fallback();
@@ -30,11 +40,17 @@ async function openAsBuild(page, serverVersion) {
     const html = (await response.text()).replace('</head>', `<script type="module" src="${CURRENT}"></script></head>`);
     return route.fulfill({ response, body: html });
   });
+  return server;
+}
+
+async function openAsBuild(page, initialServerVersion = CURRENT) {
+  const server = await installBuild(page, initialServerVersion);
   await page.goto('/');
   await expect(page.getByTestId('accounts-row')).toBeVisible();
   // Метка живёт до перезагрузки: по её исчезновению видно, что страница
   // загрузилась заново.
   await page.evaluate(() => { window.__beforeReload = true; });
+  return server;
 }
 
 const returnFromBackground = page => page.evaluate(() => {
@@ -45,7 +61,8 @@ const survived = page => page.evaluate(() => window.__beforeReload === true);
 
 test.describe('Обновление при возвращении из фона (mobile, real browser)', () => {
   test('перезагружает страницу, когда сервер отдаёт другую сборку', async ({ page }) => {
-    await openAsBuild(page, '/assets/index-NEW.js');
+    const server = await openAsBuild(page);
+    server.version = '/assets/index-NEW.js';
 
     const reloaded = page.waitForEvent('load');
     await returnFromBackground(page);
@@ -56,7 +73,7 @@ test.describe('Обновление при возвращении из фона 
   });
 
   test('не трогает страницу, если сборка та же', async ({ page }) => {
-    await openAsBuild(page, CURRENT);
+    await openAsBuild(page);
 
     const versionAsked = page.waitForRequest('**/api/version');
     await returnFromBackground(page);
@@ -67,11 +84,12 @@ test.describe('Обновление при возвращении из фона 
   });
 
   test('при открытой форме показывает плашку, оставляя форму на месте, и обновляет по нажатию', async ({ page }) => {
-    await openAsBuild(page, '/assets/index-NEW.js');
+    const server = await openAsBuild(page);
     await page.getByRole('button', { name: 'Добавить операцию' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
+    server.version = '/assets/index-NEW.js';
     await returnFromBackground(page);
 
     const toast = page.getByRole('status').filter({ hasText: 'Доступна новая версия' });
@@ -88,9 +106,10 @@ test.describe('Обновление при возвращении из фона 
   });
 
   test('после закрытия формы с ожидающим обновлением перезагружается сам', async ({ page }) => {
-    await openAsBuild(page, '/assets/index-NEW.js');
+    const server = await openAsBuild(page);
     await page.getByRole('button', { name: 'Добавить операцию' }).click();
     await expect(page.getByRole('dialog')).toBeVisible();
+    server.version = '/assets/index-NEW.js';
     await returnFromBackground(page);
     await expect(page.getByText('Доступна новая версия')).toBeVisible();
 
@@ -98,5 +117,23 @@ test.describe('Обновление при возвращении из фона 
     await page.getByRole('button', { name: 'Закрыть', exact: true }).click();
     await reloaded;
     expect(await survived(page)).toBe(false);
+  });
+
+  test('при запуске на оболочке прошлой сборки перезагружается сам, один раз, и не зацикливается', async ({ page }) => {
+    // Страница в тесте всегда «старая» (HTML подменяется на OLD), поэтому после
+    // перезагрузки сервер по-прежнему называет новую версию: защита не должна
+    // дать перезагружаться снова.
+    let navigations = 0;
+    page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) navigations += 1; });
+
+    const reloaded = page.waitForEvent('load', { predicate: () => navigations >= 2 });
+    await installBuild(page, '/assets/index-NEW.js');
+    await page.goto('/');
+    await reloaded;
+
+    await expect(page.getByTestId('accounts-row')).toBeVisible();
+    // Дали время на вторую проверку версии после перезагрузки: повторной перезагрузки нет.
+    await page.waitForTimeout(1500);
+    expect(navigations).toBe(2);
   });
 });

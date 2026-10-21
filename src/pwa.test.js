@@ -113,6 +113,7 @@ describe('Service worker', () => {
     let handlers;
     let cacheStore;
     let fetchCalls;
+    let fetchInits;
     let fetchImpl;
 
     beforeAll(async () => {
@@ -150,28 +151,64 @@ describe('Service worker', () => {
         };
 
         fetchCalls = [];
-        fetchImpl = async (request) => {
-            fetchCalls.push(request.url || request);
+        fetchInits = [];
+        fetchImpl = async () => {
             return { ok: true, clone: () => ({ from: 'network' }), from: 'network' };
         };
 
         const load = new Function('self', 'caches', 'fetch', 'Response', 'URL', source);
-        load(self, caches, (request) => fetchImpl(request), { error: () => ({ error: true }) }, URL);
+        load(self, caches, (request, init) => {
+            fetchCalls.push(request.url || request);
+            fetchInits.push(init);
+            return fetchImpl(request, init);
+        }, { error: () => ({ error: true }) }, URL);
     });
 
-    // Минимальная замена FetchEvent: запоминает, вмешался ли обработчик.
+    // Минимальная замена FetchEvent: запоминает, вмешался ли обработчик, и
+    // собирает промисы waitUntil (settled() ждет их все - фоновую работу).
     function dispatchFetch(url, { mode = 'no-cors', method = 'GET' } = {}) {
         const event = {
             request: { url, method, mode },
             responded: false,
+            waited: [],
             respondWith(promise) {
                 this.responded = true;
                 this.response = promise;
+            },
+            waitUntil(promise) {
+                this.waited.push(promise);
+            },
+            settled() {
+                return Promise.all(this.waited);
             }
         };
         handlers.fetch(event);
         return event;
     }
+
+    // Сообщение странице-клиенту: порт для ответа записывает то, что воркер
+    // в него отправил.
+    function dispatchMessage(data, { withPort = true } = {}) {
+        const replies = [];
+        const event = {
+            data,
+            ports: withPort ? [{ postMessage: message => replies.push(message) }] : [],
+            source: { postMessage: message => replies.push({ viaSource: true, ...message }) },
+            waited: [],
+            waitUntil(promise) { this.waited.push(promise); },
+            replies
+        };
+        handlers.message(event);
+        return { event, settled: () => Promise.all(event.waited), replies };
+    }
+
+    // Страница, какой ее отдает сервер: клон читается как текст.
+    function pageWith(html, label = 'page') {
+        const make = () => ({ ok: true, from: label, text: async () => html, clone: make });
+        return make();
+    }
+
+    const ORIGIN = 'https://budget.example';
 
     it('никогда не трогает /api - там деньги и кука сессии', async () => {
         // Закешированный ответ API - это устаревшие остатки, показанные как
@@ -226,30 +263,224 @@ describe('Service worker', () => {
         expect(second).toBeDefined();
     });
 
-    it('страницу берёт из сети, а офлайн - из кеша', async () => {
-        const page = { ok: true, clone: () => ({ from: 'page' }), from: 'page' };
-        fetchImpl = async () => page;
+    describe('навигация: сначала кеш', () => {
+        beforeEach(() => {
+            cacheStore.clear();
+            fetchCalls.length = 0;
+            fetchInits.length = 0;
+        });
 
-        const online = await dispatchFetch('https://budget.example/', { mode: 'navigate' }).response;
-        expect(online).toBe(page);
+        it('оболочка в кеше отдается сразу, не дожидаясь сети', async () => {
+            const cachedShell = pageWith('<script src="/assets/index-old.js"></script>', 'cached');
+            cacheStore.set('/', cachedShell);
+            // Сеть зависла: прежний порядок («сначала сеть») здесь бы не ответил.
+            fetchImpl = () => new Promise(() => {});
 
-        // Связи нет - должна отдаться сохранённая страница, а не ошибка.
-        fetchImpl = async () => { throw new Error('офлайн'); };
-        const offline = await dispatchFetch('https://budget.example/', { mode: 'navigate' }).response;
-        expect(offline).toEqual({ from: 'page' });
+            const event = dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' });
+
+            expect(event.responded).toBe(true);
+            expect(await event.response).toBe(cachedShell);
+        });
+
+        it('любая навигация приложения (с параметрами адреса) получает ту же оболочку', async () => {
+            const cachedShell = pageWith('<script src="/assets/index-old.js"></script>', 'cached');
+            cacheStore.set('/', cachedShell);
+            fetchImpl = () => new Promise(() => {});
+
+            for (const url of [`${ORIGIN}/?banking=connected`, `${ORIGIN}/?view=budget`, `${ORIGIN}/some/deep/path`]) {
+                expect(await dispatchFetch(url, { mode: 'navigate' }).response, url).toBe(cachedShell);
+            }
+        });
+
+        it('в фоне обновляет оболочку из сети: условным запросом и с записью в кеш', async () => {
+            cacheStore.set('/', pageWith('<script src="/assets/index-old.js"></script>', 'old'));
+            const fresh = pageWith('<script src="/assets/index-new.js"></script>', 'new');
+            fetchImpl = async () => fresh;
+
+            const event = dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' });
+            // Страница получает старую оболочку, свежая ложится в кеш для следующего запуска.
+            expect((await event.response).from).toBe('old');
+            await event.settled();
+
+            expect(fetchCalls).toEqual(['/']);
+            expect(fetchInits).toEqual([{ cache: 'no-cache' }]);
+            expect(cacheStore.get('/').from).toBe('new');
+        });
+
+        it('фоновое обновление не вешает воркер: event.waitUntil держит его до записи в кеш', async () => {
+            cacheStore.set('/', pageWith('<script src="/assets/index-old.js"></script>', 'old'));
+            let release;
+            fetchImpl = () => new Promise(resolve => { release = () => resolve(pageWith('<script src="/assets/index-new.js"></script>', 'new')); });
+
+            const event = dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' });
+            await event.response;
+            expect(event.waited).toHaveLength(1);
+            expect(cacheStore.get('/').from).toBe('old');
+
+            release();
+            await event.settled();
+            expect(cacheStore.get('/').from).toBe('new');
+        });
+
+        it('сбой сети при фоновом обновлении оставляет прежнюю оболочку и не ломает навигацию', async () => {
+            const cachedShell = pageWith('<script src="/assets/index-old.js"></script>', 'old');
+            cacheStore.set('/', cachedShell);
+            fetchImpl = async () => { throw new Error('офлайн'); };
+
+            const event = dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' });
+
+            expect(await event.response).toBe(cachedShell);
+            await expect(event.settled()).resolves.toBeDefined();
+            expect(cacheStore.get('/')).toBe(cachedShell);
+        });
+
+        it('ответ с ошибкой сервера не заменяет оболочку в кеше', async () => {
+            const cachedShell = pageWith('<script src="/assets/index-old.js"></script>', 'old');
+            cacheStore.set('/', cachedShell);
+            fetchImpl = async () => ({ ok: false, status: 503, clone() { return this; }, text: async () => 'Сервис недоступен' });
+
+            const event = dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' });
+            await event.response;
+            await event.settled();
+
+            expect(cacheStore.get('/')).toBe(cachedShell);
+        });
+
+        it('без оболочки в кеше (первый запуск) идет в сеть и запоминает ответ', async () => {
+            const network = pageWith('<script src="/assets/index-new.js"></script>', 'network');
+            fetchImpl = async () => network;
+
+            const event = dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' });
+
+            expect(await event.response).toBe(network);
+            expect(fetchCalls).toEqual([`${ORIGIN}/`]);
+            for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0));
+            expect(cacheStore.get('/').from).toBe('network');
+        });
+
+        it('без оболочки и без сети - ошибка загрузки страницы', async () => {
+            fetchImpl = async () => { throw new Error('офлайн'); };
+
+            const result = await dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' }).response;
+
+            expect(result).toEqual({ error: true });
+        });
+
+        it('бандл и иконки по-прежнему сначала из кеша, без запроса в сеть', async () => {
+            cacheStore.set(`${ORIGIN}/assets/index-abc.js`, { from: 'cached-js' });
+
+            const event = dispatchFetch(`${ORIGIN}/assets/index-abc.js`);
+
+            expect(await event.response).toEqual({ from: 'cached-js' });
+            expect(fetchCalls).toEqual([]);
+        });
+
+        it('банковские и API-навигации по-прежнему мимо воркера, оболочку не читают и не трогают', async () => {
+            cacheStore.set('/', pageWith('<script src="/assets/index-old.js"></script>', 'old'));
+            for (const url of [`${ORIGIN}/banking/callback.html?code=x`, `${ORIGIN}/api/anything`]) {
+                const event = dispatchFetch(url, { mode: 'navigate' });
+                expect(event.responded, url).toBe(false);
+                expect(event.waited, url).toHaveLength(0);
+            }
+            expect(fetchCalls).toEqual([]);
+            expect(cacheStore.get('/').from).toBe('old');
+        });
+    });
+
+    describe('сообщение refresh-shell', () => {
+        beforeEach(() => {
+            cacheStore.clear();
+            fetchCalls.length = 0;
+            fetchInits.length = 0;
+        });
+
+        it('приносит оболочку из сети в обход кеша браузера, кладет ее в кеш и отвечает по порту', async () => {
+            cacheStore.set('/', pageWith('<script src="/assets/index-old.js"></script>', 'old'));
+            cacheStore.set(`${ORIGIN}/assets/index-old.js`, { from: 'old-js' });
+            fetchImpl = async () => pageWith('<script src="/assets/index-new.js"></script>', 'new');
+
+            const { settled, replies } = dispatchMessage({ type: 'refresh-shell' });
+            await settled();
+
+            expect(fetchCalls).toEqual(['/']);
+            expect(fetchInits).toEqual([{ cache: 'no-store' }]);
+            expect(cacheStore.get('/').from).toBe('new');
+            // Ответ ушел, когда оболочка уже в кеше, и бандл прошлой сборки убран.
+            expect(replies).toEqual([{ type: 'shell-refreshed', ok: true }]);
+            expect(cacheStore.has(`${ORIGIN}/assets/index-old.js`)).toBe(false);
+        });
+
+        it('отвечает только после записи в кеш: страница не перезагрузится на старую оболочку', async () => {
+            cacheStore.set('/', pageWith('<script src="/assets/index-old.js"></script>', 'old'));
+            let release;
+            fetchImpl = () => new Promise(resolve => { release = () => resolve(pageWith('<script src="/assets/index-new.js"></script>', 'new')); });
+
+            const { settled, replies } = dispatchMessage({ type: 'refresh-shell' });
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(replies).toEqual([]);
+
+            release();
+            await settled();
+            expect(replies).toEqual([{ type: 'shell-refreshed', ok: true }]);
+            expect(cacheStore.get('/').from).toBe('new');
+        });
+
+        it('сеть недоступна: отвечает ok: false, прежняя оболочка на месте', async () => {
+            const cachedShell = pageWith('<script src="/assets/index-old.js"></script>', 'old');
+            cacheStore.set('/', cachedShell);
+            fetchImpl = async () => { throw new Error('офлайн'); };
+
+            const { settled, replies } = dispatchMessage({ type: 'refresh-shell' });
+            await settled();
+
+            expect(replies).toEqual([{ type: 'shell-refreshed', ok: false }]);
+            expect(cacheStore.get('/')).toBe(cachedShell);
+        });
+
+        it('ответ сервера не 2xx оболочкой не становится', async () => {
+            const cachedShell = pageWith('<script src="/assets/index-old.js"></script>', 'old');
+            cacheStore.set('/', cachedShell);
+            fetchImpl = async () => ({ ok: false, status: 502, clone() { return this; }, text: async () => 'bad gateway' });
+
+            const { settled, replies } = dispatchMessage({ type: 'refresh-shell' });
+            await settled();
+
+            expect(replies).toEqual([{ type: 'shell-refreshed', ok: false }]);
+            expect(cacheStore.get('/')).toBe(cachedShell);
+        });
+
+        it('без порта отвечает отправителю сообщения', async () => {
+            fetchImpl = async () => pageWith('<script src="/assets/index-new.js"></script>', 'new');
+
+            const { settled, replies } = dispatchMessage({ type: 'refresh-shell' }, { withPort: false });
+            await settled();
+
+            expect(replies).toEqual([{ viaSource: true, type: 'shell-refreshed', ok: true }]);
+        });
+
+        it('чужие и пустые сообщения игнорирует', async () => {
+            fetchImpl = async () => pageWith('<script src="/assets/index-new.js"></script>', 'new');
+
+            for (const data of [undefined, null, 'refresh-shell', { type: 'other' }, {}]) {
+                const { event, replies } = dispatchMessage(data);
+                expect(event.waited, JSON.stringify(data)).toHaveLength(0);
+                expect(replies).toEqual([]);
+            }
+            expect(fetchCalls).toEqual([]);
+        });
     });
 
     describe('уборка старых бандлов', () => {
-        const ORIGIN = 'https://budget.example';
-
-        // Уборка запускается без ожидания (как и сама запись в кеш), поэтому
-        // тесту нужно дать цепочке промисов отработать.
-        async function settle() {
-            for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0));
+        // Уборка идет в фоновом обновлении оболочки (waitUntil): ждем его.
+        async function navigate() {
+            const event = dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' });
+            await event.response;
+            await event.settled();
         }
 
         function pageWith(html) {
-            return { ok: true, text: async () => html, clone: () => ({ from: 'page', text: async () => html }) };
+            const make = () => ({ ok: true, from: 'page', text: async () => html, clone: make });
+            return make();
         }
 
         beforeEach(() => {
@@ -269,8 +500,7 @@ describe('Service worker', () => {
                 '<script src="/assets/index-new.js"></script><link href="/assets/index-new.css">'
             );
 
-            await dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' }).response;
-            await settle();
+            await navigate();
 
             expect(cacheStore.has(`${ORIGIN}/assets/index-old.js`)).toBe(false);
             expect(cacheStore.has(`${ORIGIN}/assets/index-old.css`)).toBe(false);
@@ -287,8 +517,7 @@ describe('Service worker', () => {
             fetchImpl = async () => pageWith('<html><body>Технические работы</body></html>');
             const before = [...cacheStore.keys()].sort();
 
-            await dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' }).response;
-            await settle();
+            await navigate();
 
             expect([...cacheStore.keys()].sort()).toEqual(before);
         });
@@ -297,8 +526,7 @@ describe('Service worker', () => {
             fetchImpl = async () => { throw new Error('офлайн'); };
             const before = [...cacheStore.keys()].sort();
 
-            await dispatchFetch(`${ORIGIN}/`, { mode: 'navigate' }).response;
-            await settle();
+            await navigate();
 
             expect([...cacheStore.keys()].sort()).toEqual(before);
         });

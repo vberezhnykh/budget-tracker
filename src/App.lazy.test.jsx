@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { readApi } from '../server/test/readApi.mjs';
 import App from './App';
+import { withBootstrap } from './test/bootstrap';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }];
 const response = body => ({ ok: true, status: 200, json: async () => body });
@@ -15,14 +16,14 @@ beforeEach(() => {
     { _id: 'old', title: 'Старая зарплата', amount: 5000, type: 'income', account: 'card', category: 'Работа', date: '2025-12-01' },
     ...Array.from({ length: 85 }, (_, index) => ({ _id: String(index).padStart(3, '0'), title: `Покупка ${index}`, amount: 10, type: 'expense', account: 'card', category: 'Еда', date: '2026-09-20', __v: 4 })),
   ];
-  request = vi.fn(async (url, options) => {
+  request = vi.fn(withBootstrap(async (url, options) => {
     if (url === '/api/accounts') return response(accounts);
     if (url === '/api/categories') return response([{ _id: 'food', name: 'Еда', type: 'expense' }]);
     if (url === '/api/settings') return response({ monthlyLimit: 7000 });
     if (url === '/api/transactions' && !options?.method) return response(transactions);
     const data = readApi(url, transactions, accounts);
     return response(data ?? []);
-  });
+  }));
   vi.stubGlobal('fetch', request);
 });
 

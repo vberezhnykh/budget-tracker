@@ -279,10 +279,14 @@ app.post('/api/logout', (req, res) => {
 
 // ---- Accounts ----
 
+// Список счетов в порядке экрана. Один запрос на двоих: GET /api/accounts и
+// GET /api/bootstrap должны отдавать счета в одном виде и в одном порядке.
+const findAccounts = () => Account.find().sort({ order: 1 });
+
 // Get all accounts
 app.get('/api/accounts', async (req, res) => {
     try {
-        const accounts = await timed(res, 'db', Account.find().sort({ order: 1 }));
+        const accounts = await timed(res, 'db', findAccounts());
         res.json(accounts);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -395,10 +399,13 @@ app.delete('/api/accounts/:id', async (req, res) => {
 
 // ---- Categories ----
 
+// Список категорий (общий с GET /api/bootstrap, см. findAccounts).
+const findCategories = () => Category.find().sort({ type: 1, order: 1 });
+
 // Get all categories
 app.get('/api/categories', async (req, res) => {
     try {
-        const categories = await timed(res, 'db', Category.find().sort({ type: 1, order: 1 }));
+        const categories = await timed(res, 'db', findCategories());
         res.json(categories);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -526,16 +533,24 @@ app.delete('/api/categories/:id', async (req, res) => {
 
 const DEFAULT_MONTHLY_LIMIT = 7000;
 
+// Тело ответа настроек; его же отдает GET /api/bootstrap. Ошибка целостности
+// (SETTINGS_INTEGRITY) пробрасывается вызывающему: каждый роут отвечает на нее
+// своим статусом.
+async function readSettingsPayload() {
+    const settings = await getCanonicalSettings();
+    return { monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT,
+        features: { banking: isBankingEnabled(), quickEntry: isQuickEntryEnabled(), ask: isAskEnabled(), monthReview: isMonthReviewEnabled(), descriptionCleanup: isDescriptionCleanupEnabled() } };
+}
+
 // Get settings. Returns the default rather than 404 when the collection is
 // empty. A single legacy document is adopted under the canonical key without
 // changing its value; multiple documents fail explicitly instead of picking
 // one and silently losing another saved limit.
 app.get('/api/settings', async (req, res) => {
     try {
-        const settings = await timed(res, 'db', getCanonicalSettings());
+        const payload = await timed(res, 'db', readSettingsPayload());
         res.set('Cache-Control', 'no-store');
-        res.json({ monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT,
-            features: { banking: isBankingEnabled(), quickEntry: isQuickEntryEnabled(), ask: isAskEnabled(), monthReview: isMonthReviewEnabled(), descriptionCleanup: isDescriptionCleanupEnabled() } });
+        res.json(payload);
     } catch (err) {
         if (err.code === 'SETTINGS_INTEGRITY') {
             return res.status(409).json({ message: err.message });
@@ -626,6 +641,39 @@ app.get('/api/stats/monthly', async (req, res) => {
     }
 });
 
+// Параметры сводки из строки запроса. Общие для /api/stats/dashboard и
+// /api/bootstrap, чтобы оба отвечали на одну и ту же строку одинаково (и делили
+// готовые ответы responseMemo: ключ строится из этих параметров).
+function parseDashboardQuery(query) {
+    const str = (key) => (typeof query[key] === 'string' && query[key] ? query[key] : null);
+
+    const month = str('month') || new Date().toISOString().slice(0, 7);
+    const timeRange = str('timeRange') || 'month';
+    const account = str('account');
+    const category = str('category');
+    const type = str('type');
+    const today = str('today') || new Date().toISOString().slice(0, 10);
+
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+        return { error: 'Некорректное значение month: ожидается YYYY-MM' };
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+        return { error: 'Некорректное значение today: ожидается YYYY-MM-DD' };
+    }
+
+    const analytics = query.analytics !== '0';
+    // Ключ ответа - все параметры, от которых он зависит; month и today уже
+    // приведены к значениям по умолчанию, поэтому «без month» и «с текущим
+    // month» дают один ключ.
+    return { params: { month, timeRange, account, category, type, today, analytics } };
+}
+
+// Готовая JSON-строка сводки по прочитанному снимку: из responseMemo или
+// расчетом (этап calc).
+function dashboardJsonFor(res, ledger, params) {
+    return memoizedJson(res, 'dashboard', params, ledger,
+        () => JSON.stringify(buildDashboard(ledger.snapshot.docs, ledger.snapshot.accounts, params)));
+}
 
 // Все сводные величины главного экрана одним ответом.
 //
@@ -644,33 +692,45 @@ app.get('/api/stats/monthly', async (req, res) => {
 // несколько часов в сутки считал бы по другому календарю, чем телефон.
 app.get('/api/stats/dashboard', async (req, res) => {
     try {
-        const str = (key) => (typeof req.query[key] === 'string' && req.query[key] ? req.query[key] : null);
+        const { params, error } = parseDashboardQuery(req.query);
+        if (error) return res.status(400).json({ message: error });
 
-        const month = str('month') || new Date().toISOString().slice(0, 7);
-        const timeRange = str('timeRange') || 'month';
-        const account = str('account');
-        const category = str('category');
-        const type = str('type');
-        const today = str('today') || new Date().toISOString().slice(0, 10);
-
-        if (!/^\d{4}-\d{2}$/.test(month)) {
-            return res.status(400).json({ message: 'Некорректное значение month: ожидается YYYY-MM' });
-        }
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
-            return res.status(400).json({ message: 'Некорректное значение today: ожидается YYYY-MM-DD' });
-        }
-
-        const ledger = await readLedger(res);
-        const analytics = req.query.analytics !== '0';
-        // Ключ - все параметры, от которых зависит ответ; month и today уже
-        // приведены к значениям по умолчанию, поэтому «без month» и «с текущим
-        // month» дают один ключ.
-        sendJson(res, memoizedJson(res, 'dashboard',
-            { month, timeRange, account, category, type, today, analytics }, ledger,
-            () => JSON.stringify(buildDashboard(ledger.snapshot.docs, ledger.snapshot.accounts, {
-                month, timeRange, account, category, type, today, analytics
-            }))));
+        sendJson(res, dashboardJsonFor(res, await readLedger(res), params));
     } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+// Все, что приложению нужно для первого экрана, одним ответом: счета,
+// категории, настройки и сводка. Раньше запуск делал два последовательных
+// захода: сначала счета, и только потом сводка, категории и настройки
+// параллельно; на телефоне каждый заход - сетевой круг (~110 мс). Поля ответа
+// - ровно те ответы, что отдают GET /api/accounts, /api/categories,
+// /api/settings и /api/stats/dashboard с теми же параметрами запроса, поэтому
+// клиент разбирает их прежним кодом.
+//
+// Сводка берется из responseMemo готовой строкой и вставляется в тело как есть,
+// без разбора и повторной сериализации. Остальные три чтения идут к базе
+// параллельно со сводкой; время ожидания всех четырех попадает в db одним
+// замером (по отдельности параллельные замеры сложились бы в число больше
+// реального ожидания).
+app.get('/api/bootstrap', async (req, res) => {
+    try {
+        const { params, error } = parseDashboardQuery(req.query);
+        if (error) return res.status(400).json({ message: error });
+
+        const [ledger, accounts, categories, settings] = await timed(res, 'db',
+            Promise.all([ledgerCache.get(), findAccounts(), findCategories(), readSettingsPayload()]));
+        setCacheState(res, ledger.state);
+        const dashboard = dashboardJsonFor(res, ledger, params);
+
+        res.set('Cache-Control', 'no-store');
+        sendJson(res, `{"accounts":${JSON.stringify(accounts)},"categories":${JSON.stringify(categories)},`
+            + `"settings":${JSON.stringify(settings)},"dashboard":${dashboard}}`);
+    } catch (err) {
+        if (err.code === 'SETTINGS_INTEGRITY') {
+            return res.status(409).json({ message: err.message });
+        }
         res.status(500).json({ message: err.message });
     }
 });

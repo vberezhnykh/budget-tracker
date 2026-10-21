@@ -4,11 +4,21 @@ import { readApi } from '../server/test/readApi.mjs';
 import App from './App';
 import { SAVE_BUTTON_NAME } from './test/queries';
 import { flushIdle } from './test/idle';
+import { withBootstrap } from './test/bootstrap';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }, { _id: 'cash', name: 'Наличные', type: 'cash' }];
 const response = body => ({ ok: true, status: 200, json: async () => body });
 let transactions, request;
-const statsCalls = () => request.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?'));
+// Чтения итогов: стартовый снимок (/api/bootstrap) содержит сводку, остальные
+// идут отдельно.
+const statsCalls = () => request.mock.calls.filter(([url]) => url.startsWith('/api/stats/dashboard?') || url.startsWith('/api/bootstrap?'));
+// Справочники читаются только стартовым снимком, отдельных запросов нет.
+const expectReferenceDataFromBootstrapOnly = () => {
+  expect(request.mock.calls.filter(([url]) => url.startsWith('/api/bootstrap?'))).toHaveLength(1);
+  for (const path of ['/api/accounts', '/api/categories', '/api/settings']) {
+    expect(request.mock.calls.filter(([url]) => url === path)).toHaveLength(0);
+  }
+};
 const select = name => fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${name}: −?€`) }));
 const skeleton = () => screen.queryByRole('status', { name: 'Загрузка итогов…' });
 // Лента счетов - только на Обзоре, поэтому к
@@ -22,12 +32,12 @@ beforeEach(() => {
     { _id: 'card-expense', title: 'Продукты', amount: 300, type: 'expense', account: 'card', category: 'Еда', date: '2026-09-20' },
     { _id: 'cash-expense', title: 'Кофе', amount: 50, type: 'expense', account: 'cash', category: 'Еда', date: '2026-09-20' },
   ];
-  request = vi.fn(async url => {
+  request = vi.fn(withBootstrap(async url => {
     if (url === '/api/accounts') return response(accounts);
     if (url === '/api/categories') return response([{ _id: 'food', name: 'Еда', type: 'expense' }]);
     if (url === '/api/settings') return response({ monthlyLimit: 1200 });
     return response(readApi(url, transactions, accounts) ?? []);
-  });
+  }));
   vi.stubGlobal('fetch', request);
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -47,9 +57,7 @@ describe('instant account summaries', () => {
     expect(screen.getByRole('button', { name: /Расход:.*350/ })).toBeVisible();
     await act(async () => {});
     expect(statsCalls()).toHaveLength(count);
-    for (const path of ['/api/accounts', '/api/categories', '/api/settings']) {
-      expect(request.mock.calls.filter(([url]) => url === path)).toHaveLength(1);
-    }
+    expectReferenceDataFromBootstrapOnly();
   });
 
   it('loads only analytics for a new selection and instantly reuses visited selections', async () => {
@@ -75,9 +83,7 @@ describe('instant account summaries', () => {
     expect(skeleton()).not.toBeInTheDocument();
     await act(async () => {});
     expect(statsCalls()).toHaveLength(3);
-    for (const path of ['/api/accounts', '/api/categories', '/api/settings']) {
-      expect(request.mock.calls.filter(([url]) => url === path)).toHaveLength(1);
-    }
+    expectReferenceDataFromBootstrapOnly();
   });
 
   it('refreshes expired summaries in the background and keeps custom settings', async () => {
@@ -108,7 +114,7 @@ describe('instant account summaries', () => {
     fireEvent.focus(window);
     expect(skeleton()).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: /Расход:.*70/ })).toBeVisible());
-    expect(request.mock.calls.filter(([url]) => url === '/api/settings')).toHaveLength(2);
+    expect(request.mock.calls.filter(([url]) => url.startsWith('/api/bootstrap?'))).toHaveLength(2);
   });
 
   it('invalidates previously visited analytics after editing an operation', async () => {

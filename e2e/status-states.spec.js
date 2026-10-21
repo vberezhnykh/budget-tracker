@@ -21,7 +21,7 @@ const box = async locator => {
 test.describe('Error and status states (mobile, real browser)', () => {
   test('login: card, 50px field, 54px button; a wrong password turns the border red and shows the alert line', async ({ page }) => {
     await mockApi(page);
-    await page.route('**/api/accounts', route => json(route, 401, { message: 'Не авторизован' }));
+    await page.route('**/api/bootstrap?*', route => json(route, 401, { message: 'Не авторизован' }));
     await page.route('**/api/login', route => json(route, 401, { message: 'Неверный пароль' }));
     await page.goto('/');
 
@@ -53,7 +53,7 @@ test.describe('Error and status states (mobile, real browser)', () => {
   test('failed first load: card with the reason, retry loads the app', async ({ page }) => {
     await mockApi(page);
     let offline = true;
-    await page.route('**/api/accounts', route => (offline ? route.abort() : route.fallback()));
+    await page.route('**/api/bootstrap?*', route => (offline ? route.abort() : route.fallback()));
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: 'Не удалось загрузить данные' })).toBeVisible();
@@ -68,7 +68,7 @@ test.describe('Error and status states (mobile, real browser)', () => {
   test('sync strip sits at the top of <main> and --status-strip-height equals its height', async ({ page }) => {
     await mockApi(page);
     let offline = false;
-    await page.route('**/api/accounts', route => (offline ? route.abort() : route.fallback()));
+    await page.route('**/api/bootstrap?*', route => (offline ? route.abort() : route.fallback()));
     await page.goto('/');
     await expect(page.getByTestId('accounts-row')).toBeVisible();
 

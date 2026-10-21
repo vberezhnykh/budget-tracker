@@ -2,6 +2,7 @@ import { readApi } from '../server/test/readApi.mjs';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { withBootstrap } from './test/bootstrap';
 
 Element.prototype.scrollIntoView = vi.fn();
 
@@ -21,7 +22,7 @@ function makeApi(overrides = {}) {
     ...overrides,
   };
 
-  const fetch = vi.fn(async (url, options = {}) => {
+  const fetch = vi.fn(withBootstrap(async (url, options = {}) => {
     const method = options.method || 'GET';
     const data = method === 'GET' ? readApi(url, state.transactions, state.accounts) : undefined;
     if (data !== undefined) return ok(data);
@@ -57,7 +58,7 @@ function makeApi(overrides = {}) {
     }
     if (url === '/api/logout') return ok({ ok: true });
     return ok({});
-  });
+  }));
 
   return { state, fetch };
 }

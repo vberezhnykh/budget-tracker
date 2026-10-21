@@ -2,11 +2,12 @@ import { readApi } from '../server/test/readApi.mjs';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
+import { withBootstrap } from './test/bootstrap';
 
 const ok = body => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
 
 function mockApi(features) {
-  const fetchMock = vi.fn(url => {
+  const fetchMock = vi.fn(withBootstrap(url => {
     const data = readApi(url);
     if (data !== undefined) return ok(data);
     if (url === '/api/accounts') return ok([{ _id: 'card', name: 'Моя карта', type: 'card', icon: '💳' }]);
@@ -15,7 +16,7 @@ function mockApi(features) {
     if (url === '/api/banking/review') return ok({ items: [], total: 0 });
     if (url === '/api/trash') return ok([]);
     return ok([]);
-  });
+  }));
   vi.stubGlobal('fetch', fetchMock);
   return fetchMock;
 }

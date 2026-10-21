@@ -43,8 +43,20 @@ export const manyAccounts = [
   { _id: 'acc-extra-4', name: 'Копилка', type: 'cash', icon: '🐷', isDefault: false, order: 7 },
 ];
 
+// Ответ /api/bootstrap, собранный так же, как это делает сервер: из тех же
+// данных, что отдают отдельные адреса (счета, категории, настройки, сводка).
+function bootstrapBody(url, { accounts: accountsData, categories: categoriesData, settings, transactions: transactionsData }) {
+  return {
+    accounts: accountsData,
+    categories: categoriesData,
+    settings,
+    dashboard: readApi(url.replace('/api/bootstrap', '/api/stats/dashboard'), transactionsData, accountsData),
+  };
+}
+
 // Installs a single catch-all route for every /api/** call. GETs for the
-// four endpoints App.jsx fetches on load return the fixtures above (or the
+// endpoints App.jsx fetches on load (/api/bootstrap, which bundles accounts,
+// categories, settings and the summary, plus the history list) return the fixtures above (or the
 // per-test overrides passed in); every other /api/** call (writes, logout,
 // anything else) gets a generic 200 so nothing the app does mid-test can
 // hang waiting on a real server.
@@ -62,6 +74,13 @@ export async function mockApi(page, overrides = {}) {
     const data = method === 'GET' ? readApi(request.url(), transactionsData, accountsData) : undefined;
     if (data !== undefined) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
 
+    if (method === 'GET' && pathname === '/api/bootstrap') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(bootstrapBody(request.url(), { accounts: accountsData, categories: categoriesData, settings: settingsData, transactions: transactionsData })),
+      });
+    }
     if (method === 'GET' && pathname === '/api/accounts') {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(accountsData) });
     }
@@ -99,6 +118,9 @@ export async function mockPhase2Api(page, overrides = {}) {
     const data = method === 'GET' ? readApi(request.url(), state.transactions, state.accounts) : undefined;
     if (data !== undefined) return fulfill(route, data);
 
+    if (method === 'GET' && pathname === '/api/bootstrap') {
+      return fulfill(route, bootstrapBody(request.url(), { ...state, settings: { monthlyLimit: 7000 } }));
+    }
     if (method === 'GET' && pathname === '/api/accounts') return fulfill(route, state.accounts);
     if (method === 'GET' && pathname === '/api/transactions') return fulfill(route, state.transactions);
     if (method === 'GET' && pathname === '/api/categories') return fulfill(route, state.categories);

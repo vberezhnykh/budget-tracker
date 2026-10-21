@@ -21,6 +21,9 @@ if (typeof window !== 'undefined') {
   // файл тестов: без сброса следующий тест стартовал бы на вкладке, где
   // закончился предыдущий.
   afterEach(() => {
+    // Защита от повторной перезагрузки при обновлении (utils/appUpdate) помнит
+    // версию в хранилище вкладки; между тестами она не должна переходить.
+    try { window.sessionStorage.clear(); } catch { /* хранилище недоступно */ }
     window.__idleQueue.length = 0;
     window.history.replaceState(null, '', '/');
   });

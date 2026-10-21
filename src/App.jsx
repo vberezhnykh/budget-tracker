@@ -28,7 +28,7 @@ import useHashScreen from './utils/useHashScreen'
 import useAskConversation from './utils/useAskConversation'
 import useMonthReview from './utils/useMonthReview'
 import { useModalOpen } from './utils/useBodyScrollLock'
-import { useAppUpdate, reloadPage } from './utils/appUpdate'
+import { useAppUpdate, applyUpdate, reloadPage } from './utils/appUpdate'
 import { createDashboardCache, DASHBOARD_FRESH_MS } from './utils/dashboardCache'
 import { scheduleIdle } from './utils/prefetch'
 import { markDataReady } from './utils/loadTiming'
@@ -40,6 +40,7 @@ const API_URL = '/api/transactions';
 const CATEGORIES_URL = '/api/categories';
 const ACCOUNTS_URL = '/api/accounts';
 const SETTINGS_URL = '/api/settings';
+const BOOTSTRAP_URL = '/api/bootstrap';
 const TRASH_URL = '/api/trash';
 const CLEANUP_URL = '/api/description-cleanup';
 const BANKING_URL = '/api/banking';
@@ -62,6 +63,16 @@ class DataLoadError extends Error {
     super(message);
     this.name = 'DataLoadError';
   }
+}
+
+// Проверка ответа сводки: одна и та же для /api/stats/dashboard и для поля
+// dashboard в /api/bootstrap.
+function assertDashboardShape(data) {
+  if (!data?.balances?.byAccount || !Number.isFinite(data.balances.total)
+    || !data.monthlyTotals || !data.month || !data.yearly || !data.lifetime) {
+    throw new DataLoadError('Сервер вернул некорректные итоги');
+  }
+  return data;
 }
 
 function App() {
@@ -113,6 +124,9 @@ function App() {
   const trashGenerationRef = useRef(0);
   const cleanupGenerationRef = useRef(0);
   const hasSnapshotRef = useRef(false);
+  // Сервер ответил 404 на /api/bootstrap (выкладка еще не дошла до него):
+  // дальше в этом сеансе грузим по-старому, не повторяя пробу.
+  const bootstrapUnsupportedRef = useRef(false);
   const historyRefreshNeededRef = useRef(false);
   const undoTimeoutRef = useRef(null);
   const undoDeletionIdRef = useRef(null);
@@ -183,14 +197,20 @@ function App() {
   // периода хранит своё внутри, поэтому к ним добавлен счётчик листов
   // (useModalOpen): он же закрывает короткое окно, когда состояние уже
   // выставлено, а лист ещё не смонтирован.
-  const { updateAvailable } = useAppUpdate();
+  // Первая проверка версии при запуске ждет, пока на экране появятся данные
+  // (isAuthenticated === true): оболочка могла прийти из кеша воркера, то есть
+  // от прошлой сборки, но запросы запуска проверка задерживать не должна.
+  const { updateAvailable, targetVersion } = useAppUpdate({ ready: isAuthenticated === true });
   const sheetOpen = useModalOpen();
   const modalOpen = sheetOpen || showAddTransaction || Boolean(editingTransaction)
     || Boolean(accountSheet) || showLimit || (bankingEnabled && showBanking);
   const updateDeferred = updateAvailable && (modalOpen || Boolean(undoDeletion));
+  // Автоматически: воркер обновляет оболочку, затем перезагрузка, не более
+  // одного раза на версию (applyUpdate). reload передается явно, чтобы вызов шел
+  // через тот же reloadPage, что и кнопка «Обновить».
   useEffect(() => {
-    if (updateAvailable && !updateDeferred) reloadPage();
-  }, [updateAvailable, updateDeferred]);
+    if (updateAvailable && !updateDeferred) applyUpdate(targetVersion, { reload: reloadPage });
+  }, [updateAvailable, updateDeferred, targetVersion]);
 
   // Высота полосы «не удалось обновить» вместе с отступом под ней. Экраны
   // (История считает свою высоту от окна) вычитают её через переменную
@@ -244,6 +264,7 @@ function App() {
   const screenRef = useRef(null);
   const statsKeyRef = useRef('');
   const [historyRevision, setHistoryRevision] = useState(0);
+  const [startupRequested, setStartupRequested] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [categories, setCategories] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -395,17 +416,57 @@ function App() {
   // где в готовом списке встать экрану.
   const history = useHistoryList({
     filters: { account: historyAccount, category: historyCategory, type: historyType, q: searchQuery },
-    enabled: isAuthenticated === true,
+    // Лента запрашивается сразу вслед за стартовым снимком, а не после него:
+    // пока вход не подтвержден (null), запрос уходит параллельно, а 401 на нем
+    // обрабатывает тот же apiFetch, что и на снимке (один переход на экран
+    // входа). startupRequested держит запрос до отправки снимка: так снимок -
+    // первый в очереди к серверу, а лента его не задерживает.
+    enabled: isAuthenticated === true || (isAuthenticated === null && startupRequested),
     revision: historyRevision, request: apiFetch, searching: Boolean(searchQuery.trim()),
   });
 
-  const fetchDashboard = async key => {
-    const data = await readJson(`/api/stats/dashboard?${key}`, 'Не удалось загрузить итоги');
-    if (!data?.balances?.byAccount || !Number.isFinite(data.balances.total)
-      || !data.monthlyTotals || !data.month || !data.yearly || !data.lifetime) {
-      throw new DataLoadError('Сервер вернул некорректные итоги');
+  const fetchDashboard = async key => assertDashboardShape(
+    await readJson(`/api/stats/dashboard?${key}`, 'Не удалось загрузить итоги'),
+  );
+
+  // Старый порядок запуска: счета, затем сводка, категории и настройки
+  // параллельно. Нужен только на время выкладки, пока сервер еще не знает
+  // /api/bootstrap (см. fetchStartupSnapshot). Возвращает null, если загрузка
+  // успела устареть (выход, новая загрузка) и остальные запросы слать незачем.
+  const fetchStartupSequentially = async (key, isCurrent) => {
+    const accounts = await readJson(ACCOUNTS_URL, 'Не удалось загрузить счета');
+    if (!Array.isArray(accounts)) throw new DataLoadError('Сервер вернул некорректный список счетов');
+    if (!isCurrent()) return null;
+    const [dashboard, categories, settings] = await Promise.all([
+      fetchDashboard(key),
+      readJson(CATEGORIES_URL, 'Не удалось загрузить категории'),
+      // Compatibility with deployments from before shared settings: a 404
+      // means the documented default, while network/5xx failures still make
+      // the whole snapshot unsuccessful.
+      readJson(SETTINGS_URL, 'Не удалось загрузить настройки', { allowMissing: true }),
+    ]);
+    return { accounts, categories, settings, dashboard };
+  };
+
+  // Все для первого экрана одним запросом: два последовательных захода по сети
+  // (счета, потом остальное) были заметной частью времени запуска. 404 значит,
+  // что сервер старше приложения (выкладка идет не мгновенно): тогда один раз
+  // грузим по-старому и дальше в этом сеансе /api/bootstrap не пробуем.
+  const fetchStartupSnapshot = async (key, isCurrent) => {
+    if (!bootstrapUnsupportedRef.current) {
+      const data = await readJson(`${BOOTSTRAP_URL}?${key}`, 'Не удалось загрузить данные', { allowMissing: true });
+      if (data !== null) {
+        if (typeof data !== 'object') throw new DataLoadError('Не удалось загрузить данные');
+        return {
+          accounts: data.accounts,
+          categories: data.categories,
+          settings: data.settings ?? null,
+          dashboard: data.dashboard,
+        };
+      }
+      bootstrapUnsupportedRef.current = true;
     }
-    return data;
+    return fetchStartupSequentially(key, isCurrent);
   };
 
   // Вкладку «Аналитика» открывают часто, а ее данные (analytics=1) приходят
@@ -480,18 +541,21 @@ function App() {
     }
 
     try {
-      const loadedAccounts = onlyStats ? accountsRef.current : await readJson(ACCOUNTS_URL, 'Не удалось загрузить счета');
-      if (!Array.isArray(loadedAccounts)) throw new DataLoadError('Сервер вернул некорректный список счетов');
-      if (!isCurrent()) return false;
-
-      const [loadedDashboard, loadedCategories, loadedSettings] = await Promise.all([
-        dashboardReads.load(statsKey, () => fetchDashboard(statsKey)),
-        onlyStats ? categories : readJson(CATEGORIES_URL, 'Не удалось загрузить категории'),
-        // Compatibility with deployments from before shared settings: a 404
-        // means the documented default, while network/5xx failures still make
-        // the whole snapshot unsuccessful.
-        onlyStats ? null : readJson(SETTINGS_URL, 'Не удалось загрузить настройки', { allowMissing: true }),
-      ]);
+      let loadedAccounts = accountsRef.current;
+      let loadedCategories = categories;
+      let loadedSettings = null;
+      let loadedDashboard;
+      if (onlyStats) {
+        loadedDashboard = await dashboardReads.load(statsKey, () => fetchDashboard(statsKey));
+      } else {
+        const startup = await fetchStartupSnapshot(statsKey, isCurrent);
+        if (startup === null || !isCurrent()) return false;
+        ({ accounts: loadedAccounts, categories: loadedCategories, settings: loadedSettings } = startup);
+        if (!Array.isArray(loadedAccounts)) throw new DataLoadError('Сервер вернул некорректный список счетов');
+        // Через кэш итогов, как и отдельное чтение: следующие чтения только
+        // итогов (смена месяца, возврат в приложение) находят в нем этот ответ.
+        loadedDashboard = await dashboardReads.load(statsKey, () => assertDashboardShape(startup.dashboard));
+      }
       if (!Array.isArray(loadedCategories)) throw new DataLoadError('Сервер вернул некорректный список категорий');
       if (loadedSettings !== null && (
         typeof loadedSettings !== 'object'
@@ -517,7 +581,11 @@ function App() {
         setCleanupEnabled(loadedSettings?.features?.descriptionCleanup === true);
       }
       if (historyRefreshNeededRef.current) {
-        setHistoryRevision(value => value + 1);
+        // Первая загрузка сеанса ленту уже запросила сама, параллельно (см.
+        // enabled у useHistoryList): ревизия выросла бы зря и лента грузилась
+        // бы второй раз. Повтор с экрана ошибки ленту перезапрашивает: ее
+        // первый запрос мог сорваться вместе со снимком.
+        if (!initial || retry) setHistoryRevision(value => value + 1);
         historyRefreshNeededRef.current = false;
       }
       setLastSuccessfulSync(new Date());
@@ -579,6 +647,7 @@ function App() {
   // Fetch data on mount.
   useEffect(() => {
     loadData({ initial: true });
+    setStartupRequested(true);
     return () => {
       loadGenerationRef.current += 1;
       sessionGenerationRef.current += 1;
@@ -1638,7 +1707,7 @@ function App() {
         <Toast
           message="Доступна новая версия"
           bottomOffset={TOAST_BOTTOM + TOAST_STACK_STEP * ((notice ? 1 : 0) + (undoDeletion ? 1 : 0))}
-          action={{ label: 'Обновить', onClick: reloadPage }}
+          action={{ label: 'Обновить', onClick: () => applyUpdate(targetVersion, { force: true, reload: reloadPage }) }}
         />
       )}
       {/* Ровно один экран за раз. Состояние и обработчики остаются здесь, экраны

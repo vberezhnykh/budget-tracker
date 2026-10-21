@@ -44,7 +44,9 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     let release;
     const gate = new Promise(resolve => { release = resolve; });
     let summaryRequests = 0;
-    await page.route('**/api/stats/dashboard?*', async route => {
+    // Первую сводку приносит стартовый снимок (/api/bootstrap), последующие
+    // чтения - /api/stats/dashboard.
+    await page.route(/\/api\/(bootstrap|stats\/dashboard)\?/, async route => {
       // Фоновая подгрузка Аналитики (analytics=1) не в счет: считаем только
       // запросы итогов Обзора.
       if (!route.request().url().includes('analytics=1')) summaryRequests += 1;
@@ -58,6 +60,8 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     release();
     await expect(startup).toHaveCount(0);
+    const startupSummaryRequests = summaryRequests;
+    expect(startupSummaryRequests).toBeGreaterThan(0);
     const summaryFrame = page.getByTestId('account-summary');
     const bar = page.getByTestId('limit-bar');
     await expect(bar).toBeVisible();
@@ -75,7 +79,9 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     const summary = page.getByRole('status', { name: 'Загрузка итогов…' });
     await expect(summary).toHaveCount(0);
     await expect(bar).toBeVisible();
-    expect(summaryRequests).toBe(1);
+    // Переключение счета берет готовые итоги из памяти: новых запросов нет.
+    // (Стартовых может быть больше одного: dev-сборка идет под StrictMode.)
+    expect(summaryRequests).toBe(startupSummaryRequests);
     expect(await original.evaluate(el => el === document.querySelector('[data-testid="account-summary"]'))).toBe(true);
     expect(Math.abs(await documentTop(summaryFrame) - before)).toBeLessThan(2);
   });
