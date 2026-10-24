@@ -996,6 +996,19 @@ function App() {
     setScreen('history');
   };
 
+  // «Вся история» на Обзоре продолжает блок «Последние операции», поэтому
+  // открывает Историю с тем же счётом, что выбран в ленте (у переводов
+  // подходит любая сторона), а при «Все счета» - без фильтра по счёту.
+  // Категория, тип и поиск сбрасываются: того списка они не касались.
+  // Вкладка «История» в нижнем меню по-прежнему открывает свои фильтры.
+  const openAllHistory = () => {
+    setHistoryAccount(selectedAccount);
+    setHistoryCategory(null);
+    setHistoryType(null);
+    setSearchQuery('');
+    setScreen('history');
+  };
+
   // Чат «Вопросы к данным» - внутренний экран Аналитики. С вопросом (подсказка
   // на карточке) он сразу уходит в Claude; идущий вопрос не прерывается.
   const openAsk = (question) => {
@@ -1756,7 +1769,7 @@ function App() {
             typicalMonth={summary?.typicalMonth ?? null}
             onChangePeriod={handlePeriodChange}
             onOpenHistory={openHistoryOfType}
-            onOpenAllHistory={() => setScreen('history')}
+            onOpenAllHistory={openAllHistory}
             onOpenPreviousMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
             onAddExpense={() => openAddModal('expense')}
             monthReview={monthReview.review ? { month: monthReview.month, ...monthReview.review } : null}

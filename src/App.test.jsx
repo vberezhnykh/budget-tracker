@@ -1267,6 +1267,57 @@ describe('App Integration Tests', () => {
         expect(accountCard('Наличные')).toHaveAttribute('aria-pressed', 'false');
     });
 
+    it('opens the history of the account selected on the overview from «Вся история»', async () => {
+        const cashTx = {
+            _id: '3',
+            title: 'Coffee',
+            amount: 5,
+            type: 'expense',
+            account: 'cash',
+            date: '2026-01-05T00:00:00Z',
+            category: 'Food'
+        };
+        const transferTx = {
+            _id: '4',
+            title: 'Снятие',
+            amount: 50,
+            type: 'transfer',
+            account: 'card',
+            toAccount: 'cash',
+            date: '2026-01-06T00:00:00Z',
+            category: 'Перевод'
+        };
+        currentTransactions = [...mockTransactions, cashTx, transferTx];
+
+        render(<App />);
+        await waitForOverview();
+
+        // Фильтры Истории, оставшиеся с прошлого раза, ссылку не сбивают.
+        await openHistory();
+        fireEvent.click(within(screen.getByRole('group', { name: 'Фильтр по счёту' })).getByRole('button', { name: 'Карта' }));
+        await waitFor(() => expect(screen.queryByText('Coffee')).not.toBeInTheDocument());
+        goTo('Обзор');
+
+        fireEvent.click(accountCard('Наличные'));
+        await waitFor(() => expect(accountCard('Наличные')).toHaveAttribute('aria-pressed', 'true'));
+        fireEvent.click(screen.getByRole('button', { name: 'Вся история' }));
+
+        const accountChips = () => within(screen.getByRole('group', { name: 'Фильтр по счёту' }));
+        await waitFor(() => expect(accountChips().getByRole('button', { name: 'Наличные' })).toHaveAttribute('aria-pressed', 'true'));
+        await waitFor(() => screen.getByText('Coffee'));
+        // Перевод с карты на наличные тоже относится к этому счёту.
+        expect(screen.getByText('Снятие')).toBeInTheDocument();
+        expect(screen.queryByText('Salary')).not.toBeInTheDocument();
+
+        // При «Все счета» ссылка ведёт в историю всех счетов.
+        goTo('Обзор');
+        fireEvent.click(accountCard('Все счета'));
+        await waitFor(() => expect(accountCard('Все счета')).toHaveAttribute('aria-pressed', 'true'));
+        fireEvent.click(screen.getByRole('button', { name: 'Вся история' }));
+        await waitFor(() => expect(accountChips().getByRole('button', { name: 'Все счета' })).toHaveAttribute('aria-pressed', 'true'));
+        await waitFor(() => expect(screen.getAllByText('Salary').length).toBeGreaterThan(0));
+    });
+
     it('opens the history of income from the income tile and the history of expenses from the expense figure', async () => {
         render(<App />);
         await waitForOverview();
