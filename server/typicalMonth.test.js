@@ -155,7 +155,7 @@ describe('computeTypicalMonth: что считается расходом', () =
         const data = [
             ...base,
             exp('2026-04-10', 100), exp('2026-05-10', 100), exp('2026-06-10', 100),
-            exp('2026-04-10', 30, cash), exp('2026-05-10', 30, cash), exp('2026-06-10', 30, cash)
+            exp('2026-04-01', 30, cash), exp('2026-05-10', 30, cash), exp('2026-06-10', 30, cash)
         ];
 
         const all = computeTypicalMonth(data, { month: '2026-07', today: '2026-07-20' });
@@ -167,19 +167,66 @@ describe('computeTypicalMonth: что считается расходом', () =
         expect(cashType.monthTotal).toBe(30);
     });
 
-    it('покрытие истории считается по всем операциям, а не по отфильтрованным', () => {
-        // По наличным в апреле ничего не было, но данные за апрель есть (доход
-        // по карте с 1-го числа) - это месяц с нулём, а не отсутствие месяца.
+    it('при фильтре по счёту история начинается с первой операции счёта', () => {
+        // Наличные завели в мае: апрель по ним не «ноль», а «счёта ещё не
+        // было», и в эталон он не идёт. Иначе медиана по наличным получилась бы
+        // занижена.
+        const cash = { account: 'acc-cash', accountType: 'cash' };
         const data = [
-            inc('2026-04-01'),
-            exp('2026-05-10', 30, { account: 'acc-cash', accountType: 'cash' }),
-            exp('2026-06-10', 30, { account: 'acc-cash', accountType: 'cash' })
+            inc('2026-03-01'),
+            exp('2026-03-10', 100), exp('2026-04-10', 100), exp('2026-05-10', 100), exp('2026-06-10', 100),
+            exp('2026-05-01', 30, cash), exp('2026-06-10', 30, cash), exp('2026-07-10', 30, cash),
+            exp('2026-08-10', 30, cash)
+        ];
+
+        const all = computeTypicalMonth(data, { month: '2026-09', today: '2026-09-20' });
+        const onlyCash = computeTypicalMonth(data, { month: '2026-09', today: '2026-09-20', account: 'acc-cash' });
+
+        expect(all.months).toEqual(['2026-08', '2026-07', '2026-06', '2026-05', '2026-04', '2026-03']);
+        expect(onlyCash.months).toEqual(['2026-08', '2026-07', '2026-06', '2026-05']);
+        expect(onlyCash.monthTotal).toBe(30);
+    });
+
+    it('первый месяц счёта не берётся, если первая операция не 1-го числа', () => {
+        const cash = { account: 'acc-cash', accountType: 'cash' };
+        const data = [
+            inc('2026-03-01'),
+            exp('2026-05-12', 30, cash), exp('2026-06-10', 30, cash), exp('2026-07-10', 30, cash)
+        ];
+
+        // Полных месяцев по наличным только два (июнь, июль) - прогноза нет.
+        expect(computeTypicalMonth(data, { month: '2026-08', today: '2026-08-20', account: 'acc-cash' })).toBeNull();
+        expect(computeTypicalMonth(data, { month: '2026-09', today: '2026-09-20', account: 'acc-cash' }).months)
+            .toEqual(['2026-08', '2026-07', '2026-06']);
+    });
+
+    it('перевод на счёт тоже открывает его историю', () => {
+        const cash = { account: 'acc-cash', accountType: 'cash' };
+        const data = [
+            inc('2026-03-01'),
+            { id: 't1', type: 'transfer', visualAmount: 0, amount: 200, date: '2026-04-01', account: 'acc-card', accountType: 'card', toAccount: 'acc-cash', toAccountType: 'cash', category: null, excludeFromStats: false },
+            exp('2026-05-10', 30, cash), exp('2026-06-10', 30, cash)
+        ];
+
+        const result = computeTypicalMonth(data, { month: '2026-07', today: '2026-07-20', account: 'acc-cash' });
+
+        // Апрель - месяц счёта без трат: настоящий ноль.
+        expect(result.months).toEqual(['2026-06', '2026-05', '2026-04']);
+        expect(result.monthTotal).toBe(30);
+    });
+
+    it('тихий месяц после появления счёта считается нулём', () => {
+        const cash = { account: 'acc-cash', accountType: 'cash' };
+        const data = [
+            inc('2026-03-01'),
+            exp('2026-04-01', 30, cash), exp('2026-06-10', 30, cash)
         ];
 
         const result = computeTypicalMonth(data, { month: '2026-07', today: '2026-07-20', account: 'acc-cash' });
 
         expect(result.months).toEqual(['2026-06', '2026-05', '2026-04']);
         expect(result.monthTotal).toBe(30);
+        expect(result.byDay[30]).toBe(30);
     });
 
     it('фильтр по категории', () => {
@@ -402,8 +449,10 @@ describe('computeTypicalMonth: actualByDay', () => {
     });
 
     it('фильтры счёта и категории применяются к факту', () => {
+        // Доход по наличным с 1 апреля - их история той же длины, что общая.
         const data = [
             ...history,
+            inc('2026-04-01', { account: 'acc-cash', accountType: 'cash' }),
             exp('2026-07-02', 30, { account: 'acc-cash', accountType: 'cash' }),
             exp('2026-07-02', 20, { category: 'Кафе' })
         ];

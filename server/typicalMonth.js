@@ -70,6 +70,9 @@ function cumulativeExpense(monthTransactions, length) {
 //
 // Месяц не позже сегодняшнего тоже требуется: при просмотре будущего месяца
 // иначе в эталон попали бы идущий (неполный) месяц и пустые будущие.
+//
+// transactions здесь - операции того, по чему строится «обычное»: при
+// фильтре по счёту - только этого счёта (см. computeTypicalMonth).
 function pickReferenceMonths(transactions, month, today) {
     const earliest = transactions.reduce((min, t) => (!min || t.date < min) ? t.date : min, null);
     if (!earliest) return [];
@@ -94,10 +97,15 @@ function pickReferenceMonths(transactions, month, today) {
 }
 
 function computeTypicalMonth(transactions, { month, today, account = null, category = null }) {
-    const referenceMonths = pickReferenceMonths(transactions, month, today);
+    // История счёта начинается с его первой операции (включая перевод на
+    // него): месяцы до того, как счёт завели, - не «ничего не тратили», а
+    // «счёта не было», и нулями они тянули бы «обычное» вниз. Категория так
+    // не обрезается: месяц без трат на кафе - настоящий ноль.
+    const accountScope = applyFilters(transactions, { account });
+    const referenceMonths = pickReferenceMonths(accountScope, month, today);
     if (referenceMonths.length < MIN_REFERENCE_MONTHS) return null;
 
-    const filtered = applyFilters(transactions, { account, category });
+    const filtered = applyFilters(accountScope, { category });
     const byMonth = referenceMonths.map(str => {
         const length = daysInMonth(str);
         const cum = cumulativeExpense(filtered.filter(t => t.date.startsWith(str)), length);
