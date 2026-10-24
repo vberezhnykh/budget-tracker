@@ -38,6 +38,7 @@ const { createMonthReviewRouter, isMonthReviewEnabled } = require('./monthReview
 const { createDescriptionCleanupRouter, isDescriptionCleanupEnabled } = require('./descriptionCleanupRouter');
 const { createCompaniesRouter } = require('./companies');
 const { activeTransactionFilter } = require('./ledgerState');
+const { mountStatic } = require('./staticFiles');
 const { validateAccountReferences } = require('./accountRefs');
 const { createTrashRouter, softDeleteTransaction } = require('./trash');
 const { createPlannedPaymentsRouter } = require('./plannedPayments');
@@ -998,56 +999,7 @@ if (process.env.NODE_ENV === 'production') {
             console.log(`Files in dist: ${files.join(', ')}`);
         } catch (e) { console.error('Error reading dist:', e.message); }
 
-        // Hashed assets (JS/CSS) — cache forever (filename changes on each build)
-        app.use('/assets', express.static(path.join(distPath, 'assets'), {
-            maxAge: '1y',
-            immutable: true
-        }));
-
-        // All other static files (favicon, etc.) — short cache
-        app.use(express.static(distPath, {
-            maxAge: '1h',
-            setHeaders: (res, filePath) => {
-                // index.html и sw.js - no-cache, а не no-store: браузер всё
-                // равно сверяется с сервером при каждом заходе, но в ответ
-                // получает короткий 304 по ETag/Last-Modified (их по
-                // умолчанию шлёт express.static) вместо файла целиком, а
-                // no-store ещё и отключает bfcache в части браузеров.
-                // index.html - статичная оболочка без данных пользователя,
-                // прятать её от диска незачем.
-                //
-                // sw.js - по той же причине, но следствия у неё другие:
-                // браузер сверяет воркер с сервером при каждом заходе, и
-                // час кеша означал бы, что после выката пользователь до часа
-                // сидит под старым воркером. Имя файла при этом не
-                // хешируется (адрес /sw.js зафиксирован в регистрации), так
-                // что отличить новую версию по адресу нельзя.
-                if (filePath === path.join(distPath, 'index.html') || filePath.endsWith('sw.js')) {
-                    res.setHeader('Cache-Control', 'no-cache');
-                } else if (filePath.endsWith('.html')) {
-                    // Остальные страницы - банковские (dist/banking): в адресе
-                    // callback.html лежит одноразовый код авторизации. Роутер
-                    // банка ставит no-store раньше, но setHeaders express.static
-                    // срабатывает позже и перезаписал бы его, так что строгие
-                    // заголовки держим здесь.
-                    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-                    res.setHeader('Pragma', 'no-cache');
-                    res.setHeader('Expires', '0');
-                }
-            }
-        }));
-
-        // SPA fallback — index.html всегда с ревалидацией (см. комментарий выше)
-        app.get('*', (req, res) => {
-            const indexPath = path.join(distPath, 'index.html');
-            if (fs.existsSync(indexPath)) {
-                res.setHeader('Cache-Control', 'no-cache');
-                res.sendFile(indexPath);
-            } else {
-                console.error(`❌ index.html not found in dist: ${indexPath}`);
-                res.status(404).send('index.html not found');
-            }
-        });
+        mountStatic(app, distPath);
     } else {
         console.error(`❌ Dist folder NOT FOUND at: ${distPath}`);
     }
