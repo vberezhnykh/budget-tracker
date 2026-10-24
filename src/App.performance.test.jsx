@@ -102,7 +102,10 @@ describe('instant account summaries', () => {
     transactions[0].amount = 400;
     await act(async () => finish());
     expect(screen.getByRole('button', { name: /Расход:.*400/ })).toBeVisible();
-    expect(screen.getByRole('button', { name: /Расход:.*400.*лимита.*1\.200/ })).toBeVisible();
+    // Лимит общий и у отдельного счёта не показывается - свой лимит виден у
+    // всех счетов.
+    select('Все счета');
+    expect(await screen.findByRole('button', { name: /Расход:.*лимита.*1\.200/ })).toBeVisible();
   });
 
   it('refreshes all views on return after expiry, without clearing the visible ring', async () => {

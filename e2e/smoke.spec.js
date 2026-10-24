@@ -38,7 +38,7 @@ async function openMoreRow(page, name) {
 // is required.
 
 test.describe('Budget Tracker smoke (mobile, real browser)', () => {
-  test('slow startup shows a skeleton, but switching accounts keeps the monthly limit bar visible', async ({ page }) => {
+  test('slow startup shows a skeleton, but switching accounts swaps the summary in place without one', async ({ page }) => {
     await mockApi(page);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     let release;
@@ -78,7 +78,9 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     await page.getByRole('button', { name: /^Тинькофф:/ }).click();
     const summary = page.getByRole('status', { name: 'Загрузка итогов…' });
     await expect(summary).toHaveCount(0);
-    await expect(bar).toBeVisible();
+    // Лимит общий на бюджет: у отдельного счета полосы нет.
+    await expect(page.getByRole('button', { name: /^Расход:/ })).not.toHaveAccessibleName(/из лимита/);
+    await expect(bar).toHaveCount(0);
     // Переключение счета берет готовые итоги из памяти: новых запросов нет.
     // (Стартовых может быть больше одного: dev-сборка идет под StrictMode.)
     expect(summaryRequests).toBe(startupSummaryRequests);

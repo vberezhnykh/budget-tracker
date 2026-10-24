@@ -212,6 +212,33 @@ describe('OverviewHero start of the month', () => {
         expect(screen.getByText(/^осталось/)).toHaveTextContent('осталось €6.965,00');
     });
 
+    it('says there are no expenses yet, without the previous month, later in the month', () => {
+        vi.setSystemTime(new Date(2026, 10, 24, 7));
+        render(<OverviewHero {...freshProps} onOpenPreviousMonth={() => { }} />);
+
+        expect(within(screen.getByRole('button', { name: /^Расход:/ })).getByText('€0,00')).toHaveStyle({ color: 'var(--color-text-muted)' });
+        expect(screen.getByText('Трат пока нет, лимит не тронут')).toBeInTheDocument();
+        expect(screen.queryByText('Месяц только начался, весь лимит впереди')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('previous-month-row')).not.toBeInTheDocument();
+    });
+
+    it('is still the start of the month on the 7th', () => {
+        vi.setSystemTime(new Date(2026, 10, 7, 23));
+        render(<OverviewHero {...freshProps} />);
+
+        expect(screen.getByText('Месяц только начался, весь лимит впереди')).toBeInTheDocument();
+        expect(screen.getByTestId('previous-month-row')).toBeInTheDocument();
+    });
+
+    it('has no limit line at all without a limit, as for a single account', () => {
+        vi.setSystemTime(new Date(2026, 10, 24, 7));
+        render(<OverviewHero {...freshProps} monthlyLimit={null} />);
+
+        expect(screen.queryByTestId('limit-bar')).not.toBeInTheDocument();
+        expect(screen.queryByText(/из €/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Трат пока нет|Месяц только начался/)).not.toBeInTheDocument();
+    });
+
     it('is not the start of a month for a past month with no expenses', () => {
         render(<OverviewHero {...freshProps} selectedMonth="2026-09" previousMonth={{ month: '2026-08', expense: 100 }} />);
 

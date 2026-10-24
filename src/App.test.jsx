@@ -1097,9 +1097,14 @@ describe('App Integration Tests', () => {
             fireEvent.click(screen.getByRole('button', { name: /^Карта:/ }));
             await screen.findByRole('button', { name: /^Расход: €1\.500,00/ });
             expect(screen.queryByText(/До конца месяца/)).not.toBeInTheDocument();
+            // Лимит тоже общий: у отдельного счёта нет ни «из €…», ни полосы.
+            expect(screen.getByRole('button', { name: /^Расход:/ })).not.toHaveAccessibleName(/из лимита/);
+            expect(screen.queryByTestId('limit-bar')).not.toBeInTheDocument();
 
             fireEvent.click(screen.getByRole('button', { name: /^Все счета:/ }));
             await screen.findByText('До конца месяца 6 дней');
+            expect(screen.getByRole('button', { name: /^Расход:/ })).toHaveAccessibleName(/из лимита/);
+            expect(screen.getByTestId('limit-bar')).toBeInTheDocument();
         });
 
         it('is not shown outside the last ten days (the 15th)', async () => {
@@ -1437,6 +1442,7 @@ describe('App Integration Tests', () => {
     });
 
     it('в начале месяца показывает итог прошлого и по нажатию открывает этот месяц', async () => {
+        vi.setSystemTime(new Date(2026, 0, 3, 12));
         currentTransactions = [{
             _id: 'd1', title: 'Rent', amount: 6890, type: 'expense', account: 'card',
             date: '2025-12-02T00:00:00Z', category: 'Food',

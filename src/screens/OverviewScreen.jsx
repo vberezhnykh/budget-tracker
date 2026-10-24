@@ -114,6 +114,11 @@ export default function OverviewScreen({
 
   const hasRecent = Object.keys(recent.groups).length > 0;
 
+  // Лимит общий на бюджет, поэтому полоса «из лимита» и сравнение прошлого
+  // месяца с лимитом есть только у всех счетов. У отдельного счёта карточка
+  // показывает его расход за месяц без лимита - как и плашка прогноза выше.
+  const heroLimit = selectedAccount ? null : monthlyLimit;
+
   // Цифры карточки и счетов анимируются только при обновлении той же величины:
   // ключ - месяц и счёт, а пока итоги не готовы (смена счёта, периода), его
   // нет, и новые цифры появляются сразу, без бега от значения-заглушки.
@@ -144,13 +149,13 @@ export default function OverviewScreen({
         )}
       </header>
 
-      <SummaryFrame {...summaryFrame} skeleton={{ monthly: timeRange === 'month', limitBar: Number.isFinite(monthlyLimit) && monthlyLimit > 0, analytics: false }}>
+      <SummaryFrame {...summaryFrame} skeleton={{ monthly: timeRange === 'month', limitBar: Number.isFinite(heroLimit) && heroLimit > 0, analytics: false }}>
         <OverviewHero
           timeRange={timeRange}
           selectedMonth={selectedMonth}
           income={totals.income}
           expense={totals.expense}
-          monthlyLimit={monthlyLimit}
+          monthlyLimit={heroLimit}
           plaque={plaque}
           previousMonth={previousMonth}
           onOpenPreviousMonth={onOpenPreviousMonth}

@@ -47,6 +47,11 @@ const formatPlain = value => formatMoney(value);
 const formatIncome = value => `+${formatMoney(value)}`;
 const formatSaldo = value => formatMoney(value, { sign: 'auto' });
 
+// Сколько первых дней месяц считается «только начавшимся»: в эти дни пустой
+// расход - норма, и карточка говорит о начале месяца и подводит итог прошлого.
+// Позже ноль - это просто «трат пока нет», и про начало месяца речи уже нет.
+const FRESH_MONTH_DAYS = 7;
+
 // Итог прошлого месяца под полосой в начале нового: «Октябрь закрыт: €6.890
 // из €7.000» и вторая строка «Уложились, запас €110». Суммы в целых евро - это
 // справка, а не учёт. Без пригодного лимита остаётся только первая строка.
@@ -142,9 +147,11 @@ export default function OverviewHero({
   const percent = Number.isFinite(ratio) ? Math.round(ratio * 100) : 0;
   const barWidth = Number.isFinite(ratio) ? Math.min(ratio * 100, 100) : 0;
   const limitDelta = withLimit ? Math.abs(monthlyLimit - expenseAbs) : 0;
-  // Месяц только начался: идущий месяц, трат ещё нет. Сумма тогда приглушена,
-  // а вместо остатка и процентов - фраза, что весь лимит впереди.
-  const isFreshMonth = timeRange === 'month' && selectedMonth === getCurrentMonth() && expenseAbs === 0;
+  // Идущий месяц без трат. Сумма тогда приглушена, а вместо остатка и
+  // процентов - фраза: в первые дни месяца - что он только начался (и под ней
+  // итог прошлого), позже - что трат пока нет.
+  const isEmptyCurrentMonth = timeRange === 'month' && selectedMonth === getCurrentMonth() && expenseAbs === 0;
+  const isFreshMonth = isEmptyCurrentMonth && new Date().getDate() <= FRESH_MONTH_DAYS;
   const limitText = withLimit ? `€${monthlyLimit.toLocaleString('de-DE')}` : '';
 
   // Для года фраза периода - просто «2026», с «годом» читается как в макете.
@@ -180,7 +187,7 @@ export default function OverviewHero({
                 fontSize: expenseText.length > 10 ? 'calc(var(--text-display) * 0.75)' : 'var(--text-display)',
                 fontWeight: 'var(--weight-strong)',
                 lineHeight: 1.1,
-                color: isFreshMonth ? 'var(--color-text-muted)' : 'var(--color-text-main)',
+                color: isEmptyCurrentMonth ? 'var(--color-text-muted)' : 'var(--color-text-main)',
                 whiteSpace: 'nowrap',
               }}
             >
@@ -219,9 +226,9 @@ export default function OverviewHero({
               }}
             />
           </div>
-          {isFreshMonth ? (
+          {isEmptyCurrentMonth ? (
             <div style={{ marginTop: 'var(--space-2)', fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>
-              Месяц только начался, весь лимит впереди
+              {isFreshMonth ? 'Месяц только начался, весь лимит впереди' : 'Трат пока нет, лимит не тронут'}
             </div>
           ) : (
             <div style={{
