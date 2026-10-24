@@ -1083,6 +1083,25 @@ describe('App Integration Tests', () => {
             expect(screen.queryByText(/До конца месяца/)).not.toBeInTheDocument();
         });
 
+        it('is shown for all accounts only and hidden when a single account is selected', async () => {
+            // Наличные тратят 100 в марте: по всем счетам 1600, по карте 1500 -
+            // так видно, что итоги карты уже пришли.
+            const cashSpent = { _id: 'm2', title: 'Кофе', amount: 100, type: 'expense', account: 'cash', date: '2026-03-04T00:00:00Z', category: 'Food' };
+            currentTransactions = [...referenceMonths, marchSpent(1500), cashSpent];
+            render(<App />);
+            await screen.findByText('До конца месяца 6 дней');
+
+            // Снимок устарел - выбор счёта идёт за полной сводкой по нему, с
+            // прогнозом счёта, а не берёт готовые итоги без прогноза.
+            vi.setSystemTime(new Date('2026-03-25T12:05:00'));
+            fireEvent.click(screen.getByRole('button', { name: /^Карта:/ }));
+            await screen.findByRole('button', { name: /^Расход: €1\.500,00/ });
+            expect(screen.queryByText(/До конца месяца/)).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('button', { name: /^Все счета:/ }));
+            await screen.findByText('До конца месяца 6 дней');
+        });
+
         it('is not shown outside the last ten days (the 15th)', async () => {
             vi.setSystemTime(new Date('2026-03-15T12:00:00'));
             currentTransactions = [...referenceMonths, marchSpent(1500)];

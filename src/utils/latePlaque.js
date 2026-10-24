@@ -7,6 +7,9 @@ import { formatMoney } from './money';
 // Правила (решение из docs/REDESIGN-PLAN.md): плашка нужна только в
 // последние 10 дней идущего месяца, пока лимит ещё не превышен - после
 // превышения «успеете ли уложиться» уже не вопрос, это видно по полосе.
+// И только для всех счетов: лимит общий на бюджет, и сравнивать с ним прогноз
+// одного счёта бессмысленно - у редко используемого счёта «обычно уходит
+// около €0», и запас выходит почти весь лимит.
 
 const PLAQUE_MAX_DAYS = 10;
 
@@ -70,11 +73,14 @@ export function getLatePlaque({
   timeRange,
   selectedMonth,
   currentMonth = getCurrentMonth(),
+  // Выбранный на Обзоре счёт; null - все счета
+  account = null,
   spent,
   limit,
   typicalMonth,
 }) {
   if (timeRange !== 'month' || selectedMonth !== currentMonth) return null;
+  if (account) return null;
   const today = typicalMonth?.today;
   if (!today) return null;
   if (!Number.isFinite(limit) || limit <= 0) return null;

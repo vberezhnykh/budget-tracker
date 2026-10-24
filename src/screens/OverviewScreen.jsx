@@ -98,6 +98,7 @@ export default function OverviewScreen({
   const plaque = getLatePlaque({
     timeRange,
     selectedMonth,
+    account: selectedAccount,
     spent: Math.abs(totals.expense),
     limit: monthlyLimit,
     typicalMonth,

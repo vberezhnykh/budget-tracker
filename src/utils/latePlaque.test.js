@@ -32,6 +32,11 @@ describe('getLatePlaque visibility', () => {
     expect(getLatePlaque({ ...base, typicalMonth: typical(30) })).toMatchObject({ daysLeft: 1, title: 'До конца месяца 1 день' });
   });
 
+  it('is shown only for all accounts, not for a single one', () => {
+    expect(getLatePlaque({ ...base, account: null, typicalMonth: typical(25) })).toMatchObject({ daysLeft: 6 });
+    expect(getLatePlaque({ ...base, account: 'card', typicalMonth: typical(25) })).toBeNull();
+  });
+
   it('is shown at N=10 and hidden at N=11', () => {
     expect(getLatePlaque({ ...base, typicalMonth: typical(21) })).toMatchObject({ daysLeft: 10, title: 'До конца месяца 10 дней' });
     expect(getLatePlaque({ ...base, typicalMonth: typical(20) })).toBeNull();
