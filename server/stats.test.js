@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBalances, computeMonthlyTotals, computeMonthlyTotalsByAccount, toDateKey } from './stats.js';
+import { computeBalances, computeMonthEndBalances, computeMonthlyTotals, computeMonthlyTotalsByAccount, toDateKey } from './stats.js';
 
 // Счета всех интересных видов: карта, наличные, замороженный счёт с
 // положительным остатком (залог) и замороженный с отрицательным (счётчик
@@ -295,6 +295,37 @@ describe('computeMonthlyTotals по существу', () => {
     it('последний день месяца остаётся в своём месяце', () => {
         expect(Object.keys(totals)).toContain('2026-08');
         expect(totals['2026-09']).toEqual({ income: 300, expense: 0 });
+    });
+});
+
+describe('остатки на конец месяца', () => {
+    const history = computeMonthEndBalances(transactions, accounts);
+
+    it('капитал без замороженных счетов, по месяцам с операциями', () => {
+        // Ноябрь: 5650 стартовых. Июль: + 4200 - 120.55 на карте.
+        // Август: наличные 6755, карта 624.15 (залог и обмен ушли со счетов
+        // капитала, но сами счета в капитал не входят). Сентябрь: +300.
+        expect(history['']).toEqual({
+            '2025-11': 5650,
+            '2026-07': 9729.45,
+            '2026-08': 7379.15,
+            '2026-09': 7679.15,
+        });
+    });
+
+    it('последний месяц совпадает с капиталом из остатков', () => {
+        expect(history['']['2026-09']).toBe(toCents(computeBalances(transactions, accounts).total));
+    });
+
+    it('каждый счёт - с месяца своей первой операции, с остатком на конец месяца', () => {
+        expect(history['acc-cash']).toEqual({ '2025-11': 5650, '2026-07': 5650, '2026-08': 6755, '2026-09': 6755 });
+        expect(history['acc-card']).toEqual({ '2026-07': 4079.45, '2026-08': 624.15, '2026-09': 924.15 });
+        expect(history['acc-deposit']).toEqual({ '2026-08': 2000, '2026-09': 2000 });
+        expect(history['acc-exchange']).toEqual({ '2026-08': -700, '2026-09': -700 });
+    });
+
+    it('без операций - пустой капитал', () => {
+        expect(computeMonthEndBalances([], accounts)).toEqual({ '': {} });
     });
 });
 

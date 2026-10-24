@@ -52,7 +52,7 @@ describe('GET /api/stats/dashboard', () => {
         expect(res.status).toBe(200);
         expect(Object.keys(res.body).sort()).toEqual([
             'balances', 'categoryComparison', 'categoryCounts', 'categoryUsage',
-            'comparison', 'lifetime', 'month', 'monthlySeries', 'monthlyTotals',
+            'comparison', 'lifetime', 'month', 'monthEndBalances', 'monthlySeries', 'monthlyTotals',
             'monthlyTotalsByAccount', 'period', 'typicalMonth', 'yearly'
         ]);
     });

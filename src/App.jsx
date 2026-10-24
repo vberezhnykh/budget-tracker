@@ -34,6 +34,7 @@ import { scheduleIdle } from './utils/prefetch'
 import { markDataReady } from './utils/loadTiming'
 import { handleAccountDragEnd } from './utils/accountReorder'
 import { getAccountThemes } from './utils/accountThemes'
+import { withMonthEndBalances } from './utils/balanceSeries'
 
 // API URL - relative path for production data fetching
 const API_URL = '/api/transactions';
@@ -927,6 +928,10 @@ function App() {
     income: monthlyTotals[month]?.income || 0,
     expense: Math.abs(monthlyTotals[month]?.expense || 0),
   }));
+  // Для графика «Деньги в наличии» на Аналитике: остаток на конец месяца
+  // выбранного счёта, а у всех счетов - капитал (сервер считает его без
+  // счетов «вне общего капитала»).
+  const analyticsSeries = withMonthEndBalances(monthlySeries, dashboard?.data.monthEndBalances?.[selectedAccount || '']);
 
   // График в листе лимита: лимит один на все счета, поэтому ряд берётся из
   // итогов «по всем счетам», а не из выбранного на Обзоре счёта.
@@ -1826,7 +1831,8 @@ function App() {
             onChangePeriod={handlePeriodChange}
             typicalMonth={summary?.typicalMonth ?? null}
             monthlyLimit={monthlyLimit}
-            series={monthlySeries}
+            series={analyticsSeries}
+            accountSelected={Boolean(selectedAccount)}
             selectedMonth={selectedMonth}
             onSelectMonth={(month) => handlePeriodChange({ timeRange: 'month', selectedMonth: month })}
             expenseComparison={expenseComparison}

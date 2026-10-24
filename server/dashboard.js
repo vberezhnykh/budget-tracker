@@ -1,4 +1,4 @@
-const { computeBalances, computeMonthlyTotalsByAccount } = require('./stats');
+const { computeBalances, computeMonthEndBalances, computeMonthlyTotalsByAccount } = require('./stats');
 const { transformTransactions } = require('./transform');
 const { computePeriodData, periodPrefixOf } = require('./periodStats');
 const {
@@ -15,6 +15,10 @@ function buildDashboard(docs, accounts, { month, timeRange = 'month', account, c
         balances: computeBalances(docs, accounts),
         monthlyTotals: monthlyTotalsByAccount[account || ''] || {},
         monthlyTotalsByAccount,
+        // Остатки на конец каждого месяца для графика «Деньги в наличии» -
+        // по всем счетам сразу, как monthlyTotalsByAccount: смена счёта на
+        // Обзоре не требует нового запроса.
+        monthEndBalances: computeMonthEndBalances(docs, accounts),
         period: computePeriodData(transactions, periodPrefixOf(timeRange, month), filters),
         month: computePeriodData(transactions, month, filters),
         yearly: computeYearlyData(transactions, month, account, category),

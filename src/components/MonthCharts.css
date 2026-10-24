@@ -1,0 +1,61 @@
+/* Графики «Доходы и расходы» и «Деньги в наличии». Ряд месяцев, прокрутка и
+   подписи - общие с «По месяцам» (MonthlyTrend.css), здесь только своё. */
+
+.month-chart__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+.month-chart__period { color: var(--color-text-muted); font-size: var(--text-sm); }
+
+/* Цифры выбранного месяца - они же легенда цветов. */
+.month-chart__stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2) var(--space-3);
+    margin: 0 0 var(--space-4);
+}
+.month-chart__stats dt { display: flex; align-items: center; gap: var(--space-1-5); font-size: var(--text-xs); color: var(--color-text-muted); }
+.month-chart__stats dd { margin: var(--space-0-5) 0 0; font-size: var(--text-lg); font-weight: var(--weight-strong); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.month-chart__key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.month-chart__key--income, .month-chart__bar--income { background: var(--color-positive); }
+.month-chart__key--expense, .month-chart__bar--expense { background: var(--color-primary); }
+
+/* Выбранный месяц подсвечен полем за столбцами: цвет самих столбцов занят
+   под доход и расход. */
+.month-chart__plot { border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
+.monthly-trend__month[aria-pressed="true"] .month-chart__plot { background: var(--color-primary-soft); }
+
+/* Пара столбцов растёт из общей базовой линии, между ними 2px зазора. */
+.month-chart__pair { display: flex; align-items: flex-end; gap: 2px; height: 100%; width: min(26px, 70%); }
+.month-chart__bar { flex: 1 1 0; border-radius: 4px 4px 0 0; }
+
+.balance-trend__summary { margin: 0 0 var(--space-4); }
+.balance-trend__value { font-size: var(--text-2xl); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
+.balance-trend__summary .month-chart__period { margin-top: var(--space-0-5); }
+
+/* Шкала остатка не от нуля, поэтому базовой линии у поля нет: она читалась
+   бы как ноль. */
+.balance-trend__plot { border-bottom-color: transparent; }
+
+/* SVG занимает поле графика над подписями и жестов не перехватывает. */
+.balance-trend__lines {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: var(--trend-plot-height);
+    overflow: visible;
+    pointer-events: none;
+}
+.balance-trend__line { fill: none; stroke: var(--color-primary); stroke-width: 2px; stroke-linejoin: round; stroke-linecap: round; }
+.balance-trend__area { fill: var(--color-primary); opacity: 0.08; }
+.balance-trend__zero { stroke: var(--color-border); stroke-width: 1px; stroke-dasharray: 4 3; }
+
+.balance-trend__guide { position: absolute; bottom: 0; left: 50%; width: 0; border-left: 1px dashed var(--color-primary-border); }
+.balance-trend__dot {
+    position: absolute;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-surface);
+    transform: translate(-50%, 50%);
+}

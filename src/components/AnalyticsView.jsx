@@ -1,5 +1,7 @@
+import BalanceTrend from './BalanceTrend';
 import CategoryBars from './CategoryBars';
 import CategoryBarsEmpty from './CategoryBarsEmpty';
+import IncomeExpenseChart from './IncomeExpenseChart';
 import MonthlyTrend from './MonthlyTrend';
 import PaceCard from './PaceCard';
 import Card from './ui/Card';
@@ -24,7 +26,8 @@ function TotalsRow({ label, value, color, divider }) {
 }
 
 // Содержимое вкладки «Аналитика» под заголовком экрана, сверху вниз: темп
-// трат (только месяц), категории, расход по месяцам, итоги периода. Заголовок
+// трат (только месяц), категории, расход по месяцам, доходы и расходы по
+// месяцам, деньги в наличии по месяцам, итоги периода. Заголовок
 // с выбором периода живёт в AnalyticsScreen, вне обёртки ожидания: период
 // должен меняться и пока цифры грузятся.
 export default function AnalyticsView({
@@ -33,6 +36,7 @@ export default function AnalyticsView({
     typicalMonth,
     monthlyLimit,
     series,
+    accountSelected = false,
     selectedMonth,
     onSelectMonth,
     expenseComparison,
@@ -89,6 +93,17 @@ export default function AnalyticsView({
                 timeRange={timeRange}
                 limit={monthlyLimit}
                 forecast={typicalMonth?.today?.forecast ?? null}
+            />
+
+            <IncomeExpenseChart series={series} selectedMonth={selectedMonth} onSelectMonth={onSelectMonth} timeRange={timeRange} />
+
+            {/* У выбранного на Обзоре счёта это его остаток, а не капитал. */}
+            <BalanceTrend
+                series={series}
+                selectedMonth={selectedMonth}
+                onSelectMonth={onSelectMonth}
+                timeRange={timeRange}
+                title={accountSelected ? 'Остаток счёта' : 'Деньги в наличии'}
             />
 
             <Card as="section" padding="lg">

@@ -192,4 +192,48 @@ function computeMonthlyTotalsByAccount(transactions, accounts = [], { category }
     return totals;
 }
 
-module.exports = { computeBalances, computeMonthlyTotals, computeMonthlyTotalsByAccount, accountFlows, toDateKey };
+// Остатки на конец месяца: { '': { 'YYYY-MM': капитал }, [id счёта]: { ... } }.
+//
+// Пустой ключ - «деньги в наличии»: сумма остатков счетов, входящих в
+// капитал, по тем же правилам, что и total в computeBalances (счета с
+// excludeFromTotal не учитываются целиком). Поэтому перевод между двумя
+// счетами капитала его не меняет, а перевод на вклад - уменьшает.
+//
+// Месяц попадает в ответ, только если в нём была хоть одна операция: в
+// месяце без операций остатки те же, что в предыдущем, и интерфейс берёт
+// последний известный. Счёт появляется в месяце своей первой операции.
+// excludeFromStats здесь, как и в остатках, не смотрится.
+function computeMonthEndBalances(transactions, accounts = []) {
+    const heldAccountIds = new Set(
+        (accounts || []).filter(acc => acc.excludeFromTotal).map(acc => String(acc._id))
+    );
+    const flowsByMonth = {};
+    (transactions || []).forEach(t => {
+        const month = toDateKey(t.date).slice(0, 7);
+        if (!month) return;
+        const flows = flowsByMonth[month] ||= {};
+        Object.entries(accountFlows(t)).forEach(([accId, flow]) => {
+            flows[accId] = (flows[accId] || 0) + flow;
+        });
+    });
+
+    // Копейки складываются с хвостами двоичной дроби; округляем каждую
+    // точку, а копим неокруглённое, чтобы ошибка не накапливалась.
+    const round = value => Math.round(value * 100) / 100 || 0;
+    const running = {};
+    const result = { '': {} };
+    Object.keys(flowsByMonth).sort().forEach(month => {
+        Object.entries(flowsByMonth[month]).forEach(([accId, flow]) => {
+            running[accId] = (running[accId] || 0) + flow;
+        });
+        let total = 0;
+        Object.entries(running).forEach(([accId, balance]) => {
+            (result[accId] ||= {})[month] = round(balance);
+            if (!heldAccountIds.has(accId)) total += balance;
+        });
+        result[''][month] = round(total);
+    });
+    return result;
+}
+
+module.exports = { computeBalances, computeMonthlyTotals, computeMonthlyTotalsByAccount, computeMonthEndBalances, accountFlows, toDateKey };

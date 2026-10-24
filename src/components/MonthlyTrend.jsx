@@ -1,16 +1,13 @@
-import { useEffect, useRef } from 'react';
 import Card from './ui/Card';
 import { formatMoney } from '../utils/money';
 import { formatMonthName, getCurrentMonth } from '../utils/period';
 import { isLimitUsable } from '../utils/paceChart';
 import { getTrendCaption } from '../utils/trendCaption';
+import useMonthTimeline, { VISIBLE_MONTHS } from './useMonthTimeline';
 import './MonthlyTrend.css';
 
 // Расход по месяцам столбцами. Сколько месяцев помещается на экран без
-// прокрутки: полгода для месячного вида и год для годового; весь ряд при этом
-// остаётся доступным горизонтальной прокруткой, а выбранный месяц всегда
-// показывается.
-const VISIBLE_MONTHS = { month: 6, year: 12, lifetime: 12 };
+// прокрутки - см. VISIBLE_MONTHS.
 
 // Запас сверху шкалы, чтобы самый высокий столбец не упирался в край.
 const HEADROOM = 1.1;
@@ -21,27 +18,7 @@ function getScaleMax(series, limit, forecast) {
 }
 
 export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth, timeRange = 'month', limit = null, forecast = null }) {
-    const scrollRef = useRef(null);
-    const monthRefs = useRef(new Map());
-
-    // Keep selection visible without rebuilding or recentering the timeline.
-    useEffect(() => {
-        const scroll = scrollRef.current;
-        const button = monthRefs.current.get(selectedMonth);
-        if (!scroll || !button) return;
-        const reveal = () => {
-            const left = button.offsetLeft;
-            const right = left + button.offsetWidth;
-            if (left < scroll.scrollLeft || right > scroll.scrollLeft + scroll.clientWidth) {
-                scroll.scrollTo?.({ left: Math.max(0, right - scroll.clientWidth), behavior: 'instant' });
-            }
-        };
-        reveal();
-        if (typeof ResizeObserver === 'undefined') return;
-        const observer = new ResizeObserver(reveal);
-        observer.observe(scroll);
-        return () => observer.disconnect();
-    }, [selectedMonth, series.length]);
+    const { scrollRef, monthRef, handleKeyDown, showYear } = useMonthTimeline({ series, selectedMonth, onSelectMonth });
 
     if (series.length === 0) return null;
 
@@ -53,21 +30,8 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
     const ghostForecast = Number.isFinite(forecast) && forecast > 0 ? forecast : null;
     const max = getScaleMax(series, showLimit ? limit : null, ghostForecast);
     const ratio = amount => Math.min(Math.max(amount / max, 0), 1);
-    const spansYears = new Set(series.map(month => month.year)).size > 1;
-    // Год подписывается под первым месяцем ряда и под каждым, где он меняется:
-    // год под всеми столбцами только засорял бы узкие подписи.
-    const showYear = index => spansYears && (index === 0 || series[index - 1].year !== series[index].year);
     const hasGhost = ghostForecast !== null && series.some(month => month.month === currentMonth);
     const caption = timeRange === 'month' ? getTrendCaption(series, { limit, currentMonth, visible }) : null;
-
-    const handleKeyDown = (event, index) => {
-        const nextIndex = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: series.length - 1 }[event.key];
-        if (nextIndex === undefined) return;
-        event.preventDefault();
-        const next = series[Math.max(0, Math.min(series.length - 1, nextIndex))];
-        onSelectMonth(next.month);
-        monthRefs.current.get(next.month)?.focus({ preventScroll: true });
-    };
 
     return (
         <Card as="section" padding="lg" className="monthly-trend" aria-labelledby="monthly-trend-title">
@@ -104,7 +68,7 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
                         return (
                             <button
                                 key={month.month}
-                                ref={element => { if (element) monthRefs.current.set(month.month, element); else monthRefs.current.delete(month.month); }}
+                                ref={monthRef(month.month)}
                                 type="button"
                                 className="monthly-trend__month"
                                 data-month={month.month}
