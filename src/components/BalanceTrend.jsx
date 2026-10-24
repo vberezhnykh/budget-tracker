@@ -39,7 +39,7 @@ function balanceCaption(month, currentMonth) {
 }
 
 export default function BalanceTrend({ series = [], selectedMonth, onSelectMonth, timeRange = 'month', title = 'Деньги в наличии' }) {
-    const { scrollRef, monthRef, handleKeyDown, showYear } = useMonthTimeline({ series, selectedMonth, onSelectMonth });
+    const { scrollRef, monthRef, handleClick, handleKeyDown, showYear } = useMonthTimeline({ series, selectedMonth, onSelectMonth });
 
     const values = series.filter(month => month.balance !== null).map(month => month.balance);
     if (values.length === 0) return null;
@@ -115,7 +115,7 @@ export default function BalanceTrend({ series = [], selectedMonth, onSelectMonth
                                 aria-pressed={isSelected}
                                 aria-label={label}
                                 title={label}
-                                onClick={() => onSelectMonth(month.month)}
+                                onClick={handleClick(month.month)}
                                 onKeyDown={event => handleKeyDown(event, index)}
                             >
                                 <span className="monthly-trend__plot balance-trend__plot" aria-hidden="true">

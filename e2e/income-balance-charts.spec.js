@@ -118,6 +118,50 @@ test.describe('Доходы, расходы и деньги в наличии (m
     await expect(page.getByText('−€1.800,00')).toBeVisible();
   });
 
+  test('нажатый график стоит на месте, когда блоки над ним меняют высоту', async ({ page }) => {
+    // Как в Safari: без встроенного scroll anchoring браузера.
+    await page.addInitScript(() => {
+      document.addEventListener('DOMContentLoaded', () => {
+        const style = document.createElement('style');
+        style.textContent = '* { overflow-anchor: none !important; }';
+        document.head.append(style);
+      });
+    });
+    // В августе трат в пяти категориях, в сентябре - в одной: список
+    // категорий над графиками меняет высоту.
+    const extra = ['Кафе', 'Транспорт', 'Дом', 'Здоровье'].map((category, index) => ({
+      _id: `aug-${index}`, title: category, amount: 50 + index, type: 'expense', account: 'acc-card-1', date: '2026-08-04T12:00:00.000Z', category,
+    }));
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.clock.setFixedTime(new Date(2026, 8, 12, 12));
+    await mockApi(page, { accounts: chartAccounts, transactions: [...chartTransactions, ...extra] });
+    let releaseAugust;
+    const augustHeld = new Promise(resolve => { releaseAugust = resolve; });
+    await page.route('**/api/stats/dashboard**', async route => {
+      if (new URL(route.request().url()).searchParams.get('month') !== '2026-08') return route.fallback();
+      await augustHeld;
+      return route.fallback();
+    });
+    await page.goto('/');
+    await page.getByRole('navigation', { name: 'Основная навигация' })
+      .getByRole('button', { name: /Аналитика/ }).click();
+    const flows = page.getByRole('region', { name: 'Доходы и расходы' });
+    await flows.evaluate(element => element.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    // Наезд экрана вкладки (View Transition) должен закончиться: пока он
+    // идёт, нажатие попадает в его снимок, а не в кнопку.
+    await page.waitForFunction(() => document.getAnimations().length === 0);
+    const august = flows.getByRole('button', { name: /^Август 2026:/ });
+    const box = await august.boundingBox();
+    const before = box.y;
+
+    // Нажатие мышью в точку: click() локатора сам прокрутил бы страницу.
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.getByRole('button', { name: /^Период:/ })).toHaveAccessibleName('Период: Август 2026');
+    releaseAugust();
+    await expect(page.getByRole('button', { name: /^Кафе: €/ })).toBeVisible();
+    await expect.poll(async () => Math.round((await august.boundingBox()).y)).toBe(Math.round(before));
+  });
+
   test('у выбранного на Обзоре счёта - его остаток', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 1000 });
     await page.clock.setFixedTime(new Date(2026, 8, 12, 12));

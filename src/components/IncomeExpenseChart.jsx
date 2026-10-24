@@ -16,7 +16,7 @@ import './MonthCharts.css';
 const HEADROOM = 1.1;
 
 export default function IncomeExpenseChart({ series = [], selectedMonth, onSelectMonth, timeRange = 'month' }) {
-    const { scrollRef, monthRef, handleKeyDown, showYear } = useMonthTimeline({ series, selectedMonth, onSelectMonth });
+    const { scrollRef, monthRef, handleClick, handleKeyDown, showYear } = useMonthTimeline({ series, selectedMonth, onSelectMonth });
 
     if (series.length === 0) return null;
 
@@ -70,7 +70,7 @@ export default function IncomeExpenseChart({ series = [], selectedMonth, onSelec
                                 aria-pressed={isSelected}
                                 aria-label={label}
                                 title={label}
-                                onClick={() => onSelectMonth(month.month)}
+                                onClick={handleClick(month.month)}
                                 onKeyDown={event => handleKeyDown(event, index)}
                             >
                                 <span className="monthly-trend__plot month-chart__plot" aria-hidden="true">

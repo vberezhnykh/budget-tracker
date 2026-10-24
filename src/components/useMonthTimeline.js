@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import holdScrollAnchor from '../utils/holdScrollAnchor';
 
 // Сколько месяцев помещается на экран без прокрутки: полгода для месячного
 // вида и год для годового; весь ряд при этом остаётся доступным
@@ -36,12 +37,21 @@ export default function useMonthTimeline({ series, selectedMonth, onSelectMonth 
         else monthRefs.current.delete(month);
     };
 
+    // Выбор месяца меняет высоту блоков над графиком (категории, темп трат),
+    // поэтому нажатый график держится на месте экрана (см. holdScrollAnchor).
+    const selectMonth = (month, element) => {
+        holdScrollAnchor(element);
+        onSelectMonth(month);
+    };
+
+    const handleClick = month => event => selectMonth(month, event.currentTarget);
+
     const handleKeyDown = (event, index) => {
         const nextIndex = { ArrowLeft: index - 1, ArrowRight: index + 1, Home: 0, End: series.length - 1 }[event.key];
         if (nextIndex === undefined) return;
         event.preventDefault();
         const next = series[Math.max(0, Math.min(series.length - 1, nextIndex))];
-        onSelectMonth(next.month);
+        selectMonth(next.month, event.currentTarget);
         monthRefs.current.get(next.month)?.focus({ preventScroll: true });
     };
 
@@ -50,5 +60,5 @@ export default function useMonthTimeline({ series, selectedMonth, onSelectMonth 
     const spansYears = new Set(series.map(month => month.year)).size > 1;
     const showYear = index => spansYears && (index === 0 || series[index - 1].year !== series[index].year);
 
-    return { scrollRef, monthRef, handleKeyDown, showYear };
+    return { scrollRef, monthRef, handleClick, handleKeyDown, showYear };
 }

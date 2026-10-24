@@ -18,7 +18,7 @@ function getScaleMax(series, limit, forecast) {
 }
 
 export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth, timeRange = 'month', limit = null, forecast = null }) {
-    const { scrollRef, monthRef, handleKeyDown, showYear } = useMonthTimeline({ series, selectedMonth, onSelectMonth });
+    const { scrollRef, monthRef, handleClick, handleKeyDown, showYear } = useMonthTimeline({ series, selectedMonth, onSelectMonth });
 
     if (series.length === 0) return null;
 
@@ -75,7 +75,7 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
                                 aria-pressed={isSelected}
                                 aria-label={label}
                                 title={label}
-                                onClick={() => onSelectMonth(month.month)}
+                                onClick={handleClick(month.month)}
                                 onKeyDown={event => handleKeyDown(event, index)}
                             >
                                 <span className="monthly-trend__plot" aria-hidden="true">
