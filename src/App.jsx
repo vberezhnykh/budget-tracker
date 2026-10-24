@@ -863,7 +863,19 @@ function App() {
   // switching the month refreshes its details in the background.
   const matchingTotals = dashboard?.filterKey === summaryFilterKey;
   const accountMonthlyTotals = dashboard?.data.monthlyTotalsByAccount?.[selectedAccount || ''];
-  const statsReady = Boolean(summary || ((accountMonthlyTotals || matchingTotals) && screen !== 'analytics' && timeRange === 'month'));
+  // На Аналитике смена месяца или периода не прячет экран за скелетоном:
+  // пока итоги нового периода в пути, остаются последние показанные итоги того
+  // же счёта, и цифры меняются на месте, когда придут новые. Графики по месяцам
+  // от периода не зависят и сразу верны. Данные другого счёта прежними не
+  // показываются - для них остаётся обычное ожидание.
+  const [lastAnalyticsSummary, setLastAnalyticsSummary] = useState(null);
+  if (screen === 'analytics' && summary && lastAnalyticsSummary?.data !== summary) {
+    setLastAnalyticsSummary({ filterKey: summaryFilterKey, data: summary });
+  }
+  const shownSummary = summary || (screen === 'analytics' && lastAnalyticsSummary?.filterKey === summaryFilterKey
+    ? lastAnalyticsSummary.data
+    : null);
+  const statsReady = Boolean(shownSummary || ((accountMonthlyTotals || matchingTotals) && screen !== 'analytics' && timeRange === 'month'));
 
   // Declarative card list for the accounts strip on the overview: total
   // capital («Все счета»), then one card per individual account. The
@@ -913,14 +925,14 @@ function App() {
     ? Math.abs(allAccountsTotals[getCurrentMonth()]?.expense || 0)
     : undefined;
 
-  const monthlyData = summary?.month || EMPTY_TOTALS;
-  const yearlyData = summary?.yearly || EMPTY_TOTALS;
-  const lifetimeStats = summary?.lifetime;
+  const monthlyData = shownSummary?.month || EMPTY_TOTALS;
+  const yearlyData = shownSummary?.yearly || EMPTY_TOTALS;
+  const lifetimeStats = shownSummary?.lifetime;
   const categoryUsage = dashboard?.data.categoryUsage || {};
-  const comparisonData = summary?.comparison || EMPTY_COMPARISON;
-  const categoryComparison = summary?.categoryComparison || {};
+  const comparisonData = shownSummary?.comparison || EMPTY_COMPARISON;
+  const categoryComparison = shownSummary?.categoryComparison || {};
   const periodMonths = useMemo(() => listPeriodMonths(), []);
-  const monthlyTotals = accountMonthlyTotals || summary?.monthlyTotals || (matchingTotals ? dashboard.data.monthlyTotals : {});
+  const monthlyTotals = accountMonthlyTotals || shownSummary?.monthlyTotals || (matchingTotals ? dashboard.data.monthlyTotals : {});
   const monthlySeries = periodMonths.map(month => ({
     month,
     year: Number(month.slice(0, 4)),
@@ -1829,7 +1841,7 @@ function App() {
             periodStats={periodStats}
             timeRange={timeRange}
             onChangePeriod={handlePeriodChange}
-            typicalMonth={summary?.typicalMonth ?? null}
+            typicalMonth={shownSummary?.typicalMonth ?? null}
             monthlyLimit={monthlyLimit}
             series={analyticsSeries}
             accountSelected={Boolean(selectedAccount)}

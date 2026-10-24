@@ -93,6 +93,31 @@ test.describe('Доходы, расходы и деньги в наличии (m
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
   });
 
+  test('выбор месяца не прячет экран за скелетоном, пока грузятся итоги', async ({ page }) => {
+    const { balance } = await openAnalytics(page);
+    // Итоги августа отвечают медленно, чтобы ожидание было видно.
+    let releaseAugust;
+    const augustHeld = new Promise(resolve => { releaseAugust = resolve; });
+    await page.route('**/api/stats/dashboard**', async route => {
+      if (new URL(route.request().url()).searchParams.get('month') !== '2026-08') return route.fallback();
+      await augustHeld;
+      return route.fallback();
+    });
+    const totals = page.getByRole('heading', { name: 'Итоги' });
+    await expect(totals).toBeVisible();
+
+    await balance.getByRole('button', { name: /^Август 2026:/ }).click();
+    await expect(page.getByRole('button', { name: /^Период:/ })).toHaveAccessibleName('Период: Август 2026');
+    await expect(balance.getByText('€9.100,00')).toBeVisible();
+    // Прежние итоги остаются на месте, без скелетона и размытия.
+    await expect(page.getByLabel('Загрузка итогов…')).toHaveCount(0);
+    await expect(totals).toBeVisible();
+    await expect(page.getByTestId('account-summary')).toHaveAttribute('aria-busy', 'false');
+
+    releaseAugust();
+    await expect(page.getByText('−€1.800,00')).toBeVisible();
+  });
+
   test('у выбранного на Обзоре счёта - его остаток', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 1000 });
     await page.clock.setFixedTime(new Date(2026, 8, 12, 12));
