@@ -81,6 +81,22 @@ describe('company registry API', () => {
         expect(byName['No Purchases']._id).toBe(String(empty._id));
     });
 
+    it('exposes usage per category and the last use, ignoring trashed expenses and omitting both when unused', async () => {
+        const company = await Company.create(chosenCompany);
+        await Company.create({ name: 'No Purchases', logoMode: 'auto' });
+        await Transaction.create([
+            tx({ companyId: company._id, category: 'Кафе и доставка', date: '2026-03-01T00:00:00.000Z' }),
+            tx({ companyId: company._id, category: 'Кафе и доставка', date: '2026-03-02T00:00:00.000Z' }),
+            tx({ companyId: company._id, category: 'Продукты', date: '2026-03-20T00:00:00.000Z' }),
+            tx({ companyId: company._id, category: 'Удалённая', date: '2026-04-01T00:00:00.000Z', deletedAt: new Date() })
+        ]);
+        const byName = Object.fromEntries((await agent.get('/api/companies')).body.map(item => [item.name, item]));
+        expect(byName['Mr & Mrs Pet'].usage).toEqual({ 'Кафе и доставка': 2, Продукты: 1 });
+        expect(byName['Mr & Mrs Pet'].lastUsed).toBe('2026-03-20T00:00:00.000Z');
+        expect(byName['No Purchases']).not.toHaveProperty('usage');
+        expect(byName['No Purchases']).not.toHaveProperty('lastUsed');
+    });
+
     it('breaks a usual-category tie by the most recent date', async () => {
         const company = await Company.create(chosenCompany);
         await Transaction.create([

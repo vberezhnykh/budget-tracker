@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const { normalizeMerchantDomain } = require('./merchantDomain');
-const { companyHistory, usualCategories } = require('./companyHistory');
+const { companyHistory, companyUsage, usualCategories } = require('./companyHistory');
 const { activeTransactionFilter } = require('./ledgerState');
 
 const COMPANY_LOGO_MODES = ['auto', 'domain', 'category'];
@@ -28,14 +28,15 @@ function validateCompanyInput(body) {
     return { company };
 }
 
-function serializeCompany(company, category) {
+function serializeCompany(company, category, used) {
     return {
         _id: String(company._id),
         __v: Number.isSafeInteger(company.__v) ? company.__v : 0,
         name: company.name,
         logoMode: company.logoMode || 'auto',
         ...(company.logoMode === 'domain' && company.merchantDomain ? { merchantDomain: company.merchantDomain } : {}),
-        ...(category ? { category } : {})
+        ...(category ? { category } : {}),
+        ...(used ? { usage: used.usage, lastUsed: used.lastUsed } : {})
     };
 }
 
@@ -59,7 +60,8 @@ function createCompaniesRouter() {
                 ])
             ]);
             const usual = usualCategories(groups);
-            return res.json(companies.map(company => serializeCompany(company, usual.get(String(company._id)))));
+            const used = companyUsage(groups);
+            return res.json(companies.map(company => serializeCompany(company, usual.get(String(company._id)), used.get(String(company._id)))));
         } catch {
             return res.status(500).json({ code: 'COMPANIES_UNAVAILABLE', message: 'Не удалось загрузить компании' });
         }
@@ -73,7 +75,8 @@ function createCompaniesRouter() {
                     .select('date companyName description logoMode merchantDomain type category').lean(),
                 Company.find().select('name').lean()
             ]);
-            res.json(companyHistory(docs, companies, typeof req.query.q === 'string' ? req.query.q : ''));
+            res.json(companyHistory(docs, companies, typeof req.query.q === 'string' ? req.query.q : '',
+                typeof req.query.category === 'string' ? req.query.category : ''));
         } catch {
             res.status(500).json({ message: 'Не удалось загрузить компании из истории' });
         }

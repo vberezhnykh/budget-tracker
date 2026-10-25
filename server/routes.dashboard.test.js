@@ -340,7 +340,28 @@ describe('Lazy dashboard and history routes', () => {
         await Transaction.create(tx({ description: 'Old shop', logoMode: 'domain', merchantDomain: 'shop.com' }));
         const res = await agent.get('/api/companies/history?q=shop');
         expect(res.status).toBe(200);
-        expect(res.body).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'domain', merchantDomain: 'shop.com', category: 'Продукты' }]);
+        expect(res.body).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'domain', merchantDomain: 'shop.com', category: 'Продукты', usage: { Продукты: 1 }, lastUsed: expect.any(String) }]);
+    });
+
+    it('ranks history by uses in the requested category and keeps the most frequent in the top eight', async () => {
+        const docs = [];
+        // Десять компаний по алфавиту, самая частая в «Кафе» - последняя по алфавиту
+        'ABCDEFGHIJ'.split('').forEach((letter, index) => {
+            const times = letter === 'J' ? 3 : 1;
+            for (let n = 0; n < times; n += 1) docs.push(tx({ description: `Shop ${letter}`, logoMode: 'category', category: 'Кафе', date: `2026-03-0${n + 1}T00:00:00.000Z` }));
+            if (index === 1) for (let n = 0; n < 5; n += 1) docs.push(tx({ description: 'Shop B', logoMode: 'category', category: 'Продукты', date: '2026-02-01T00:00:00.000Z' }));
+        });
+        await Transaction.create(docs);
+        const cafe = await agent.get('/api/companies/history').query({ q: 'shop', category: 'Кафе' });
+        expect(cafe.body).toHaveLength(8);
+        expect(cafe.body.slice(0, 2).map(item => item.companyName)).toEqual(['Shop J', 'Shop B']);
+        expect(cafe.body[0].usage).toEqual({ Кафе: 3 });
+        expect(cafe.body.map(item => item.companyName)).not.toContain('Shop I');
+        const plain = await agent.get('/api/companies/history').query({ q: 'shop' });
+        expect(plain.body.slice(0, 2).map(item => item.companyName)).toEqual(['Shop B', 'Shop J']);
+        expect(plain.body[0].usage).toEqual({ Кафе: 1, Продукты: 5 });
+        const exact = await agent.get('/api/companies/history').query({ q: 'shop a', category: 'Кафе' });
+        expect(exact.body.map(item => item.companyName)).toEqual(['Shop A']);
     });
 
     it('carries the category of the most recent matching transaction in a history entry', async () => {
@@ -349,6 +370,6 @@ describe('Lazy dashboard and history routes', () => {
             tx({ description: 'Old shop', logoMode: 'category', category: 'Кафе и доставка', date: '2026-03-10T00:00:00.000Z' })
         ]);
         const res = await agent.get('/api/companies/history?q=shop');
-        expect(res.body).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'category', merchantDomain: '', category: 'Кафе и доставка' }]);
+        expect(res.body).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'category', merchantDomain: '', category: 'Кафе и доставка', usage: { Продукты: 1, 'Кафе и доставка': 1 }, lastUsed: '2026-03-10T00:00:00.000Z' }]);
     });
 });

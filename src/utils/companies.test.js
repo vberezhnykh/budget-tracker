@@ -33,15 +33,55 @@ describe('company registry selection', () => {
 
   it('puts companies with the current category first, after an exact name match, without dropping others', () => {
     const saved = [
-      { _id: 'a', name: 'Alpha', logoMode: 'auto', category: 'Услуги' },
-      { _id: 'b', name: 'Beta', logoMode: 'auto', category: 'Кафе' },
+      { _id: 'a', name: 'Alpha', logoMode: 'auto', category: 'Услуги', usage: { Услуги: 2 }, lastUsed: '2026-09-02' },
+      { _id: 'b', name: 'Beta', logoMode: 'auto', category: 'Кафе', usage: { Кафе: 2 }, lastUsed: '2026-09-02' },
       { _id: 'c', name: 'Gamma', logoMode: 'auto' },
     ];
     const history = [{ type: 'expense', companyName: 'Delta', logoMode: 'category', category: 'Кафе', date: '2026-09-01' }];
-    expect(getCompanySuggestions(saved, history).map(c => c.name)).toEqual(['Alpha', 'Beta', 'Gamma', 'Delta']);
+    expect(getCompanySuggestions(saved, history).map(c => c.name)).toEqual(['Alpha', 'Beta', 'Delta', 'Gamma']);
     expect(getCompanySuggestions(saved, history, '', 'Кафе').map(c => c.name)).toEqual(['Beta', 'Delta', 'Alpha', 'Gamma']);
     expect(getCompanySuggestions(saved, history, 'alpha', 'Кафе').map(c => c.name)).toEqual(['Alpha']);
     expect(getCompanySuggestions([{ ...saved[0], name: 'Beta Alpha' }, ...saved.slice(1)], [], 'beta', 'Услуги').map(c => c.name)).toEqual(['Beta', 'Beta Alpha']);
+  });
+
+  it('ranks by uses in the selected category, then total uses, then recency, then name', () => {
+    const saved = [
+      { _id: 'a', name: 'Alpha', logoMode: 'auto', usage: { Кафе: 1, Продукты: 4 }, lastUsed: '2026-09-10' },
+      { _id: 'b', name: 'Beta', logoMode: 'auto', usage: { Кафе: 3 }, lastUsed: '2026-09-01' },
+      { _id: 'c', name: 'Gamma', logoMode: 'auto', usage: { Продукты: 6 }, lastUsed: '2026-09-20' },
+      { _id: 'd', name: 'Delta', logoMode: 'auto' },
+    ];
+    expect(getCompanySuggestions(saved, [], '', 'Кафе').map(c => c.name)).toEqual(['Beta', 'Alpha', 'Gamma', 'Delta']);
+    expect(getCompanySuggestions(saved, []).map(c => c.name)).toEqual(['Gamma', 'Alpha', 'Beta', 'Delta']);
+    expect(getCompanySuggestions(saved, [], '', 'Транспорт').map(c => c.name)).toEqual(['Gamma', 'Alpha', 'Beta', 'Delta']);
+    const ties = [
+      { _id: 'x', name: 'Zed', logoMode: 'auto', usage: { Кафе: 2 }, lastUsed: '2026-09-05' },
+      { _id: 'y', name: 'Yak', logoMode: 'auto', usage: { Кафе: 2 }, lastUsed: '2026-09-05' },
+      { _id: 'w', name: 'Wow', logoMode: 'auto', usage: { Кафе: 2 }, lastUsed: '2026-09-06' },
+    ];
+    expect(getCompanySuggestions(ties, [], '', 'Кафе').map(c => c.name)).toEqual(['Wow', 'Yak', 'Zed']);
+    expect(getCompanySuggestions([...ties, { _id: 'v', name: 'Zed 2', logoMode: 'auto', usage: { Кафе: 9 } }], [], 'zed', 'Кафе').map(c => c.name)).toEqual(['Zed', 'Zed 2']);
+  });
+
+  it('counts raw local transactions per category and merges server history rows', () => {
+    const rows = [
+      { type: 'expense', companyName: 'Cafe One', logoMode: 'category', category: 'Кафе', date: '2026-09-01' },
+      { type: 'expense', companyName: 'Cafe One', logoMode: 'category', category: 'Кафе', date: '2026-09-03' },
+      { type: 'expense', companyName: 'Cafe One', logoMode: 'category', category: 'Продукты', date: '2026-09-02' },
+      { type: 'expense', companyName: 'Shop', logoMode: 'category', category: 'Продукты', date: '2026-09-04' },
+      { type: 'expense', companyName: 'Shop', logoMode: 'category', category: 'Продукты', date: '2026-09-05' },
+      { type: 'expense', companyName: 'Shop', logoMode: 'category', category: 'Продукты', date: '2026-09-06', deletedAt: '2026-09-07' },
+    ];
+    const [cafe, shop] = getCompanySuggestions([], rows);
+    expect(cafe).toMatchObject({ name: 'Cafe One', usage: { Кафе: 2, Продукты: 1 }, lastUsed: '2026-09-03' });
+    expect(shop).toMatchObject({ name: 'Shop', usage: { Продукты: 2 }, lastUsed: '2026-09-05' });
+    expect(getCompanySuggestions([], rows, '', 'Продукты').map(c => c.name)).toEqual(['Shop', 'Cafe One']);
+    const server = [
+      { type: 'expense', companyName: 'Late', logoMode: 'category', category: 'Кафе', usage: { Кафе: 4, Продукты: 1 }, lastUsed: '2026-09-09T10:00:00.000Z' },
+      { type: 'expense', companyName: 'Early', logoMode: 'category', category: 'Продукты', usage: { Продукты: 5 }, lastUsed: '2026-09-01T10:00:00.000Z' },
+    ];
+    expect(getCompanySuggestions([], server, '', 'Кафе').map(c => c.name)).toEqual(['Late', 'Early']);
+    expect(getCompanySuggestions([], server, '', 'Продукты').map(c => c.name)).toEqual(['Early', 'Late']);
   });
 
   it('carries the latest category of a historical company', () => {

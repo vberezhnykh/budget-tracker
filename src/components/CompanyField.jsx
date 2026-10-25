@@ -38,16 +38,16 @@ export default function CompanyField({ item, transactions, onChange, onLogoChang
     let current = true;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      request(`/api/companies/history?q=${encodeURIComponent(query)}`, { signal: controller.signal })
+      request(`/api/companies/history?${new URLSearchParams({ q: query, category: item.category || '' })}`, { signal: controller.signal })
         .then(async response => {
           if (!response.ok) throw new Error();
           const values = await response.json();
-          if (current && Array.isArray(values)) setHistory({ query, values });
+          if (current && Array.isArray(values)) setHistory({ query, category: item.category || '', values });
         }).catch(() => {});
     }, 250);
     return () => { current = false; clearTimeout(timer); controller.abort(); };
-  }, [apiFetch, request, focused, query]);
-  const historyTransactions = history?.query === query ? history.values : transactions;
+  }, [apiFetch, request, focused, query, item.category]);
+  const historyTransactions = history?.query === query && history.category === (item.category || '') ? history.values : transactions;
   const suggestions = useMemo(() => getCompanySuggestions(companies, historyTransactions, item.companyName, item.category), [companies, historyTransactions, item.companyName, item.category]);
 
   const canChoose = item.companyName === undefined || Boolean(item.companyName.trim());

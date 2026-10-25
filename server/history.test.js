@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { buildHistoryPage, parseHistoryQuery } = require('./history');
 const { buildDashboard } = require('./dashboard');
-const { companyHistory, usualCategories } = require('./companyHistory');
+const { companyHistory, companyUsage, usualCategories } = require('./companyHistory');
 
 const accounts = [{ _id: 'card', type: 'card' }, { _id: 'cash', type: 'cash' }];
 const tx = (id, changes = {}) => ({ _id: String(id).padStart(3, '0'), amount: 10, type: 'expense', category: 'Еда', account: 'card', date: '2026-09-20', ...changes });
@@ -161,7 +161,7 @@ describe('paged history', () => {
         const docs = [tx(1, { description: 'Old shop', logoMode: 'domain', merchantDomain: 'shop.com', date: '2025-12-01' }),
             tx(2, { description: 'Old shop', logoMode: 'category' }), tx(3, { description: 'Saved', logoMode: 'category' })];
         const choices = companyHistory(docs, [{ name: 'Saved' }], 'shop');
-        expect(choices).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'category', merchantDomain: '', category: 'Еда' }]);
+        expect(choices).toEqual([{ type: 'expense', companyName: 'Old shop', logoMode: 'category', merchantDomain: '', category: 'Еда', usage: { Еда: 2 }, lastUsed: '2026-09-20T00:00:00.000Z' }]);
     });
 
     it('picks the usual category by frequency, then by recency', () => {
@@ -174,5 +174,16 @@ describe('paged history', () => {
         expect(usual.get('a')).toBe('Кафе');
         expect(usual.get('b')).toBe('Кафе');
         expect(usual.has('c')).toBe(false);
+    });
+
+    it('sums company usage per category and keeps the latest date, skipping empty categories', () => {
+        const group = (companyId, category, count, lastDate) => ({ _id: { companyId, category }, count, lastDate });
+        const used = companyUsage([
+            group('a', 'Продукты', 1, '2026-03-20'), group('a', 'Кафе', 2, '2026-03-01'),
+            group('c', '', 5, '2026-03-01'), { _id: {}, count: 1, lastDate: '2026-03-01' },
+        ]);
+        expect(used.get('a')).toEqual({ usage: { Продукты: 1, Кафе: 2 }, lastUsed: '2026-03-20T00:00:00.000Z' });
+        expect(used.get('c')).toEqual({ usage: {}, lastUsed: '2026-03-01T00:00:00.000Z' });
+        expect(used.size).toBe(2);
     });
 });

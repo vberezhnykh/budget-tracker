@@ -4,8 +4,10 @@ export const companyKey = value => typeof value === 'string'
   ? value.normalize('NFKC').trim().toLowerCase().replace(/\s+/gu, ' ').replace(/\s*&\s*/gu, ' & ').trim()
   : '';
 
+const totalUses = usage => Object.values(usage).reduce((sum, count) => sum + count, 0);
+
 export function getCompanySuggestions(companies, transactions, query = '', category = '') {
-  const saved = new Map((companies || []).map(company => [companyKey(company.name), { ...company, source: 'saved' }]));
+  const saved = new Map((companies || []).map(company => [companyKey(company.name), { ...company, source: 'saved', usage: company.usage || {}, lastUsed: company.lastUsed || '' }]));
   const history = new Map();
   for (const transaction of transactions || []) {
     if (transaction?.type !== 'expense' || transaction.deletedAt) continue;
@@ -15,16 +17,28 @@ export function getCompanySuggestions(companies, transactions, query = '', categ
     const domain = transaction.logoMode === 'domain' ? normalizeMerchantDomain(transaction.merchantDomain) : '';
     if (transaction.logoMode === 'domain' && !domain) continue;
     const rank = `${transaction.date || ''}:${transaction.id || transaction._id || ''}`;
-    if (!history.has(key) || rank > history.get(key).rank) {
-      history.set(key, { name: name.trim(), logoMode: transaction.logoMode, merchantDomain: domain, ...(transaction.category ? { category: transaction.category } : {}), rank, source: 'history' });
-    }
+    // Строка с usage - ответ сервера (уже со счётчиками), иначе одна локальная трата
+    const hasUsage = transaction.usage && typeof transaction.usage === 'object';
+    const counts = hasUsage ? transaction.usage : (typeof transaction.category === 'string' && transaction.category ? { [transaction.category]: 1 } : {});
+    const used = hasUsage ? transaction.lastUsed || '' : transaction.date instanceof Date ? transaction.date.toISOString() : String(transaction.date || '');
+    const entry = history.get(key) || { usage: {}, lastUsed: '', rank: '' };
+    const usage = { ...entry.usage };
+    for (const [label, count] of Object.entries(counts)) if (label && Number.isFinite(count)) usage[label] = (usage[label] || 0) + count;
+    const latest = !history.has(key) || rank > entry.rank;
+    history.set(key, {
+      ...(latest ? { name: name.trim(), logoMode: transaction.logoMode, merchantDomain: domain, ...(transaction.category ? { category: transaction.category } : {}), rank } : entry),
+      usage, lastUsed: used > entry.lastUsed ? used : entry.lastUsed, source: 'history'
+    });
   }
   const term = companyKey(query);
   return [...saved.values(), ...history.values()]
     .filter(company => !term || companyKey(company.name).includes(term))
-    // Компании с той же обычной категорией выше остальных, но не вместо точного совпадения имени
+    // Порядок: точное совпадение имени; траты в выбранной категории; всего трат;
+    // свежесть; сохранённые раньше истории; по алфавиту
     .sort((a, b) => Number(companyKey(b.name) === term) - Number(companyKey(a.name) === term)
-      || Number(Boolean(category) && b.category === category) - Number(Boolean(category) && a.category === category)
+      || (category ? (b.usage[category] || 0) - (a.usage[category] || 0) : 0)
+      || totalUses(b.usage) - totalUses(a.usage)
+      || b.lastUsed.localeCompare(a.lastUsed)
       || Number(b.source === 'saved') - Number(a.source === 'saved') || a.name.localeCompare(b.name))
     .slice(0, 8);
 }
