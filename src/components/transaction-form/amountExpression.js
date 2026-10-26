@@ -25,6 +25,18 @@ export const AMOUNT_ERROR_TEXT = {
 
 const isOperator = char => OPERATORS.includes(char);
 
+// Чётные места - числа, нечётные - знаки между ними.
+const splitExpression = text => text.split(/([+−×÷])/);
+
+// Одно число выражения в привычный вид: точка становится запятой, нули в
+// начале уходят («007» → «7», «00» → «0»), а разделитель без целой части
+// получает ноль («,5» → «0,5»). Пустое число (хвост после знака) не трогаем.
+function normalizeOperand(operand) {
+    if (operand === '') return operand;
+    const text = operand.replaceAll('.', ',').replace(/^0+(?=\d)/, '');
+    return text.startsWith(',') ? `0${text}` : text;
+}
+
 // Приводит ввод к допустимому алфавиту: цифры, разделитель и четыре знака.
 export function sanitizeAmountInput(raw) {
     let result = '';
@@ -39,7 +51,27 @@ export function sanitizeAmountInput(raw) {
             result += char;
         }
     }
-    return result;
+    return splitExpression(result).map((part, i) => (i % 2 === 0 ? normalizeOperand(part) : part)).join('');
+}
+
+// В каждом числе не больше одного разделителя и не больше двух цифр после
+// него: сумма считается в центах.
+const AMOUNT_OPERAND_RE = /^\d*([.,]\d{0,2})?$/;
+
+function isWellFormedAmount(text) {
+    return splitExpression(text).every((part, i) => i % 2 === 1 || AMOUNT_OPERAND_RE.test(part));
+}
+
+// Новое значение поля суммы с учётом прежнего. Ввод приводится к алфавиту и
+// виду, как в sanitizeAmountInput, а нажатие, которое ломает число (вторая
+// запятая, третья цифра после запятой), просто не проходит: поле остаётся
+// прежним. Обрезать «лишнее» по всей строке нельзя - запятая, вставленная
+// в середину «21,79», испортила бы уже набранное число.
+export function limitAmountInput(raw, previous = '') {
+    const next = sanitizeAmountInput(raw);
+    if (isWellFormedAmount(next)) return next;
+    const prev = String(previous ?? '');
+    return isWellFormedAmount(prev) ? prev : next;
 }
 
 export function hasOperator(text) {
@@ -73,8 +105,7 @@ export function evaluateAmount(text) {
     const failure = error => ({ value: null, isExpression: false, error });
     if (source === '') return failure(null);
 
-    // Чётные места - операнды, нечётные - знаки между ними.
-    const parts = source.split(/([+−×÷])/);
+    const parts = splitExpression(source);
     const operands = [];
     const operators = [];
     for (let i = 0; i < parts.length; i += 2) {

@@ -192,7 +192,7 @@ describe('AddTransactionForm Component', () => {
 
         await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
         expect(onClose).not.toHaveBeenCalled();
-        expect(screen.getByPlaceholderText('0')).toHaveValue('50.5');
+        expect(screen.getByPlaceholderText('0')).toHaveValue('50,5');
         expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeEnabled();
     });
 
@@ -217,7 +217,7 @@ describe('AddTransactionForm Component', () => {
             expect(onClose).not.toHaveBeenCalled();
 
             // всё введённое на месте
-            expect(screen.getByPlaceholderText('0')).toHaveValue('50.5');
+            expect(screen.getByPlaceholderText('0')).toHaveValue('50,5');
             expect(screen.getByPlaceholderText('Необязательно')).toHaveValue('Билеты');
             expect(screen.getByRole('button', { name: 'Транспорт' })).toHaveAttribute('aria-pressed', 'true');
             expect(screen.getByRole('button', { name: 'Карта', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -966,6 +966,40 @@ describe('AddTransactionForm Component', () => {
             pickCategoryAndAccount();
             fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
             expect(mockOnSubmit).toHaveBeenLastCalledWith(expect.objectContaining({ amount: 70 }));
+        });
+
+        it('ignores a keystroke that would break the number', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('21,79');
+            type('21,79,');
+            expect(amountField()).toHaveValue('21,79');
+            type('21,799');
+            expect(amountField()).toHaveValue('21,79');
+            // в следующем числе выражения разделитель снова можно
+            type('21,79+3,5');
+            expect(amountField()).toHaveValue('21,79+3,5');
+            type('21,79+3,5,');
+            expect(amountField()).toHaveValue('21,79+3,5');
+            expect(screen.getByTestId('amount-result')).toHaveTextContent('= €25,29');
+        });
+
+        it('keeps the chip when a rejected keystroke leaves the field as it was', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('12,5*3');
+            fireEvent.blur(amountField());
+            expect(amountField()).toHaveValue('37,5');
+            type('37,5,');
+            expect(amountField()).toHaveValue('37,5');
+            expect(screen.getByTestId('amount-expression')).toHaveTextContent('12,5×3');
+        });
+
+        it('drops leading zeros and adds one before a bare separator', () => {
+            render(<AddTransactionForm type="expense" {...props} />);
+            type('0');
+            type('05');
+            expect(amountField()).toHaveValue('5');
+            type(',');
+            expect(amountField()).toHaveValue('0,');
         });
 
         it('appends an operator from the button and replaces it on the next press', () => {

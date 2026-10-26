@@ -25,7 +25,7 @@ import {
     evaluateAmount,
     formatAmountForInput,
     hasOperator,
-    sanitizeAmountInput,
+    limitAmountInput,
 } from './transaction-form/amountExpression'
 import { formatMoney } from '../utils/money';
 import { saveCompanySelection } from '../utils/companies';
@@ -316,7 +316,10 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
 
     // Правка суммы руками или кнопкой делает плашку со старым выражением
     // неправдой, поэтому снимаем её.
+    // Отклонённое нажатие (вторая запятая) возвращает прежнее значение: поле
+    // React вернёт само, а плашку снимать не за что.
     const changeAmount = (amount) => {
+        if (amount === String(formData.amount)) return;
         setLastExpression('');
         setFormData(prev => ({ ...prev, amount }));
     };
@@ -429,7 +432,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 spellCheck={false}
                                 placeholder="0"
                                 value={formData.amount}
-                                onChange={e => changeAmount(sanitizeAmountInput(e.target.value))}
+                                onChange={e => changeAmount(limitAmountInput(e.target.value, formData.amount))}
                                 onFocus={() => setAmountFocused(true)}
                                 onBlur={() => { setAmountFocused(false); collapse(); }}
                                 style={{

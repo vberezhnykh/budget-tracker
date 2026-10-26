@@ -5,6 +5,7 @@ import {
     evaluateAmount,
     formatAmountForInput,
     hasOperator,
+    limitAmountInput,
     sanitizeAmountInput,
 } from './amountExpression';
 
@@ -34,13 +35,83 @@ describe('sanitizeAmountInput', () => {
     it('выбрасывает всё лишнее, оставляя цифры и разделители', () => {
         expect(sanitizeAmountInput('€1 2a,5 ')).toBe('12,5');
         expect(sanitizeAmountInput('abc')).toBe('');
-        expect(sanitizeAmountInput('1.5')).toBe('1.5');
+    });
+
+    it('меняет точку на запятую', () => {
+        expect(sanitizeAmountInput('1.5')).toBe('1,5');
+        expect(sanitizeAmountInput('1.5+2.25')).toBe('1,5+2,25');
+    });
+
+    it('убирает нули в начале числа', () => {
+        expect(sanitizeAmountInput('05')).toBe('5');
+        expect(sanitizeAmountInput('007')).toBe('7');
+        expect(sanitizeAmountInput('00')).toBe('0');
+        expect(sanitizeAmountInput('0')).toBe('0');
+        expect(sanitizeAmountInput('00,5')).toBe('0,5');
+        expect(sanitizeAmountInput('100')).toBe('100');
+        expect(sanitizeAmountInput('10,05')).toBe('10,05');
+        expect(sanitizeAmountInput('5+05×007')).toBe('5+5×7');
+    });
+
+    it('дописывает ноль перед разделителем без целой части', () => {
+        expect(sanitizeAmountInput(',')).toBe('0,');
+        expect(sanitizeAmountInput(',5')).toBe('0,5');
+        expect(sanitizeAmountInput('5+,5')).toBe('5+0,5');
     });
 
     it('принимает число и пустое значение', () => {
-        expect(sanitizeAmountInput(50.5)).toBe('50.5');
+        expect(sanitizeAmountInput(50.5)).toBe('50,5');
         expect(sanitizeAmountInput(null)).toBe('');
         expect(sanitizeAmountInput(undefined)).toBe('');
+    });
+});
+
+describe('limitAmountInput', () => {
+    it('пропускает обычный набор', () => {
+        expect(limitAmountInput('2', '')).toBe('2');
+        expect(limitAmountInput('21,', '21')).toBe('21,');
+        expect(limitAmountInput('21,79', '21,7')).toBe('21,79');
+        expect(limitAmountInput('100-30', '100−3')).toBe('100−30');
+    });
+
+    it('не даёт поставить второй разделитель в число', () => {
+        expect(limitAmountInput('21,79,', '21,79')).toBe('21,79');
+        expect(limitAmountInput('21,,', '21,')).toBe('21,');
+        expect(limitAmountInput('21,7.', '21,7')).toBe('21,7');
+        // запятая в середине набранного числа
+        expect(limitAmountInput('2,1,79', '21,79')).toBe('21,79');
+    });
+
+    it('не даёт третью цифру после разделителя', () => {
+        expect(limitAmountInput('21,799', '21,79')).toBe('21,79');
+        expect(limitAmountInput('21,179', '21,79')).toBe('21,79');
+    });
+
+    it('разрешает разделитель в каждом числе выражения', () => {
+        expect(limitAmountInput('12,5×3,', '12,5×3')).toBe('12,5×3,');
+        expect(limitAmountInput('12,5×3,25', '12,5×3,2')).toBe('12,5×3,25');
+        expect(limitAmountInput('12,5×3,2,', '12,5×3,2')).toBe('12,5×3,2');
+        expect(limitAmountInput('12,5×3,255', '12,5×3,25')).toBe('12,5×3,25');
+    });
+
+    it('приводит ввод к виду, как sanitizeAmountInput', () => {
+        expect(limitAmountInput('05', '0')).toBe('5');
+        expect(limitAmountInput(',', '')).toBe('0,');
+        expect(limitAmountInput('100+-', '100+')).toBe('100−');
+    });
+
+    it('стирание всегда проходит', () => {
+        expect(limitAmountInput('21,7', '21,79')).toBe('21,7');
+        expect(limitAmountInput('', '5')).toBe('');
+    });
+
+    it('принимает прежнее значение числом, как приходит при правке операции', () => {
+        expect(limitAmountInput('50.55', 50.5)).toBe('50,55');
+        expect(limitAmountInput('50.555', 50.55)).toBe('50.55');
+    });
+
+    it('не держится за прежнее значение, если оно само негодное', () => {
+        expect(limitAmountInput('1,2,3,', '1,2,3')).toBe('1,2,3,');
     });
 });
 
