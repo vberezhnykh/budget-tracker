@@ -53,6 +53,15 @@ describe('AddTransactionForm Component', () => {
         expect(within(dialog).getByRole('button', { name: 'Закрыть' })).toBeInTheDocument();
     });
 
+    it('puts the cursor in the amount field of a new operation but not of an edited one', () => {
+        const { unmount } = render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        expect(screen.getByRole('textbox', { name: 'Сумма' })).toHaveFocus();
+        unmount();
+
+        render(<AddTransactionForm initialData={{ _id: 'tx', type: 'expense', amount: 12, category: 'Продукты', account: 'card', date: localDate() }} categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
+        expect(screen.getByRole('textbox', { name: 'Сумма' })).not.toHaveFocus();
+    });
+
     it('labels a new expense dialog «Новый расход» and saves with a typed button label', () => {
         render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={mockOnClose} onSubmit={mockOnSubmit} />);
         expect(screen.getByRole('dialog', { name: 'Новый расход' })).toBeInTheDocument();
@@ -933,15 +942,17 @@ describe('AddTransactionForm Component', () => {
         };
 
         it('shows the button row while the amount is focused and hides it on blur', () => {
+            // Новая операция открывается с курсором в сумме, поэтому ряд
+            // виден сразу.
             render(<AddTransactionForm type="expense" {...props} />);
-            expect(screen.queryByRole('group', { name: 'Калькулятор' })).not.toBeInTheDocument();
-
-            fireEvent.focus(amountField());
             expect(within(calc()).getAllByRole('button').map(b => b.getAttribute('aria-label')))
                 .toEqual(['Плюс', 'Минус', 'Умножить', 'Делить', 'Посчитать']);
 
             fireEvent.blur(amountField());
             expect(screen.queryByRole('group', { name: 'Калькулятор' })).not.toBeInTheDocument();
+
+            fireEvent.focus(amountField());
+            expect(calc()).toBeInTheDocument();
         });
 
         it('keeps the field focused when a button is pressed', () => {

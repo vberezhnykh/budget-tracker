@@ -131,6 +131,18 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const amountCalc = evaluateAmount(formData.amount);
     const amountValue = amountCalc.error ? null : amountCalc.value;
     const [amountFocused, setAmountFocused] = useState(false);
+    const amountRef = useRef(null);
+
+    // Новая операция начинается с суммы, поэтому курсор сразу в её поле.
+    // Лист сам переводит фокус на первый элемент (переключатель типа), а
+    // эффект формы выполняется после эффекта листа, поэтому фокус остаётся
+    // на сумме. Safari на iOS открывает клавиатуру, только если focus()
+    // вызван внутри обработчика нажатия: App открывает форму через flushSync,
+    // и этот эффект успевает выполниться ещё в нём. У правки клавиатура
+    // закрыла бы саму операцию, поэтому там фокус не трогаем.
+    useEffect(() => {
+        if (!initialData) amountRef.current?.focus();
+    }, [initialData]);
     // Исходное выражение после «=»: показываем плашкой, чтобы было видно,
     // откуда сумма. В операцию оно не попадает.
     const [lastExpression, setLastExpression] = useState('');
@@ -417,6 +429,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 style={{ color: 'var(--color-text-muted)', fontSize: '2rem', fontWeight: 'var(--weight-strong)', lineHeight: 1.2 }}
                             >€</span>
                             <Field
+                                ref={amountRef}
                                 id="transaction-amount"
                                 className="transaction-amount-input"
                                 type="text"

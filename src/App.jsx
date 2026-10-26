@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { CloudOff } from 'lucide-react'
 import AddTransactionForm from './components/AddTransactionForm'
 import LoginScreen from './components/LoginScreen'
@@ -1588,10 +1589,15 @@ function App() {
     }
   };
 
+  // flushSync: форма должна смонтироваться ещё внутри обработчика нажатия.
+  // Только тогда её focus() на поле суммы Safari на iOS считает действием
+  // пользователя и открывает клавиатуру (см. AddTransactionForm).
   const openAddModal = (type) => {
-    setTransactionType(type);
-    setEditingTransaction(null);
-    setShowAddTransaction(true);
+    flushSync(() => {
+      setTransactionType(type);
+      setEditingTransaction(null);
+      setShowAddTransaction(true);
+    });
   };
 
   const openEditModal = (tx) => {

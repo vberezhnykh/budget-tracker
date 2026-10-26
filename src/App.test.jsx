@@ -410,7 +410,13 @@ describe('App Integration Tests', () => {
         render(<App />);
         await waitForOverview();
 
-        fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
+        // Safari на iOS открывает клавиатуру, только если фокус поставлен ещё
+        // внутри обработчика нажатия. Поэтому поле суммы проверяем прямо в
+        // act, до того как он сам дорисует отложенные обновления.
+        act(() => {
+            screen.getByRole('button', { name: 'Добавить операцию' }).click();
+            expect(screen.getByRole('textbox', { name: 'Сумма' })).toHaveFocus();
+        });
 
         expect(screen.getByRole('dialog', { name: 'Новый расход' })).toBeInTheDocument();
 
