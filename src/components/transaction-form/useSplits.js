@@ -9,10 +9,12 @@ export default function useSplits(total) {
     const nextId = useRef(3);
 
     const distributed = splits.reduce((sum, split) => sum + (parseFloat(split.amount) || 0), 0);
-    const remaining = (parseFloat(total) || 0) - distributed;
+    const totalValue = parseFloat(total) || 0;
+    const remaining = totalValue - distributed;
 
     return {
         splits,
+        total: totalValue,
         remaining,
         // Копейки float: сравниваем с допуском, а не с нулём
         isBalanced: Math.abs(remaining) < 0.01,

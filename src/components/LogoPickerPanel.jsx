@@ -1,18 +1,22 @@
 import { ListSkeleton } from './ui/Skeleton';
 import { useEffect, useState } from 'react';
-import { Check, Search } from 'lucide-react';
+import { Check } from 'lucide-react';
 import TransactionIcon from './TransactionIcon';
 import Field from './ui/Field';
-import Chip from './ui/Chip';
+import ListRow from './ui/ListRow';
 import Button from './ui/Button';
 import { normalizeMerchantDomain } from '../utils/merchantDomain';
-import './LogoPickerPanel.css';
 
-// Панель выбора логотипа под полем компании: режим, поиск по каталогу, сайт.
-// Превью и статус живут в CompanyField, здесь только сам выбор. Монтируется
-// при открытии, поэтому начальные значения полей берутся из item один раз.
-export default function LogoPickerPanel({ id, item, onChange, onMerchantSelect, onClose, apiFetch }) {
-  const [query, setQuery] = useState((item.companyName ?? (item.description || item.title || '')).slice(0, 120));
+// Подпись раздела на листе «Где»: мелкая, серая, с весом label.
+const SECTION_LABEL_STYLE = { color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)' };
+const HINT_STYLE = { color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.5 };
+
+// Выбор значка «По сайту» на листе «Где»: сайт компании и каталог похожих
+// компаний по её названию. Режимы «По названию» и «Категории», превью и
+// статус живут на самом листе (WhereSheet), здесь только сам выбор сайта.
+// Название берётся из item и следует за ним: меняют его - поиск идёт заново.
+export default function LogoPickerPanel({ id, item, onChange, onMerchantSelect, apiFetch }) {
+  const query = (item.companyName || '').slice(0, 120);
   const [search, setSearch] = useState({ status: 'idle', merchants: [], query: '' });
   const mode = item.logoMode || 'auto';
   const [website, setWebsite] = useState(mode === 'domain' ? item.merchantDomain || '' : '');
@@ -41,55 +45,58 @@ export default function LogoPickerPanel({ id, item, onChange, onMerchantSelect, 
     return () => { current = false; clearTimeout(timer); controller.abort(); };
   }, [query, request]);
 
-  const choose = (logoMode, merchantDomain = '') => {
-    onChange({ logoMode, merchantDomain });
-    onClose();
-  };
   const applyWebsite = () => {
     const domain = normalizeMerchantDomain(website);
     if (!domain) { setWebsiteError('Укажите сайт компании, например company.com'); return; }
-    choose('domain', domain);
+    onChange({ logoMode: 'domain', merchantDomain: domain });
+  };
+  const selectMerchant = merchant => {
+    setWebsite(merchant.domain);
+    setWebsiteError('');
+    if (onMerchantSelect) onMerchantSelect(merchant);
+    else onChange({ logoMode: 'domain', merchantDomain: merchant.domain });
   };
   const currentSearch = search.query === query.trim();
+  const merchants = currentSearch && search.status === 'ready' ? search.merchants : [];
 
   return (
-    <div id={id} className="logo-picker-panel">
-      <div className="logo-picker-panel__modes">
-        <Chip shape="block" selected={mode === 'auto'} onClick={() => choose('auto')}>Автоподбор</Chip>
-        <Chip shape="block" selected={mode === 'category'} onClick={() => choose('category')}>Иконка категории</Chip>
+    <div id={id} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1-5)' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+          <Field aria-label="Сайт компании" value={website} onChange={event => { setWebsite(event.target.value); setWebsiteError(''); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyWebsite(); } }} placeholder="company.com" autoComplete="off" autoCapitalize="none" spellCheck={false} aria-invalid={Boolean(websiteError)} aria-describedby={websiteError ? `${id}-error` : undefined} style={{ flex: 1, minWidth: 0, minHeight: '48px' }} />
+          <Button tone="soft" size="sm" onClick={applyWebsite} style={{ flexShrink: 0, minHeight: '48px' }}>Применить</Button>
+        </div>
+        {websiteError && <p id={`${id}-error`} role="alert" style={{ ...HINT_STYLE, color: 'var(--color-negative)' }}>{websiteError}</p>}
       </div>
-      <label className="logo-picker-panel__label" htmlFor={`${id}-search`}>Найти компанию</label>
-      <div className="logo-picker-panel__search">
-        <Search size={17} aria-hidden="true" />
-        <Field id={`${id}-search`} type="search" maxLength={120} value={query} onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') event.preventDefault(); }} placeholder="Например, Chop Chop" autoComplete="off" style={{ width: '100%', paddingLeft: '36px' }} />
-      </div>
-      <p className="logo-picker-panel__hint">Сверьте название и сайт: у компаний бывают одинаковые имена.</p>
-      <div aria-live="polite" className="logo-picker-panel__hint">
+
+      <div aria-live="polite" style={HINT_STYLE}>
         {query.trim().length < 2 ? 'Введите хотя бы 2 символа'
           : !currentSearch || search.status === 'idle' || search.status === 'loading' ? <ListSkeleton label="Ищем компании…" rows={2} amounts={false} />
             : search.status === 'error' ? 'Каталог сейчас недоступен. Можно указать сайт вручную.'
               : search.status === 'rate-limit' ? 'Много запросов. Попробуйте через минуту или укажите сайт.'
-                : search.status === 'ready' && search.merchants.length === 0 ? 'Ничего не найдено. Попробуйте другое написание или укажите сайт.' : null}
+                : search.status === 'ready' && merchants.length === 0 ? 'Ничего не найдено. Попробуйте другое написание или укажите сайт.' : null}
       </div>
-      {currentSearch && search.status === 'ready' && search.merchants.length > 0 && (
-        <ul className="logo-picker-panel__results" aria-label="Найденные компании">
-          {search.merchants.map(merchant => (
-            <li key={merchant.domain}>
-              <button type="button" onClick={() => { if (onMerchantSelect) { onMerchantSelect(merchant); onClose(); } else choose('domain', merchant.domain); }}>
-                <TransactionIcon item={{ ...item, logoMode: 'domain', merchantDomain: merchant.domain }} />
-                <span className="logo-picker-panel__copy"><strong>{merchant.name}</strong><span>{merchant.domain}</span></span>
-                {mode === 'domain' && item.merchantDomain === merchant.domain && <Check size={18} aria-hidden="true" />}
-              </button>
-            </li>
-          ))}
-        </ul>
+      {merchants.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <span style={SECTION_LABEL_STYLE}>Похожие в каталоге</span>
+          <p style={HINT_STYLE}>Сверьте название и сайт: у компаний бывают одинаковые имена.</p>
+          <ul aria-label="Найденные компании" style={{ margin: 0, padding: 0, listStyle: 'none', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+            {merchants.map((merchant, index) => (
+              <li key={merchant.domain}>
+                <ListRow
+                  leading={<TransactionIcon item={{ ...item, logoMode: 'domain', merchantDomain: merchant.domain }} size={32} />}
+                  title={merchant.name}
+                  subtitle={merchant.domain}
+                  trailing={mode === 'domain' && item.merchantDomain === merchant.domain ? <Check size={20} strokeWidth={2.4} role="img" aria-label="Выбрано" color="var(--color-primary)" /> : undefined}
+                  divider={index < merchants.length - 1}
+                  onClick={() => selectMerchant(merchant)}
+                  style={{ padding: 'var(--space-2) var(--space-3)' }}
+                />
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-      <label className="logo-picker-panel__label" htmlFor={`${id}-website`}>Или укажите сайт компании</label>
-      <div className="logo-picker-panel__website">
-        <Field id={`${id}-website`} value={website} onChange={event => { setWebsite(event.target.value); setWebsiteError(''); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyWebsite(); } }} placeholder="company.com" autoComplete="off" autoCapitalize="none" spellCheck={false} aria-invalid={Boolean(websiteError)} aria-describedby={websiteError ? `${id}-error` : undefined} style={{ flex: 1, minWidth: 0 }} />
-        <Button tone="soft" size="sm" type="button" onClick={applyWebsite} style={{ flexShrink: 0 }}>Применить</Button>
-      </div>
-      {websiteError && <p id={`${id}-error`} className="logo-picker-panel__error" role="alert">{websiteError}</p>}
     </div>
   );
 }

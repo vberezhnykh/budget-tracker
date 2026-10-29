@@ -304,14 +304,13 @@ describe('AddTransactionForm Component', () => {
             const inputs = screen.getAllByPlaceholderText('Сумма');
             fireEvent.change(inputs[0], { target: { value: '40' } });
             fireEvent.change(inputs[1], { target: { value: '60' } });
-            const chips = screen.getAllByText('Продукты');
-            fireEvent.click(chips[0]);
-            fireEvent.click(within(screen.getAllByText('Категория 2')[0].parentElement.parentElement).getByText('Транспорт'));
+            fireEvent.change(screen.getByLabelText('Категория части 1'), { target: { value: 'Продукты' } });
+            fireEvent.change(screen.getByLabelText('Категория части 2'), { target: { value: 'Транспорт' } });
             fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
 
             expect(await screen.findByRole('alert')).toHaveTextContent('Не вышло. Всё введённое осталось в форме.');
-            expect(screen.getAllByPlaceholderText('Сумма')[0]).toHaveValue(40);
-            expect(screen.getAllByPlaceholderText('Сумма')[1]).toHaveValue(60);
+            expect(screen.getByLabelText('Сумма части 1')).toHaveValue(40);
+            expect(screen.getByLabelText('Сумма части 2')).toHaveValue(60);
         });
     });
 
@@ -333,14 +332,16 @@ describe('AddTransactionForm Component', () => {
             fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '100' } });
 
             fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
-            expect(screen.getByText('Осталось распределить:')).toBeInTheDocument();
+            expect(screen.getByText('Осталось распределить')).toBeInTheDocument();
             expect(screen.getByText('Общая сумма')).toBeInTheDocument();
+            expect(screen.getByText('Категории')).toBeInTheDocument();
             const back = screen.getByRole('button', { name: 'Не разделять' });
             expect(back).toHaveAttribute('aria-pressed', 'true');
 
             fireEvent.click(back);
-            expect(screen.queryByText('Осталось распределить:')).not.toBeInTheDocument();
+            expect(screen.queryByText('Осталось распределить')).not.toBeInTheDocument();
             expect(screen.getByRole('button', { name: 'Разделить' })).toHaveAttribute('aria-pressed', 'false');
+            expect(screen.getByText('Категория')).toBeInTheDocument();
         });
 
         it('stays available to leave split mode even if the amount is cleared', () => {
@@ -601,10 +602,11 @@ describe('AddTransactionForm Component', () => {
         const splitToggle = screen.getByRole('button', { name: 'Разделить' });
         fireEvent.click(splitToggle);
 
-        expect(screen.getByText('Осталось распределить:')).toBeInTheDocument();
-        expect(screen.getByText('Категория 1')).toBeInTheDocument();
-        expect(screen.getByText('Категория 2')).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Добавить категорию' })).toBeInTheDocument();
+        expect(screen.getByText('Осталось распределить')).toBeInTheDocument();
+        expect(screen.getByLabelText('Категория части 1')).toBeInTheDocument();
+        expect(screen.getByLabelText('Категория части 2')).toBeInTheDocument();
+        expect(screen.getByLabelText('Сумма части 2')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Добавить часть' })).toBeInTheDocument();
     });
 
     it('validates splits sum and submits array of transactions', async () => {
@@ -617,15 +619,12 @@ describe('AddTransactionForm Component', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
 
         // Fill split 1
-        const splitInputs = screen.getAllByPlaceholderText('Сумма');
-        fireEvent.change(splitInputs[0], { target: { value: '40' } });
-        const categories = screen.getAllByText('Продукты');
-        fireEvent.click(categories[0]); // Select for first split
+        fireEvent.change(screen.getByLabelText('Сумма части 1'), { target: { value: '40' } });
+        fireEvent.change(screen.getByLabelText('Категория части 1'), { target: { value: 'Продукты' } });
 
         // Fill split 2
-        fireEvent.change(splitInputs[1], { target: { value: '60' } });
-        const transportCategories = screen.getAllByText('Транспорт');
-        fireEvent.click(transportCategories[1]); // Select for second split (index 1 because category list is rendered for each split)
+        fireEvent.change(screen.getByLabelText('Сумма части 2'), { target: { value: '60' } });
+        fireEvent.change(screen.getByLabelText('Категория части 2'), { target: { value: 'Транспорт' } });
 
         // Split mode still has its own "Списать с" account picker, and no
         // presetAccountId was passed here - an account must be picked before
@@ -658,14 +657,14 @@ describe('AddTransactionForm Component', () => {
         fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '0.3' } });
         fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
 
-        const splitInputs = screen.getAllByPlaceholderText('Сумма');
-        fireEvent.change(splitInputs[0], { target: { value: '0.1' } });
-        fireEvent.click(screen.getAllByText('Продукты')[0]);
-        fireEvent.change(splitInputs[1], { target: { value: '0.2' } });
-        fireEvent.click(screen.getAllByText('Транспорт')[1]);
+        fireEvent.change(screen.getByLabelText('Сумма части 1'), { target: { value: '0.1' } });
+        fireEvent.change(screen.getByLabelText('Категория части 1'), { target: { value: 'Продукты' } });
+        fireEvent.change(screen.getByLabelText('Сумма части 2'), { target: { value: '0.2' } });
+        fireEvent.change(screen.getByLabelText('Категория части 2'), { target: { value: 'Транспорт' } });
         fireEvent.click(screen.getByRole('button', { name: 'Карта', exact: true }));
 
-        expect(screen.getByText('€0,00')).toBeInTheDocument();
+        expect(screen.getByRole('status')).toHaveTextContent('Распределено полностью');
+        expect(screen.getByRole('status')).toHaveTextContent('€0,30');
         expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).not.toBeDisabled();
     });
 
@@ -777,11 +776,11 @@ describe('AddTransactionForm Component', () => {
             fireEvent.click(toggle);
             expect(toggle).toHaveAttribute('aria-expanded', 'true');
             expect(screen.getByText('Не считать в статистике')).toBeInTheDocument();
-            // выбор иконки переехал в поле компании и в «Дополнительно» не лежит
+            // выбор значка живёт на листе «Где» и в «Дополнительно» не лежит
             const extra = document.getElementById('transaction-extra');
             expect(within(extra).queryByRole('button', { name: /иконк/i })).not.toBeInTheDocument();
             expect(within(extra).queryByText(/Иконка в истории/)).not.toBeInTheDocument();
-            expect(screen.getByRole('status')).toHaveTextContent('Укажите компанию, чтобы подобрать логотип');
+            expect(screen.queryByRole('status')).not.toBeInTheDocument();
         });
 
         it('раскрыто при редактировании операции, исключённой из статистики', () => {
@@ -1103,15 +1102,19 @@ describe('AddTransactionForm Component', () => {
             type('100-30');
             // поле не в фокусе, ряд калькулятора скрыт: «Разделить» только одна
             fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
-            const [first, second] = screen.getAllByPlaceholderText('Сумма');
-            fireEvent.change(first, { target: { value: '40' } });
-            fireEvent.change(second, { target: { value: '30' } });
-            expect(screen.getByText('€0,00')).toBeInTheDocument();
+            fireEvent.change(screen.getByLabelText('Сумма части 1'), { target: { value: '40' } });
+            fireEvent.change(screen.getByLabelText('Сумма части 2'), { target: { value: '30' } });
+            expect(screen.getByRole('status')).toHaveTextContent('Распределено полностью');
+            expect(screen.getByRole('status')).toHaveTextContent('€70,00');
         });
     });
 });
 
 describe('transaction logo selection in the expense form', () => {
+    // В «По сайту» ниже статуса логотипа может стоять скелетон поиска (тоже role="status"):
+    // статус логотипа в плашке превью всегда первый.
+    const logoStatus = () => screen.getAllByRole('status')[0];
+
     it('previews the logo before saving and submits the selected company domain', async () => {
         vi.stubEnv('VITE_LOGO_DEV_PUBLISHABLE_KEY', 'pk_test_expense_form');
         try {
@@ -1127,25 +1130,27 @@ describe('transaction logo selection in the expense form', () => {
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} presetAccountId="card" apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
             fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '34' } });
             fireEvent.click(screen.getByText('Красота'));
-            fireEvent.change(screen.getByPlaceholderText('Название магазина или сервиса'), { target: { value: 'Chop Chop' } });
             fireEvent.change(screen.getByPlaceholderText('Необязательно'), { target: { value: 'Стрижка' } });
 
-            // превью видно в поле компании без открытия каких-либо панелей
-            const preview = screen.getByRole('button', { name: 'Выбрать иконку' });
-            await waitFor(() => expect(preview.querySelector('img')).not.toBeNull());
-            expect(preview.querySelector('img')).toHaveAttribute('loading', 'eager');
-            fireEvent.load(preview.querySelector('img'));
-            expect(screen.getByRole('status')).toHaveTextContent('Логотип подобран по названию');
+            // компания и значок выбираются на листе «Где»
+            fireEvent.click(screen.getByRole('button', { name: /Магазин или сервис/ }));
+            fireEvent.change(screen.getByRole('textbox', { name: 'Компания' }), { target: { value: 'Chop Chop' } });
+            const preview = () => logoStatus().parentElement.querySelector('img');
+            await waitFor(() => expect(preview()).not.toBeNull());
+            expect(preview()).toHaveAttribute('loading', 'eager');
+            fireEvent.load(preview());
+            expect(logoStatus()).toHaveTextContent('Логотип подобран по названию');
             expect(onSubmit).not.toHaveBeenCalled();
 
-            fireEvent.click(screen.getByRole('button', { name: 'Другой логотип' }));
+            fireEvent.click(screen.getByRole('button', { name: 'По сайту' }));
             fireEvent.click(await screen.findByRole('button', { name: /Chop Chop Barber Shop.*chopchop\.com/ }));
-            await waitFor(() => expect(preview.querySelector('img')).not.toBeNull());
-            expect(new URL(preview.querySelector('img').src).pathname).toBe('/chopchop.com');
-            fireEvent.load(preview.querySelector('img'));
-            expect(screen.getByRole('status')).toHaveTextContent('Логотип: chopchop.com · запомним для «Chop Chop Barber Shop»');
+            await waitFor(() => expect(preview()).not.toBeNull());
+            expect(new URL(preview().src).pathname).toBe('/chopchop.com');
+            fireEvent.load(preview());
+            expect(logoStatus()).toHaveTextContent('Логотип: chopchop.com · запомним для «Chop Chop Barber Shop»');
             expect(onSubmit).not.toHaveBeenCalled();
-            expect(screen.getByPlaceholderText('Название магазина или сервиса')).toHaveValue('Chop Chop Barber Shop');
+            expect(screen.getByRole('textbox', { name: 'Компания' })).toHaveValue('Chop Chop Barber Shop');
+            fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
             expect(screen.getByPlaceholderText('Необязательно')).toHaveValue('Стрижка');
 
             fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
@@ -1167,13 +1172,15 @@ describe('transaction logo selection in the expense form', () => {
                 return { ok: true, json: async () => [{ _id: 'company-wolt', name: 'Wolt', logoMode: 'domain', merchantDomain: 'wolt.com', __v: 0 }] };
             });
             render(<AddTransactionForm initialData={initialData} categories={mockCategories} accounts={mockAccounts} apiFetch={apiFetch} onClose={onClose} onSubmit={onSubmit} />);
-            const icon = screen.getByRole('button', { name: 'Выбрать иконку' });
-            fireEvent.load(icon.querySelector('img'));
-            expect(screen.getByRole('status')).toHaveTextContent('Логотип: wolt.com');
-            fireEvent.click(screen.getByRole('button', { name: 'Иконка категории', exact: true }));
-            expect(icon.querySelector('img')).toBeNull();
-            expect(screen.getByRole('status')).toHaveTextContent('Иконка категории · запомним для «Wolt»');
+            fireEvent.click(screen.getByRole('button', { name: /Wolt.*Сменить/ }));
+            const preview = () => logoStatus().parentElement.querySelector('img');
+            fireEvent.load(preview());
+            expect(logoStatus()).toHaveTextContent('Логотип: wolt.com');
+            fireEvent.click(screen.getByRole('button', { name: 'Категории', exact: true }));
+            expect(preview()).toBeNull();
+            expect(logoStatus()).toHaveTextContent('Значок категории «Продукты» · запомним для «Wolt»');
             expect(onSubmit).not.toHaveBeenCalled();
+            fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
 
             fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
             await waitFor(() => expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ id: 'edit-logo', companyId: 'company-wolt', companyName: 'Wolt', description: 'Ужин', logoMode: 'category', merchantDomain: '' })));

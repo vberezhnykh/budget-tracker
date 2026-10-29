@@ -86,7 +86,7 @@ describe('QuickEntry in the transaction form', () => {
         expect(pressed('Кафе')).toBe('true');
         expect(pressed('Карта')).toBe('true');
         expect(screen.getByLabelText('Комментарий')).toHaveValue('латте');
-        expect(screen.getByDisplayValue('Starbucks')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Starbucks.*Сменить/ })).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
         await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
@@ -165,7 +165,7 @@ describe('QuickEntry in the transaction form', () => {
         expect(pressed('Продукты')).toBe('true');
         expect(pressed('Кафе')).toBe('false');
         expect(screen.getByLabelText('Комментарий')).toHaveValue('');
-        expect(screen.queryByDisplayValue('Starbucks')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Starbucks/ })).not.toBeInTheDocument();
         expect(screen.queryByText('Заполнено по фразе. Проверьте поля.')).not.toBeInTheDocument();
         expect(phraseField()).toHaveValue('кофе 3.50 старбакс вчера с карты');
     });
@@ -381,11 +381,13 @@ describe('Receipt photo in the transaction form', () => {
         expect(await screen.findByText('В чеке товары разных категорий, сумма разделена. Проверьте части.')).toBeInTheDocument();
         expect(screen.getByText('Общая сумма')).toBeInTheDocument();
         expect(screen.getByPlaceholderText('0')).toHaveValue('40,5');
-        expect(pressed('Продукты')).toBe('true');
-        expect(pressed('Дом')).toBe('true');
+        expect(screen.getByLabelText('Категория части 1')).toHaveValue('Продукты');
+        expect(screen.getByLabelText('Категория части 2')).toHaveValue('Дом');
         expect(screen.getAllByPlaceholderText('Сумма').map(field => field.value)).toEqual(['32.40', '8.10']);
-        expect(screen.getByDisplayValue('Lidl')).toBeInTheDocument();
-        expect(screen.getByText('Осталось распределить:').nextSibling).toHaveTextContent('€0');
+        // компания чека - в строке «Где»
+        expect(screen.getByRole('button', { name: /Lidl.*Сменить/ })).toBeInTheDocument();
+        expect(screen.getByRole('status')).toHaveTextContent('Распределено полностью');
+        expect(screen.getByRole('status')).toHaveTextContent('€40,50');
         // строка с камерой остаётся на месте и в разделении
         expect(phraseField()).toBeInTheDocument();
 
@@ -414,7 +416,7 @@ describe('Receipt photo in the transaction form', () => {
         expect(screen.queryByPlaceholderText('Сумма')).not.toBeInTheDocument();
         expect(screen.getByPlaceholderText('0')).toHaveValue('99');
         expect(pressed('Кафе')).toBe('true');
-        expect(screen.queryByDisplayValue('Lidl')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Lidl/ })).not.toBeInTheDocument();
         expect(screen.getByRole('group', { name: 'Тип операции' })).toBeInTheDocument();
         // фото остаётся прикреплённым
         expect(thumb()).toBeInTheDocument();
@@ -424,7 +426,7 @@ describe('Receipt photo in the transaction form', () => {
         renderReceipt(async () => json({ draft }));
         fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '10' } });
         fireEvent.click(screen.getByRole('button', { name: 'Разделить' }));
-        fireEvent.click(screen.getAllByRole('button', { name: 'Продукты' })[0]);
+        fireEvent.change(screen.getByLabelText('Категория части 1'), { target: { value: 'Продукты' } });
         fireEvent.change(screen.getAllByPlaceholderText('Сумма')[0], { target: { value: '6' } });
         expect(screen.getByText('Общая сумма')).toBeInTheDocument();
 
@@ -437,7 +439,7 @@ describe('Receipt photo in the transaction form', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Вернуть как было' }));
         expect(screen.getByText('Общая сумма')).toBeInTheDocument();
         expect(screen.getByPlaceholderText('0')).toHaveValue('10');
-        expect(pressed('Продукты')).toBe('true');
+        expect(screen.getByLabelText('Категория части 1')).toHaveValue('Продукты');
         expect(screen.getAllByPlaceholderText('Сумма')[0]).toHaveValue(6);
     });
 

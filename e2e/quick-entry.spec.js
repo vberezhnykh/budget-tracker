@@ -144,8 +144,8 @@ test.describe('Quick entry by phrase (mobile, real browser)', () => {
     // Строка с камерой остаётся над разделением, а фото открывается на весь экран
     await expect(dialog.getByLabel('Опишите операцию')).toBeVisible();
     await expect(dialog.getByText('Общая сумма')).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Еда', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await expect(dialog.getByRole('button', { name: 'Дом', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(dialog.getByLabel('Категория части 1')).toHaveValue('Еда');
+    await expect(dialog.getByLabel('Категория части 2')).toHaveValue('Дом');
     const amounts = dialog.getByPlaceholder('Сумма');
     await expect(amounts).toHaveCount(2);
     await expect(amounts.nth(0)).toHaveValue('32.40');

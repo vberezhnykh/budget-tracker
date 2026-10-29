@@ -29,7 +29,10 @@ const TYPE_ICONS = {
   income: [ArrowDownLeft, 'green'], split_group: [Layers2, 'blue'],
 };
 
-function RemoteTransactionIcon({ logoUrl, kind, id, loading, onLogoStateChange }) {
+// size - сторона плитки в пикселях, если нужна не 40px по умолчанию (строка
+// «Где» и лист выбора компании: 32px, выбор категории в разделении: 28px).
+// Скругление и значок растут вместе с плиткой.
+function RemoteTransactionIcon({ logoUrl, kind, id, loading, size, onLogoStateChange }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [Icon, tone] = (kind === 'type' ? TYPE_ICONS[id] : CATEGORY_ICONS[id]) || CATEGORY_ICONS.other;
@@ -43,8 +46,9 @@ function RemoteTransactionIcon({ logoUrl, kind, id, loading, onLogoStateChange }
       data-tone={loaded ? undefined : tone}
       data-logo-state={status}
       aria-hidden="true"
+      style={size ? { width: size, height: size, flexBasis: size, borderRadius: Math.round(size * 0.3) } : undefined}
     >
-      {!loaded && <Icon size={20} strokeWidth={1.8} focusable="false" />}
+      {!loaded && <Icon size={size ? Math.round(size * 0.5) : 20} strokeWidth={1.8} focusable="false" />}
       {logoUrl && !failed && (
         <img
           className="transaction-icon__remote-image"
@@ -63,10 +67,10 @@ function RemoteTransactionIcon({ logoUrl, kind, id, loading, onLogoStateChange }
   );
 }
 
-export default function TransactionIcon({ item, loading = 'lazy', onLogoStateChange }) {
+export default function TransactionIcon({ item, loading = 'lazy', size, onLogoStateChange }) {
   const { kind, id } = resolveTransactionFallbackIcon(item);
   const logoUrl = getTransactionLogoUrl(item);
   // Changing the merchant/key remounts only the avatar, so an old response
   // cannot reveal a stale logo after editing or reusing a transaction row.
-  return <RemoteTransactionIcon key={logoUrl || 'category'} logoUrl={logoUrl} kind={kind} id={id} loading={loading} onLogoStateChange={onLogoStateChange} />;
+  return <RemoteTransactionIcon key={logoUrl || 'category'} logoUrl={logoUrl} kind={kind} id={id} loading={loading} size={size} onLogoStateChange={onLogoStateChange} />;
 }

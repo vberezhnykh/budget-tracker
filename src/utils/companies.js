@@ -6,6 +6,10 @@ export const companyKey = value => typeof value === 'string'
 
 const totalUses = usage => Object.values(usage).reduce((sum, count) => sum + count, 0);
 
+// Сколько операций у компании за всё время: сумма по категориям. Нет данных
+// о тратах (компания только что создана, история без счётчиков) - 0.
+export const companyUses = company => totalUses(company?.usage || {});
+
 export function getCompanySuggestions(companies, transactions, query = '', category = '') {
   const saved = new Map((companies || []).map(company => [companyKey(company.name), { ...company, source: 'saved', usage: company.usage || {}, lastUsed: company.lastUsed || '' }]));
   const history = new Map();
@@ -41,6 +45,27 @@ export function getCompanySuggestions(companies, transactions, query = '', categ
       || b.lastUsed.localeCompare(a.lastUsed)
       || Number(b.source === 'saved') - Number(a.source === 'saved') || a.name.localeCompare(b.name))
     .slice(0, 8);
+}
+
+// Поля формы, которые задаёт выбор компании из списка. usualCategory - не поле
+// операции: форма берёт из него категорию для подстановки.
+export const companyChoice = company => ({
+  companyId: company._id || '',
+  companyName: company.name,
+  logoMode: company.logoMode || 'auto',
+  merchantDomain: company.merchantDomain || '',
+  usualCategory: company.category,
+});
+
+// Поля формы после правки названия руками: совпало с сохранённой компанией
+// (берём её id и значок), с компанией из истории (значок оттуда, id нет) или
+// это новое название. Пустое название сбрасывает значок на категорию.
+export function companyNameChoice(value, companies, historyTransactions) {
+  const exact = (companies || []).find(company => companyKey(company.name) === companyKey(value));
+  if (exact) return { ...companyChoice(exact), companyName: value };
+  const historical = getCompanySuggestions([], historyTransactions, value).find(company => companyKey(company.name) === companyKey(value));
+  if (historical) return { companyId: '', companyName: value, logoMode: historical.logoMode, merchantDomain: historical.merchantDomain, usualCategory: historical.category };
+  return { companyId: '', companyName: value, logoMode: value.trim() ? 'auto' : 'category', merchantDomain: '' };
 }
 
 async function readCompanyResponse(response) {

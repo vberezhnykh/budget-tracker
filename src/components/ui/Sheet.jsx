@@ -57,7 +57,9 @@ export default function Sheet({
             '[href]',
             '[tabindex]:not([tabindex="-1"])',
         ].join(',');
-        const getFocusable = () => Array.from(dialog?.querySelectorAll(focusableSelector) || []);
+        // Неактивный (inert) вид внутри листа, например форма под листом «Где»,
+        // фокус не берёт: его элементы не должны считаться первым и последним.
+        const getFocusable = () => Array.from(dialog?.querySelectorAll(focusableSelector) || []).filter((el) => !el.closest('[inert]'));
 
         (getFocusable()[0] || dialog)?.focus();
 

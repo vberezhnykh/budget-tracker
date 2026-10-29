@@ -18,3 +18,27 @@
     min-width: 4ch;
   }
 }
+
+/* Разделение: выбор категории - прозрачный <select> поверх нарисованного
+   поля, поэтому кольцо фокуса рисуем на самом поле. */
+.split-part-category:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Сумма части: без стрелок у числового поля на десктопе. */
+.split-part-amount {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.split-part-amount::-webkit-outer-spin-button,
+.split-part-amount::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.split-part-amount::placeholder {
+  color: var(--color-text-subtle);
+  opacity: 1;
+}

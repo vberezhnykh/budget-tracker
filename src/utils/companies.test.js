@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { companyKey, getCompanySuggestions, saveCompanySelection } from './companies';
+import { companyChoice, companyKey, companyNameChoice, companyUses, getCompanySuggestions, saveCompanySelection } from './companies';
 
 const company = { _id: '012345678901234567890123', __v: 2, name: 'Mr & Mrs Pet', logoMode: 'domain', merchantDomain: 'petshop.com' };
 const reply = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
@@ -131,5 +131,29 @@ describe('company registry selection', () => {
     await expect(saveCompanySelection(item, { request: vi.fn().mockResolvedValue(reply({ message: 'Каталог недоступен' }, 500)) })).rejects.toThrow('Каталог недоступен');
     const request = vi.fn().mockResolvedValueOnce(reply([company])).mockResolvedValueOnce(reply({ code: 'COMPANY_STALE', message: 'Компания уже изменена' }, 409));
     await expect(saveCompanySelection({ ...item, companyId: company._id }, { request, logoChanged: true })).rejects.toThrow('Компания уже изменена');
+  });
+});
+
+describe('company choice for the form', () => {
+  const saved = { _id: 'p1', name: 'Mr & Mrs Pet', logoMode: 'domain', merchantDomain: 'petshop.com', category: 'Питомцы', usage: { Питомцы: 4, Продукты: 1 } };
+
+  it('turns a suggestion into form fields with its usual category', () => {
+    expect(companyChoice(saved)).toEqual({ companyId: 'p1', companyName: 'Mr & Mrs Pet', logoMode: 'domain', merchantDomain: 'petshop.com', usualCategory: 'Питомцы' });
+    expect(companyChoice({ name: 'Old shop', logoMode: 'category', source: 'history' })).toEqual({ companyId: '', companyName: 'Old shop', logoMode: 'category', merchantDomain: '', usualCategory: undefined });
+    expect(companyChoice({ _id: 'p2', name: 'Bare' }).logoMode).toBe('auto');
+  });
+
+  it('matches a typed name to a saved company, then to history, otherwise treats it as new', () => {
+    const history = [{ type: 'expense', companyName: 'Old shop', logoMode: 'domain', merchantDomain: 'old.com', category: 'Дом', date: '2026-09-01' }];
+    expect(companyNameChoice('mr&mrs  pet', [saved], history)).toMatchObject({ companyId: 'p1', companyName: 'mr&mrs  pet', merchantDomain: 'petshop.com', usualCategory: 'Питомцы' });
+    expect(companyNameChoice('OLD SHOP', [saved], history)).toEqual({ companyId: '', companyName: 'OLD SHOP', logoMode: 'domain', merchantDomain: 'old.com', usualCategory: 'Дом' });
+    expect(companyNameChoice('Brand new', [saved], history)).toEqual({ companyId: '', companyName: 'Brand new', logoMode: 'auto', merchantDomain: '' });
+    expect(companyNameChoice('  ', [saved], history)).toEqual({ companyId: '', companyName: '  ', logoMode: 'category', merchantDomain: '' });
+  });
+
+  it('counts the operations of a company over all categories', () => {
+    expect(companyUses(saved)).toBe(5);
+    expect(companyUses({ name: 'No data' })).toBe(0);
+    expect(companyUses(undefined)).toBe(0);
   });
 });

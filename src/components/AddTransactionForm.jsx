@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Calculator, ChevronDown, X } from 'lucide-react';
-import CompanyField from './CompanyField';
 import Field, { FormLabel } from './ui/Field'
 import Sheet from './ui/Sheet'
 import Button from './ui/Button'
@@ -14,6 +13,9 @@ import CategoryPicker from './transaction-form/CategoryPicker'
 import DateField from './transaction-form/DateField'
 import TransferAccounts from './transaction-form/TransferAccounts'
 import SplitEditor from './transaction-form/SplitEditor'
+import WhereRow from './transaction-form/WhereRow'
+import WhereSheet from './transaction-form/WhereSheet'
+import useCompanies from './transaction-form/useCompanies'
 import QuickEntry from './transaction-form/QuickEntry'
 import { applyQuickEntryDraft } from './transaction-form/quickEntryDraft'
 import useSplits from './transaction-form/useSplits'
@@ -29,7 +31,7 @@ import {
     limitAmountInput,
 } from './transaction-form/amountExpression'
 import { formatMoney } from '../utils/money';
-import { saveCompanySelection } from '../utils/companies';
+import { companyChoice, companyKey, companyNameChoice, saveCompanySelection } from '../utils/companies';
 import { toLocalDateInput } from '../utils/period';
 import './AddTransactionForm.css';
 
@@ -269,18 +271,57 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         return formData.type === 'income' ? 'Новый доход' : 'Новый расход';
     };
 
+    // Лист «Где» - второй вид внутри этого же листа: форма под ним скрыта, но
+    // не размонтирована, поэтому поля и прокрутка остаются как были.
+    // whereQuery - что набрано в поиске листа: null, пока пользователь ничего не
+    // печатал (список не сужен названием уже выбранной компании).
+    const [whereOpen, setWhereOpen] = useState(false);
+    const [whereQuery, setWhereQuery] = useState(null);
+    const [whereAutoFocus, setWhereAutoFocus] = useState(false);
+    const formViewRef = useRef(null);
+    const savedScrollRef = useRef(0);
+
+    const isExpense = formData.type === 'expense';
+    const companies = useCompanies({
+        enabled: isExpense,
+        apiFetch,
+        transactions,
+        category: isSplit ? '' : (formData.category || ''),
+        query: whereOpen ? (whereQuery ?? '') : '',
+        historyWanted: whereOpen || Boolean(formData.category && !isSplit),
+    });
+
+    // Скрытая форма не держит прокрутку: лист ужимается до вида «Где», и
+    // браузер сбрасывает scrollTop. Запоминаем его в момент нажатия (к эффекту
+    // форма уже скрыта и scrollTop обнулён) и возвращаем при закрытии, когда
+    // форма снова на месте.
+    const formScroller = () => formViewRef.current?.closest('[role="dialog"]');
+    useLayoutEffect(() => {
+        const scroller = formViewRef.current?.closest('[role="dialog"]');
+        if (scroller) scroller.scrollTop = whereOpen ? 0 : savedScrollRef.current;
+    }, [whereOpen]);
+
+    const openWhere = () => {
+        savedScrollRef.current = formScroller()?.scrollTop || 0;
+        setWhereQuery(null);
+        // Клавиатура сразу - только когда компании ещё нет; у выбранной лист
+        // открывают, чтобы выбрать другую из списка или поменять значок.
+        setWhereAutoFocus(!formData.companyName?.trim());
+        setWhereOpen(true);
+    };
+    const closeWhere = () => setWhereOpen(false);
+
     // Do not let backdrop/close-button/Escape destroy the entered values
     // while the request is still in flight. Once a failed request settles,
     // the form becomes closable again and remains filled for a retry.
+    // На листе «Где» закрытие возвращает в форму, а не закрывает её.
     const requestClose = () => {
-        if (!isSubmitting) onClose();
+        if (whereOpen) closeWhere();
+        else if (!isSubmitting) onClose();
     };
 
     // Обычная категория компании подставляется только в расходе без
     // разделения и только если такая категория у нас есть.
-    const usualCategoryAvailable = formData.type === 'expense' && !isSplit
-        && categories.some(c => c.type === 'expense' && c.name === usualCategory);
-    const suggestedCategory = usualCategoryAvailable && formData.category && formData.category !== usualCategory ? usualCategory : '';
     const chooseCompany = ({ usualCategory: usual = '', ...choice }) => {
         setCompanyLogoChanged(false);
         setUsualCategory(usual);
@@ -290,6 +331,19 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
         if (fill) setCategoryAutoFilled(true);
         setFormData(prev => ({ ...prev, ...choice, ...(fill ? { category: usual } : {}) }));
     };
+    const pickCompany = company => chooseCompany(companyChoice(company));
+    const changeCompanyName = value => {
+        setWhereQuery(value);
+        chooseCompany(companyNameChoice(value, companies.companies, companies.historyTransactions));
+    };
+    // Обычная категория выбранной компании: то, что запомнили при выборе, а у
+    // правки операции - из сохранённой компании по id или названию. Категории,
+    // которой у нас нет, не называем: подставить её всё равно нечем.
+    const companyKeyValue = companyKey(formData.companyName);
+    const usualOfCompany = !companyKeyValue ? '' : (usualCategory
+        || companies.companies.find(c => (formData.companyId && c._id === formData.companyId) || companyKey(c.name) === companyKeyValue)?.category
+        || '');
+    const usualKnown = categories.some(c => c.type === 'expense' && c.name === usualOfCompany) ? usualOfCompany : '';
 
     const changeType = (id) => setFormData(prev => {
         if (id !== 'transfer') return { ...prev, type: id };
@@ -378,7 +432,14 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const accountMissing = quickFilled && !isTransfer && !formData.account;
 
     return (
-        <Sheet ariaLabel={getTitle()} onClose={requestClose}>
+        <Sheet ariaLabel={whereOpen ? 'Где' : getTitle()} onClose={requestClose}>
+            {/* Вид формы. На листе «Где» он скрыт (display: none) и неактивен
+                (inert: фокус и Tab в него не попадают), но остаётся в дереве. */}
+            <div
+                ref={formViewRef}
+                inert={whereOpen || undefined}
+                style={{ display: whereOpen ? 'none' : 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}
+            >
                 {/* Шапка: у новой операции слева переключатель типа, у
                     правки - заголовок с типом; крестик всегда справа. Во
                     время разделения тип менять нельзя, и слева пусто. */}
@@ -557,7 +618,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                             {/* Категория: справа от подписи - переключатель разделения */}
                             <div>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', minHeight: '28px', marginBottom: 'var(--space-2)' }}>
-                                    <FormLabel style={{ margin: 0 }}>Категория</FormLabel>
+                                    <FormLabel style={{ margin: 0 }}>{isSplit ? 'Категории' : 'Категория'}</FormLabel>
                                     {canToggleSplit && (
                                         <Button
                                             tone="text"
@@ -591,6 +652,22 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 )}
                             </div>
 
+                            {/* Где: компания только у расхода, в том числе при разделении -
+                                она относится ко всей операции. Частые места
+                                подсказываются по выбранной категории. */}
+                            {isExpense && (
+                                <WhereRow
+                                    item={formData}
+                                    category={isSplit ? '' : (formData.category || '')}
+                                    usualCategory={usualKnown}
+                                    suggestions={companies.suggestions}
+                                    status={companies.status}
+                                    onOpen={openWhere}
+                                    onChoose={pickCompany}
+                                    onRetry={companies.reload}
+                                />
+                            )}
+
                             {/* Account Selector (общий и для обычного режима, и для разделения) */}
                             <div>
                                 <FormLabel>
@@ -619,26 +696,6 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     )}
 
                     <DateField value={formData.date} onChange={date => setFormData(prev => ({ ...prev, date }))} />
-
-                    {formData.type === 'expense' && (
-                        <CompanyField
-                            item={formData}
-                            transactions={transactions}
-                            apiFetch={apiFetch}
-                            logoChanged={companyLogoChanged}
-                            onChange={chooseCompany}
-                            onLogoChange={choice => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, ...choice })); }}
-                            onMerchantSelect={merchant => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, companyId: '', companyName: merchant.name, logoMode: 'domain', merchantDomain: merchant.domain })); }}
-                        >
-                            {suggestedCategory && (
-                                <div className="company-field__hint">
-                                    <button type="button" onClick={() => { setCategoryAutoFilled(true); setFormData(prev => ({ ...prev, category: suggestedCategory })); }}>
-                                        Обычно: {suggestedCategory}
-                                    </button>
-                                </div>
-                            )}
-                        </CompanyField>
-                    )}
 
                     {/* Comment */}
                     <div>
@@ -777,6 +834,26 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                         )}
                     </div>
                 </form>
+            </div>
+
+            {whereOpen && (
+                <WhereSheet
+                    item={formData}
+                    category={isSplit ? '' : (formData.category || '')}
+                    backLabel={TYPE_TITLES[formData.type]}
+                    suggestions={companies.suggestions}
+                    edited={whereQuery !== null}
+                    logoChanged={companyLogoChanged}
+                    apiFetch={apiFetch}
+                    autoFocusSearch={whereAutoFocus}
+                    onNameChange={changeCompanyName}
+                    onChoose={company => { pickCompany(company); closeWhere(); }}
+                    onLogoChange={choice => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, ...choice })); }}
+                    onMerchantSelect={merchant => { setCompanyLogoChanged(true); setFormData(prev => ({ ...prev, companyId: '', companyName: merchant.name, logoMode: 'domain', merchantDomain: merchant.domain })); }}
+                    onClear={() => { changeCompanyName(''); closeWhere(); }}
+                    onBack={closeWhere}
+                />
+            )}
         </Sheet>
     );
 }

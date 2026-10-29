@@ -431,8 +431,8 @@ describe('App banking integration', () => {
     const amounts = screen.getAllByPlaceholderText('Сумма');
     fireEvent.change(amounts[0], { target: { value: '10' } });
     fireEvent.change(amounts[1], { target: { value: '20' } });
-    fireEvent.click(screen.getAllByText('Продукты')[0]);
-    fireEvent.click(screen.getAllByText('Транспорт')[1]);
+    fireEvent.change(screen.getByLabelText('Категория части 1'), { target: { value: 'Продукты' } });
+    fireEvent.change(screen.getByLabelText('Категория части 2'), { target: { value: 'Транспорт' } });
     fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
     await waitFor(() => expect(payloads).toHaveLength(2));

@@ -31,4 +31,22 @@ describe('Sheet', () => {
         expect(opener).toHaveFocus();
         opener.remove();
     });
+
+    it('leaves inert content out of the Tab cycle', () => {
+        render(
+            <Sheet ariaLabel="Тестовый лист" onClose={vi.fn()}>
+                <div inert>
+                    <button type="button">Скрытая</button>
+                </div>
+                <button type="button">Видимая</button>
+            </Sheet>
+        );
+        const visible = screen.getByRole('button', { name: 'Видимая' });
+        // «Скрытая» не считается ни первой, ни последней: Tab с единственной видимой кнопки остаётся на ней
+        expect(visible).toHaveFocus();
+        fireEvent.keyDown(document, { key: 'Tab' });
+        expect(visible).toHaveFocus();
+        fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+        expect(visible).toHaveFocus();
+    });
 });

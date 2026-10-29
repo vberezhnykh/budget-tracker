@@ -109,4 +109,15 @@ describe('remote transaction icons', () => {
       unmount();
     }
   });
+
+  it('draws the tile at a requested size and keeps the default 40px without one', () => {
+    const { container, rerender } = render(<TransactionIcon item={expense} size={32} />);
+    const avatar = container.firstElementChild;
+    expect(avatar).toHaveStyle({ width: '32px', height: '32px', borderRadius: '10px' });
+    expect(avatar.querySelector('svg')).toHaveAttribute('width', '16');
+
+    rerender(<TransactionIcon item={expense} />);
+    expect(container.firstElementChild.style.width).toBe('');
+    expect(container.firstElementChild.querySelector('svg')).toHaveAttribute('width', '20');
+  });
 });
