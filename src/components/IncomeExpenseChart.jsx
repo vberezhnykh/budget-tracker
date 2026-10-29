@@ -40,16 +40,17 @@ export default function IncomeExpenseChart({ series = [], selectedMonth, onSelec
 
             {selected && (
                 <dl data-account-value className="month-chart__stats">
+                    {/* Целые евро: в узком ряду из трёх колонок на 320px центы не помещаются */}
                     <div>
                         <dt><i className="month-chart__key month-chart__key--income" aria-hidden="true" />Доход</dt>
-                        <dd>{formatMoney(selected.income, { whole: true })}</dd>
+                        <dd style={{ color: 'var(--color-positive)' }}>{formatMoney(selected.income, { sign: 'auto', whole: true })}</dd>
                     </div>
                     <div>
                         <dt><i className="month-chart__key month-chart__key--expense" aria-hidden="true" />Расход</dt>
-                        <dd>{formatMoney(selected.expense, { whole: true })}</dd>
+                        <dd>{formatMoney(selected.expense, { sign: 'minus', whole: true })}</dd>
                     </div>
                     <div>
-                        <dt>Разница</dt>
+                        <dt>Сальдо</dt>
                         <dd style={{ color: differenceColor }}>{formatMoney(difference, { sign: 'auto', whole: true })}</dd>
                     </div>
                 </dl>

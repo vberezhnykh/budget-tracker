@@ -202,16 +202,16 @@ describe('QuickEntry in the transaction form', () => {
 
     it('asks to choose an account when the phrase did not name one', async () => {
         const { onSubmit } = renderForm({ apiFetch: quickFetch(async () => json({ draft: { type: 'expense', amount: 12, category: 'Кафе' } })) });
-        expect(screen.queryByText(/выберите счет/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/выберите счёт/)).not.toBeInTheDocument();
         await fillWith('такси 12 до аэропорта');
 
-        expect(await screen.findByText('Заполнено по фразе. Проверьте поля. Счет не назван, выберите его.')).toBeInTheDocument();
-        expect(screen.getByText(/· выберите счет/)).toBeInTheDocument();
+        expect(await screen.findByText('Заполнено по фразе. Проверьте поля. Счёт не назван, выберите его.')).toBeInTheDocument();
+        expect(screen.getByText(/· выберите счёт/)).toBeInTheDocument();
         // сохранение без счёта по-прежнему закрыто
         expect(screen.getByRole('button', { name: SAVE_BUTTON_NAME })).toBeDisabled();
 
         fireEvent.click(screen.getByRole('button', { name: 'Наличные' }));
-        expect(screen.queryByText(/выберите счет/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/выберите счёт/)).not.toBeInTheDocument();
         expect(screen.getByText('Заполнено по фразе. Проверьте поля.')).toBeInTheDocument();
         fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
         await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
@@ -222,7 +222,7 @@ describe('QuickEntry in the transaction form', () => {
         renderForm({ presetAccountId: 'cash', apiFetch: quickFetch(async () => json({ draft: { type: 'expense', amount: 12 } })) });
         await fillWith('такси 12');
         expect(await screen.findByText('Заполнено по фразе. Проверьте поля.')).toBeInTheDocument();
-        expect(screen.queryByText(/выберите счет/)).not.toBeInTheDocument();
+        expect(screen.queryByText(/выберите счёт/)).not.toBeInTheDocument();
     });
 
     it('fills a transfer with both accounts', async () => {
@@ -444,7 +444,7 @@ describe('Receipt photo in the transaction form', () => {
     it('adds the account sentence to a receipt fill when the account is missing', async () => {
         renderReceipt(async () => json({ draft: { type: 'expense', amount: 12, category: 'Кафе' } }));
         await chooseFile();
-        expect(await screen.findByText('Заполнено по чеку. Проверьте поля. Счет не назван, выберите его.')).toBeInTheDocument();
+        expect(await screen.findByText('Заполнено по чеку. Проверьте поля. Счёт не назван, выберите его.')).toBeInTheDocument();
     });
 
     it('shows the server message with «Другое фото» that reopens the picker', async () => {

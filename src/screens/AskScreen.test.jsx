@@ -111,7 +111,7 @@ describe('AskScreen: a conversation', () => {
     expect(within(log).getByRole('article', { name: 'Ответ' })).toBeInTheDocument();
     // Вводный текст и примеры остаются только пустому разговору
     expect(screen.queryByRole('region', { name: 'Примеры вопросов' })).not.toBeInTheDocument();
-    expect(input()).toHaveAttribute('placeholder', 'Уточните или спросите еще');
+    expect(input()).toHaveAttribute('placeholder', 'Уточните или спросите ещё');
   });
 
   it('renders the answer: bold amounts, a real table with column headers, the basis', () => {

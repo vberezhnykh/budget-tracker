@@ -116,7 +116,7 @@ export default function CategoryPicker({ categories, transactions, type, categor
                         <Field
                             type="text"
                             tone="muted"
-                            radius="var(--radius-pill)"
+                            radius="var(--radius-md)"
                             placeholder="Название..."
                             value={newName}
                             onChange={e => {

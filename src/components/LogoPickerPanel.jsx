@@ -4,6 +4,7 @@ import { Check, Search } from 'lucide-react';
 import TransactionIcon from './TransactionIcon';
 import Field from './ui/Field';
 import Chip from './ui/Chip';
+import Button from './ui/Button';
 import { normalizeMerchantDomain } from '../utils/merchantDomain';
 import './LogoPickerPanel.css';
 
@@ -54,8 +55,8 @@ export default function LogoPickerPanel({ id, item, onChange, onMerchantSelect, 
   return (
     <div id={id} className="logo-picker-panel">
       <div className="logo-picker-panel__modes">
-        <Chip selected={mode === 'auto'} onClick={() => choose('auto')}>Автоподбор</Chip>
-        <Chip selected={mode === 'category'} onClick={() => choose('category')}>Иконка категории</Chip>
+        <Chip shape="block" selected={mode === 'auto'} onClick={() => choose('auto')}>Автоподбор</Chip>
+        <Chip shape="block" selected={mode === 'category'} onClick={() => choose('category')}>Иконка категории</Chip>
       </div>
       <label className="logo-picker-panel__label" htmlFor={`${id}-search`}>Найти компанию</label>
       <div className="logo-picker-panel__search">
@@ -86,7 +87,7 @@ export default function LogoPickerPanel({ id, item, onChange, onMerchantSelect, 
       <label className="logo-picker-panel__label" htmlFor={`${id}-website`}>Или укажите сайт компании</label>
       <div className="logo-picker-panel__website">
         <Field id={`${id}-website`} value={website} onChange={event => { setWebsite(event.target.value); setWebsiteError(''); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); applyWebsite(); } }} placeholder="company.com" autoComplete="off" autoCapitalize="none" spellCheck={false} aria-invalid={Boolean(websiteError)} aria-describedby={websiteError ? `${id}-error` : undefined} style={{ flex: 1, minWidth: 0 }} />
-        <button type="button" className="logo-picker-panel__action" onClick={applyWebsite}>Применить</button>
+        <Button tone="soft" size="sm" type="button" onClick={applyWebsite} style={{ flexShrink: 0 }}>Применить</Button>
       </div>
       {websiteError && <p id={`${id}-error`} className="logo-picker-panel__error" role="alert">{websiteError}</p>}
     </div>

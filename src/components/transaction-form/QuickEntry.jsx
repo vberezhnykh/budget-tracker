@@ -348,7 +348,7 @@ export default function QuickEntry({ apiFetch, onDraft, onRevert, accountMissing
             ) : status === 'filled' ? (
                 <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 'var(--space-3)', marginTop: 'var(--space-1-5)' }}>
                     <span style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
-                        {statusText}{accountMissing ? ' Счет не назван, выберите его.' : ''}
+                        {statusText}{accountMissing ? ' Счёт не назван, выберите его.' : ''}
                     </span>
                     <Button
                         tone="text"

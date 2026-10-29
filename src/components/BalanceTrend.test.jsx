@@ -70,8 +70,10 @@ describe('IncomeExpenseChart', () => {
     it('цифры выбранного месяца и пары столбцов на общей шкале', () => {
         render(<IncomeExpenseChart series={series} selectedMonth="2026-01" onSelectMonth={() => {}} />);
         expect(screen.getByText('Январь 2026')).toBeInTheDocument();
-        expect(screen.getByText('€1.000')).toBeInTheDocument();
-        expect(screen.getByText('€1.250')).toBeInTheDocument();
+        expect(screen.getByText('+€1.000')).toBeInTheDocument();
+        expect(screen.getByText('−€1.250')).toBeInTheDocument();
+        expect(screen.getByText('Сальдо')).toBeInTheDocument();
+        expect(screen.queryByText('Разница')).not.toBeInTheDocument();
         expect(screen.getByText('−€250')).toBeInTheDocument();
         const december = screen.getByRole('button', { name: 'Декабрь 2025: доход €3.000,00, расход €1.500,00' });
         // Самый высокий столбец ряда - доход декабря, он и задаёт шкалу.

@@ -143,7 +143,7 @@ describe('useAskConversation', () => {
     expect(lastTurn(result).error).toBe('Дневной лимит вопросов исчерпан.');
 
     act(() => { result.current.retry(lastTurn(result).id); });
-    await waitFor(() => expect(lastTurn(result).error).toBe('Сервер не смог ответить. Попробуйте еще раз.'));
+    await waitFor(() => expect(lastTurn(result).error).toBe('Сервер не смог ответить. Попробуйте ещё раз.'));
   });
 
   it('reports a network failure and a stream that ends without an answer', async () => {
@@ -161,7 +161,7 @@ describe('useAskConversation', () => {
     await waitFor(() => expect(lastTurn(result).error).toMatch(/Нет связи с сервером/));
 
     act(() => { result.current.retry(lastTurn(result).id); });
-    await waitFor(() => expect(lastTurn(result).error).toBe('Ответ оборвался. Попробуйте еще раз.'));
+    await waitFor(() => expect(lastTurn(result).error).toBe('Ответ оборвался. Попробуйте ещё раз.'));
     expect(lastTurn(result).steps).toEqual([{ label: 'Остатки по счетам', done: true }]);
   });
 

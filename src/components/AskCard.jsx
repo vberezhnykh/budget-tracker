@@ -1,5 +1,6 @@
 import { Sparkles } from 'lucide-react';
 import Card from './ui/Card';
+import HintChip from './ui/HintChip';
 
 // Вход в «Вопросы к данным» на экране «Аналитика»: поле-кнопка открывает чат, а
 // две подсказки открывают его сразу с этим вопросом. Показывается, только когда
@@ -38,24 +39,9 @@ export default function AskCard({ onAsk }) {
       </button>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
         {SUGGESTIONS.map((suggestion) => (
-          <button
-            key={suggestion}
-            type="button"
-            onClick={() => onAsk(suggestion)}
-            style={{
-              minHeight: '36px',
-              padding: '0 var(--space-3)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-pill)',
-              background: 'var(--color-surface-muted)',
-              color: 'var(--color-text-main)',
-              font: 'inherit',
-              fontSize: 'var(--text-sm)',
-              cursor: 'pointer',
-            }}
-          >
+          <HintChip key={suggestion} onClick={() => onAsk(suggestion)}>
             {suggestion}
-          </button>
+          </HintChip>
         ))}
       </div>
     </Card>

@@ -14,9 +14,9 @@ import { readNdjson } from './readNdjson';
 //
 // request - apiFetch приложения: он же отправит на вход, если сессия кончилась.
 
-const NETWORK_MESSAGE = 'Нет связи с сервером. Проверьте интернет и попробуйте еще раз.';
-const INTERRUPTED_MESSAGE = 'Ответ оборвался. Попробуйте еще раз.';
-const FAILED_MESSAGE = 'Сервер не смог ответить. Попробуйте еще раз.';
+const NETWORK_MESSAGE = 'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.';
+const INTERRUPTED_MESSAGE = 'Ответ оборвался. Попробуйте ещё раз.';
+const FAILED_MESSAGE = 'Сервер не смог ответить. Попробуйте ещё раз.';
 const UNREADABLE_MESSAGE = 'Не получилось ответить. Попробуйте спросить иначе.';
 
 const newTurn = (id, question) => ({ id, question, status: 'working', steps: [], answer: null, error: null });

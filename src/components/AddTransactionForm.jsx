@@ -4,6 +4,7 @@ import CompanyField from './CompanyField';
 import Field, { FormLabel } from './ui/Field'
 import Sheet from './ui/Sheet'
 import Button from './ui/Button'
+import HintChip from './ui/HintChip'
 import IconButton from './ui/IconButton'
 import InlineAlert from './ui/InlineAlert'
 import SegmentedControl from './ui/SegmentedControl'
@@ -595,7 +596,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 <FormLabel>
                                     {formData.type === 'expense' ? 'Списать с' : 'Зачислить на'}
                                     {accountMissing && (
-                                        <span style={{ color: 'var(--color-negative)' }}> · выберите счет</span>
+                                        <span style={{ color: 'var(--color-negative)' }}> · выберите счёт</span>
                                     )}
                                 </FormLabel>
                                 <AccountPicker
@@ -666,27 +667,19 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 }}
                             >
                                 {visibleSuggestions.map(suggestion => (
-                                    <button
+                                    <HintChip
                                         key={suggestion}
-                                        type="button"
                                         onClick={() => setFormData({ ...formData, description: suggestion })}
                                         style={{
                                             flex: '0 0 auto',
                                             maxWidth: '100%',
-                                            padding: 'var(--space-1-5) var(--space-3)',
-                                            borderRadius: 'var(--radius-lg)',
-                                            border: '1px solid var(--color-border)',
-                                            background: 'var(--color-surface)',
-                                            color: 'var(--color-text-muted)',
-                                            fontSize: 'var(--text-sm)',
                                             whiteSpace: 'nowrap',
                                             overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            cursor: 'pointer'
+                                            textOverflow: 'ellipsis'
                                         }}
                                     >
                                         {suggestion}
-                                    </button>
+                                    </HintChip>
                                 ))}
                             </div>
                         )}
@@ -751,7 +744,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                     }}>
                         {activeFailure && (
                             <InlineAlert tone="danger" title="Не сохранилось.">
-                                {`${withPeriod(activeFailure.message)} Все введённое осталось в форме.`}
+                                {`${withPeriod(activeFailure.message)} Всё введённое осталось в форме.`}
                             </InlineAlert>
                         )}
                         <Button type="submit" size="lg" block disabled={isSaveDisabled} style={{ minHeight: '54px' }}>

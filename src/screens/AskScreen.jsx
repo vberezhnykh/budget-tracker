@@ -190,7 +190,7 @@ export default function AskScreen({ turns, onSend, onRetry, onStop, onReset, onB
           maxLength={MAX_QUESTION_LENGTH}
           autoComplete="off"
           enterKeyHint="send"
-          placeholder={busy ? 'Claude отвечает…' : hasTurns ? 'Уточните или спросите еще' : 'Спросите о расходах'}
+          placeholder={busy ? 'Claude отвечает…' : hasTurns ? 'Уточните или спросите ещё' : 'Спросите о расходах'}
         />
         {/* У кнопок разные key: они стоят на одном месте, и без них React
             переиспользовал бы один элемент, сменив ему type на submit прямо в

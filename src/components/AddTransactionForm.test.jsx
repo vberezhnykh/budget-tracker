@@ -222,7 +222,7 @@ describe('AddTransactionForm Component', () => {
 
             const alert = await screen.findByRole('alert');
             expect(alert).toHaveTextContent('Не сохранилось.');
-            expect(alert).toHaveTextContent('База временно недоступна. Все введённое осталось в форме.');
+            expect(alert).toHaveTextContent('База временно недоступна. Всё введённое осталось в форме.');
             expect(onClose).not.toHaveBeenCalled();
 
             // всё введённое на месте
@@ -243,11 +243,11 @@ describe('AddTransactionForm Component', () => {
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={vi.fn()} onSubmit={onSubmit} />);
             fillExpense();
             fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
-            expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить операцию. Все введённое осталось в форме.');
+            expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить операцию. Всё введённое осталось в форме.');
 
             onSubmit.mockResolvedValue({ error: 'Слишком много запросов.' });
             fireEvent.click(screen.getByRole('button', { name: 'Сохранить ещё раз' }));
-            await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Слишком много запросов. Все введённое осталось в форме.'));
+            await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Слишком много запросов. Всё введённое осталось в форме.'));
         });
 
         it('shows a thrown error the same way', async () => {
@@ -255,7 +255,7 @@ describe('AddTransactionForm Component', () => {
             render(<AddTransactionForm type="expense" categories={mockCategories} accounts={mockAccounts} onClose={vi.fn()} onSubmit={onSubmit} />);
             fillExpense();
             fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
-            expect(await screen.findByRole('alert')).toHaveTextContent('Сеть недоступна. Все введённое осталось в форме.');
+            expect(await screen.findByRole('alert')).toHaveTextContent('Сеть недоступна. Всё введённое осталось в форме.');
             expect(screen.getByRole('button', { name: 'Сохранить ещё раз' })).toBeInTheDocument();
         });
 
@@ -309,7 +309,7 @@ describe('AddTransactionForm Component', () => {
             fireEvent.click(within(screen.getAllByText('Категория 2')[0].parentElement.parentElement).getByText('Транспорт'));
             fireEvent.click(screen.getByRole('button', { name: 'Сохранить расход' }));
 
-            expect(await screen.findByRole('alert')).toHaveTextContent('Не вышло. Все введённое осталось в форме.');
+            expect(await screen.findByRole('alert')).toHaveTextContent('Не вышло. Всё введённое осталось в форме.');
             expect(screen.getAllByPlaceholderText('Сумма')[0]).toHaveValue(40);
             expect(screen.getAllByPlaceholderText('Сумма')[1]).toHaveValue(60);
         });

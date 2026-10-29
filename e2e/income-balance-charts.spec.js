@@ -47,9 +47,10 @@ test.describe('Доходы, расходы и деньги в наличии (m
     const period = page.getByRole('button', { name: /^Период:/ });
 
     await expect(flows.getByRole('button', { name: /^Сентябрь 2026:/ })).toHaveAttribute('aria-pressed', 'true');
-    await expect(flows.getByText('€3.600', { exact: true })).toBeVisible();
-    await expect(flows.getByText('€720', { exact: true })).toBeVisible();
+    await expect(flows.getByText('+€3.600', { exact: true })).toBeVisible();
+    await expect(flows.getByText('−€720', { exact: true })).toBeVisible();
     await expect(flows.getByText('+€2.880', { exact: true })).toBeVisible();
+    await expect(flows.getByText('Сальдо', { exact: true })).toBeVisible();
     await expect(flows.getByRole('button', { name: /^Июль 2026:/ })).toHaveAttribute('aria-label', 'Июль 2026: доход €3.300,00, расход €1.650,00');
 
     // 1000 стартовых + доходы - расходы - 500 на вклад; снятие наличных

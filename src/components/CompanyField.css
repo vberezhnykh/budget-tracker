@@ -7,7 +7,7 @@
 .company-field__icon { position: absolute; top: 50%; left: 8px; transform: translateY(-50%); display: inline-flex; padding: 0; border-radius: var(--radius-pill); background: transparent; }
 .company-field__icon .transaction-icon { pointer-events: none; width: 30px; height: 30px; flex-basis: 30px; }
 .company-field__icon .transaction-icon svg { width: 16px; height: 16px; }
-.company-field__input > button { min-width: 40px; min-height: 40px; border-radius: var(--radius-sm); color: var(--color-text-muted); background: var(--color-surface-muted); font-size: 24px; }
+.company-field__input > button { min-width: 40px; min-height: 40px; border-radius: var(--radius-sm); color: var(--color-text-muted); background: var(--color-surface-muted); }
 .company-field__suggestions { margin: 0; padding: 0; list-style: none; max-height: 230px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
 .company-field__suggestions li + li { border-top: 1px solid var(--color-border-subtle); }
 .company-field__suggestions button { display: flex; align-items: center; width: 100%; gap: var(--space-3); padding: var(--space-3); background: var(--color-surface); text-align: left; }

@@ -21,7 +21,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', background: 'var(--color-surface-muted)', padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--color-border-subtle)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-md)' }}>
                 <span>Осталось распределить:</span>
-                <span style={{ color: isBalanced ? 'var(--color-positive)' : ((remaining < 0) ? 'var(--color-negative)' : 'var(--color-warning)'), fontWeight: 'var(--weight-strong)' }}>
+                <span style={{ color: isBalanced ? 'var(--color-positive)' : ((remaining < 0) ? 'var(--color-negative)' : 'var(--color-warning-text)'), fontWeight: 'var(--weight-strong)' }}>
                     {/* Минус только у перебора: недораспределённый остаток - просто сумма */}
                     {formatMoney(isBalanced ? 0 : remaining, { sign: remaining < 0 ? 'auto' : 'none' })}
                 </span>
@@ -32,7 +32,7 @@ export default function SplitEditor({ split: { splits, remaining, isBalanced, ad
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: 'var(--text-base)', color: 'var(--color-text-muted)' }}>Категория {index + 1}</span>
                         {splits.length > 2 && (
-                            <IconButton round tone="danger" size={32} aria-label={`Удалить часть ${index + 1}`} onClick={() => remove(part.id)}><X size={20} strokeWidth={1.8} aria-hidden="true" /></IconButton>
+                            <IconButton round tone="danger" size={44} aria-label={`Удалить часть ${index + 1}`} onClick={() => remove(part.id)}><X size={20} strokeWidth={1.8} aria-hidden="true" /></IconButton>
                         )}
                     </div>
 

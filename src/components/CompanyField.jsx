@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react';
+import { X } from 'lucide-react';
 import Field from './ui/Field';
 import TransactionIcon from './TransactionIcon';
 import LogoPickerPanel from './LogoPickerPanel';
@@ -128,7 +129,7 @@ export default function CompanyField({ item, transactions, onChange, onLogoChang
             : <span className="company-field__icon">{icon}</span>}
           <Field id={id} value={item.companyName || ''} onChange={event => changeName(event.target.value)} onFocus={() => setFocused(true)} onBlur={event => { if (!event.currentTarget.parentElement.parentElement.contains(event.relatedTarget)) setFocused(false); }} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); setFocused(false); } if (event.key === 'Escape') setFocused(false); }} maxLength={120} placeholder="Название магазина или сервиса" autoComplete="off" style={{ width: '100%', minHeight: '48px', paddingLeft: '46px' }} />
         </div>
-        {item.companyName && <button type="button" onClick={() => { setPanelOpen(false); changeName(''); }} aria-label="Убрать компанию">×</button>}
+        {item.companyName && <button type="button" onClick={() => { setPanelOpen(false); changeName(''); }} aria-label="Убрать компанию"><X size={20} strokeWidth={1.8} aria-hidden="true" /></button>}
       </div>
       {focused && suggestions.length > 0 && (
         <ul className="company-field__suggestions" aria-label="Знакомые компании">
