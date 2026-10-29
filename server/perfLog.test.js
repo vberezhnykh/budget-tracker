@@ -279,6 +279,16 @@ describe('createServerSampleRecorder', () => {
         expect(perfLog.add.mock.calls[3][0]).not.toHaveProperty('cache');
     });
 
+    it('сохраняет признак готового ответа (memo), только если он известен', () => {
+        const { perfLog, record } = makeRecorder();
+        record(info({ memo: 'hit' }));
+        record(info({ memo: 'miss' }));
+        record(info({ memo: 'stale' }));
+        record(info({ memo: undefined }));
+        expect(perfLog.add.mock.calls.map(([sample]) => sample.memo)).toEqual(['hit', 'miss', undefined, undefined]);
+        expect(perfLog.add.mock.calls[2][0]).not.toHaveProperty('memo');
+    });
+
     it('без этапов и Content-Length этих полей нет', () => {
         const { perfLog, record } = makeRecorder();
         record(info({ entries: new Map(), contentLength: undefined }));

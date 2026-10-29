@@ -47,6 +47,9 @@ const PerfSampleSchema = new mongoose.Schema({
     // устаревшие с обновлением в фоне, miss - читали базу. Нет поля - роут кэш
     // не использует.
     cache: { type: String, enum: ['hit', 'miss', 'stale'] },
+    // Готовый ответ (responseMemo): hit - отдан без расчёта, miss - посчитан в
+    // этом запросе. Нет поля - роут готовые ответы не использует.
+    memo: { type: String, enum: ['hit', 'miss'] },
     // Content-Length ответа, если он был выставлен.
     bytes: ms,
     // process.uptime() в секундах на начало запроса: видно, какие запросы

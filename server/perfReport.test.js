@@ -111,6 +111,20 @@ describe('buildPerfReport', () => {
         expect(report).not.toContain('кэш:');
     });
 
+    it('показывает долю готовых ответов (memo) рядом со строкой кэша, только где признак известен', () => {
+        const memoed = text(buildPerfReport([
+            serverSample({ memo: 'miss', totalMs: 900 }),
+            serverSample({ memo: 'hit', totalMs: 5 }),
+            serverSample({ memo: 'hit', totalMs: 6 }),
+            serverSample({ memo: 'hit', totalMs: 7 }),
+            serverSample({ path: '/api/accounts', totalMs: 8 })
+        ], { now: NOW, hours: 24 }));
+
+        expect(memoed).toContain('готовый ответ: 3 из 4 (75%), посчитан заново 1');
+        const start = memoed.indexOf('GET /api/accounts');
+        expect(memoed.slice(start, memoed.indexOf('GET /api/stats/dashboard'))).not.toContain('готовый ответ');
+    });
+
     it('считает записи по видам', () => {
         expect(report).toContain('Всего: 11');
         expect(report).toContain('запросы на сервере: 4');

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { ledgerInvalidationPlugin } = require('../ledgerCachePlugin');
 
 const SETTINGS_SINGLETON_KEY = 'global';
 
@@ -40,6 +41,10 @@ SettingsSchema.index(
         partialFilterExpression: { singletonKey: SETTINGS_SINGLETON_KEY }
     }
 );
+
+// Лимит лежит в снимке кэша сервера (см. server/ledgerCache.js): любая запись,
+// включая принятие старого документа настроек, сбрасывает его.
+SettingsSchema.plugin(ledgerInvalidationPlugin);
 
 const Settings = mongoose.model('Settings', SettingsSchema);
 Settings.SETTINGS_SINGLETON_KEY = SETTINGS_SINGLETON_KEY;

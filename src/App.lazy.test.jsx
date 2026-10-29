@@ -59,7 +59,8 @@ describe('lazy budget reads', () => {
     expect(history.getByText('\u2212€850,00')).toBeInTheDocument();
     expect(history.queryByText('Старая зарплата')).not.toBeInTheDocument();
     expect(request.mock.calls.some(([url]) => url === '/api/transactions')).toBe(false);
-    expect(request.mock.calls.some(([url]) => url.includes('analytics=1'))).toBe(false);
+    // Подробная сводка пришла вместе со стартовым снимком: отдельных запросов итогов нет.
+    expect(request.mock.calls.some(([url]) => url.startsWith('/api/stats/dashboard?'))).toBe(false);
 
     // Старые дни дорисовываются локально, без запроса.
     await waitFor(() => expect(observers.some(observer => !observer.gone)).toBe(true));
@@ -76,14 +77,16 @@ describe('lazy budget reads', () => {
     expect(screen.getAllByText(/4\.150/).length).toBeGreaterThan(0);
   });
 
-  it('searches older unloaded operations and delays detailed analytics until its tab opens', async () => {
+  it('searches older unloaded operations and opens analytics from the startup snapshot, without another summary request', async () => {
     render(<App />);
     const history = await openHistory();
     fireEvent.change(history.getByPlaceholderText(/Поиск/), { target: { value: 'Старая' } });
     expect(await history.findByText('Старая зарплата')).toBeInTheDocument();
     expect(history.getByText('Результаты поиска (1)')).toBeInTheDocument();
+    expect(request.mock.calls.filter(([url]) => url.startsWith('/api/bootstrap?') && url.includes('analytics=1'))).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
-    await waitFor(() => expect(request.mock.calls.some(([url]) => url.includes('analytics=1'))).toBe(true));
+    await act(async () => {});
+    expect(request.mock.calls.some(([url]) => url.startsWith('/api/stats/dashboard?'))).toBe(false);
   });
 
   it('exports the entire ledger only after an explicit click', async () => {

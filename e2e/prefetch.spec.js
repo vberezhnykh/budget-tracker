@@ -5,21 +5,26 @@ const goTo = (page, name) => page.getByRole('navigation', { name: 'Основн�
 const dashboardUrl = '**/api/stats/dashboard?*';
 
 test.describe('background prefetch', () => {
-  test('analytics data is read in the background, so the tab opens without a skeleton', async ({ page }) => {
+  test('analytics data arrives with the startup snapshot, so the tab opens without a skeleton and without any request', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-01-15T12:00:00Z'));
     await mockApi(page);
-    const analyticsRequests = [];
+    const bootstrapUrls = [];
+    const dashboardRequests = [];
     page.on('request', request => {
       const url = new URL(request.url());
-      if (url.pathname === '/api/stats/dashboard' && url.searchParams.get('analytics') === '1') analyticsRequests.push(url);
+      if (url.pathname === '/api/bootstrap') bootstrapUrls.push(url);
+      if (url.pathname === '/api/stats/dashboard') dashboardRequests.push(url);
     });
     await page.goto('/');
     await expect(page.getByTestId('accounts-row')).toBeVisible();
-    // Аналитика не открывалась, а запрос за ее данными уже ушел.
-    await expect.poll(() => analyticsRequests.length).toBeGreaterThan(0);
+    // Запуск сразу просит подробную сводку (analytics=1) и сообщает часовой пояс
+    // устройства для прогрева ответов на сервере.
+    await expect.poll(() => bootstrapUrls.length).toBeGreaterThan(0);
+    expect(bootstrapUrls.every(url => url.searchParams.get('analytics') === '1')).toBe(true);
+    expect(bootstrapUrls[0].searchParams.get('tz')).toBeTruthy();
 
     // Любой новый запрос итогов теперь идет 2 секунды: если вкладка полезет в
-    // сеть вместо подготовленных данных, скелетон будет виден.
+    // сеть вместо данных стартового снимка, скелетон будет виден.
     await page.route(dashboardUrl, async route => {
       await new Promise(resolve => setTimeout(resolve, 2000));
       await route.fallback();
@@ -28,6 +33,8 @@ test.describe('background prefetch', () => {
     await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible({ timeout: 1000 });
     await expect(page.getByRole('status', { name: 'Загрузка итогов…' })).toHaveCount(0);
     await expect(page.getByTestId('account-summary')).not.toHaveAttribute('aria-busy', 'true');
+    // Фоновой подгрузки Аналитики не было: отдельных запросов итогов нет вовсе.
+    expect(dashboardRequests).toHaveLength(0);
   });
 
   test('after adding an expense, history keeps the previous rows until the fresh page arrives', async ({ page }) => {

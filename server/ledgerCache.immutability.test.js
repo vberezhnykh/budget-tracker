@@ -16,6 +16,7 @@ import { computeBalances, computeMonthlyTotals, computeMonthlyTotalsByAccount } 
 import { computeSearchResults, computeDescriptionSuggestions } from './analytics.js';
 import { prepareData } from './askTools.js';
 import { docsByDateDesc } from './ledgerCache.js';
+import { createDerived } from './ledgerDerived.js';
 
 const ObjectId = mongoose.Types.ObjectId;
 
@@ -122,5 +123,82 @@ describe('потребители снимка кэша не меняют его'
         for (const fn of Object.values(run)) fn(docs, accounts);
 
         expect(JSON.stringify({ docs, accounts })).toBe(before);
+    });
+});
+
+// Запомненные на снимок производные (ledgerDerived.js) общие так же, как сам
+// снимок: их отдают всем запросам, и правка в одном ответила бы чужой сводке.
+// Здесь потребители получают их в Proxy, бросающем на любой записи.
+describe('потребители запомненных производных их не меняют', () => {
+    // Производные над неизменяемыми документами, значения которых тоже неизменяемы.
+    function readOnlyDerived(source = { docs: readOnly(docs), accounts: readOnly(accounts) }) {
+        const derived = createDerived(source);
+        return {
+            transactions: () => readOnly(derived.transactions()),
+            transactionOf: doc => readOnly(derived.transactionOf(doc)),
+            balances: () => readOnly(derived.balances()),
+            monthEndBalances: () => readOnly(derived.monthEndBalances()),
+            monthlyTotalsByAccount: category => readOnly(derived.monthlyTotalsByAccount(category)),
+            categoryUsage: () => readOnly(derived.categoryUsage()),
+            raw: derived
+        };
+    }
+
+    const paramsList = [
+        { month: '2026-08', timeRange: 'month', today: '2026-08-15', analytics: true },
+        { month: '2026-09', timeRange: 'year', account: String(card._id), type: 'expense', today: '2026-09-02', analytics: true },
+        { month: '2026-08', timeRange: 'lifetime', category: 'Продукты', today: '2026-08-15', analytics: false }
+    ];
+
+    it('buildDashboard на запомненных производных: те же ответы, ошибок записи нет', () => {
+        const derived = readOnlyDerived();
+
+        for (const params of paramsList) {
+            const expected = buildDashboard(docs.map(d => ({ ...d })), accounts.map(a => ({ ...a })), params);
+            // Дважды: второй вызов целиком идёт по запомненному.
+            expect(buildDashboard(docs, accounts, params, derived)).toEqual(expected);
+            expect(buildDashboard(docs, accounts, params, derived)).toEqual(expected);
+        }
+    });
+
+    it('история, поиск и подсказки на общих расчётных операциях: те же ответы, ошибок записи нет', () => {
+        // Документы здесь настоящие: история отдаёт те же объекты, что лежат в снимке.
+        const derived = readOnlyDerived({ docs, accounts });
+        const sorted = docsByDateDesc({ docs });
+        const transactions = derived.transactions();
+        const histories = [
+            parseHistoryQuery({ continuous: '1', all: '1' }),
+            parseHistoryQuery({ month: '2026-08', timeRange: 'month' }),
+            parseHistoryQuery({ continuous: '1', all: '1', q: 'лидл' })
+        ];
+
+        for (const options of histories) {
+            const expected = buildHistoryPage(sorted.map(d => ({ ...d })), accounts.map(a => ({ ...a })), options);
+            const shared = sorted.map(doc => derived.transactionOf(doc));
+            expect(buildHistoryPage(sorted, accounts, options, shared)).toEqual(expected);
+            expect(buildHistoryPage(sorted, accounts, options, shared)).toEqual(expected);
+        }
+        expect(computeSearchResults(transactions, 'лидл', null, null, null))
+            .toEqual(computeSearchResults(transformTransactions(docs, accounts), 'лидл', null, null, null));
+        expect(computeDescriptionSuggestions(transactions, 'Продукты', 'expense'))
+            .toEqual(computeDescriptionSuggestions(transformTransactions(docs, accounts), 'Продукты', 'expense'));
+    });
+
+    it('после всех расчётов запомненные значения не изменились', () => {
+        const derived = createDerived({ docs, accounts });
+        const snapshot = () => JSON.stringify([
+            derived.transactions(), derived.balances(), derived.monthEndBalances(),
+            derived.monthlyTotalsByAccount(), derived.categoryUsage()
+        ]);
+        const before = snapshot();
+
+        for (const params of paramsList) buildDashboard(docs, accounts, params, derived);
+        for (const query of [{ continuous: '1', all: '1' }, { month: '2026-08', timeRange: 'month' }, { continuous: '1', all: '1', q: 'лидл' }]) {
+            buildHistoryPage(docs, accounts, parseHistoryQuery(query), derived.transactions());
+        }
+        computeSearchResults(derived.transactions(), 'лидл', null, null, null);
+        computeDescriptionSuggestions(derived.transactions(), 'Продукты', 'expense');
+
+        expect(snapshot()).toBe(before);
     });
 });

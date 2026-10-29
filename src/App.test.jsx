@@ -278,7 +278,9 @@ describe('App Integration Tests', () => {
         expect(screen.queryByText('Загрузка...')).not.toBeInTheDocument();
         const startupUrls = () => fetchMock.mock.calls.map(([url]) => url).filter(url => !url.startsWith('/api/history?'));
         expect(startupUrls()).toHaveLength(1);
-        expect(startupUrls()[0]).toMatch(/^\/api\/bootstrap\?month=2026-01&timeRange=month&today=2026-01-15&analytics=0$/);
+        // Запуск сразу просит analytics=1 (Аналитике не нужен второй запрос) и
+        // присылает часовой пояс устройства для прогрева на сервере.
+        expect(startupUrls()[0]).toBe(`/api/bootstrap?month=2026-01&timeRange=month&today=2026-01-15&analytics=1&tz=${encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone)}`);
 
         await act(async () => {
             resolveBootstrap({
@@ -767,7 +769,7 @@ describe('App Integration Tests', () => {
             .filter(url => typeof url === 'string' && url.startsWith('/api/history?') && !url.includes('limit=5'));
         const statsUrls = () => fetchMock.mock.calls
             .map(([url]) => url)
-            .filter(url => typeof url === 'string' && url.startsWith('/api/stats/dashboard'));
+            .filter(url => typeof url === 'string' && (url.startsWith('/api/stats/dashboard') || url.startsWith('/api/bootstrap?')));
 
         // Месяц в запрос не входит: он решает, с какого месяца начинается экран.
         const topMonth = () => screen.getByTestId('history-scroll').querySelector('[data-history-month]')?.getAttribute('data-history-month');

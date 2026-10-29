@@ -1,4 +1,4 @@
-// Снимок активных операций и счетов в памяти сервера.
+// Снимок активных операций, счетов, категорий и настроек в памяти сервера.
 //
 // Зачем он нужен. Сводка, история, поиск и подсказки каждый раз читали из
 // Atlas всю историю: на бесплатном M0 это полсекунды на запрос, и столько же
@@ -7,14 +7,23 @@
 // процесса и перечитывается только после записи.
 //
 // Что кладётся в память и что нет. Только то, что и так читали эти роуты:
-// активные операции и счета. Деньги не попадают на телефон и никуда не
-// уходят из процесса сервера - правило «финансовые данные на телефоне не
-// храним» этим не нарушается.
+// активные операции и счета, а также категории и настройки: их читал запуск
+// приложения (GET /api/bootstrap) параллельно со сводкой, и после простоя
+// первое же обращение к Atlas занимало полсекунды (холодное соединение), хотя
+// сама выборка из трёх крошечных коллекций - единицы миллисекунд. Деньги не
+// попадают на телефон и никуда не уходят из процесса сервера - правило
+// «финансовые данные на телефоне не храним» этим не нарушается.
+//
+// Настройки в снимке - это число лимита или признак нарушенной целостности
+// (несколько наборов настроек, см. settingsSingleton.js): роуты на него
+// по-прежнему отвечают 409, а остальные части снимка от этого не страдают.
+// Флаги функций (features) в снимок не входят: они берутся из окружения при
+// каждом запросе.
 //
 // Три опасности и чем они закрыты.
 //
-// 1. Устаревшие данные после записи. Любая запись в Transaction или Account
-//    (см. server/ledgerCachePlugin.js) вызывает invalidate(): версия растёт, а
+// 1. Устаревшие данные после записи. Любая запись в Transaction, Account,
+//    Category или Settings (см. server/ledgerCachePlugin.js) вызывает invalidate(): версия растёт, а
 //    снимок выбрасывается. Следующий читатель загружает свежий.
 //
 // 2. Гонка загрузки и записи. Загрузка, начатая до записи, может прочитать
@@ -83,7 +92,7 @@ function isLedgerCacheEnabled(env = process.env) {
 // безвредно (версия вырастет, ответы посчитаются заново), а ложное «не
 // изменилось» опасно, поэтому в хеш идет весь документ, включая __v.
 // JSON.stringify для ObjectId и Date дает строку через их toJSON.
-function fingerprintLedger({ docs, accounts }) {
+function fingerprintLedger({ docs, accounts, categories = [], settings = null }) {
     const part = (items) => {
         const sum = Buffer.alloc(20);
         for (const item of items) {
@@ -92,7 +101,8 @@ function fingerprintLedger({ docs, accounts }) {
         }
         return `${items.length}:${sum.toString('hex')}`;
     };
-    return `${part(docs)}|${part(accounts)}`;
+    // Настройки - один небольшой объект: считается как набор из одного документа.
+    return `${part(docs)}|${part(accounts)}|${part(categories)}|${part(settings ? [settings] : [])}`;
 }
 
 function createLedgerCache({
@@ -120,6 +130,11 @@ function createLedgerCache({
     // запись в базу без единого чтения (скрипт, тест) тянула бы историю зря.
     let inUse = false;
     let lastErrorLogAt = null;
+    // Подписчики на «фоновое обновление нашло изменённые данные» (прогрев
+    // готовых ответов, см. dashboardWarmer.js). Обычная запись через этот
+    // процесс их не вызывает: после неё следующий запрос клиента сам считает
+    // ответ, и считать его заранее значило бы удвоить нагрузку.
+    const refreshListeners = new Set();
     // Отпечаток снимка считается не при установке, а при первом сравнении:
     // большинство снимков заменяет запись, и до сравнения дело не доходит.
     const fingerprints = new WeakMap();
@@ -157,6 +172,7 @@ function createLedgerCache({
             .then(load)
             .then(data => {
                 let installedVersion = startVersion;
+                let refreshChanged = false;
                 // Версия сменилась (запись) - результат мог прочитать старое:
                 // вызвавшему он отдаётся, но на место снимка не встаёт.
                 if (version === startVersion) {
@@ -178,10 +194,19 @@ function createLedgerCache({
                         }
                         version += 1;
                         installedVersion = version;
+                        refreshChanged = true;
                     }
                 }
-                const next = { version: installedVersion, loadedAt: startedAt, docs: data.docs, accounts: data.accounts };
+                const next = {
+                    version: installedVersion,
+                    loadedAt: startedAt,
+                    docs: data.docs,
+                    accounts: data.accounts,
+                    categories: data.categories,
+                    settings: data.settings
+                };
                 if (version === installedVersion) snapshot = next;
+                if (refreshChanged && snapshot === next) notifyRefreshChanged(next);
                 return next;
             })
             .finally(() => {
@@ -189,6 +214,16 @@ function createLedgerCache({
             });
         inflight = entry;
         return entry.promise;
+    }
+
+    function notifyRefreshChanged(next) {
+        for (const listener of refreshListeners) {
+            try {
+                listener(next);
+            } catch (error) {
+                logBackgroundError(error);
+            }
+        }
     }
 
     // Фоновая загрузка: ошибки не уходят никому, кроме лога.
@@ -214,7 +249,17 @@ function createLedgerCache({
         async get() {
             if (!isEnabled()) {
                 const data = await load();
-                return { snapshot: { version: -1, loadedAt: now(), docs: data.docs, accounts: data.accounts }, state: 'off' };
+                return {
+                    snapshot: {
+                        version: -1,
+                        loadedAt: now(),
+                        docs: data.docs,
+                        accounts: data.accounts,
+                        categories: data.categories,
+                        settings: data.settings
+                    },
+                    state: 'off'
+                };
             }
             inUse = true;
             if (snapshot) {
@@ -248,6 +293,14 @@ function createLedgerCache({
         releaseReload() {
             openTransactions = Math.max(0, openTransactions - 1);
             scheduleReload();
+        },
+
+        // Подписка на фоновое обновление, которое принесло другие данные.
+        // Слушатель получает новый снимок и вызывается синхронно, поэтому
+        // тяжёлую работу откладывает сам. Возвращает функцию отписки.
+        onRefreshChanged(listener) {
+            refreshListeners.add(listener);
+            return () => refreshListeners.delete(listener);
         },
 
         isEnabled: () => Boolean(isEnabled()),
@@ -304,15 +357,37 @@ function docsByDateDesc(snap) {
 // Загрузка из базы - ровно те запросы, что роуты делали сами. Модели берутся
 // здесь, а не при загрузке модуля: плагин инвалидации подключается в моделях
 // и требует этот файл, цикл иначе неизбежен.
+//
+// Категории читаются с тем же порядком, что у GET /api/categories (тип, затем
+// order). Счета, наоборот, лежат в естественном порядке базы (от него зависят
+// расчёты), а порядок экрана строится при отдаче (см. ledgerCatalog.js).
 async function loadFromDatabase() {
     const Transaction = require('./models/Transaction');
     const Account = require('./models/Account');
+    const Category = require('./models/Category');
     const { activeTransactionFilter } = require('./ledgerState');
-    const [docs, accounts] = await Promise.all([
+    const [docs, accounts, categories, settings] = await Promise.all([
         Transaction.find(activeTransactionFilter()).lean(),
-        Account.find().lean()
+        Account.find().lean(),
+        Category.find().sort({ type: 1, order: 1 }).lean(),
+        loadSettingsData()
     ]);
-    return { docs, accounts };
+    return { docs, accounts, categories, settings };
+}
+
+// Лимит из канонического документа настроек (с принятием единственного
+// старого документа - это делает getCanonicalSettings) либо признак нарушенной
+// целостности. Любая другая ошибка (база недоступна) уходит наверх, как и у
+// остальных частей снимка.
+async function loadSettingsData() {
+    const { getCanonicalSettings } = require('./settingsSingleton');
+    try {
+        const settings = await getCanonicalSettings();
+        return { monthlyLimit: settings ? settings.monthlyLimit : null, integrityError: null };
+    } catch (error) {
+        if (error?.code !== 'SETTINGS_INTEGRITY') throw error;
+        return { monthlyLimit: null, integrityError: error.message };
+    }
 }
 
 const ledgerCache = createLedgerCache({ load: loadFromDatabase });

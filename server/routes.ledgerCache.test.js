@@ -8,7 +8,7 @@
 // Тест, который не прогрел кэш, ничего не доказывает: без кэша
 // «чтение после записи» верно само собой.
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import mongoose from 'mongoose';
 import { connectTestDb, disconnectTestDb, clearCollections, loginAgent, tx, DB_HOOK_TIMEOUT } from './test/harness.js';
 import { buildHistoryPage, parseHistoryQuery } from './history.js';
@@ -21,6 +21,7 @@ let agent;
 let Account;
 let Transaction;
 let Category;
+let Settings;
 let ledgerCache;
 let responseMemo;
 
@@ -35,6 +36,7 @@ beforeAll(async () => {
     Account = mongoose.model('Account');
     Transaction = mongoose.model('Transaction');
     Category = mongoose.model('Category');
+    Settings = mongoose.model('Settings');
     ledgerCache = app.locals.ledgerCache;
     responseMemo = app.locals.responseMemo;
 }, DB_HOOK_TIMEOUT);
@@ -544,7 +546,8 @@ describe('ответы из памяти', () => {
             DASHBOARD, `${DASHBOARD}&timeRange=year&account=type:card`,
             '/api/stats/balances', '/api/stats/monthly?account=type:cash', '/api/search?q=чек',
             '/api/suggestions/descriptions?category=Продукты&type=expense',
-            '/api/history?continuous=1&all=1', '/api/history?month=2026-08', '/api/history?continuous=1&all=1&q=чек'
+            '/api/history?continuous=1&all=1', '/api/history?month=2026-08', '/api/history?continuous=1&all=1&q=чек',
+            '/api/accounts', '/api/categories', '/api/settings', `/api/bootstrap?${DASHBOARD.split('?')[1]}&analytics=1`
         ]) {
             expect((await agent.get(url)).status, url).toBe(200);
         }
@@ -677,5 +680,338 @@ describe('аварийный выключатель LEDGER_CACHE=off', () => {
 
         await dashboard();
         expect(cacheState(await dashboard())).toBe('hit');
+    });
+});
+
+// Счета, категории и настройки лежат в том же снимке, что и операции: запуск
+// приложения (GET /api/bootstrap) и три справочных роута не ходят в Atlas,
+// пока снимок есть, а любая запись, откуда бы она ни пришла, сбрасывает его.
+describe('справочники и настройки в снимке', () => {
+    const BOOTSTRAP = `/api/bootstrap?${DASHBOARD.split('?')[1]}&analytics=1`;
+    const bootstrap = () => agent.get(BOOTSTRAP);
+    const names = (res) => res.body.map(item => item.name);
+
+    beforeEach(async () => {
+        await Category.create([
+            { name: 'Продукты', type: 'expense', order: 1 },
+            { name: 'Транспорт', type: 'expense', order: 2 },
+            { name: 'Зарплата', type: 'income', order: 1 }
+        ]);
+        await Settings.create({ singletonKey: 'global', monthlyLimit: 5000 });
+    });
+
+    afterEach(() => vi.restoreAllMocks());
+
+    // Первое чтение заполняет снимок, второе обязано прийти уже из памяти.
+    async function warmCatalog() {
+        expect((await bootstrap()).status).toBe(200);
+        expect(cacheState(await bootstrap())).toBe('hit');
+        expect((await agent.get('/api/categories')).status).toBe(200);
+    }
+
+    const readsOfDatabase = () => [Account, Category, Settings, Transaction]
+        .flatMap(model => ['find', 'findOne', 'countDocuments'].map(name => vi.spyOn(model, name)));
+
+    it('со снимком в памяти bootstrap и три справочных роута не обращаются к базе', async () => {
+        await warmCatalog();
+        const spies = readsOfDatabase();
+
+        const results = await Promise.all([
+            bootstrap(), agent.get('/api/accounts'), agent.get('/api/categories'), agent.get('/api/settings')
+        ]);
+
+        results.forEach(res => expect(res.status).toBe(200));
+        results.forEach(res => expect(cacheState(res)).toBe('hit'));
+        expect(spies.flatMap(spy => spy.mock.calls)).toEqual([]);
+        // Время чтения - около нуля, а не 5 мс и тем более не полсекунды Atlas.
+        results.forEach(res => expect(Number(/db;dur=([\d.]+)/.exec(res.headers['server-timing'])[1])).toBeLessThan(5));
+    });
+
+    it('bootstrap побайтно равен склейке справочных роутов и при тёплом снимке', async () => {
+        await warmCatalog();
+
+        const res = await bootstrap();
+        const [accounts, categories, settings, dash] = await Promise.all([
+            agent.get('/api/accounts'), agent.get('/api/categories'), agent.get('/api/settings'),
+            agent.get(`${DASHBOARD}&analytics=1`)
+        ]);
+
+        expect(res.text).toBe(`{"accounts":${accounts.text},"categories":${categories.text},`
+            + `"settings":${settings.text},"dashboard":${dash.text}}`);
+    });
+
+    describe('JSON справочников побайтно равен прежнему ответу документов Mongoose', () => {
+        it('счета: порядок, значения по умолчанию, __v', async () => {
+            // Старый документ: только обязательные поля, без __v, icon, order и флагов.
+            await Account.collection.insertOne({ name: 'Старый', type: 'card' });
+            await Account.create({ name: 'Вклад', type: 'card', order: 0, icon: '🏦', excludeFromTotal: true, isDefault: true });
+            ledgerCache.reset();
+
+            const res = await agent.get('/api/accounts');
+            const fromDocuments = JSON.stringify(await Account.find().sort({ order: 1 }));
+
+            expect(res.status).toBe(200);
+            expect(res.text).toBe(fromDocuments);
+            expect(res.headers['content-type']).toMatch(/^application\/json; charset=utf-8$/);
+            expect(JSON.parse(res.text).find(account => account.name === 'Старый')).toMatchObject({ icon: '💳', order: 0, excludeFromTotal: false });
+        });
+
+        it('категории: порядок по типу и order, значения по умолчанию', async () => {
+            await Category.collection.insertOne({ name: 'Без порядка', type: 'income' });
+            ledgerCache.reset();
+
+            const res = await agent.get('/api/categories');
+            const fromDocuments = JSON.stringify(await Category.find().sort({ type: 1, order: 1 }));
+
+            expect(res.status).toBe(200);
+            expect(res.text).toBe(fromDocuments);
+        });
+
+        it('настройки: тело то же, что давала прежняя сборка', async () => {
+            const res = await agent.get('/api/settings');
+
+            expect(res.body.monthlyLimit).toBe(5000);
+            expect(Object.keys(res.body)).toEqual(['monthlyLimit', 'features']);
+            expect(res.headers['cache-control']).toBe('no-store');
+        });
+    });
+
+    describe('чтение после записи через HTTP', () => {
+        it('категории: создание, переименование, удаление', async () => {
+            await warmCatalog();
+            expect(names(await agent.get('/api/categories'))).toEqual(['Продукты', 'Транспорт', 'Зарплата']);
+
+            const created = await agent.post('/api/categories').send({ name: 'Кафе', type: 'expense' });
+            expect(created.status).toBe(200);
+            expect(names(await agent.get('/api/categories'))).toEqual(['Продукты', 'Транспорт', 'Кафе', 'Зарплата']);
+            expect((await bootstrap()).body.categories.map(item => item.name)).toContain('Кафе');
+
+            await warmCatalog();
+            const renamed = await agent.put(`/api/categories/${created.body._id}`).send({ name: 'Рестораны' });
+            expect(renamed.status).toBe(200);
+            expect(names(await agent.get('/api/categories'))).toContain('Рестораны');
+            expect(names(await agent.get('/api/categories'))).not.toContain('Кафе');
+            expect((await bootstrap()).body.categories.map(item => item.name)).toContain('Рестораны');
+
+            await warmCatalog();
+            const removed = await agent.delete(`/api/categories/${created.body._id}`);
+            expect(removed.status).toBe(200);
+            expect(names(await agent.get('/api/categories'))).toEqual(['Продукты', 'Транспорт', 'Зарплата']);
+            expect((await bootstrap()).body.categories).toHaveLength(3);
+        });
+
+        it('категории: смена порядка записью через модель', async () => {
+            await warmCatalog();
+            const transport = await Category.findOne({ name: 'Транспорт' });
+
+            await Category.updateOne({ _id: transport._id }, { $set: { order: 0 } });
+
+            expect(names(await agent.get('/api/categories'))).toEqual(['Транспорт', 'Продукты', 'Зарплата']);
+            expect((await bootstrap()).body.categories.map(item => item.name)).toEqual(['Транспорт', 'Продукты', 'Зарплата']);
+        });
+
+        it('категории: переименование в транзакции видно сразу, и в категориях, и в сводке', async () => {
+            await Transaction.create(expense({ category: 'Продукты' }));
+            await warmCatalog();
+            const food = await Category.findOne({ name: 'Продукты' });
+
+            const renamed = await agent.put(`/api/categories/${food._id}`).send({ name: 'Еда' });
+            expect(renamed.status).toBe(200);
+
+            const res = await bootstrap();
+            expect(res.body.categories.map(item => item.name)).toContain('Еда');
+            expect(res.body.dashboard.categoryUsage['expense::Еда']).toBe(1);
+        });
+
+        it('лимит: PUT /api/settings виден в settings и bootstrap', async () => {
+            await warmCatalog();
+            expect((await agent.get('/api/settings')).body.monthlyLimit).toBe(5000);
+
+            const saved = await agent.put('/api/settings').send({ monthlyLimit: 9100 });
+            expect(saved.status).toBe(200);
+
+            expect((await agent.get('/api/settings')).body.monthlyLimit).toBe(9100);
+            expect((await bootstrap()).body.settings.monthlyLimit).toBe(9100);
+        });
+
+        it('лимит: первая запись создаёт документ, пока в снимке были настройки по умолчанию', async () => {
+            await Settings.deleteMany({});
+            ledgerCache.reset();
+            await warmCatalog();
+            expect((await agent.get('/api/settings')).body.monthlyLimit).toBe(7000);
+
+            await agent.put('/api/settings').send({ monthlyLimit: 4200 });
+
+            expect((await agent.get('/api/settings')).body.monthlyLimit).toBe(4200);
+            expect((await bootstrap()).body.settings.monthlyLimit).toBe(4200);
+        });
+
+        it('счета: создание, правка, удаление', async () => {
+            await warmCatalog();
+            expect(names(await agent.get('/api/accounts'))).toEqual(['Карта', 'Наличные']);
+
+            const created = await agent.post('/api/accounts').send({ name: 'Копилка', type: 'card' });
+            expect(created.status).toBe(200);
+            expect(names(await agent.get('/api/accounts'))).toEqual(['Карта', 'Наличные', 'Копилка']);
+            expect((await bootstrap()).body.accounts.map(item => item.name)).toContain('Копилка');
+
+            await warmCatalog();
+            const updated = await agent.put(`/api/accounts/${created.body._id}`).send({ name: 'Накопления', order: 0, excludeFromTotal: true });
+            expect(updated.status).toBe(200);
+            const afterUpdate = await agent.get('/api/accounts');
+            expect(names(afterUpdate)).toEqual(['Накопления', 'Карта', 'Наличные']);
+            expect(afterUpdate.body[0].excludeFromTotal).toBe(true);
+            expect((await bootstrap()).body.accounts[0].name).toBe('Накопления');
+
+            await warmCatalog();
+            const removed = await agent.delete(`/api/accounts/${created.body._id}`);
+            expect(removed.status).toBe(200);
+            expect(names(await agent.get('/api/accounts'))).toEqual(['Карта', 'Наличные']);
+            expect((await bootstrap()).body.accounts).toHaveLength(2);
+        });
+
+        it('запись через модель в обход роутов (как скрипты и засев) тоже сбрасывает', async () => {
+            await warmCatalog();
+
+            await Category.create({ name: 'Подарки', type: 'expense', order: 3 });
+            await Account.create({ name: 'Копилка', type: 'card', order: 3 });
+            await Settings.updateOne({ singletonKey: 'global' }, { $set: { monthlyLimit: 1234 } });
+
+            const res = await bootstrap();
+            expect(res.body.categories.map(item => item.name)).toContain('Подарки');
+            expect(res.body.accounts.map(item => item.name)).toContain('Копилка');
+            expect(res.body.settings.monthlyLimit).toBe(1234);
+        });
+    });
+
+    describe('целостность настроек', () => {
+        const twoSettings = async () => {
+            await Settings.deleteMany({});
+            await Settings.collection.insertMany([{ monthlyLimit: 4000 }, { monthlyLimit: 8000 }]);
+            ledgerCache.reset();
+        };
+
+        it('несколько наборов настроек: 409 у /api/settings и /api/bootstrap, остальное работает', async () => {
+            await twoSettings();
+
+            const settings = await agent.get('/api/settings');
+            const boot = await bootstrap();
+            // Повторно уже из снимка: ошибка в нём хранится, а не читается заново.
+            const again = await agent.get('/api/settings');
+
+            expect(settings.status).toBe(409);
+            expect(settings.body.message).toMatch(/несколько наборов настроек/i);
+            expect(boot.status).toBe(409);
+            expect(boot.body).toEqual(settings.body);
+            expect(again.status).toBe(409);
+            expect(cacheState(again)).toBe('hit');
+            // Операции, счета и категории от этого не страдают.
+            expect((await agent.get('/api/accounts')).status).toBe(200);
+            expect((await agent.get('/api/categories')).status).toBe(200);
+            expect((await dashboard()).status).toBe(200);
+        });
+
+        it('после исправления (удалили лишний набор) ответ снова 200', async () => {
+            await twoSettings();
+            expect((await agent.get('/api/settings')).status).toBe(409);
+
+            const [extra] = await Settings.find({ monthlyLimit: 8000 });
+            await Settings.deleteOne({ _id: extra._id });
+
+            const fixed = await agent.get('/api/settings');
+            expect(fixed.status).toBe(200);
+            expect(fixed.body.monthlyLimit).toBe(4000);
+            expect((await bootstrap()).status).toBe(200);
+        });
+
+        it('PUT при нарушенной целостности отвечает 409, как и раньше', async () => {
+            await twoSettings();
+
+            const res = await agent.put('/api/settings').send({ monthlyLimit: 100 });
+
+            expect(res.status).toBe(409);
+        });
+
+        it('единственный старый документ без ключа принимается, и лимит сохраняется', async () => {
+            await Settings.deleteMany({});
+            await Settings.collection.insertOne({ monthlyLimit: 3333 });
+            ledgerCache.reset();
+
+            const res = await agent.get('/api/settings');
+
+            expect(res.status).toBe(200);
+            expect(res.body.monthlyLimit).toBe(3333);
+            expect((await Settings.collection.findOne({})).singletonKey).toBe('global');
+            // Принятие было записью, и снимок после него снова собирается и отдаёт то же.
+            expect((await bootstrap()).body.settings.monthlyLimit).toBe(3333);
+            expect(cacheState(await bootstrap())).toBe('hit');
+        });
+    });
+
+    it('флаги функций берутся из окружения при каждом запросе, а не из снимка', async () => {
+        await warmCatalog();
+        expect((await agent.get('/api/settings')).body.features.ask).toBe(false);
+
+        vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+        try {
+            const settings = await agent.get('/api/settings');
+            const boot = await bootstrap();
+
+            expect(cacheState(settings)).toBe('hit');
+            expect(settings.body.features.ask).toBe(true);
+            expect(boot.body.settings.features.ask).toBe(true);
+        } finally {
+            vi.unstubAllEnvs();
+        }
+        expect((await agent.get('/api/settings')).body.features.ask).toBe(false);
+    });
+
+    it('с LEDGER_CACHE=off справочники читаются из базы, как до снимка, и совпадают с ответами кэша', async () => {
+        const accountsCached = (await agent.get('/api/accounts')).text;
+        const categoriesCached = (await agent.get('/api/categories')).text;
+        const settingsCached = (await agent.get('/api/settings')).body;
+        ledgerCache.reset();
+        process.env.LEDGER_CACHE = 'off';
+        const find = vi.spyOn(Account, 'find');
+
+        const accounts = await agent.get('/api/accounts');
+        const categories = await agent.get('/api/categories');
+        const settings = await agent.get('/api/settings');
+
+        expect(accounts.text).toBe(accountsCached);
+        expect(categories.text).toBe(categoriesCached);
+        expect(settings.body).toEqual(settingsCached);
+        expect(find).toHaveBeenCalled();
+        expect(cacheState(accounts)).toBeUndefined();
+        // Ничего не запомнено: аварийный выключатель остаётся выключателем.
+        expect(ledgerCache.peek()).toBeNull();
+    });
+});
+
+// Готовые ответы и их признак в Server-Timing.
+describe('memo в Server-Timing', () => {
+    const memoState = (res) => /memo;desc=(\w+)/.exec(res.headers['server-timing'] || '')?.[1];
+
+    it('первый запрос сводки - miss, повторный - hit с calc около нуля', async () => {
+        const first = await dashboard();
+        const second = await dashboard();
+
+        expect(memoState(first)).toBe('miss');
+        expect(memoState(second)).toBe('hit');
+        expect(Number(/calc;dur=([\d.]+)/.exec(second.headers['server-timing'])[1])).toBeLessThan(2);
+    });
+
+    it('bootstrap и сводка делят готовый ответ: bootstrap после сводки - hit', async () => {
+        await dashboard('&analytics=1');
+
+        const boot = await agent.get('/api/bootstrap?today=2026-08-15&month=2026-08&analytics=1');
+
+        expect(memoState(boot)).toBe('hit');
+    });
+
+    it('маршруты без готовых ответов записи memo не несут', async () => {
+        const res = await agent.get('/api/stats/balances');
+
+        expect(memoState(res)).toBeUndefined();
     });
 });

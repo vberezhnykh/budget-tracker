@@ -62,7 +62,7 @@ describe('GET /api/stats/dashboard', () => {
 
         expect(res.status).toBe(200);
         expect(res.headers['server-timing']).toMatch(
-            /^db;dur=\d+\.\d, calc;dur=\d+\.\d, cache;desc=(hit|miss|stale), total;dur=\d+\.\d$/
+            /^db;dur=\d+\.\d, calc;dur=\d+\.\d, cache;desc=(hit|miss|stale), memo;desc=(hit|miss), total;dur=\d+\.\d$/
         );
     });
 

@@ -308,6 +308,96 @@ describe('createLedgerCache', () => {
             expect(made.cache.peek()).toBe(snapshot);
         });
 
+        it('изменение только в категориях или только в настройках тоже считается изменением', async () => {
+            const full = (overrides = {}) => ({
+                docs: [{ _id: 'a' }], accounts: [{ _id: 'acc-a' }],
+                categories: [{ _id: 'c1', name: 'Еда', order: 1 }], settings: { monthlyLimit: 5000, integrityError: null },
+                ...overrides
+            });
+            const made = makeCache();
+            const first = made.cache.get();
+            await flush();
+            made.calls[0].resolve(full());
+            const { snapshot } = await first;
+            expect(snapshot.categories).toEqual([{ _id: 'c1', name: 'Еда', order: 1 }]);
+            expect(snapshot.settings).toEqual({ monthlyLimit: 5000, integrityError: null });
+
+            made.clock.time += SOFT_TTL_MS + 1;
+            await made.cache.get();
+            await flush();
+            made.calls[1].resolve(full({ categories: [{ _id: 'c1', name: 'Еда', order: 2 }] }));
+            await flush();
+            const afterCategory = made.cache.peek();
+            expect(afterCategory.version).toBeGreaterThan(snapshot.version);
+
+            made.clock.time += SOFT_TTL_MS + 1;
+            await made.cache.get();
+            await flush();
+            made.calls[2].resolve(full({ categories: [{ _id: 'c1', name: 'Еда', order: 2 }], settings: { monthlyLimit: 6000, integrityError: null } }));
+            await flush();
+            expect(made.cache.peek().version).toBeGreaterThan(afterCategory.version);
+            expect(made.cache.peek().settings.monthlyLimit).toBe(6000);
+        });
+
+        it('сообщает подписчикам только о фоновом обновлении, принесшем другие данные', async () => {
+            const { cache, clock, calls } = await agedCache();
+            const listener = vi.fn();
+            const unsubscribe = cache.onRefreshChanged(listener);
+
+            // Те же данные: тишина.
+            await cache.get();
+            await flush();
+            calls[1].resolve(data('a'));
+            await flush();
+            expect(listener).not.toHaveBeenCalled();
+
+            // Другие данные: один вызов, и снимок в нём уже новый.
+            clock.time += SOFT_TTL_MS + 1;
+            await cache.get();
+            await flush();
+            calls[2].resolve(data('b'));
+            await flush();
+            expect(listener).toHaveBeenCalledTimes(1);
+            expect(listener.mock.calls[0][0]).toBe(cache.peek());
+            expect(listener.mock.calls[0][0].docs).toEqual([{ _id: 'b' }]);
+
+            // После отписки не вызывается.
+            unsubscribe();
+            clock.time += SOFT_TTL_MS + 1;
+            await cache.get();
+            await flush();
+            calls[3].resolve(data('c'));
+            await flush();
+            expect(listener).toHaveBeenCalledTimes(1);
+        });
+
+        it('обычная запись и загрузка с нуля подписчиков не будят: прогрев после записи не нужен', async () => {
+            const { cache, calls } = await agedCache();
+            const listener = vi.fn();
+            cache.onRefreshChanged(listener);
+
+            cache.invalidate({ reload: false });
+            const reading = cache.get();
+            await flush();
+            calls[1].resolve(data('z'));
+            await reading;
+
+            expect(listener).not.toHaveBeenCalled();
+        });
+
+        it('ошибка подписчика не ломает обновление', async () => {
+            const { cache, calls, logger } = await agedCache();
+            cache.onRefreshChanged(() => { throw new Error('boom'); });
+
+            await cache.get();
+            await flush();
+            calls[1].resolve(data('b'));
+            await flush();
+
+            expect(cache.peek().docs).toEqual([{ _id: 'b' }]);
+            expect(logger.warn).toHaveBeenCalled();
+        });
+
         it('запись во время обновления: его результат не ставится, версия записи сохраняется', async () => {
             const { cache, calls } = await agedCache();
 
@@ -537,6 +627,13 @@ describe('fingerprintLedger', () => {
         expect(fingerprintLedger({ ...base, docs: [{ _id: 'a', amount: 1 }, { _id: 'b', amount: 3 }] })).not.toBe(fingerprintLedger(base));
         expect(fingerprintLedger({ ...base, docs: base.docs.slice(0, 1) })).not.toBe(fingerprintLedger(base));
         expect(fingerprintLedger({ ...base, accounts: [{ _id: 'c', order: 2 }] })).not.toBe(fingerprintLedger(base));
+        // Категории и настройки входят в отпечаток.
+        const catalog = { ...base, categories: [{ _id: 'k', name: 'Еда', order: 1 }], settings: { monthlyLimit: 7000, integrityError: null } };
+        expect(fingerprintLedger({ ...catalog, categories: [{ _id: 'k', name: 'Еда', order: 1 }] })).toBe(fingerprintLedger(catalog));
+        expect(fingerprintLedger({ ...catalog, categories: [{ _id: 'k', name: 'Еда', order: 2 }] })).not.toBe(fingerprintLedger(catalog));
+        expect(fingerprintLedger({ ...catalog, categories: [] })).not.toBe(fingerprintLedger(catalog));
+        expect(fingerprintLedger({ ...catalog, settings: { monthlyLimit: 8000, integrityError: null } })).not.toBe(fingerprintLedger(catalog));
+        expect(fingerprintLedger({ ...catalog, settings: { monthlyLimit: null, integrityError: 'несколько наборов' } })).not.toBe(fingerprintLedger(catalog));
         // Документ, перешедший из операций в счета, - не то же самое.
         expect(fingerprintLedger({ docs: [], accounts: [{ _id: 'a' }] })).not.toBe(fingerprintLedger({ docs: [{ _id: 'a' }], accounts: [] }));
     });

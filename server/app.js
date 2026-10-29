@@ -29,7 +29,7 @@ const { saveManualTransactions } = require('./banking/reconciliation');
 const { saveManualTransactionUpdate } = require('./banking/manualEdit');
 const { validateTransactionCreate } = require('./transactionInput');
 const { prepareTransactionCompany } = require('./transactionCompany');
-const { getCanonicalSettings, saveCanonicalSettings } = require('./settingsSingleton');
+const { SettingsIntegrityError, saveCanonicalSettings } = require('./settingsSingleton');
 const { createOperationalRouter } = require('./operational');
 const { createMerchantSearchRouter } = require('./merchantSearch');
 const { createQuickEntryRouter, isQuickEntryEnabled } = require('./quickEntry');
@@ -43,10 +43,11 @@ const { validateAccountReferences } = require('./accountRefs');
 const { createTrashRouter, softDeleteTransaction } = require('./trash');
 const { createPlannedPaymentsRouter } = require('./plannedPayments');
 const { parseTransactionQuery } = require('./transactionQuery');
-const { computeBalances, computeMonthlyTotals } = require('./stats');
-const { transformTransactions } = require('./transform');
-const { buildDashboard } = require('./dashboard');
-const { serverTiming, timed, timedSync, setCacheState } = require('./serverTiming');
+const { computeMonthlyTotals } = require('./stats');
+const { parseDashboardQuery, computeDashboardJson } = require('./dashboardRequest');
+const { createDashboardWarmer } = require('./dashboardWarmer');
+const { derivedOf, accountsJsonOf, categoriesJsonOf } = require('./ledgerDerived');
+const { serverTiming, timed, timedSync, setCacheState, setMemoState } = require('./serverTiming');
 const { ledgerCache, docsByDateDesc } = require('./ledgerCache');
 const { responseMemo, sendJson } = require('./responseMemo');
 const { createServerSampleRecorder } = require('./perfLog');
@@ -74,6 +75,11 @@ const app = express();
 // Для тестов: сброс кэша между файлами и проверка его состояния.
 app.locals.ledgerCache = ledgerCache;
 app.locals.responseMemo = responseMemo;
+// Прогрев готовых ответов сводки (см. dashboardWarmer.js). Таймер и подписку на
+// фоновые обновления запускает server/index.js (app.locals.dashboardWarmer.start()):
+// тесты, импортирующие приложение, сами таймеров не получают.
+const dashboardWarmer = createDashboardWarmer({ ledgerCache, responseMemo, computeJson: computeDashboardJson });
+app.locals.dashboardWarmer = dashboardWarmer;
 
 const isProduction = process.env.NODE_ENV === 'production';
 // Only ever intended for local development: explicitly opts an unconfigured
@@ -280,15 +286,20 @@ app.post('/api/logout', (req, res) => {
 
 // ---- Accounts ----
 
-// Список счетов в порядке экрана. Один запрос на двоих: GET /api/accounts и
-// GET /api/bootstrap должны отдавать счета в одном виде и в одном порядке.
+// Список счетов в порядке экрана - из снимка в памяти: GET /api/accounts и
+// GET /api/bootstrap отдают одну и ту же готовую строку (см. accountsJsonOf в
+// ledgerDerived.js). С выключенным кэшем (LEDGER_CACHE=off) читается база, как
+// раньше, - тянуть всю историю ради списка счетов незачем.
 const findAccounts = () => Account.find().sort({ order: 1 });
 
 // Get all accounts
 app.get('/api/accounts', async (req, res) => {
     try {
-        const accounts = await timed(res, 'db', findAccounts());
-        res.json(accounts);
+        if (!ledgerCache.isEnabled()) {
+            return res.json(await timed(res, 'db', findAccounts()));
+        }
+        const { snapshot } = await readLedger(res);
+        sendJson(res, accountsJsonOf(snapshot));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -406,8 +417,11 @@ const findCategories = () => Category.find().sort({ type: 1, order: 1 });
 // Get all categories
 app.get('/api/categories', async (req, res) => {
     try {
-        const categories = await timed(res, 'db', findCategories());
-        res.json(categories);
+        if (!ledgerCache.isEnabled()) {
+            return res.json(await timed(res, 'db', findCategories()));
+        }
+        const { snapshot } = await readLedger(res);
+        sendJson(res, categoriesJsonOf(snapshot));
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -534,13 +548,24 @@ app.delete('/api/categories/:id', async (req, res) => {
 
 const DEFAULT_MONTHLY_LIMIT = 7000;
 
-// Тело ответа настроек; его же отдает GET /api/bootstrap. Ошибка целостности
-// (SETTINGS_INTEGRITY) пробрасывается вызывающему: каждый роут отвечает на нее
-// своим статусом.
-async function readSettingsPayload() {
+// Тело ответа настроек; его же отдает GET /api/bootstrap. Лимит берется из
+// снимка в памяти (см. ledgerCache.js), а флаги функций - из окружения при
+// каждом запросе: их смена не должна ждать сброса снимка. Ошибка целостности
+// (SETTINGS_INTEGRITY) лежит в снимке и пробрасывается вызывающему: каждый роут
+// отвечает на нее своим статусом.
+const featureFlags = () => ({ banking: isBankingEnabled(), quickEntry: isQuickEntryEnabled(), ask: isAskEnabled(), monthReview: isMonthReviewEnabled(), descriptionCleanup: isDescriptionCleanupEnabled() });
+
+function settingsPayloadOf(snapshot) {
+    const { settings } = snapshot;
+    if (settings.integrityError) throw new SettingsIntegrityError(settings.integrityError);
+    return { monthlyLimit: settings.monthlyLimit ?? DEFAULT_MONTHLY_LIMIT, features: featureFlags() };
+}
+
+// Настройки при выключенном кэше читаются из базы, как раньше (см. findAccounts).
+async function readSettingsPayloadFromDatabase() {
+    const { getCanonicalSettings } = require('./settingsSingleton');
     const settings = await getCanonicalSettings();
-    return { monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT,
-        features: { banking: isBankingEnabled(), quickEntry: isQuickEntryEnabled(), ask: isAskEnabled(), monthReview: isMonthReviewEnabled(), descriptionCleanup: isDescriptionCleanupEnabled() } };
+    return { monthlyLimit: settings ? settings.monthlyLimit : DEFAULT_MONTHLY_LIMIT, features: featureFlags() };
 }
 
 // Get settings. Returns the default rather than 404 when the collection is
@@ -549,7 +574,9 @@ async function readSettingsPayload() {
 // one and silently losing another saved limit.
 app.get('/api/settings', async (req, res) => {
     try {
-        const payload = await timed(res, 'db', readSettingsPayload());
+        const payload = ledgerCache.isEnabled()
+            ? settingsPayloadOf((await readLedger(res)).snapshot)
+            : await timed(res, 'db', readSettingsPayloadFromDatabase());
         res.set('Cache-Control', 'no-store');
         res.json(payload);
     } catch (err) {
@@ -610,10 +637,16 @@ async function readLedger(res) {
 
 // Готовый ответ из responseMemo или расчёт. Выключенный кэш (state 'off') ответы
 // не запоминает: версии у такого снимка нет, и тогда роут ведёт себя как раньше.
+//
+// Попадание в готовые ответы пишется в Server-Timing как memo;desc=hit|miss: по
+// нему в отчёте видно, платил ли запрос за расчёт.
 function memoizedJson(res, group, params, { snapshot, state }, compute) {
-    return timedSync(res, 'calc', () => (state === 'off'
-        ? compute()
-        : responseMemo.getJson(group, params, snapshot.version, compute)));
+    return timedSync(res, 'calc', () => {
+        if (state === 'off') return compute();
+        const { json, hit } = responseMemo.getEntry(group, params, snapshot.version, compute);
+        setMemoState(res, hit ? 'hit' : 'miss');
+        return json;
+    });
 }
 
 // Остатки по счетам, по типам счетов, общий капитал и сумма на замороженных
@@ -621,7 +654,7 @@ function memoizedJson(res, group, params, { snapshot, state }, compute) {
 app.get('/api/stats/balances', async (req, res) => {
     try {
         const { snapshot } = await readLedger(res);
-        res.json(computeBalances(snapshot.docs, snapshot.accounts));
+        res.json(derivedOf(snapshot).balances());
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -642,38 +675,10 @@ app.get('/api/stats/monthly', async (req, res) => {
     }
 });
 
-// Параметры сводки из строки запроса. Общие для /api/stats/dashboard и
-// /api/bootstrap, чтобы оба отвечали на одну и ту же строку одинаково (и делили
-// готовые ответы responseMemo: ключ строится из этих параметров).
-function parseDashboardQuery(query) {
-    const str = (key) => (typeof query[key] === 'string' && query[key] ? query[key] : null);
-
-    const month = str('month') || new Date().toISOString().slice(0, 7);
-    const timeRange = str('timeRange') || 'month';
-    const account = str('account');
-    const category = str('category');
-    const type = str('type');
-    const today = str('today') || new Date().toISOString().slice(0, 10);
-
-    if (!/^\d{4}-\d{2}$/.test(month)) {
-        return { error: 'Некорректное значение month: ожидается YYYY-MM' };
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
-        return { error: 'Некорректное значение today: ожидается YYYY-MM-DD' };
-    }
-
-    const analytics = query.analytics !== '0';
-    // Ключ ответа - все параметры, от которых он зависит; month и today уже
-    // приведены к значениям по умолчанию, поэтому «без month» и «с текущим
-    // month» дают один ключ.
-    return { params: { month, timeRange, account, category, type, today, analytics } };
-}
-
 // Готовая JSON-строка сводки по прочитанному снимку: из responseMemo или
 // расчетом (этап calc).
 function dashboardJsonFor(res, ledger, params) {
-    return memoizedJson(res, 'dashboard', params, ledger,
-        () => JSON.stringify(buildDashboard(ledger.snapshot.docs, ledger.snapshot.accounts, params)));
+    return memoizedJson(res, 'dashboard', params, ledger, () => computeDashboardJson(ledger.snapshot, params));
 }
 
 // Все сводные величины главного экрана одним ответом.
@@ -693,10 +698,11 @@ function dashboardJsonFor(res, ledger, params) {
 // несколько часов в сутки считал бы по другому календарю, чем телефон.
 app.get('/api/stats/dashboard', async (req, res) => {
     try {
-        const { params, error } = parseDashboardQuery(req.query);
+        const { params, tz, error } = parseDashboardQuery(req.query);
         if (error) return res.status(400).json({ message: error });
 
         sendJson(res, dashboardJsonFor(res, await readLedger(res), params));
+        dashboardWarmer.track(params, tz);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -710,24 +716,25 @@ app.get('/api/stats/dashboard', async (req, res) => {
 // /api/settings и /api/stats/dashboard с теми же параметрами запроса, поэтому
 // клиент разбирает их прежним кодом.
 //
-// Сводка берется из responseMemo готовой строкой и вставляется в тело как есть,
-// без разбора и повторной сериализации. Остальные три чтения идут к базе
-// параллельно со сводкой; время ожидания всех четырех попадает в db одним
-// замером (по отдельности параллельные замеры сложились бы в число больше
-// реального ожидания).
+// Все четыре части берутся из снимка в памяти (см. ledgerCache.js): пока снимок
+// есть, к Atlas запрос не обращается вовсе, и db в Server-Timing около нуля.
+// Раньше счета, категории и настройки читались из базы параллельно со сводкой,
+// и после простоя холодное соединение с Atlas добавляло к запуску полсекунды.
+// Сводка и справочники вставляются в тело готовыми строками, без разбора и
+// повторной сериализации.
 app.get('/api/bootstrap', async (req, res) => {
     try {
-        const { params, error } = parseDashboardQuery(req.query);
+        const { params, tz, error } = parseDashboardQuery(req.query);
         if (error) return res.status(400).json({ message: error });
 
-        const [ledger, accounts, categories, settings] = await timed(res, 'db',
-            Promise.all([ledgerCache.get(), findAccounts(), findCategories(), readSettingsPayload()]));
-        setCacheState(res, ledger.state);
+        const ledger = await readLedger(res);
+        const settings = settingsPayloadOf(ledger.snapshot);
         const dashboard = dashboardJsonFor(res, ledger, params);
 
         res.set('Cache-Control', 'no-store');
-        sendJson(res, `{"accounts":${JSON.stringify(accounts)},"categories":${JSON.stringify(categories)},`
+        sendJson(res, `{"accounts":${accountsJsonOf(ledger.snapshot)},"categories":${categoriesJsonOf(ledger.snapshot)},`
             + `"settings":${JSON.stringify(settings)},"dashboard":${dashboard}}`);
+        dashboardWarmer.track(params, tz);
     } catch (err) {
         if (err.code === 'SETTINGS_INTEGRITY') {
             return res.status(409).json({ message: err.message });
@@ -748,7 +755,7 @@ app.get('/api/search', async (req, res) => {
         }
 
         const { snapshot } = await readLedger(res);
-        const transactions = transformTransactions(snapshot.docs, snapshot.accounts);
+        const transactions = derivedOf(snapshot).transactions();
 
         res.json(computeSearchResults(transactions, query, str('account'), str('category'), str('type')));
     } catch (err) {
@@ -766,7 +773,7 @@ app.get('/api/suggestions/descriptions', async (req, res) => {
         }
 
         const { snapshot } = await readLedger(res);
-        const transactions = transformTransactions(snapshot.docs, snapshot.accounts);
+        const transactions = derivedOf(snapshot).transactions();
 
         res.json(computeDescriptionSuggestions(transactions, category, str('type')));
     } catch (err) {
@@ -808,7 +815,11 @@ async function readHistoryLedger(res, options) {
         ? sorted
         : sorted.filter(doc => doc.date instanceof Date
             && (gte === undefined || doc.date >= gte) && (lt === undefined || doc.date < lt));
-    return { snapshot, state, docs, accounts: snapshot.accounts };
+    // Приведение операций к расчётному виду одно на снимок (оно же у сводки,
+    // поиска и подсказок): история берёт готовые операции в своём порядке. Лениво:
+    // когда готов весь ответ, операции не нужны.
+    const derived = derivedOf(snapshot);
+    return { snapshot, state, docs, accounts: snapshot.accounts, transactionsOf: () => docs.map(doc => derived.transactionOf(doc)) };
 }
 
 // Параметры, от которых зависит страница истории. В режиме «вся лента»
@@ -841,7 +852,7 @@ app.get('/api/history', async (req, res) => {
         // Поиск (q) не запоминается: каждая строка поиска - свой ключ, и
         // несколько таких запросов вытеснили бы из небольшой группы историю
         // целиком, ради которой память и держится.
-        const compute = () => JSON.stringify(buildHistoryPage(ledger.docs, ledger.accounts, options));
+        const compute = () => JSON.stringify(buildHistoryPage(ledger.docs, ledger.accounts, options, ledger.transactionsOf?.()));
         sendJson(res, options.q
             ? timedSync(res, 'calc', compute)
             : memoizedJson(res, 'history', historyMemoParams(options), ledger, compute));

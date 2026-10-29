@@ -120,6 +120,9 @@ async function startServer() {
     // страницу. Ошибка прогрева только пишется в лог (один раз) - первый запрос
     // тогда прочитает базу сам.
     ledgerCache.warm();
+    // Готовые ответы сводки греются в фоне при смене суток и при изменившихся
+    // данных (см. dashboardWarmer.js).
+    app.locals.dashboardWarmer.start();
     startSelfPing();
     if (isBankingEnabled()) {
         app.locals.bankingService.kickDueSyncs();
@@ -134,6 +137,7 @@ async function shutdown(signal = null) {
     shuttingDown = true;
     if (selfPingTimer) clearInterval(selfPingTimer);
     if (bankingTimer) clearInterval(bankingTimer);
+    app?.locals?.dashboardWarmer?.stop();
 
     try {
         await closeHttpServer(httpServer);

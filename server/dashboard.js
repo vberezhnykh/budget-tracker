@@ -1,24 +1,27 @@
-const { computeBalances, computeMonthEndBalances, computeMonthlyTotalsByAccount } = require('./stats');
-const { transformTransactions } = require('./transform');
+const { createDerived } = require('./ledgerDerived');
 const { computePeriodData, periodPrefixOf } = require('./periodStats');
 const {
     computeYearlyData, computeLifetimeStats, computeComparison,
-    computeCategoryComparison, computeMonthlySeries, computeCategoryUsage, computeCategoryCounts
+    computeCategoryComparison, computeMonthlySeries, computeCategoryCounts
 } = require('./analytics');
 const { computeTypicalMonth } = require('./typicalMonth');
 
-function buildDashboard(docs, accounts, { month, timeRange = 'month', account, category, type, today, analytics = true }) {
-    const transactions = transformTransactions(docs, accounts);
+// derived - производные снимка, не зависящие от параметров сводки (см.
+// ledgerDerived.js): роут передаёт запомненные на снимок, вызов без них
+// (тест, кэш выключен) считает всё сам.
+function buildDashboard(docs, accounts, { month, timeRange = 'month', account, category, type, today, analytics = true },
+    derived = createDerived({ docs, accounts })) {
+    const transactions = derived.transactions();
     const filters = { account, category, type, includeTransactions: false };
-    const monthlyTotalsByAccount = computeMonthlyTotalsByAccount(docs, accounts, { category });
+    const monthlyTotalsByAccount = derived.monthlyTotalsByAccount(category);
     return {
-        balances: computeBalances(docs, accounts),
+        balances: derived.balances(),
         monthlyTotals: monthlyTotalsByAccount[account || ''] || {},
         monthlyTotalsByAccount,
         // Остатки на конец каждого месяца для графика «Деньги в наличии» -
         // по всем счетам сразу, как monthlyTotalsByAccount: смена счёта на
         // Обзоре не требует нового запроса.
-        monthEndBalances: computeMonthEndBalances(docs, accounts),
+        monthEndBalances: derived.monthEndBalances(),
         period: computePeriodData(transactions, periodPrefixOf(timeRange, month), filters),
         month: computePeriodData(transactions, month, filters),
         yearly: computeYearlyData(transactions, month, account, category),
@@ -34,7 +37,7 @@ function buildDashboard(docs, accounts, { month, timeRange = 'month', account, c
         typicalMonth: timeRange === 'month'
             ? computeTypicalMonth(transactions, { month, today, account, category })
             : null,
-        categoryUsage: computeCategoryUsage(transactions),
+        categoryUsage: derived.categoryUsage(),
         categoryCounts: {
             expense: computeCategoryCounts(transactions, 'expense', today),
             income: computeCategoryCounts(transactions, 'income', today)

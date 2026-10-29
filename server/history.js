@@ -33,9 +33,11 @@ function parseHistoryQuery(query) {
     return { month, timeRange, q, limit, cursor, continuous, all, direction, account: str('account'), category: str('category'), type: str('type'), filter: parseTransactionQuery(dates).filter };
 }
 
-function buildHistoryPage(docs, accounts, options) {
+// transactions - уже приведённые операции (из производных снимка, см.
+// ledgerDerived.js) в порядке docs; без них приводятся здесь.
+function buildHistoryPage(docs, accounts, options, transformed = null) {
     const { month, timeRange, q, account, category, type, limit = 40, cursor, continuous, all, direction = 'older' } = options;
-    const transactions = transformTransactions(docs, accounts);
+    const transactions = transformed || transformTransactions(docs, accounts);
     const result = q
         ? computeSearchResults(transactions, q, account, category, type)
         : computePeriodData(transactions, continuous ? '' : periodPrefixOf(timeRange, month), { account, category, type });

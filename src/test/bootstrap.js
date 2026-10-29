@@ -56,3 +56,12 @@ function bootstrapAware(mock) {
 export function bootstrapFetch(vi, impl) {
   return bootstrapAware(vi.fn(withBootstrap(impl)));
 }
+
+// Чтения сводки в журнале вызовов fetch-мока. Стартовый снимок (/api/bootstrap)
+// просит сводку сразу с analytics=1, поэтому отдельные запросы к
+// /api/stats/dashboard - это только смена выбора и фоновая подгрузка Аналитики.
+const urlsOf = calls => calls.map(([url]) => url).filter(url => typeof url === 'string');
+
+export const bootstrapCalls = calls => urlsOf(calls).filter(url => url.startsWith('/api/bootstrap?'));
+export const dashboardCalls = calls => urlsOf(calls).filter(url => url.startsWith('/api/stats/dashboard?'));
+export const analyticsDashboardCalls = calls => dashboardCalls(calls).filter(url => url.includes('analytics=1'));

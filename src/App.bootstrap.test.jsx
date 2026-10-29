@@ -6,6 +6,7 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { readApi } from '../server/test/readApi.mjs';
 import App from './App';
+import { flushIdle } from './test/idle';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card', icon: '💳' }];
 const categories = [{ _id: 'food', name: 'Еда', type: 'expense', order: 0 }];
@@ -13,6 +14,7 @@ const transactions = [
   { _id: 'income', title: 'Зарплата', amount: 1000, type: 'income', account: 'card', category: 'Работа', date: '2026-09-01' },
   { _id: 'expense', title: 'Кофе', amount: 50, type: 'expense', account: 'card', category: 'Еда', date: '2026-09-03' },
 ];
+const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const response = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 const bootstrapBody = (url, extra = {}) => ({
   accounts,
@@ -58,8 +60,10 @@ describe('запуск одним запросом', () => {
     render(<App />);
     await screen.findByTestId('accounts-row');
 
+    // analytics=1: Обзор и Аналитика получают сводку одним расчетом, а tz - часовой
+    // пояс устройства для прогрева ответов на сервере.
     expect(callsTo('/api/bootstrap?')).toEqual([
-      '/api/bootstrap?month=2026-09&timeRange=month&today=2026-09-24&analytics=0',
+      `/api/bootstrap?month=2026-09&timeRange=month&today=2026-09-24&analytics=1&tz=${encodeURIComponent(deviceTimeZone)}`,
     ]);
     expect(urls().filter(url => ['/api/accounts', '/api/categories', '/api/settings'].includes(url))).toEqual([]);
     expect(callsTo('/api/stats/dashboard?')).toEqual([]);
@@ -78,6 +82,31 @@ describe('запуск одним запросом', () => {
 
     // Сводка свежая (меньше минуты): повторного чтения нет.
     expect(reads()).toBe(1);
+  });
+
+  it('после запуска фоновая подгрузка Аналитики не ходит в сеть: сводка с analytics=1 пришла в снимке', async () => {
+    render(<App />);
+    await screen.findByTestId('accounts-row');
+
+    await flushIdle();
+    await act(async () => {});
+
+    expect(callsTo('/api/stats/dashboard?')).toEqual([]);
+    expect(callsTo('/api/bootstrap?')).toHaveLength(1);
+  });
+
+  it('Аналитика сразу после запуска открывается без запроса', async () => {
+    render(<App />);
+    await screen.findByTestId('accounts-row');
+    const before = urls().length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Аналитика' }));
+    await act(async () => {});
+    await flushIdle();
+
+    expect(screen.queryByRole('status', { name: 'Загрузка итогов…' })).not.toBeInTheDocument();
+    expect(urls().slice(before).filter(url => url.startsWith('/api/stats/dashboard?') || url.startsWith('/api/bootstrap?'))).toEqual([]);
+    expect(callsTo('/api/stats/dashboard?')).toEqual([]);
   });
 
   it('запрашивает ленту истории параллельно со снимком, после него в очереди, и не перезапрашивает после загрузки', async () => {

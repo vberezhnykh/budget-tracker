@@ -21,7 +21,7 @@ import CategoriesScreen from './screens/settings/CategoriesScreen'
 import LimitSheet from './screens/settings/LimitSheet'
 import TrashScreen from './screens/settings/TrashScreen'
 import CleanupScreen from './screens/settings/CleanupScreen'
-import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput, formatSyncStatus } from './utils/period'
+import { toDativeMonth, listPeriodMonths, getCurrentMonth, toLocalDateInput, getTimeZone, formatSyncStatus } from './utils/period'
 import { transformTransactions } from './utils/finance'
 import { formatMoney } from './utils/money'
 import useHistoryList from './utils/useHistoryList'
@@ -66,6 +66,26 @@ class DataLoadError extends Error {
     this.name = 'DataLoadError';
   }
 }
+
+// Ключ выбора на Обзоре/Аналитике с другим значением analytics. Ответ с
+// analytics=1 - надмножество ответа с analytics=0 (добавляет сравнения и ряд по
+// месяцам), поэтому запуск просит сразу его и кладет в кэш под обоими ключами.
+const withAnalytics = (key, value) => {
+  const params = new URLSearchParams(key);
+  params.set('analytics', value);
+  return params.toString();
+};
+
+// Запрос уходит с часовым поясом устройства, чтобы сервер заранее считал
+// сводку на новые сутки (server/dashboardWarmer.js). В ключ кэша итогов пояс не
+// входит: ответ от него не зависит.
+const withTimeZone = key => {
+  const timeZone = getTimeZone();
+  if (!timeZone) return key;
+  const params = new URLSearchParams(key);
+  params.set('tz', timeZone);
+  return params.toString();
+};
 
 // Проверка ответа сводки: одна и та же для /api/stats/dashboard и для поля
 // dashboard в /api/bootstrap.
@@ -428,7 +448,7 @@ function App() {
   });
 
   const fetchDashboard = async key => assertDashboardShape(
-    await readJson(`/api/stats/dashboard?${key}`, 'Не удалось загрузить итоги'),
+    await readJson(`/api/stats/dashboard?${withTimeZone(key)}`, 'Не удалось загрузить итоги'),
   );
 
   // Старый порядок запуска: счета, затем сводка, категории и настройки
@@ -456,7 +476,7 @@ function App() {
   // грузим по-старому и дальше в этом сеансе /api/bootstrap не пробуем.
   const fetchStartupSnapshot = async (key, isCurrent) => {
     if (!bootstrapUnsupportedRef.current) {
-      const data = await readJson(`${BOOTSTRAP_URL}?${key}`, 'Не удалось загрузить данные', { allowMissing: true });
+      const data = await readJson(`${BOOTSTRAP_URL}?${withTimeZone(key)}`, 'Не удалось загрузить данные', { allowMissing: true });
       if (data !== null) {
         if (typeof data !== 'object') throw new DataLoadError('Не удалось загрузить данные');
         return {
@@ -484,9 +504,7 @@ function App() {
       prefetchCancelRef.current = null;
       if (session !== sessionGenerationRef.current || screenRef.current === 'analytics'
         || fullLoadGenerationRef.current !== 0) return;
-      const params = new URLSearchParams(statsKeyRef.current);
-      params.set('analytics', '1');
-      const key = params.toString();
+      const key = withAnalytics(statsKeyRef.current, '1');
       const cached = dashboardReads.get(key);
       if (cached && Date.now() - cached.updatedAt < DASHBOARD_FRESH_MS) return;
       const version = dashboardReads.version;
@@ -550,13 +568,20 @@ function App() {
       if (onlyStats) {
         loadedDashboard = await dashboardReads.load(statsKey, () => fetchDashboard(statsKey));
       } else {
-        const startup = await fetchStartupSnapshot(statsKey, isCurrent);
+        // Запуск просит сводку сразу с analytics=1: так Аналитика открывается
+        // без второго запроса (одним расчетом на сервере получаются оба экрана).
+        const startup = await fetchStartupSnapshot(withAnalytics(statsKey, '1'), isCurrent);
         if (startup === null || !isCurrent()) return false;
         ({ accounts: loadedAccounts, categories: loadedCategories, settings: loadedSettings } = startup);
         if (!Array.isArray(loadedAccounts)) throw new DataLoadError('Сервер вернул некорректный список счетов');
         // Через кэш итогов, как и отдельное чтение: следующие чтения только
         // итогов (смена месяца, возврат в приложение) находят в нем этот ответ.
         loadedDashboard = await dashboardReads.load(statsKey, () => assertDashboardShape(startup.dashboard));
+        // Тот же ответ под вторым значением analytics: Обзор и Аналитика читают
+        // каждый свой ключ, а фоновая подгрузка Аналитики находит запись свежей
+        // и не уходит в сеть.
+        const twinKey = withAnalytics(statsKey, statsParams.get('analytics') === '1' ? '0' : '1');
+        await dashboardReads.load(twinKey, () => loadedDashboard);
       }
       if (!Array.isArray(loadedCategories)) throw new DataLoadError('Сервер вернул некорректный список категорий');
       if (loadedSettings !== null && (

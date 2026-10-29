@@ -17,6 +17,18 @@ export function toLocalDateInput(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+// Часовой пояс устройства (IANA, например 'Asia/Nicosia') или '' - если браузер
+// его не сообщает. Сервер по нему узнает, когда у клиента наступили новые сутки,
+// и заранее считает сводку на них (server/dashboardWarmer.js). Сама сводка от
+// него не зависит: «сегодня» клиент присылает отдельно.
+export function getTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  } catch {
+    return '';
+  }
+}
+
 export const getCurrentMonth = () => toLocalDateInput().slice(0, 7);
 
 const parseMonth = (month) => {

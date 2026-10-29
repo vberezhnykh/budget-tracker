@@ -31,10 +31,12 @@ function record(res, name, ms) {
 //
 // cacheState (необязательный) - как ответ связан с кэшем операций в памяти
 // (hit / miss / stale, см. ledgerCache.js): запись без длительности, только с
-// описанием, стоит перед total.
-function formatServerTiming(entries, totalMs, cacheState = null) {
+// описанием, стоит перед total. memoState (hit / miss) - был ли готов сам
+// ответ (responseMemo): hit значит, что расчёта не было вовсе.
+function formatServerTiming(entries, totalMs, cacheState = null, memoState = null) {
     const parts = [...entries].map(([name, ms]) => `${name};dur=${round(ms)}`);
     if (cacheState) parts.push(`cache;desc=${cacheState}`);
+    if (memoState) parts.push(`memo;desc=${memoState}`);
     parts.push(`total;dur=${round(totalMs)}`);
     return parts.join(', ');
 }
@@ -60,7 +62,7 @@ function serverTiming({ onFinish } = {}) {
             res.writeHead = writeHead;
             if (!res.headersSent) {
                 totalMs = performance.now() - start;
-                const value = formatServerTiming(res.locals.serverTiming, totalMs, res.locals.cacheState);
+                const value = formatServerTiming(res.locals.serverTiming, totalMs, res.locals.cacheState, res.locals.memoState);
                 const existing = res.getHeader(HEADER);
                 res.setHeader(HEADER, existing ? `${existing}, ${value}` : value);
             }
@@ -79,6 +81,7 @@ function serverTiming({ onFinish } = {}) {
                         totalMs: totalMs ?? performance.now() - start,
                         entries: res.locals.serverTiming,
                         cache: res.locals.cacheState,
+                        memo: res.locals.memoState,
                         contentLength: res.getHeader('Content-Length')
                     });
                 } catch {
@@ -97,6 +100,14 @@ const CACHE_STATES = new Set(['hit', 'miss', 'stale']);
 
 function setCacheState(res, state) {
     if (res.locals && CACHE_STATES.has(state)) res.locals.cacheState = state;
+}
+
+// Готовый ответ (responseMemo): hit - отдан без расчёта, miss - посчитан в
+// этом запросе. Роут, который берёт несколько ответов, оставляет последний.
+const MEMO_STATES = new Set(['hit', 'miss']);
+
+function setMemoState(res, state) {
+    if (res.locals && MEMO_STATES.has(state)) res.locals.memoState = state;
 }
 
 // Асинхронный этап (чтение базы): замеряется и тогда, когда промис отклонён,
@@ -120,4 +131,4 @@ function timedSync(res, name, fn) {
     }
 }
 
-module.exports = { serverTiming, timed, timedSync, formatServerTiming, setCacheState };
+module.exports = { serverTiming, timed, timedSync, formatServerTiming, setCacheState, setMemoState };

@@ -4,7 +4,7 @@ import { readApi } from '../server/test/readApi.mjs';
 import App from './App';
 import { SAVE_BUTTON_NAME } from './test/queries';
 import { flushIdle } from './test/idle';
-import { withBootstrap } from './test/bootstrap';
+import { withBootstrap, bootstrapCalls, dashboardCalls, analyticsDashboardCalls } from './test/bootstrap';
 
 const accounts = [{ _id: 'card', name: 'Карта', type: 'card' }, { _id: 'cash', name: 'Наличные', type: 'cash' }];
 const response = body => ({ ok: true, status: 200, json: async () => body });
@@ -63,14 +63,16 @@ describe('instant account summaries', () => {
   it('loads only analytics for a new selection and instantly reuses visited selections', async () => {
     render(<App />);
     await screen.findByTestId('accounts-row');
+    // Все счета: Аналитика уже пришла со стартовым снимком, запроса нет.
     goTo('Аналитика');
-    await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
+    expect(skeleton()).not.toBeInTheDocument();
+    expect(statsCalls()).toHaveLength(1);
     goTo('Обзор');
     select('Наличные');
     expect(skeleton()).not.toBeInTheDocument();
     goTo('Аналитика');
     await waitFor(() => expect(skeleton()).not.toBeInTheDocument());
-    expect(statsCalls()).toHaveLength(3); // startup + two analytics views
+    expect(statsCalls()).toHaveLength(2); // startup (with analytics) + the cash analytics view
     goTo('Обзор');
     select('Все счета');
     expect(skeleton()).not.toBeInTheDocument();
@@ -82,7 +84,7 @@ describe('instant account summaries', () => {
     goTo('Аналитика');
     expect(skeleton()).not.toBeInTheDocument();
     await act(async () => {});
-    expect(statsCalls()).toHaveLength(3);
+    expect(statsCalls()).toHaveLength(2);
     expectReferenceDataFromBootstrapOnly();
   });
 
@@ -155,36 +157,62 @@ describe('instant account summaries', () => {
   });
 
   describe('background analytics prefetch', () => {
-    const analyticsCalls = () => statsCalls().filter(([url]) => url.includes('analytics=1'));
+    // Отдельные запросы /api/stats/dashboard с analytics=1: стартовый снимок
+    // просит analytics=1 сам и сюда не входит.
+    const analyticsCalls = () => analyticsDashboardCalls(request.mock.calls);
 
-    it('reads analytics in idle time after the overview loads, so the tab opens without a skeleton', async () => {
+    it('needs no prefetch after startup: the startup snapshot already carries analytics, and the tab opens without a request', async () => {
       render(<App />);
       await screen.findByTestId('accounts-row');
-      expect(analyticsCalls()).toHaveLength(0);
+      expect(bootstrapCalls(request.mock.calls)).toHaveLength(1);
+      expect(bootstrapCalls(request.mock.calls)[0]).toContain('analytics=1');
       await flushIdle();
-      expect(analyticsCalls()).toHaveLength(1);
+      expect(analyticsCalls()).toHaveLength(0);
       const count = statsCalls().length;
       goTo('Аналитика');
       expect(skeleton()).not.toBeInTheDocument();
       await act(async () => {});
+      await flushIdle();
+      expect(statsCalls()).toHaveLength(count);
+      expect(count).toBe(1);
+    });
+
+    it('sends the device time zone with the startup snapshot and with summary requests, but keeps it out of the cache key', async () => {
+      const timeZone = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone);
+      render(<App />);
+      await screen.findByTestId('accounts-row');
+      expect(bootstrapCalls(request.mock.calls)[0]).toMatch(new RegExp(`&tz=${timeZone}$`));
+      select('Наличные');
+      await act(async () => {});
+      await flushIdle();
+      expect(dashboardCalls(request.mock.calls).length).toBeGreaterThan(0);
+      for (const url of dashboardCalls(request.mock.calls)) expect(url).toMatch(new RegExp(`&tz=${timeZone}$`));
+      // Вернулись к «Все счета» и снова на «Наличные»: записи в кэше найдены по
+      // ключу без tz, новых запросов нет.
+      const count = statsCalls().length;
+      select('Все счета');
+      select('Наличные');
+      await act(async () => {});
+      await flushIdle();
       expect(statsCalls()).toHaveLength(count);
     });
 
-    it('prefetches again for a changed selection and skips keys that are already fresh', async () => {
+    it('prefetches for a changed selection and skips keys that are already fresh', async () => {
       render(<App />);
       await screen.findByTestId('accounts-row');
       await flushIdle();
       select('Наличные');
       await act(async () => {});
       await flushIdle();
-      expect(analyticsCalls().filter(([url]) => url.includes('account=cash'))).toHaveLength(1);
+      expect(analyticsCalls().filter(url => url.includes('account=cash'))).toHaveLength(1);
+      // Все счета пришли со стартовым снимком под обоими ключами: подгрузки нет.
       select('Все счета');
       await act(async () => {});
       await flushIdle();
-      expect(analyticsCalls()).toHaveLength(2);
+      expect(analyticsCalls()).toHaveLength(1);
     });
 
-    it('refills analytics after a write instead of leaving it empty, without showing the old numbers', async () => {
+    it('after a write the full reload brings analytics again, without showing the old numbers', async () => {
       const base = request.getMockImplementation();
       request.mockImplementation((url, options) => {
         if (url === '/api/transactions/cash-expense' && options?.method === 'PUT') {
@@ -197,15 +225,18 @@ describe('instant account summaries', () => {
       render(<App />);
       await screen.findByTestId('accounts-row');
       await flushIdle();
-      expect(analyticsCalls()).toHaveLength(1);
+      expect(bootstrapCalls(request.mock.calls)).toHaveLength(1);
       goTo('История');
       fireEvent.click(await screen.findByRole('button', { name: /^Кофе,/ }));
       fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '75' } });
       fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Редактировать' })).not.toBeInTheDocument());
-      // Полная перезагрузка сбросила кеш; новая подгрузка еще не запускалась.
+      // Полная перезагрузка сбросила кеш и сама принесла analytics=1: отдельной
+      // подгрузки не нужно.
+      await waitFor(() => expect(bootstrapCalls(request.mock.calls)).toHaveLength(2));
+      expect(bootstrapCalls(request.mock.calls)[1]).toContain('analytics=1');
       await flushIdle();
-      expect(analyticsCalls()).toHaveLength(2);
+      expect(analyticsCalls()).toHaveLength(0);
       goTo('Аналитика');
       expect(skeleton()).not.toBeInTheDocument();
     });
@@ -214,9 +245,11 @@ describe('instant account summaries', () => {
       render(<App />);
       await screen.findByTestId('accounts-row');
       const base = request.getMockImplementation();
-      request.mockImplementation((url, options) => url.includes('analytics=1')
+      request.mockImplementation((url, options) => url.startsWith('/api/stats/dashboard?') && url.includes('analytics=1')
         ? Promise.resolve({ ok: false, status: 500, json: async () => ({ message: 'boom' }) })
         : base(url, options));
+      select('Наличные');
+      await act(async () => {});
       await flushIdle();
       expect(analyticsCalls()).toHaveLength(1);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -227,14 +260,15 @@ describe('instant account summaries', () => {
     it('does not prefetch while the analytics tab itself is open', async () => {
       window.history.replaceState(null, '', '/#analytics');
       render(<App />);
-      await waitFor(() => expect(analyticsCalls()).toHaveLength(1));
+      await waitFor(() => expect(bootstrapCalls(request.mock.calls)).toHaveLength(1));
       await flushIdle();
-      expect(analyticsCalls()).toHaveLength(1);
+      expect(analyticsCalls()).toHaveLength(0);
     });
 
     it('does not start after unmount', async () => {
       const { unmount } = render(<App />);
       await screen.findByTestId('accounts-row');
+      select('Наличные');
       unmount();
       await flushIdle();
       expect(analyticsCalls()).toHaveLength(0);

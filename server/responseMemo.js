@@ -43,6 +43,13 @@ function createResponseMemo({ limits = GROUP_LIMITS } = {}) {
         // compute() возвращает JSON-строку. Ответ с тем же ключом и версией
         // снимка отдаётся без расчёта.
         getJson(group, params, version, compute) {
+            return this.getEntry(group, params, version, compute).json;
+        },
+
+        // То же, но с признаком попадания: hit - ответ был готов, иначе его
+        // только что посчитали. По нему в Server-Timing видно, платил ли запрос
+        // за расчёт (см. setMemoState в serverTiming.js).
+        getEntry(group, params, version, compute) {
             const entries = groups.get(group);
             if (!entries) throw new Error(`Неизвестная группа ответов: ${group}`);
             const key = JSON.stringify(params);
@@ -52,7 +59,7 @@ function createResponseMemo({ limits = GROUP_LIMITS } = {}) {
                 entries.delete(key);
                 entries.set(key, entry);
                 stats.hits += 1;
-                return entry.json;
+                return { json: entry.json, hit: true };
             }
 
             stats.misses += 1;
@@ -62,7 +69,7 @@ function createResponseMemo({ limits = GROUP_LIMITS } = {}) {
             // Версия старее уже виденной - запрос держит снимок, который успели
             // сбросить. Его ответ верен для него самого, но хранить его нельзя:
             // он вытеснил бы свежие.
-            if (version < latestVersion) return json;
+            if (version < latestVersion) return { json, hit: false };
             if (version > latestVersion) {
                 latestVersion = version;
                 purgeOlderThan(version);
@@ -72,7 +79,7 @@ function createResponseMemo({ limits = GROUP_LIMITS } = {}) {
             while (entries.size > limits[group]) {
                 entries.delete(entries.keys().next().value);
             }
-            return json;
+            return { json, hit: false };
         },
 
         size: () => [...groups.values()].reduce((sum, entries) => sum + entries.size, 0),

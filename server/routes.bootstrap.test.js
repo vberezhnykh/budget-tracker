@@ -118,13 +118,13 @@ describe('GET /api/bootstrap', () => {
         }
     });
 
-    it('не кэшируется (no-store) и отдает Server-Timing с db, calc, cache и total', async () => {
+    it('не кэшируется (no-store) и отдает Server-Timing с db, calc, cache, memo и total', async () => {
         const res = await bootstrap();
 
         expect(res.headers['cache-control']).toBe('no-store');
         expect(res.headers['content-type']).toMatch(/^application\/json; charset=utf-8$/);
         expect(res.headers['server-timing']).toMatch(
-            /^db;dur=\d+\.\d, calc;dur=\d+\.\d, cache;desc=(hit|miss|stale), total;dur=\d+\.\d$/
+            /^db;dur=\d+\.\d, calc;dur=\d+\.\d, cache;desc=(hit|miss|stale), memo;desc=(hit|miss), total;dur=\d+\.\d$/
         );
     });
 

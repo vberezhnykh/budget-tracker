@@ -47,9 +47,11 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     // Первую сводку приносит стартовый снимок (/api/bootstrap), последующие
     // чтения - /api/stats/dashboard.
     await page.route(/\/api\/(bootstrap|stats\/dashboard)\?/, async route => {
-      // Фоновая подгрузка Аналитики (analytics=1) не в счет: считаем только
-      // запросы итогов Обзора.
-      if (!route.request().url().includes('analytics=1')) summaryRequests += 1;
+      // Фоновая подгрузка Аналитики (отдельный запрос с analytics=1) не в счет:
+      // считаем стартовый снимок (он сам просит analytics=1) и запросы итогов
+      // Обзора.
+      const url = route.request().url();
+      if (url.includes('/api/bootstrap?') || !url.includes('analytics=1')) summaryRequests += 1;
       await gate;
       await route.fallback();
     });

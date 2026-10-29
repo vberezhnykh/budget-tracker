@@ -197,6 +197,13 @@ function serverRequestsSection(servers) {
             const share = Math.round((hits / cached.length) * 100);
             lines.push(`  кэш: из памяти ${formatCount(hits)} из ${formatCount(cached.length)} (${share}%), устаревший ${formatCount(stale)}, из базы ${formatCount(misses)}`);
         }
+        // Доля запросов, которым ответ был уже готов (без расчета): в отчете
+        // видно, помогает ли прогрев готовых ответов после смены суток.
+        const memoed = items.filter(item => typeof item.memo === 'string');
+        if (memoed.length > 0) {
+            const ready = memoed.filter(item => item.memo === 'hit').length;
+            lines.push(`  готовый ответ: ${formatCount(ready)} из ${formatCount(memoed.length)} (${Math.round((ready / memoed.length) * 100)}%), посчитан заново ${formatCount(memoed.length - ready)}`);
+        }
     }
 
     const cold = servers.filter(item => Number.isFinite(item.uptime) && item.uptime < COLD_UPTIME_SECONDS);

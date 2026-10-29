@@ -23,6 +23,7 @@ const WARN_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_FAILED_FLUSHES = 3;
 
 const CACHE_STATES = ['hit', 'miss', 'stale'];
+const MEMO_STATES = ['hit', 'miss'];
 
 const MAX_PATH_SEGMENTS = 8;
 const MAX_PATH_LENGTH = 200;
@@ -245,6 +246,9 @@ function createServerSampleRecorder({ perfLog = null } = {}) {
         if (Number.isFinite(calc)) sample.calcMs = round1(calc);
         // Как ответ связан с кэшем операций: по нему отчёт считает долю попаданий.
         if (CACHE_STATES.includes(info.cache)) sample.cache = info.cache;
+        // Был ли готов сам ответ (responseMemo): по нему видно, платил ли запрос
+        // за расчёт, а не только за чтение снимка.
+        if (MEMO_STATES.includes(info.memo)) sample.memo = info.memo;
         // Content-Length бывает не у каждого ответа (потоковые его не имеют):
         // нет заголовка - нет и поля.
         const bytes = Number(info.contentLength);

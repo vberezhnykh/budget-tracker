@@ -277,3 +277,19 @@ describe('GET /api/perf/report', () => {
         expect(res.text).toContain('За этот период замеров нет.');
     });
 });
+
+describe('PerfSample: признак готового ответа (memo)', () => {
+    const sample = (extra = {}) => ({ kind: 'server', at: new Date(), method: 'GET', path: '/api/bootstrap', status: 200, totalMs: 12, ...extra });
+
+    it('хранит hit и miss рядом с состоянием кэша', async () => {
+        await PerfSample.create([sample({ cache: 'hit', memo: 'hit' }), sample({ cache: 'stale', memo: 'miss' }), sample()]);
+
+        const docs = await PerfSample.find().sort({ _id: 1 }).lean();
+
+        expect(docs.map(doc => doc.memo)).toEqual(['hit', 'miss', undefined]);
+    });
+
+    it('другое значение схема отвергает', async () => {
+        await expect(PerfSample.create(sample({ memo: 'stale' }))).rejects.toThrow(/memo/);
+    });
+});
