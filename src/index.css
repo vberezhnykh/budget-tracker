@@ -258,6 +258,13 @@ button {
   }
 }
 
+/* Флажок ui/Checkbox: input невидим и лежит поверх квадрата, кольцо фокуса
+   рисуется на самом квадрате. */
+.ui-checkbox-input:focus-visible + .ui-checkbox-box {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .lucide {
   flex-shrink: 0;
   vertical-align: middle;

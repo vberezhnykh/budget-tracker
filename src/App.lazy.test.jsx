@@ -80,9 +80,9 @@ describe('lazy budget reads', () => {
   it('searches older unloaded operations and opens analytics from the startup snapshot, without another summary request', async () => {
     render(<App />);
     const history = await openHistory();
-    fireEvent.change(history.getByPlaceholderText(/Поиск/), { target: { value: 'Старая' } });
+    fireEvent.change(history.getByPlaceholderText('Компания, комментарий или сумма'), { target: { value: 'Старая' } });
     expect(await history.findByText('Старая зарплата')).toBeInTheDocument();
-    expect(history.getByText('Результаты поиска (1)')).toBeInTheDocument();
+    expect(history.getByText('Найдено 1 операция')).toBeInTheDocument();
     expect(request.mock.calls.filter(([url]) => url.startsWith('/api/bootstrap?') && url.includes('analytics=1'))).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: /Аналитика/ }));
     await act(async () => {});
@@ -100,7 +100,7 @@ describe('lazy budget reads', () => {
     render(<App />);
     const history = await openHistory();
     expect(request.mock.calls.some(([url]) => url === '/api/transactions')).toBe(false);
-    fireEvent.click(history.getByRole('button', { name: 'Экспорт' }));
+    fireEvent.click(history.getByRole('button', { name: 'Выгрузить в CSV' }));
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     const text = await new Promise(resolve => {
       const reader = new FileReader();

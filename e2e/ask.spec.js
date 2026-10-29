@@ -68,7 +68,7 @@ test.describe('Questions to your data (mobile, real browser)', () => {
 
     await expect(navigation(page).getByRole('button', { name: 'История' })).toHaveAttribute('aria-current', 'page');
     expect(new URL(page.url()).hash).toBe('#history');
-    await expect(page.getByRole('button', { name: 'Еда', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'Категория: Еда' })).toBeVisible();
     await expect(page.getByText('Продукты на неделю')).toBeVisible();
     await expect(page.getByText('Пополнение')).toHaveCount(0);
   });

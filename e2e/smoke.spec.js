@@ -381,7 +381,7 @@ test.describe('Budget Tracker smoke (mobile, real browser)', () => {
     expect(scrollBox.y + scrollBox.height).toBeLessThanOrEqual(navBox.y + 0.5);
 
     // Шапка со строкой поиска остаётся на месте, пока список едет.
-    const search = page.getByPlaceholder(/Поиск/);
+    const search = page.getByPlaceholder('Компания, комментарий или сумма');
     const searchTop = (await search.boundingBox()).y;
     await scroll.evaluate((el) => { el.scrollTop = 300; });
     expect(await scroll.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);

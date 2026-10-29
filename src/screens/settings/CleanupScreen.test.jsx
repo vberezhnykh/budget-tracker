@@ -211,6 +211,21 @@ describe('CleanupScreen: review', () => {
         expect(screen.getByText('У этих операций не будет компании, текст останется комментарием')).toBeInTheDocument();
     });
 
+    it('draws the flags with the shared Checkbox, indents variants under the company flag and keeps rows 52px tall', () => {
+        renderScreen({ summary: ready() });
+        const lidl = screen.getByRole('group', { name: 'Компания Lidl' });
+        const [groupBox, firstRow] = within(lidl).getAllByRole('checkbox');
+
+        expect(lidl.querySelectorAll('.ui-checkbox-box')).toHaveLength(3);
+        // Карточка белая, без рамки: тон по умолчанию, как у карточек Корзины.
+        expect(lidl.style.border).toBe('');
+        const header = groupBox.closest('label');
+        const variant = firstRow.closest('label');
+        expect(header.style.minHeight).toBe('52px');
+        expect(header.style.paddingLeft).toBe('var(--space-4)');
+        expect(variant.style.paddingLeft).toBe('calc(var(--space-4) + 22px + var(--space-3))');
+    });
+
     it('lists skipped texts without checkboxes', () => {
         renderScreen({ summary: ready() });
 

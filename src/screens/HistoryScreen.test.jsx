@@ -110,12 +110,13 @@ describe('HistoryScreen', () => {
         expect(screen.getByTestId('history-scroll').scrollTop).toBe(0);
     });
 
-    it('titles the screen «История» and shows the result count while searching', () => {
+    it('keeps the title «История» while searching: the count lives in the summary line', () => {
         const { rerender } = renderScreen();
         expect(screen.getByRole('heading', { level: 1, name: 'История' })).toBeInTheDocument();
 
         rerender(<HistoryScreen {...baseProps} searchQuery="cof" history={makeHistory({ count: 7 })} />);
-        expect(screen.getByRole('heading', { level: 1, name: 'Результаты поиска (7)' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 1, name: 'История' })).toBeInTheDocument();
+        expect(screen.getByText(/Найдено 7 операций/)).toBeInTheDocument();
     });
 
     it('renders transaction rows from the passed-in data', () => {
@@ -130,7 +131,7 @@ describe('HistoryScreen', () => {
 
         expect(scroll.style.overflowY).toBe('auto');
         expect(scroll).toContainElement(screen.getByText('Coffee'));
-        expect(scroll).not.toContainElement(screen.getByPlaceholderText('Поиск по названию или сумме...'));
+        expect(scroll).not.toContainElement(screen.getByPlaceholderText('Компания, комментарий или сумма'));
         expect(scroll).not.toContainElement(screen.getByRole('heading', { level: 1 }));
     });
 
@@ -139,7 +140,7 @@ describe('HistoryScreen', () => {
         const { rerender } = renderScreen({ setSearchQuery });
         expect(screen.queryByRole('button', { name: 'Очистить поиск' })).not.toBeInTheDocument();
 
-        fireEvent.change(screen.getByPlaceholderText('Поиск по названию или сумме...'), { target: { value: 'кофе' } });
+        fireEvent.change(screen.getByPlaceholderText('Компания, комментарий или сумма'), { target: { value: 'кофе' } });
         expect(setSearchQuery).toHaveBeenCalledWith('кофе');
 
         rerender(<HistoryScreen {...baseProps} setSearchQuery={setSearchQuery} searchQuery="кофе" />);
@@ -236,102 +237,232 @@ describe('HistoryScreen', () => {
 
     it('disables export only when the list is completely empty', () => {
         const { rerender } = renderScreen();
-        expect(screen.getByRole('button', { name: /Экспорт/ })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Выгрузить в CSV' })).toBeEnabled();
 
         rerender(<HistoryScreen {...baseProps} history={makeHistory({ transactions: {}, count: 0 })} />);
-        expect(screen.getByRole('button', { name: /Экспорт/ })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Выгрузить в CSV' })).toBeDisabled();
 
         rerender(<HistoryScreen {...baseProps} history={makeHistory({ transactions: {}, count: 0, loading: true })} />);
-        expect(screen.getByRole('button', { name: /Экспорт/ })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Выгрузить в CSV' })).toBeEnabled();
     });
 
-    it('exports through the header button and shows the busy state while exporting', () => {
+    it('exports through the icon button in the header and marks it busy while exporting', () => {
         const exportToCSV = vi.fn();
         const { rerender } = renderScreen({ exportToCSV });
 
-        fireEvent.click(screen.getByRole('button', { name: /Экспорт/ }));
+        const button = screen.getByRole('button', { name: 'Выгрузить в CSV' });
+        expect(button).toHaveAttribute('aria-busy', 'false');
+        expect(button.style.minWidth).toBe('44px');
+        fireEvent.click(button);
         expect(exportToCSV).toHaveBeenCalledTimes(1);
 
         rerender(<HistoryScreen {...baseProps} exportToCSV={exportToCSV} isExporting />);
-        const busy = screen.getByRole('button', { name: /Экспорт…/ });
+        const busy = screen.getByRole('button', { name: 'Выгрузить в CSV' });
         expect(busy).toBeDisabled();
+        expect(busy).toHaveAttribute('aria-busy', 'true');
     });
 
-    describe('account filter', () => {
-        it('lists «Все счета» and one chip per account by name, with «Все счета» selected by default', () => {
-            renderScreen();
-            const group = within(screen.getByRole('group', { name: 'Фильтр по счёту' }));
-
-            expect(group.getAllByRole('button').map(button => button.textContent)).toEqual(['Все счета', 'Карта', 'Наличные']);
-            expect(group.getByRole('button', { name: 'Все счета' })).toHaveAttribute('aria-pressed', 'true');
-            expect(group.getByRole('button', { name: 'Карта' })).toHaveAttribute('aria-pressed', 'false');
-        });
-
-        it('selects a single account by id and resets with «Все счета»', () => {
-            const setHistoryAccount = vi.fn();
-            const { rerender } = renderScreen({ setHistoryAccount });
-            const group = () => within(screen.getByRole('group', { name: 'Фильтр по счёту' }));
-
-            fireEvent.click(group().getByRole('button', { name: 'Наличные' }));
-            expect(setHistoryAccount).toHaveBeenLastCalledWith('cash');
-
-            rerender(<HistoryScreen {...baseProps} setHistoryAccount={setHistoryAccount} historyAccount="cash" />);
-            expect(group().getByRole('button', { name: 'Наличные' })).toHaveAttribute('aria-pressed', 'true');
-            expect(group().getByRole('button', { name: 'Все счета' })).toHaveAttribute('aria-pressed', 'false');
-
-            fireEvent.click(group().getByRole('button', { name: 'Все счета' }));
-            expect(setHistoryAccount).toHaveBeenLastCalledWith(null);
-        });
-    });
-
-    describe('category and type filters', () => {
+    describe('filter row', () => {
         const categories = [
             { _id: 'c1', name: 'Food', type: 'expense' },
-            { _id: 'c2', name: 'Job', type: 'income' }
+            { _id: 'c2', name: 'Job', type: 'income' },
+            { _id: 'c3', name: 'Другое', type: 'expense' },
+            { _id: 'c4', name: 'Другое', type: 'income' }
         ];
+        const row = () => within(screen.getByRole('group', { name: 'Фильтры' }));
 
-        it('shows every category chip without a type filter and only the matching ones with it', () => {
-            const { rerender } = renderScreen({ categories });
-            const row = () => within(screen.getByRole('group', { name: 'Фильтр по категории' }));
-            expect(row().getAllByRole('button').map(button => button.textContent)).toEqual(['Food', 'Job']);
-
-            rerender(<HistoryScreen {...baseProps} categories={categories} historyType="income" />);
-            expect(row().getAllByRole('button').map(button => button.textContent)).toEqual(['Job']);
+        it('shows three inactive pills and no chip rows or plaques', () => {
+            renderScreen({ categories });
+            expect(row().getAllByRole('button').map(button => button.textContent)).toEqual(['Категория', 'Все счета', 'Любой тип']);
+            expect(screen.queryByRole('group', { name: 'Фильтр по счёту' })).not.toBeInTheDocument();
+            expect(screen.queryByRole('group', { name: 'Фильтр по категории' })).not.toBeInTheDocument();
+            expect(screen.queryByText('Тип:')).not.toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: /Снять фильтр/ })).not.toBeInTheDocument();
         });
 
-        it('toggles a category chip on and off', () => {
+        it('shows the chosen values on active pills, each with its own clear button', () => {
+            const setHistoryAccount = vi.fn();
+            const setHistoryCategory = vi.fn();
+            const setHistoryType = vi.fn();
+            renderScreen({ categories, historyAccount: 'cash', historyCategory: 'Job', historyType: 'income', setHistoryAccount, setHistoryCategory, setHistoryType });
+
+            expect(row().getByRole('button', { name: 'Категория: Job' })).toHaveTextContent('Job');
+            expect(row().getByRole('button', { name: 'Счёт: Наличные' })).toHaveTextContent('Наличные');
+            expect(row().getByRole('button', { name: 'Тип: Доходы' })).toHaveTextContent('Доходы');
+
+            fireEvent.click(row().getByRole('button', { name: 'Снять фильтр «Job»' }));
+            expect(setHistoryCategory).toHaveBeenLastCalledWith(null);
+            fireEvent.click(row().getByRole('button', { name: 'Снять фильтр «Наличные»' }));
+            expect(setHistoryAccount).toHaveBeenLastCalledWith(null);
+            fireEvent.click(row().getByRole('button', { name: 'Снять фильтр «Доходы»' }));
+            expect(setHistoryType).toHaveBeenLastCalledWith(null);
+        });
+
+        it('does not nest the clear button inside the label button', () => {
+            renderScreen({ categories, historyCategory: 'Food' });
+            const clear = row().getByRole('button', { name: 'Снять фильтр «Food»' });
+            expect(clear.closest('button')).toBe(clear);
+            expect(clear.parentElement.closest('button')).toBeNull();
+        });
+
+        it('opens the sheet from an active pill label without clearing the filter', () => {
+            const setHistoryCategory = vi.fn();
+            renderScreen({ categories, historyCategory: 'Food', setHistoryCategory });
+            fireEvent.click(row().getByRole('button', { name: 'Категория: Food' }));
+            expect(screen.getByRole('dialog', { name: 'Категория' })).toBeInTheDocument();
+            expect(setHistoryCategory).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('account sheet', () => {
+        const open = props => {
+            const result = renderScreen(props);
+            fireEvent.click(screen.getByRole('button', { name: 'Все счета' }));
+            return result;
+        };
+        const radios = () => within(screen.getByRole('radiogroup', { name: 'Счёт' })).getAllByRole('radio');
+
+        it('lists «Все счета» and one row per account, with «Все счета» checked by default', () => {
+            open();
+            expect(screen.getByRole('dialog', { name: 'Счёт' })).toBeInTheDocument();
+            expect(radios().map(radio => radio.textContent)).toEqual(['Все счета', 'Карта', 'Наличные']);
+            expect(radios()[0]).toHaveAttribute('aria-checked', 'true');
+            expect(radios()[1]).toHaveAttribute('aria-checked', 'false');
+        });
+
+        it('applies a single account by id and closes the sheet', () => {
+            const setHistoryAccount = vi.fn();
+            open({ setHistoryAccount });
+            fireEvent.click(radios()[2]);
+            expect(setHistoryAccount).toHaveBeenLastCalledWith('cash');
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+        });
+
+        it('marks the chosen account and resets with the first row', () => {
+            const setHistoryAccount = vi.fn();
+            renderScreen({ historyAccount: 'cash', setHistoryAccount });
+            fireEvent.click(screen.getByRole('button', { name: 'Счёт: Наличные' }));
+            expect(radios()[2]).toHaveAttribute('aria-checked', 'true');
+            expect(radios()[0]).toHaveAttribute('aria-checked', 'false');
+
+            fireEvent.click(radios()[0]);
+            expect(setHistoryAccount).toHaveBeenLastCalledWith(null);
+        });
+
+        it('closes with the close button and with Escape without changing the filter', () => {
+            const setHistoryAccount = vi.fn();
+            open({ setHistoryAccount });
+            fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Все счета' }));
+            fireEvent.keyDown(document, { key: 'Escape' });
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+            expect(setHistoryAccount).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('category and type sheets', () => {
+        const categories = [
+            { _id: 'c1', name: 'Food', type: 'expense' },
+            { _id: 'c2', name: 'Job', type: 'income' },
+            { _id: 'c3', name: 'Другое', type: 'expense' },
+            { _id: 'c4', name: 'Другое', type: 'income' }
+        ];
+        const radios = name => within(screen.getByRole('radiogroup', { name })).getAllByRole('radio');
+
+        it('offers every category once without a type and only the matching ones with it', () => {
+            const { rerender } = renderScreen({ categories });
+            fireEvent.click(screen.getByRole('button', { name: 'Категория' }));
+            expect(radios('Категория').map(radio => radio.textContent)).toEqual(['Все категории', 'Food', 'Job', 'Другое']);
+            fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+
+            rerender(<HistoryScreen {...baseProps} categories={categories} historyType="income" />);
+            fireEvent.click(screen.getByRole('button', { name: 'Категория' }));
+            expect(radios('Категория').map(radio => radio.textContent)).toEqual(['Все категории', 'Job', 'Другое']);
+        });
+
+        it('applies a category by name, marks it, and resets with «Все категории»', () => {
             const setHistoryCategory = vi.fn();
             const { rerender } = renderScreen({ categories, setHistoryCategory });
-            const row = () => within(screen.getByRole('group', { name: 'Фильтр по категории' }));
-
-            fireEvent.click(row().getByRole('button', { name: 'Food' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Категория' }));
+            fireEvent.click(radios('Категория')[1]);
             expect(setHistoryCategory).toHaveBeenLastCalledWith('Food');
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
             rerender(<HistoryScreen {...baseProps} categories={categories} setHistoryCategory={setHistoryCategory} historyCategory="Food" />);
-            expect(row().getByRole('button', { name: 'Food' })).toHaveAttribute('aria-pressed', 'true');
-            fireEvent.click(row().getByRole('button', { name: 'Food' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Категория: Food' }));
+            expect(radios('Категория')[1]).toHaveAttribute('aria-checked', 'true');
+            expect(radios('Категория')[0]).toHaveAttribute('aria-checked', 'false');
+            fireEvent.click(radios('Категория')[0]);
             expect(setHistoryCategory).toHaveBeenLastCalledWith(null);
         });
 
-        it('shows a plaque for the active type and category, each with its own reset', () => {
+        it('offers expenses and income for the type', () => {
             const setHistoryType = vi.fn();
-            const setHistoryCategory = vi.fn();
-            renderScreen({ categories, historyType: 'income', historyCategory: 'Job', setHistoryType, setHistoryCategory });
-
-            expect(screen.getByText('Доходы')).toBeInTheDocument();
-            const [resetType, resetCategory] = screen.getAllByRole('button', { name: /Сбросить/ });
-            fireEvent.click(resetType);
-            expect(setHistoryType).toHaveBeenCalledWith(null);
-            fireEvent.click(resetCategory);
-            expect(setHistoryCategory).toHaveBeenCalledWith(null);
+            renderScreen({ categories, setHistoryType });
+            fireEvent.click(screen.getByRole('button', { name: 'Любой тип' }));
+            expect(screen.getByRole('dialog', { name: 'Тип операции' })).toBeInTheDocument();
+            expect(radios('Тип операции').map(radio => radio.textContent)).toEqual(['Любой тип', 'Расходы', 'Доходы']);
+            fireEvent.click(radios('Тип операции')[2]);
+            expect(setHistoryType).toHaveBeenLastCalledWith('income');
+            expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
         });
 
-        it('shows no plaques and no «Счет:» plaque when nothing is filtered or an account is chosen', () => {
-            const { rerender } = renderScreen({ categories });
-            expect(screen.queryByRole('button', { name: /Сбросить/ })).not.toBeInTheDocument();
+        it('drops a chosen category of the other type when the type is picked', () => {
+            const setHistoryType = vi.fn();
+            const setHistoryCategory = vi.fn();
+            renderScreen({ categories, historyCategory: 'Food', setHistoryType, setHistoryCategory });
+            fireEvent.click(screen.getByRole('button', { name: 'Любой тип' }));
+            fireEvent.click(radios('Тип операции')[2]);
+            expect(setHistoryCategory).toHaveBeenLastCalledWith(null);
+            expect(setHistoryType).toHaveBeenLastCalledWith('income');
+        });
 
-            rerender(<HistoryScreen {...baseProps} categories={categories} historyAccount="cash" />);
-            expect(screen.queryByText(/Счет:/)).not.toBeInTheDocument();
+        it('keeps a chosen category of the same type', () => {
+            const setHistoryCategory = vi.fn();
+            renderScreen({ categories, historyCategory: 'Food', setHistoryCategory, setHistoryType: vi.fn() });
+            fireEvent.click(screen.getByRole('button', { name: 'Любой тип' }));
+            fireEvent.click(radios('Тип операции')[1]);
+            expect(setHistoryCategory).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('summary line', () => {
+        const filtered = { historyCategory: 'Food', history: makeHistory({ count: 14 }) };
+
+        it('is hidden with no filter and no search', () => {
+            renderScreen();
+            expect(screen.queryByText(/Найдено/)).not.toBeInTheDocument();
+            expect(screen.queryByText(/Итого/)).not.toBeInTheDocument();
+        });
+
+        it('shows the found count with a plural and the signed total once a filter is on', () => {
+            renderScreen(filtered);
+            expect(screen.getByText('Найдено 14 операций')).toBeInTheDocument();
+            // -5 расход и +5000 доход из двух дней
+            expect(screen.getByText(/^Итого/)).toHaveTextContent('Итого +€4.995,00');
+            expect(screen.getByText('+€4.995,00').tagName).toBe('STRONG');
+        });
+
+        it('declines the count word and shows a minus for a negative total', () => {
+            const expenses = { '2026-01-05': { dailySum: -612.4, items: groups['2026-01-05'].items } };
+            const { rerender } = renderScreen({ historyType: 'expense', history: makeHistory({ transactions: expenses, count: 1 }) });
+            expect(screen.getByText('Найдено 1 операция')).toBeInTheDocument();
+            expect(screen.getByText(/^Итого/)).toHaveTextContent('Итого −€612,40');
+
+            rerender(<HistoryScreen {...baseProps} historyType="expense" history={makeHistory({ transactions: expenses, count: 3 })} />);
+            expect(screen.getByText('Найдено 3 операции')).toBeInTheDocument();
+        });
+
+        it('shows up for a search without filters too', () => {
+            renderScreen({ searchQuery: 'cof', history: makeHistory({ count: 2 }) });
+            expect(screen.getByText('Найдено 2 операции')).toBeInTheDocument();
+        });
+
+        it('is hidden while nothing is loaded', () => {
+            renderScreen({ historyCategory: 'Food', history: makeHistory({ transactions: {}, count: 0, loading: true }) });
+            expect(screen.queryByText(/Найдено/)).not.toBeInTheDocument();
         });
     });
 

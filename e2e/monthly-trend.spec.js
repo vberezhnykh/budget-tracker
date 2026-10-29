@@ -192,7 +192,7 @@ test.describe('Analytics screen (mobile)', () => {
     // Нажатие на категорию открывает Историю с фильтром по ней.
     await page.getByRole('button', { name: /^Еда: €/ }).click();
     await expect(page.getByRole('heading', { level: 1, name: 'История' })).toBeVisible();
-    await expect(page.getByRole('group', { name: 'Фильтр по категории' }).getByRole('button', { name: 'Еда' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('group', { name: 'Фильтры' }).getByRole('button', { name: 'Категория: Еда' })).toBeVisible();
   });
 
   test('a month without enough history says so instead of drawing the pace chart', async ({ page }) => {

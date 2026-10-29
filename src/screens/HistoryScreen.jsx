@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Download, Search, X } from 'lucide-react';
+import HistoryFilterPill from '../components/HistoryFilterPill';
+import HistoryFilterSheet from '../components/HistoryFilterSheet';
 import HistoryTimeline from '../components/HistoryTimeline';
 import { NAV_OFFSET } from '../components/BottomNav';
 import Field from '../components/ui/Field';
 import Button from '../components/ui/Button';
 import EmptyState from '../components/ui/EmptyState';
-import Chip from '../components/ui/Chip';
+import IconButton from '../components/ui/IconButton';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import { ListSkeleton } from '../components/ui/Skeleton';
 import useFadeIn from '../utils/useFadeIn';
+import { operationsLabel } from '../utils/cleanupReview';
 import { describeEmptySearch, hasActiveFilters } from '../utils/historyEmpty';
+import { historyTotal } from '../utils/historySummary';
+import { formatMoney } from '../utils/money';
 import { extendNewer, extendOlder, listDays, sliceWindow, windowFor } from '../utils/historyWindow';
 
 // Вкладка «История»: обычный экран со списком операций и его механикой
@@ -32,21 +37,26 @@ import { extendNewer, extendOlder, listDays, sliceWindow, windowFor } from '../u
 // нет. Окно хранится датами границ, поэтому фоновое обновление списка его не
 // сбрасывает и прокрутку не трогает.
 
-const FILTER_CHIP_STYLE = {
-  flexShrink: 0,
-  padding: 'var(--space-1-5) var(--space-3)',
-  fontSize: 'var(--text-xs)',
-  transition: 'all 0.2s ease',
+// Ряд фильтров листается вбок и выходит к правому краю экрана: отрицательное
+// поле справа съедает отступ layout-container, а равный ему padding возвращает
+// последней кнопке место, чтобы она не прилипала к краю. Вертикальный запас в
+// 4px нужен выступающему за кнопку крестику (зона 44px у кнопки в 36px): у
+// контейнера с overflow-x вертикаль тоже обрезается, и без запаса верх и низ
+// зоны нажатия пропали бы.
+const FILTER_ROW_STYLE = {
+  display: 'flex',
+  gap: 'var(--space-2)',
+  overflowX: 'auto',
+  padding: 'var(--space-1) var(--space-5) var(--space-1) 0',
+  margin: 'calc(-1 * var(--space-1)) calc(-1 * var(--space-5)) calc(-1 * var(--space-1)) 0',
 };
 
-// Включённый фильтр приподнят над лентой - её можно листать, и он должен
-// быть виден боковым зрением.
-const chipStyle = selected => ({
-  ...FILTER_CHIP_STYLE,
-  boxShadow: selected ? '0 2px 6px var(--color-primary-glow)' : 'none',
-});
-
-const CHIP_ROW_STYLE = { display: 'flex', gap: 'var(--space-2)', overflowX: 'auto', paddingBottom: 'var(--space-1)' };
+// Что лист предлагает для каждого фильтра. Тип - те же два значения, которые
+// принимает setHistoryType.
+const TYPE_OPTIONS = [
+  { value: 'expense', label: 'Расходы' },
+  { value: 'income', label: 'Доходы' },
+];
 
 export default function HistoryScreen({
   history,
@@ -204,7 +214,6 @@ export default function HistoryScreen({
   }, [hasOlder, win, showOlder]);
 
   const toggleCategory = name => setHistoryCategory(historyCategory === name ? null : name);
-  const isIncome = historyType === 'income';
 
   const filtersActive = hasActiveFilters({ account: historyAccount, category: historyCategory, type: historyType });
   const resetFilters = () => {
@@ -217,6 +226,30 @@ export default function HistoryScreen({
   const listEmpty = !rowsLoaded && !historyLoading;
   const searchEmpty = searching && listEmpty && !historyError;
   const accountName = accounts.find(account => account._id === historyAccount)?.name;
+  const typeName = TYPE_OPTIONS.find(option => option.value === historyType)?.label;
+
+  // Открытый лист выбора фильтра: 'category' | 'account' | 'type' | null.
+  const [filterSheet, setFilterSheet] = useState(null);
+  const pickFilter = (setter, value) => {
+    setter(value);
+    setFilterSheet(null);
+  };
+  // Категория другого типа вместе с выбранным типом дала бы пустой список (лист
+  // предлагает категории только этого типа), поэтому такую категорию снимаем.
+  const pickType = value => {
+    const chosen = categories.find(category => category.name === historyCategory);
+    if (value && chosen && chosen.type !== value) setHistoryCategory(null);
+    pickFilter(setHistoryType, value);
+  };
+  // Одноимённые категории расходов и дохода (скажем, «Другое») фильтруют по
+  // имени одинаково, поэтому в списке без выбранного типа имя одно.
+  const categoryOptions = [...new Set(categories.filter(c => !historyType || c.type === historyType).map(c => c.name))]
+    .map(name => ({ value: name, label: name }));
+  const accountOptions = accounts.map(account => ({ value: account._id, label: account.name }));
+
+  // Строка итога видна, пока что-то отобрано: фильтр или поиск. Без них это
+  // вся история, и «найдено» в ней нечего.
+  const showSummary = (filtersActive || searching) && rowsLoaded;
 
   // Список проявляется, когда скелетон сменился днями. Без сдвига (flat):
   // сразу после появления layout-эффект выше ставит прокрутку по
@@ -239,13 +272,25 @@ export default function HistoryScreen({
         minHeight: 0,
       }}
     >
-      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', paddingBottom: 'var(--space-4)' }}>
+      <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', paddingBottom: 'var(--space-3)' }}>
         <ScreenHeader
-          title={searchQuery ? `Результаты поиска (${history.count})` : 'История'}
+          title="История"
           actions={(
-            <Button tone="secondary" size="sm" onClick={exportToCSV} disabled={isExporting || listEmpty}>
-              <Download size={16} strokeWidth={1.8} aria-hidden="true" /> {isExporting ? 'Экспорт…' : 'Экспорт'}
-            </Button>
+            <IconButton
+              size={44}
+              onClick={exportToCSV}
+              disabled={isExporting || listEmpty}
+              aria-label="Выгрузить в CSV"
+              aria-busy={isExporting}
+              style={{
+                background: 'var(--color-surface)',
+                color: 'var(--color-text-main)',
+                opacity: isExporting || listEmpty ? 0.6 : 1,
+                cursor: isExporting || listEmpty ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <Download size={20} strokeWidth={2} aria-hidden="true" />
+            </IconButton>
           )}
         />
 
@@ -254,14 +299,16 @@ export default function HistoryScreen({
           <Field
             type="text"
             tone="muted"
-            placeholder="Поиск по названию или сумме..."
+            placeholder="Компания, комментарий или сумма"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             style={{
               width: '100%',
-              // отступ слева - под иконку лупы, лежащую поверх поля
-              padding: 'var(--space-3) var(--space-4) var(--space-3) 40px',
-              fontSize: 'var(--text-md)',
+              height: '46px',
+              border: 'none',
+              // слева место под лупу, справа - под кнопку очистки в 44px
+              padding: `0 44px 0 42px`,
+              fontSize: 'var(--text-lg)',
             }}
           />
           <Search size={18} strokeWidth={1.8} aria-hidden="true" style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-text-muted)', pointerEvents: 'none' }} />
@@ -270,71 +317,47 @@ export default function HistoryScreen({
               type="button"
               aria-label="Очистить поиск"
               onClick={() => setSearchQuery('')}
-              style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--color-text-muted)', fontSize: 'var(--text-3xl)', cursor: 'pointer' }}
+              style={{ position: 'absolute', right: 0, top: 0, width: '44px', height: '46px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}
             >
               <X size={18} strokeWidth={1.8} aria-hidden="true" />
             </button>
           )}
         </div>
 
-        {/* Счёт: один из списка или «Все счета». Выбор свой у Истории и с
-            выбранным на Обзоре счётом не связан. Отдельной плашки «Счет: …»
-            нет - выбранный чип в ряду и есть индикатор. */}
-        <div className="no-scrollbar" role="group" aria-label="Фильтр по счёту" style={CHIP_ROW_STYLE}>
-          <Chip tone="solid" selected={!historyAccount} onClick={() => setHistoryAccount(null)} style={chipStyle(!historyAccount)}>
-            Все счета
-          </Chip>
-          {accounts.map(account => (
-            <Chip
-              key={account._id}
-              tone="solid"
-              selected={historyAccount === account._id}
-              onClick={() => setHistoryAccount(account._id)}
-              style={chipStyle(historyAccount === account._id)}
-            >
-              {account.name}
-            </Chip>
-          ))}
+        {/* Фильтры: категория, счёт и тип в одном ряду, значение выбирается
+            на листе. Выбор счёта свой у Истории и с выбранным на Обзоре
+            счётом не связан. Месяца в ряду нет - его выбирает заголовок
+            месяца в самом списке. */}
+        <div className="no-scrollbar" role="group" aria-label="Фильтры" style={FILTER_ROW_STYLE}>
+          <HistoryFilterPill
+            kind="Категория"
+            label={historyCategory || 'Категория'}
+            active={Boolean(historyCategory)}
+            onOpen={() => setFilterSheet('category')}
+            onClear={() => setHistoryCategory(null)}
+          />
+          <HistoryFilterPill
+            kind="Счёт"
+            label={historyAccount ? accountName || 'Счёт' : 'Все счета'}
+            active={Boolean(historyAccount)}
+            onOpen={() => setFilterSheet('account')}
+            onClear={() => setHistoryAccount(null)}
+          />
+          <HistoryFilterPill
+            kind="Тип"
+            label={typeName || 'Любой тип'}
+            active={Boolean(typeName)}
+            onOpen={() => setFilterSheet('type')}
+            onClear={() => setHistoryType(null)}
+          />
         </div>
 
-        {/* Category Filter Chips */}
-        <div className="no-scrollbar" role="group" aria-label="Фильтр по категории" style={CHIP_ROW_STYLE}>
-          {categories.filter(c => !historyType || c.type === historyType).map(cat => (
-            <Chip
-              key={cat._id}
-              tone="solid"
-              selected={historyCategory === cat.name}
-              onClick={() => toggleCategory(cat.name)}
-              style={chipStyle(historyCategory === cat.name)}
-            >
-              {cat.name}
-            </Chip>
-          ))}
-        </div>
-
-        {(historyType || historyCategory) && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            {historyType && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: isIncome ? 'var(--color-positive-soft)' : 'var(--color-danger-soft)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid', borderColor: isIncome ? 'var(--color-positive-border-soft)' : 'var(--color-danger-border-faint)' }}>
-                <span style={{ fontSize: 'var(--text-sm)', color: isIncome ? 'var(--color-positive)' : 'var(--color-negative)' }}>
-                  Тип: <strong>{isIncome ? 'Доходы' : 'Расходы'}</strong>
-                </span>
-                <Button tone="text" size="sm" onClick={() => setHistoryType(null)} style={{ color: isIncome ? 'var(--color-positive)' : 'var(--color-negative)' }}>
-                  Сбросить <X size={14} strokeWidth={1.8} aria-hidden="true" />
-                </Button>
-              </div>
-            )}
-
-            {historyCategory && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--color-primary-soft)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-primary-border-soft)' }}>
-                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-primary)' }}>
-                  Категория: <strong>{historyCategory}</strong>
-                </span>
-                <Button tone="text" size="sm" onClick={() => setHistoryCategory(null)}>
-                  Сбросить <X size={14} strokeWidth={1.8} aria-hidden="true" />
-                </Button>
-              </div>
-            )}
+        {showSummary && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '0 var(--space-1)', fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+            <span>Найдено {operationsLabel(history.count)}</span>
+            <span style={{ whiteSpace: 'nowrap' }}>
+              Итого <strong style={{ color: 'var(--color-text-main)', fontWeight: 'var(--weight-strong)' }}>{formatMoney(historyTotal(groups), { sign: 'auto' })}</strong>
+            </span>
           </div>
         )}
       </div>
@@ -398,6 +421,37 @@ export default function HistoryScreen({
           </div>
         </div>
       </div>
+
+      {filterSheet === 'category' && (
+        <HistoryFilterSheet
+          title="Категория"
+          allLabel="Все категории"
+          options={categoryOptions}
+          value={historyCategory}
+          onPick={value => pickFilter(setHistoryCategory, value)}
+          onClose={() => setFilterSheet(null)}
+        />
+      )}
+      {filterSheet === 'account' && (
+        <HistoryFilterSheet
+          title="Счёт"
+          allLabel="Все счета"
+          options={accountOptions}
+          value={historyAccount}
+          onPick={value => pickFilter(setHistoryAccount, value)}
+          onClose={() => setFilterSheet(null)}
+        />
+      )}
+      {filterSheet === 'type' && (
+        <HistoryFilterSheet
+          title="Тип операции"
+          allLabel="Любой тип"
+          options={TYPE_OPTIONS}
+          value={historyType}
+          onPick={pickType}
+          onClose={() => setFilterSheet(null)}
+        />
+      )}
     </div>
   );
 }

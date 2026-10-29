@@ -55,17 +55,21 @@ test('switching the filter A -> B -> A asks for A only once', async ({ page }) =
   await goTo(page, 'История');
   await expect(page.getByText('Продукты на неделю', { exact: true })).toBeVisible();
   expect(requested).toHaveLength(1);
-  const accounts = page.getByRole('group', { name: 'Фильтр по счёту' });
+  // Счёт выбирается на листе: кнопка «Все счета» (или с выбранным счётом) его открывает.
+  const pickAccount = async (name) => {
+    await page.getByRole('group', { name: 'Фильтры' }).getByRole('button', { name: /^(Все счета|Счёт: .*)$/ }).click();
+    await page.getByRole('radiogroup', { name: 'Счёт' }).getByRole('radio', { name }).click();
+  };
 
-  await accounts.getByRole('button', { name: 'Наличные' }).click();
+  await pickAccount('Наличные');
   await expect(page.getByText('Кофе', { exact: true })).toBeVisible();
   await expect(page.getByText('Продукты на неделю', { exact: true })).toHaveCount(0);
   expect(requested).toHaveLength(2);
 
   // Назад к «Все счета» и снова на «Наличные»: оба списка уже в памяти.
-  await accounts.getByRole('button', { name: 'Все счета' }).click();
+  await pickAccount('Все счета');
   await expect(page.getByText('Продукты на неделю', { exact: true })).toBeVisible();
-  await accounts.getByRole('button', { name: 'Наличные' }).click();
+  await pickAccount('Наличные');
   await expect(page.getByText('Кофе', { exact: true })).toBeVisible();
   await expect(page.getByText('Продукты на неделю', { exact: true })).toHaveCount(0);
   expect(requested).toHaveLength(2);

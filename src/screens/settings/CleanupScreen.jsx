@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { BrushCleaning, CircleCheck } from 'lucide-react';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
+import Checkbox from '../../components/ui/Checkbox';
 import EmptyState from '../../components/ui/EmptyState';
 import InlineAlert from '../../components/ui/InlineAlert';
 import ScreenHeader from '../../components/ui/ScreenHeader';
@@ -37,6 +38,7 @@ import {
 
 const stackStyle = { display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' };
 const mutedText = { margin: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-md)' };
+const hintText = { ...mutedText, padding: '0 var(--space-1)', fontSize: 'var(--text-xs)', lineHeight: 1.4 };
 const sectionHeadingStyle = {
     margin: 0,
     padding: '0 var(--space-1)',
@@ -44,47 +46,35 @@ const sectionHeadingStyle = {
     fontWeight: 'var(--weight-label)',
     color: 'var(--color-text-muted)',
 };
+// Белые карточки списков: тон по умолчанию (плоская белая, без рамки), как
+// карточки Корзины, и их же скругление 20px.
+const cardStyle = { borderRadius: 'var(--radius-lg)' };
 const dividerStyle = { borderTop: '1px solid var(--color-border-subtle)' };
 
-// Флажок с подписью: настоящий input внутри label, нажимается вся строка
-// (не меньше 44px). mixed рисует «часть выбрана» у общего флажка блока.
+// Флажок с подписью: нажимается вся строка (label), высота не меньше 52px.
+// Сам флажок - ui/Checkbox: настоящий input и нарисованный квадрат. mixed
+// рисует «часть выбрана» у общего флажка блока. Строки вариантов сдвинуты
+// (indent) так, чтобы их текст начинался правее квадрата строки компании.
 function CheckRow({ checked, mixed = false, onChange, count, indent = false, children }) {
-    const inputRef = useRef(null);
-    useEffect(() => {
-        if (inputRef.current) inputRef.current.indeterminate = mixed;
-    }, [mixed]);
-
     return (
         <label
             style={{
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: 'var(--space-3)',
-                minHeight: '44px',
-                padding: `var(--space-3) var(--space-4)`,
-                paddingLeft: indent ? 'var(--space-8)' : 'var(--space-4)',
+                minHeight: '52px',
+                padding: '14px var(--space-4)',
+                paddingLeft: indent ? 'calc(var(--space-4) + 22px + var(--space-3))' : 'var(--space-4)',
                 boxSizing: 'border-box',
                 cursor: 'pointer',
             }}
         >
-            <input
-                ref={inputRef}
-                type="checkbox"
-                checked={checked}
-                onChange={onChange}
-                style={{
-                    flexShrink: 0,
-                    width: '22px',
-                    height: '22px',
-                    margin: '1px 0 0',
-                    accentColor: 'var(--color-primary)',
-                }}
-            />
+            <Checkbox checked={checked} mixed={mixed} onChange={onChange} style={{ marginTop: '1px' }} />
             <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-0-5)' }}>
                 {children}
             </span>
             {count != null && (
-                <span style={{ flexShrink: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-base)', whiteSpace: 'nowrap', paddingTop: '2px' }}>
+                <span style={{ flexShrink: 0, color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)', whiteSpace: 'nowrap', paddingTop: '2px' }}>
                     {operationsLabel(count)}
                 </span>
             )}
@@ -109,7 +99,7 @@ function ProposalLabel({ proposal, withNote = false }) {
 function CompanyBlock({ group, selected, onToggleGroup, onToggleKey }) {
     const state = selectionState(selected, group.keys);
     return (
-        <Card as="div" tone="plain" padding="none" role="group" aria-label={`Компания ${group.name}`} style={{ overflow: 'hidden' }}>
+        <Card as="div" padding="none" role="group" aria-label={`Компания ${group.name}`} style={{ ...cardStyle, overflow: 'hidden' }}>
             <CheckRow checked={state === 'all'} mixed={state === 'some'} onChange={() => onToggleGroup(group.keys)} count={group.count}>
                 <span style={{ ...wrap, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)' }}>
                     {group.name}
@@ -155,7 +145,7 @@ function UndoBlock({ undo, variant, today, lastApply, pending, confirming, setCo
     const busy = Boolean(pending);
 
     return (
-        <Card as="section" tone="plain" aria-label="Прошлая чистка" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <Card as="section" aria-label="Прошлая чистка" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
             {variant === 'main' ? (
                 <>
                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)' }}>
@@ -265,15 +255,15 @@ function Review({ run, today, pending, actionError, confirming, setConfirming, o
                             tone="text"
                             size="sm"
                             onClick={() => update(toggleKeys(selected, noteKeys))}
-                            style={{ minHeight: '44px', fontSize: 'var(--text-base)' }}
+                            style={{ minHeight: '44px', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-label)' }}
                         >
                             {allNotes ? 'Снять все' : 'Выбрать все'}
                         </Button>
                     </div>
-                    <p style={{ ...mutedText, padding: '0 var(--space-1)', fontSize: 'var(--text-base)' }}>
+                    <p style={{ ...hintText, marginTop: 'calc(-1 * var(--space-2))' }}>
                         У этих операций не будет компании, текст останется комментарием
                     </p>
-                    <Card tone="plain" padding="none" style={{ overflow: 'hidden' }}>
+                    <Card padding="none" style={{ ...cardStyle, overflow: 'hidden' }}>
                         {review.notes.map((proposal, index) => (
                             <div key={proposal.key} style={index > 0 ? dividerStyle : undefined}>
                                 <CheckRow checked={selected.has(proposal.key)} onChange={() => update(toggleKey(selected, proposal.key))} count={proposal.count}>
@@ -288,10 +278,10 @@ function Review({ run, today, pending, actionError, confirming, setConfirming, o
             {review.skipped.length > 0 && (
                 <section aria-labelledby="cleanup-skipped" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
                     <h2 id="cleanup-skipped" style={sectionHeadingStyle}>Без ответа</h2>
-                    <p style={{ ...mutedText, padding: '0 var(--space-1)', fontSize: 'var(--text-base)' }}>
+                    <p style={hintText}>
                         Claude не ответил по этим описаниям, их можно разобрать позже
                     </p>
-                    <Card as="ul" tone="plain" padding="none" style={{ listStyle: 'none', overflow: 'hidden' }}>
+                    <Card as="ul" padding="none" style={{ ...cardStyle, listStyle: 'none', overflow: 'hidden' }}>
                         {review.skipped.map((proposal, index) => (
                             <li
                                 key={proposal.key}
@@ -357,7 +347,7 @@ function Review({ run, today, pending, actionError, confirming, setConfirming, o
                                 </div>
                             </div>
                         ) : (
-                            <Button block disabled={operations === 0 || busy} onClick={() => setConfirming('apply')}>
+                            <Button size="lg" block disabled={operations === 0 || busy} onClick={() => setConfirming('apply')} style={{ minHeight: '54px' }}>
                                 {`Применить к ${operationsLabel(operations, 'dative')}`}
                             </Button>
                         )}
@@ -484,7 +474,7 @@ export default function CleanupScreen({ state, onBack, onRefresh, onStart, onApp
     } else if (run?.status === 'submitted') {
         body = (
             <>
-                <Card tone="plain" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                <Card style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                     <p style={{ margin: 0, fontSize: 'var(--text-lg)' }}>
                         Claude разбирает описания. Обычно это занимает до часа. Можно закрыть приложение и вернуться позже.
                     </p>
@@ -501,7 +491,7 @@ export default function CleanupScreen({ state, onBack, onRefresh, onStart, onApp
             <>
                 {undoBlock('main')}
                 {legacyCount > 0 && (
-                    <Card tone="plain" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                    <Card style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                         <p style={{ margin: 0, fontSize: 'var(--text-lg)' }}>{`Осталось ${operationsLabel(legacyCount)} без компании`}</p>
                         {startButton()}
                     </Card>
@@ -523,7 +513,7 @@ export default function CleanupScreen({ state, onBack, onRefresh, onStart, onApp
     } else {
         body = (
             <>
-                <Card tone="plain" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+                <Card style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
                     {run?.status === 'failed' && (
                         <p role="status" style={{ margin: 0, color: 'var(--color-danger-text)', fontSize: 'var(--text-md)', fontWeight: 'var(--weight-label)' }}>
                             Прошлый разбор не удался
