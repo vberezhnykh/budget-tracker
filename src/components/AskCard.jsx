@@ -13,7 +13,7 @@ export default function AskCard({ onAsk }) {
     <Card
       as="section"
       aria-label="Вопрос к своим данным"
-      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', borderRadius: 'var(--radius-lg)' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}
     >
       <button
         type="button"

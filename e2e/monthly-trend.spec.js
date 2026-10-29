@@ -181,7 +181,7 @@ test.describe('Analytics screen (mobile)', () => {
     expect(box.x + box.width).toBeLessThanOrEqual(320);
     await expect(page.getByText('Прогноз на 30 сентября')).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Категории' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Итоги' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Доходы и расходы' })).toBeVisible();
 
     // Страница не шире экрана ни в одной точке прокрутки.
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);

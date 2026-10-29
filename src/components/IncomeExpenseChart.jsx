@@ -8,14 +8,51 @@ import './MonthCharts.css';
 // Доход и расход по месяцам парами столбцов на одной шкале: видно, как они
 // соотносятся в каждом месяце. Цифры выбранного месяца стоят над графиком и
 // заодно служат легендой; они в целых евро, чтобы три суммы помещались в
-// строку и на узком телефоне (точные - в «Итогах» и подписях столбцов). Месяцы те же, что у «По месяцам», и нажатие так же
-// выбирает месяц всего экрана. Переводы и операции «не в статистике» в эти
-// итоги не входят (их отсекает сервер, см. computeMonthlyTotalsByAccount).
+// строку и на узком телефоне (точные - в подписях столбцов). Под цифрами -
+// сравнение расхода с прошлым месяцем (только в режиме «месяц»): отдельной
+// карточки «Итоги» у месяца нет. Месяцы те же, что у «По месяцам», и нажатие так же выбирает
+// месяц всего экрана. Переводы и операции «не в статистике» в эти итоги не
+// входят (их отсекает сервер, см. computeMonthlyTotalsByAccount).
 
 // Запас сверху шкалы, чтобы самый высокий столбец не упирался в край.
 const HEADROOM = 1.1;
 
-export default function IncomeExpenseChart({ series = [], selectedMonth, onSelectMonth, timeRange = 'month' }) {
+// Расход против прошлого месяца. Эта строка отвечает на вопрос разбора
+// («стало больше или меньше»), а не на вопрос «сколько можно ещё потратить».
+function ExpenseComparison({ comparison }) {
+    return (
+        <div
+            data-account-value
+            data-testid="expense-comparison"
+            style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--space-0-5)',
+                margin: '0 0 var(--space-4)',
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--color-surface-muted)',
+            }}
+        >
+            {comparison.percent === null ? (
+                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
+                    В прошлом месяце трат не было
+                </span>
+            ) : (
+                <>
+                    <span style={{ fontSize: 'var(--text-md)', fontWeight: 'var(--weight-strong)', color: comparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
+                        {comparison.diff > 0 ? '↑' : '↓'} {Math.abs(comparison.percent)}% к прошлому месяцу
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
+                        {comparison.label}
+                    </span>
+                </>
+            )}
+        </div>
+    );
+}
+
+export default function IncomeExpenseChart({ series = [], selectedMonth, onSelectMonth, timeRange = 'month', expenseComparison = null }) {
     const { scrollRef, monthRef, handleClick, handleKeyDown, showYear } = useMonthTimeline({ series, selectedMonth, onSelectMonth });
 
     if (series.length === 0) return null;
@@ -56,6 +93,10 @@ export default function IncomeExpenseChart({ series = [], selectedMonth, onSelec
                 </dl>
             )}
 
+            {/* Сравнение относится к месяцу периода, а им в режиме «месяц» и
+                есть выбранный: в других режимах AnalyticsView его не передаёт. */}
+            {selected && timeRange === 'month' && expenseComparison && <ExpenseComparison comparison={expenseComparison} />}
+
             <div data-account-value className="monthly-trend__scroll" data-testid="income-expense-scroll" ref={scrollRef}>
                 <div className="monthly-trend__track" style={{ width: `${Math.max(100, (series.length / visible) * 100)}%` }}>
                     {series.map((month, index) => {
@@ -74,7 +115,7 @@ export default function IncomeExpenseChart({ series = [], selectedMonth, onSelec
                                 onClick={handleClick(month.month)}
                                 onKeyDown={event => handleKeyDown(event, index)}
                             >
-                                <span className="monthly-trend__plot month-chart__plot" aria-hidden="true">
+                                <span className="monthly-trend__plot" aria-hidden="true">
                                     <span className="month-chart__pair">
                                         <span
                                             data-testid="income-bar"

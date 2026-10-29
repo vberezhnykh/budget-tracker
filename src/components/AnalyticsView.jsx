@@ -27,7 +27,8 @@ function TotalsRow({ label, value, color, divider }) {
 
 // Содержимое вкладки «Аналитика» под заголовком экрана, сверху вниз: темп
 // трат (только месяц), категории, расход по месяцам, доходы и расходы по
-// месяцам, деньги в наличии по месяцам, итоги периода. Заголовок
+// месяцам, деньги в наличии по месяцам, итоги периода (только год и всё
+// время: у месяца те же цифры стоят над графиком «Доходы и расходы»). Заголовок
 // с выбором периода живёт в AnalyticsScreen, вне обёртки ожидания: период
 // должен меняться и пока цифры грузятся.
 export default function AnalyticsView({
@@ -56,6 +57,9 @@ export default function AnalyticsView({
     let saldoColor = 'var(--color-text-main)';
     if (saldo < 0) saldoColor = 'var(--color-negative)';
     else if (saldo > 0) saldoColor = 'var(--color-positive)';
+
+    // Год берётся из выбранного месяца: у года он и есть выбор периода.
+    const totalsTitle = timeRange === 'year' ? `Итоги за ${selectedMonth.slice(0, 4)}` : 'Итоги за всё время';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', minWidth: 0 }}>
@@ -95,7 +99,13 @@ export default function AnalyticsView({
                 forecast={typicalMonth?.today?.forecast ?? null}
             />
 
-            <IncomeExpenseChart series={series} selectedMonth={selectedMonth} onSelectMonth={onSelectMonth} timeRange={timeRange} />
+            <IncomeExpenseChart
+                series={series}
+                selectedMonth={selectedMonth}
+                onSelectMonth={onSelectMonth}
+                timeRange={timeRange}
+                expenseComparison={timeRange === 'month' ? expenseComparison : undefined}
+            />
 
             {/* У выбранного на Обзоре счёта это его остаток, а не капитал. */}
             <BalanceTrend
@@ -106,36 +116,19 @@ export default function AnalyticsView({
                 title={accountSelected ? 'Остаток счёта' : 'Деньги в наличии'}
             />
 
-            <Card as="section" padding="lg">
-                <h2 style={{ ...SECTION_TITLE_STYLE, marginBottom: 'var(--space-2)' }}>Итоги</h2>
-                <div>
-                    <TotalsRow label="Доход" value={formatMoney(periodStats.income, { sign: 'auto' })} color="var(--color-positive)" />
-                    <TotalsRow label="Расход" value={formatMoney(expenseAbs, { sign: 'minus' })} color="var(--color-text-main)" divider />
-                    <TotalsRow label="Сальдо" value={formatMoney(saldo, { sign: 'auto' })} color={saldoColor} divider />
-                </div>
-                {/* Расход против прошлого месяца. Эта строка отвечает на
-                    вопрос разбора («стало больше или меньше»), а не на
-                    вопрос «сколько можно ещё потратить». Сравнивать с
-                    «прошлым месяцем» имеет смысл только когда период - месяц. */}
-                {timeRange === 'month' && expenseComparison && (
-                    <div data-account-value style={{ marginTop: 'var(--space-3)', paddingTop: 'var(--space-3)', borderTop: '1px solid var(--color-border-subtle)' }}>
-                        {expenseComparison.percent === null ? (
-                            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-                                В прошлом месяце трат не было
-                            </div>
-                        ) : (
-                            <>
-                                <div style={{ fontSize: 'var(--text-base)', fontWeight: 'var(--weight-strong)', color: expenseComparison.diff > 0 ? 'var(--color-negative)' : 'var(--color-positive)' }}>
-                                    {expenseComparison.diff > 0 ? '↑' : '↓'} {Math.abs(expenseComparison.percent)}% к прошлому месяцу
-                                </div>
-                                <div style={{ fontSize: 'var(--text-2xs)', color: 'var(--color-text-muted)', marginTop: 'var(--space-1)' }}>
-                                    {expenseComparison.label}
-                                </div>
-                            </>
-                        )}
+            {/* У месяца итоги не нужны: доход, расход и сальдо выбранного месяца
+                уже стоят над графиком «Доходы и расходы», там же сравнение с
+                прошлым месяцем. Карточка остаётся для года и всего времени. */}
+            {timeRange !== 'month' && (
+                <Card as="section" padding="lg">
+                    <h2 style={{ ...SECTION_TITLE_STYLE, marginBottom: 'var(--space-2)' }}>{totalsTitle}</h2>
+                    <div>
+                        <TotalsRow label="Доход" value={formatMoney(periodStats.income, { sign: 'auto' })} color="var(--color-positive)" />
+                        <TotalsRow label="Расход" value={formatMoney(expenseAbs, { sign: 'minus' })} color="var(--color-text-main)" divider />
+                        <TotalsRow label="Сальдо" value={formatMoney(saldo, { sign: 'auto' })} color={saldoColor} divider />
                     </div>
-                )}
-            </Card>
+                </Card>
+            )}
         </div>
     );
 }

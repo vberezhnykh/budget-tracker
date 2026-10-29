@@ -56,12 +56,13 @@ export default function MonthlyTrend({ series = [], selectedMonth, onSelectMonth
                         const isOver = showLimit && month.expense > limit;
                         const isCurrent = month.month === currentMonth;
                         const ghost = hasGhost && isCurrent;
-                        // Цвет столбца: выбранный - акцент; за лимитом - тревожный;
-                        // остальные - серые. Выбор важнее превышения: он отвечает на
-                        // вопрос «какой месяц я сейчас смотрю».
-                        const barColor = isSelected
-                            ? 'var(--color-primary)'
-                            : isOver ? 'var(--color-negative)' : 'var(--color-control-off)';
+                        // Цвет столбца: за лимитом - тревожный; у идущего месяца с
+                        // прогнозом - акцент, одного семейства с пунктирным контуром;
+                        // остальные - серые. Выбранный месяц столбцом не выделяется:
+                        // его отмечает светлое поле за столбцом (см. MonthlyTrend.css).
+                        let barColor = 'var(--color-control-off)';
+                        if (isOver) barColor = 'var(--color-negative)';
+                        else if (ghost) barColor = 'var(--color-primary)';
                         const label = `${formatMonthName(month.month)} ${month.year}: расход ${formatMoney(month.expense)}`
                             + (ghost ? `, прогноз ${formatMoney(ghostForecast, { whole: true })}` : '')
                             + (isOver ? ', лимит превышен' : '');

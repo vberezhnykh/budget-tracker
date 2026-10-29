@@ -75,6 +75,18 @@ describe('OverviewScreen empty states', () => {
 
             expect(screen.queryByTestId('previous-month-row')).not.toBeInTheDocument();
         });
+
+        it('is hidden while the month review card is shown, and back once it is gone', () => {
+            const monthReview = { month: '2026-10', headline: 'Октябрь: как обычно', points: [] };
+            const { rerender } = render(<OverviewScreen {...baseProps} monthReview={monthReview} />);
+
+            expect(screen.getByTestId('month-review-card')).toBeInTheDocument();
+            expect(screen.queryByTestId('previous-month-row')).not.toBeInTheDocument();
+
+            rerender(<OverviewScreen {...baseProps} monthReview={null} />);
+            expect(screen.queryByTestId('month-review-card')).not.toBeInTheDocument();
+            expect(screen.getByTestId('previous-month-row')).toHaveTextContent('Октябрь закрыт: €6.890 из €7.000');
+        });
     });
 
     describe('empty recent operations', () => {
@@ -124,6 +136,24 @@ describe('OverviewScreen empty states', () => {
             const accounts = screen.getByRole('heading', { name: 'Счета' }).closest('section');
             expect(card.compareDocumentPosition(accounts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
             expect(card).toHaveStyle({ marginBottom: 'var(--space-6)' });
+        });
+
+        it('puts the previous month expense and the limit into the label', () => {
+            render(<OverviewScreen {...baseProps} monthReview={monthReview} />);
+
+            expect(screen.getByText('Итоги октября · €6.890 из €7.000')).toBeInTheDocument();
+        });
+
+        it('leaves out the limit for a single account', () => {
+            render(<OverviewScreen {...baseProps} selectedAccount="cash" monthReview={monthReview} />);
+
+            expect(screen.getByText('Итоги октября · €6.890')).toBeInTheDocument();
+        });
+
+        it('leaves the label bare when the review is not for the previous month of the shown period', () => {
+            render(<OverviewScreen {...baseProps} monthReview={{ ...monthReview, month: '2026-09' }} />);
+
+            expect(screen.getByText('Итоги сентября')).toBeInTheDocument();
         });
 
         it('passes the dismiss and category taps up', () => {

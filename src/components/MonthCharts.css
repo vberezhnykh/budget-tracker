@@ -15,12 +15,10 @@
 .month-chart__stats dd { margin: var(--space-0-5) 0 0; font-size: var(--text-lg); font-weight: var(--weight-strong); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .month-chart__key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
 .month-chart__key--income, .month-chart__bar--income { background: var(--color-positive); }
-.month-chart__key--expense, .month-chart__bar--expense { background: var(--color-primary); }
-
-/* Выбранный месяц подсвечен полем за столбцами: цвет самих столбцов занят
-   под доход и расход. */
-.month-chart__plot { border-radius: var(--radius-sm) var(--radius-sm) 0 0; }
-.monthly-trend__month[aria-pressed="true"] .month-chart__plot { background: var(--color-primary-soft); }
+.month-chart__key--expense, .month-chart__bar--expense { background: var(--color-text-main); }
+/* Синий на экране «Аналитика» значит только «выбранный месяц» (светлое поле
+   за столбцами, см. MonthlyTrend.css), поэтому расход тёмный, а не акцентный.
+   Исключение - прогноз идущего месяца в «По месяцам»: он синий пунктиром. */
 
 /* Пара столбцов растёт из общей базовой линии, между ними 2px зазора. */
 .month-chart__pair { display: flex; align-items: flex-end; gap: 2px; height: 100%; width: min(26px, 70%); }
@@ -34,9 +32,11 @@
    бы как ноль. */
 .balance-trend__plot { border-bottom-color: transparent; }
 
-/* SVG занимает поле графика над подписями и жестов не перехватывает. */
+/* SVG занимает поле графика над подписями и жестов не перехватывает. Он лежит
+   выше полей месяцев (z-index), иначе выбранное поле закрасило бы линию. */
 .balance-trend__lines {
     position: absolute;
+    z-index: 1;
     left: 0;
     top: 0;
     width: 100%;
@@ -48,9 +48,9 @@
 .balance-trend__area { fill: var(--color-primary); opacity: 0.08; }
 .balance-trend__zero { stroke: var(--color-border); stroke-width: 1px; stroke-dasharray: 4 3; }
 
-.balance-trend__guide { position: absolute; bottom: 0; left: 50%; width: 0; border-left: 1px dashed var(--color-primary-border); }
 .balance-trend__dot {
     position: absolute;
+    z-index: 2;
     left: 50%;
     width: 10px;
     height: 10px;

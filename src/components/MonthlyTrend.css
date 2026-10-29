@@ -47,7 +47,12 @@
     align-items: flex-end;
     height: var(--trend-plot-height);
     border-bottom: 1px solid var(--color-border);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
+/* Выбранный месяц у всех трёх графиков отмечен одинаково: светлое поле за
+   столбцами и жирная подпись. Цвет самих столбцов поля не касается. Линии
+   (лимит, остаток) лежат над полем за счёт z-index. */
+.monthly-trend__month[aria-pressed="true"] .monthly-trend__plot { background: var(--color-primary-soft); }
 .monthly-trend__bar {
     position: absolute;
     bottom: 0;

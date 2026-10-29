@@ -104,19 +104,20 @@ test.describe('Доходы, расходы и деньги в наличии (m
       await augustHeld;
       return route.fallback();
     });
-    const totals = page.getByRole('heading', { name: 'Итоги' });
-    await expect(totals).toBeVisible();
+    const flowsTitle = page.getByRole('heading', { name: 'Доходы и расходы' });
+    await expect(flowsTitle).toBeVisible();
 
     await balance.getByRole('button', { name: /^Август 2026:/ }).click();
     await expect(page.getByRole('button', { name: /^Период:/ })).toHaveAccessibleName('Период: Август 2026');
     await expect(balance.getByText('€9.100,00')).toBeVisible();
     // Прежние итоги остаются на месте, без скелетона и размытия.
     await expect(page.getByLabel('Загрузка итогов…')).toHaveCount(0);
-    await expect(totals).toBeVisible();
+    await expect(flowsTitle).toBeVisible();
     await expect(page.getByTestId('account-summary')).toHaveAttribute('aria-busy', 'false');
 
     releaseAugust();
-    await expect(page.getByText('−€1.800,00')).toBeVisible();
+    // Итоги месяца приходят отдельным ответом: категории августа - его.
+    await expect(page.getByRole('button', { name: /^Еда: €1\.800,00/ })).toBeVisible();
   });
 
   test('нажатый график стоит на месте, когда блоки над ним меняют высоту', async ({ page }) => {
@@ -160,7 +161,9 @@ test.describe('Доходы, расходы и деньги в наличии (m
     await expect(page.getByRole('button', { name: /^Период:/ })).toHaveAccessibleName('Период: Август 2026');
     releaseAugust();
     await expect(page.getByRole('button', { name: /^Кафе: €/ })).toBeVisible();
-    await expect.poll(async () => Math.round((await august.boundingBox()).y)).toBe(Math.round(before));
+    // Допуск 0.5px - тот же, что у holdScrollAnchor: он докручивает страницу
+    // лишь от этой разницы, а дробная высота строк выше графика оставляет её.
+    await expect.poll(async () => Math.abs((await august.boundingBox()).y - before)).toBeLessThanOrEqual(0.5);
   });
 
   test('у выбранного на Обзоре счёта - его остаток', async ({ page }) => {

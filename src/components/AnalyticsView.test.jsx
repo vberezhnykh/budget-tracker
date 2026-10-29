@@ -49,13 +49,13 @@ describe('AnalyticsView Component', () => {
         onOpenCategory: () => { }
     };
 
-    it('renders categories, the monthly trend and the totals when the period has spending', () => {
+    it('renders categories, the monthly trend and the income/expense chart when the period has spending', () => {
         render(<AnalyticsView {...baseProps} />);
 
         expect(screen.getByRole('heading', { name: 'Категории' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /^Food: €300,00/ })).toBeInTheDocument();
         expect(screen.getByRole('heading', { name: 'По месяцам' })).toBeInTheDocument();
-        expect(screen.getByRole('heading', { name: 'Итоги' })).toBeInTheDocument();
+        expect(screen.getByRole('heading', { name: 'Доходы и расходы' })).toBeInTheDocument();
         // Заголовок экрана с выбором периода живёт в AnalyticsScreen.
         expect(screen.queryByRole('button', { name: /^Период:/ })).not.toBeInTheDocument();
         expect(screen.queryByText(/Сводка за/)).not.toBeInTheDocument();
@@ -136,11 +136,32 @@ describe('AnalyticsView Component', () => {
         });
     });
 
-    describe('totals', () => {
-        const totals = () => within(screen.getByRole('heading', { name: 'Итоги' }).closest('section'));
+    describe('totals card', () => {
+        const totals = () => within(screen.getByRole('heading', { name: /^Итоги/ }).closest('section'));
 
-        it('shows income with a plus, expense with a minus, and the signed balance', () => {
+        it('is absent for a month: no «Итоги» heading, the figures live in the income/expense chart', () => {
             render(<AnalyticsView {...baseProps} />);
+
+            expect(screen.queryByRole('heading', { name: /^Итоги/ })).not.toBeInTheDocument();
+            const chart = within(screen.getByRole('heading', { name: 'Доходы и расходы' }).closest('section'));
+            expect(chart.getByText('Сальдо')).toBeInTheDocument();
+            expect(chart.getByText('+€600')).toBeInTheDocument();
+        });
+
+        it('is titled with the selected year for a year', () => {
+            render(<AnalyticsView {...baseProps} timeRange="year" />);
+
+            expect(screen.getByRole('heading', { name: 'Итоги за 2026' })).toBeInTheDocument();
+        });
+
+        it('is titled «за всё время» for all time', () => {
+            render(<AnalyticsView {...baseProps} timeRange="lifetime" />);
+
+            expect(screen.getByRole('heading', { name: 'Итоги за всё время' })).toBeInTheDocument();
+        });
+
+        it.each(['year', 'lifetime'])('shows income with a plus, expense with a minus, and the signed balance for %s', (timeRange) => {
+            render(<AnalyticsView {...baseProps} timeRange={timeRange} />);
 
             expect(totals().getByText('+€1.000,00')).toBeInTheDocument();
             expect(totals().getByText('−€400,00')).toBeInTheDocument();
@@ -148,40 +169,59 @@ describe('AnalyticsView Component', () => {
         });
 
         it('paints a negative balance in the negative colour and a positive one in the positive colour', () => {
-            const { rerender } = render(<AnalyticsView {...baseProps} periodStats={{ ...basePeriodStats, income: 100, expense: -400 }} />);
+            const { rerender } = render(<AnalyticsView {...baseProps} timeRange="year" periodStats={{ ...basePeriodStats, income: 100, expense: -400 }} />);
 
             expect(totals().getByText('−€300,00')).toHaveStyle({ color: 'var(--color-negative)' });
 
-            rerender(<AnalyticsView {...baseProps} />);
+            rerender(<AnalyticsView {...baseProps} timeRange="year" />);
             expect(totals().getByText('+€600,00')).toHaveStyle({ color: 'var(--color-positive)' });
-        });
-
-        it('states the change of the expense against last month with the date', () => {
-            render(<AnalyticsView {...baseProps} />);
-
-            const up = totals().getByText('↑ 14% к прошлому месяцу');
-            expect(up).toHaveStyle({ color: 'var(--color-negative)' });
-            expect(totals().getByText('на 15 декабря было €350,00')).toBeInTheDocument();
-        });
-
-        it('paints a decrease in the positive colour', () => {
-            render(<AnalyticsView {...baseProps} expenseComparison={{ previous: 500, diff: -100, percent: -20, label: 'x' }} />);
-
-            expect(totals().getByText('↓ 20% к прошлому месяцу')).toHaveStyle({ color: 'var(--color-positive)' });
-        });
-
-        it('says there was no spending last month instead of a percentage', () => {
-            render(<AnalyticsView {...baseProps} expenseComparison={{ previous: 0, diff: 400, percent: null, label: 'x' }} />);
-
-            expect(totals().getByText('В прошлом месяце трат не было')).toBeInTheDocument();
-            expect(totals().queryByText(/к прошлому месяцу/)).not.toBeInTheDocument();
         });
 
         it('has no month comparison for the year or all time', () => {
             render(<AnalyticsView {...baseProps} timeRange="year" />);
 
-            expect(totals().queryByText(/к прошлому месяцу/)).not.toBeInTheDocument();
-            expect(totals().getByText('+€1.000,00')).toBeInTheDocument();
+            expect(screen.queryByText(/к прошлому месяцу/)).not.toBeInTheDocument();
+        });
+    });
+
+    describe('expense comparison against last month', () => {
+        const chart = () => within(screen.getByRole('heading', { name: 'Доходы и расходы' }).closest('section'));
+
+        it('sits inside the income/expense chart with the date, painted negative when the spend grew', () => {
+            render(<AnalyticsView {...baseProps} />);
+
+            expect(chart().getByText('↑ 14% к прошлому месяцу')).toHaveStyle({ color: 'var(--color-negative)' });
+            expect(chart().getByText('на 15 декабря было €350,00')).toBeInTheDocument();
+        });
+
+        it('stands between the figures row and the bars', () => {
+            render(<AnalyticsView {...baseProps} />);
+
+            const box = screen.getByTestId('expense-comparison');
+            const stats = chart().getByText('Сальдо').closest('dl');
+            const bars = screen.getByTestId('income-expense-scroll');
+            expect(stats.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(box.compareDocumentPosition(bars) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            expect(box).toHaveStyle({ background: 'var(--color-surface-muted)' });
+        });
+
+        it('paints a decrease in the positive colour', () => {
+            render(<AnalyticsView {...baseProps} expenseComparison={{ previous: 500, diff: -100, percent: -20, label: 'x' }} />);
+
+            expect(chart().getByText('↓ 20% к прошлому месяцу')).toHaveStyle({ color: 'var(--color-positive)' });
+        });
+
+        it('says there was no spending last month instead of a percentage', () => {
+            render(<AnalyticsView {...baseProps} expenseComparison={{ previous: 0, diff: 400, percent: null, label: 'x' }} />);
+
+            expect(chart().getByText('В прошлом месяце трат не было')).toBeInTheDocument();
+            expect(chart().queryByText(/к прошлому месяцу/)).not.toBeInTheDocument();
+        });
+
+        it.each(['year', 'lifetime'])('is not shown for %s', (timeRange) => {
+            render(<AnalyticsView {...baseProps} timeRange={timeRange} />);
+
+            expect(screen.queryByTestId('expense-comparison')).not.toBeInTheDocument();
         });
     });
 

@@ -120,10 +120,7 @@ export default function BalanceTrend({ series = [], selectedMonth, onSelectMonth
                             >
                                 <span className="monthly-trend__plot balance-trend__plot" aria-hidden="true">
                                     {isSelected && hasBalance && (
-                                        <>
-                                            <span className="balance-trend__guide" style={{ height: `${ratio(month.balance) * 100}%` }} />
-                                            <span data-testid="balance-trend-dot" className="balance-trend__dot" style={{ bottom: `${ratio(month.balance) * 100}%` }} />
-                                        </>
+                                        <span data-testid="balance-trend-dot" className="balance-trend__dot" style={{ bottom: `${ratio(month.balance) * 100}%` }} />
                                     )}
                                 </span>
                                 <span className="monthly-trend__label" style={{ fontWeight: isSelected ? 'var(--weight-strong)' : 'var(--weight-text)', color: isSelected ? 'var(--color-text-main)' : undefined }}>

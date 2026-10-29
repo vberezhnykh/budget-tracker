@@ -36,6 +36,28 @@ describe('MonthReviewCard', () => {
         expect(screen.getByText('Итоги декабря')).toBeInTheDocument();
     });
 
+    it('adds the month expense and the limit to the label in whole euros', () => {
+        renderCard({ month: '2026-10', spent: 6890, limit: 7000 });
+
+        expect(screen.getByText('Итоги октября · €6.890 из €7.000')).toBeInTheDocument();
+    });
+
+    it('adds only the expense to the label without a usable limit', () => {
+        const { rerender } = renderCard({ month: '2026-10', spent: 6890, limit: null });
+        expect(screen.getByText('Итоги октября · €6.890')).toBeInTheDocument();
+
+        rerender(
+            <MonthReviewCard month="2026-10" spent={6890} limit={0} headline="h" points={points} onOpenCategory={() => { }} onDismiss={() => { }} />
+        );
+        expect(screen.getByText('Итоги октября · €6.890')).toBeInTheDocument();
+    });
+
+    it('keeps the bare label when the expense of that month is unknown', () => {
+        renderCard({ month: '2026-10', spent: null, limit: 7000 });
+
+        expect(screen.getByText('Итоги октября')).toBeInTheDocument();
+    });
+
     it('turns a point with a category into a button that reports the category', () => {
         const onOpenCategory = vi.fn();
         renderCard({ onOpenCategory });

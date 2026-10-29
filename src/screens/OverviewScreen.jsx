@@ -159,6 +159,7 @@ export default function OverviewScreen({
           plaque={plaque}
           previousMonth={previousMonth}
           onOpenPreviousMonth={onOpenPreviousMonth}
+          showPreviousMonth={!monthReview}
           onOpenHistory={onOpenHistory}
           valueKey={valueKey}
         />
@@ -167,6 +168,8 @@ export default function OverviewScreen({
       {monthReview && (
         <MonthReviewCard
           month={monthReview.month}
+          spent={previousMonth?.month === monthReview.month ? previousMonth.expense : null}
+          limit={heroLimit}
           headline={monthReview.headline}
           points={monthReview.points}
           onOpenCategory={onOpenMonthReviewCategory}

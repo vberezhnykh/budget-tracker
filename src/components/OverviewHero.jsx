@@ -123,6 +123,9 @@ export default function OverviewHero({
   // Нажатие на эту строку: onOpenPreviousMonth('2026-10'). Нет обработчика -
   // строка не кнопка.
   onOpenPreviousMonth,
+  // false прячет строку «закрыт»: пока на Обзоре стоит карточка «Итоги
+  // месяца», тот же итог (сумма из лимита) уже в её подписи.
+  showPreviousMonth = true,
   // Открывает Историю с фильтром: onOpenHistory('income' | 'expense').
   onOpenHistory,
   // Личность показанных цифр: «месяц + счёт». Пока она та же, новая сумма -
@@ -254,7 +257,7 @@ export default function OverviewHero({
         </div>
       )}
 
-      {isFreshMonth && previousMonth && (
+      {showPreviousMonth && isFreshMonth && previousMonth && (
         <PreviousMonthRow previousMonth={previousMonth} monthlyLimit={monthlyLimit} onOpen={onOpenPreviousMonth} />
       )}
 

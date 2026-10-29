@@ -124,12 +124,22 @@ describe('MonthlyTrend Component', () => {
     });
 
     describe('bar colours', () => {
-        it('the selected month is the accent, the others neutral grey', () => {
+        it('does not paint the selected month: its bar is grey like the others, the mark is the field and the bold label', () => {
             render(<MonthlyTrend series={half} selectedMonth="2025-12" onSelectMonth={() => { }} limit={null} />);
 
-            expect(barOf(/Декабрь 2025/)).toHaveStyle({ background: 'var(--color-primary)' });
+            expect(barOf(/Декабрь 2025/)).toHaveStyle({ background: 'var(--color-control-off)' });
             expect(barOf(/Ноябрь 2025/)).toHaveStyle({ background: 'var(--color-control-off)' });
             expect(barOf(/Январь 2026/)).toHaveStyle({ background: 'var(--color-control-off)' });
+            expect(screen.getByRole('button', { name: /^Декабрь 2025/ })).toHaveAttribute('aria-pressed', 'true');
+            expect(screen.getByText('дек')).toHaveStyle({ fontWeight: 'var(--weight-strong)' });
+            expect(screen.getByText('ноя')).toHaveStyle({ fontWeight: 'var(--weight-text)' });
+        });
+
+        it('the current month with the forecast outline is the accent, in the forecast family', () => {
+            render(<MonthlyTrend series={half} selectedMonth="2025-12" onSelectMonth={() => { }} limit={null} forecast={600} />);
+
+            expect(barOf(/Январь 2026/)).toHaveStyle({ background: 'var(--color-primary)' });
+            expect(barOf(/Декабрь 2025/)).toHaveStyle({ background: 'var(--color-control-off)' });
         });
 
         it('months above the limit are negative, those at or below it are grey', () => {
@@ -142,10 +152,10 @@ describe('MonthlyTrend Component', () => {
             expect(barOf(/Октябрь 2025/)).toHaveStyle({ background: 'var(--color-control-off)' });
         });
 
-        it('the selection wins over the over-limit colour', () => {
+        it('the selection does not hide the over-limit colour', () => {
             render(<MonthlyTrend series={half} selectedMonth="2025-11" onSelectMonth={() => { }} limit={450} />);
 
-            expect(barOf(/Ноябрь 2025/)).toHaveStyle({ background: 'var(--color-primary)' });
+            expect(barOf(/Ноябрь 2025/)).toHaveStyle({ background: 'var(--color-negative)' });
         });
 
         it('says in the name that the limit is exceeded', () => {
