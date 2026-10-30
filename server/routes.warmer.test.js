@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import mongoose from 'mongoose';
 import { connectTestDb, disconnectTestDb, clearCollections, loginAgent, tx, DB_HOOK_TIMEOUT } from './test/harness.js';
-import { createDashboardWarmer } from './dashboardWarmer.js';
+import { createDashboardWarmer, localDateIn } from './dashboardWarmer.js';
 import { computeDashboardJson, parseDashboardQuery } from './dashboardRequest.js';
 
 let app;
@@ -180,25 +180,29 @@ describe('смена суток: ответ на новый день готов 
 });
 
 describe('фоновое обновление с изменившимися данными', () => {
+    // Прогрев берет «сегодня» из настоящих часов в зоне клиента, поэтому
+    // запросы здесь идут с тем же днем, иначе ключи разойдутся на следующие сутки.
+    const TODAY = localDateIn(TZ, Date.now());
+    const MONTH = TODAY.slice(0, 7);
     const age = (ms) => { ledgerCache.peek().loadedAt -= ms; };
     const settle = () => new Promise(resolve => setTimeout(resolve, 400));
 
     it('после правки вне сервера ответ под новой версией готов к следующему запросу', async () => {
         appWarmer.start();
-        await bootstrap({ month: '2026-10', today: '2026-10-29' });
+        await bootstrap({ month: MONTH, today: TODAY });
         // Как скрипт из server/*.js: драйвером напрямую, кэш об этом не знает.
         await Transaction.collection.insertOne({
             title: 'скрипт', amount: 50, type: 'expense', category: 'Продукты', account: cardId, date: new Date('2026-10-21T00:00:00.000Z')
         });
         age(24 * 60 * 60 * 1000);
 
-        const stale = await bootstrap({ month: '2026-10', today: '2026-10-29' });
+        const stale = await bootstrap({ month: MONTH, today: TODAY });
         expect(cacheState(stale)).toBe('stale');
         expect(stale.body.dashboard.balances.total).toBe(900);
         await settle();
 
         const computes = responseMemo.stats().computes;
-        const fresh = await bootstrap({ month: '2026-10', today: '2026-10-29' });
+        const fresh = await bootstrap({ month: MONTH, today: TODAY });
         expect(cacheState(fresh)).toBe('hit');
         expect(memoState(fresh)).toBe('hit');
         expect(fresh.body.dashboard.balances.total).toBe(850);
@@ -207,7 +211,7 @@ describe('фоновое обновление с изменившимися да
 
     it('обычная запись через сервер ничего не греет: ответ считает следующий запрос', async () => {
         appWarmer.start();
-        await bootstrap({ month: '2026-10', today: '2026-10-29' });
+        await bootstrap({ month: MONTH, today: TODAY });
         const computes = responseMemo.stats().computes;
 
         const created = await agent.post('/api/transactions').send(tx({
@@ -217,7 +221,7 @@ describe('фоновое обновление с изменившимися да
         await settle();
 
         expect(responseMemo.stats().computes).toBe(computes);
-        const next = await bootstrap({ month: '2026-10', today: '2026-10-29' });
+        const next = await bootstrap({ month: MONTH, today: TODAY });
         expect(memoState(next)).toBe('miss');
         expect(next.body.dashboard.balances.total).toBe(890);
     });
@@ -226,7 +230,7 @@ describe('фоновое обновление с изменившимися да
         process.env.LEDGER_CACHE = 'off';
         try {
             appWarmer.start();
-            await bootstrap({ month: '2026-10', today: '2026-10-29' });
+            await bootstrap({ month: MONTH, today: TODAY });
 
             expect(appWarmer.trackedSets()).toEqual([]);
             appWarmer.warmAll();
