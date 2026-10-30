@@ -59,6 +59,10 @@ const TOAST_BOTTOM = NAV_HEIGHT + 8 + 16;
 // Второй тост (сообщение об ошибке над тостом «Операция в корзине») встаёт
 // выше первого на его высоту (52px) и зазор.
 const TOAST_STACK_STEP = 64;
+// Сколько только что сохранённых операций держим для показа в «Последних
+// операциях» до ответа сервера: одна вставка живёт до первого же ответа ленты,
+// так что несколько штук - это несколько быстрых записей подряд.
+const MAX_RECENT_INSERTS = 5;
 
 class DataLoadError extends Error {
   constructor(message) {
@@ -286,6 +290,17 @@ function App() {
   const screenRef = useRef(null);
   const statsKeyRef = useRef('');
   const [historyRevision, setHistoryRevision] = useState(0);
+  // Текущая ревизия ленты синхронно: запись должна знать, с каким номером уйдёт
+  // обновляющий запрос, раньше, чем React применит setState.
+  const historyRevisionRef = useRef(0);
+  // Только что сохранённые операции { saved, untilRevision } для «Последних
+  // операций» на Обзоре: строка видна, пока лента ревизии untilRevision не
+  // пришла (см. useRecentTransactions).
+  const [recentInserts, setRecentInserts] = useState([]);
+  const bumpHistoryRevision = () => {
+    historyRevisionRef.current += 1;
+    setHistoryRevision(historyRevisionRef.current);
+  };
   const [startupRequested, setStartupRequested] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [categories, setCategories] = useState([]);
@@ -316,7 +331,8 @@ function App() {
     dashboardReads.clear();
     setDashboardCache({});
     setIsExporting(false);
-    setHistoryRevision(value => value + 1);
+    bumpHistoryRevision();
+    setRecentInserts([]);
     history.reset();
     historyPositionRef.current = { key: null, top: 0, pending: true };
     setCategories([]);
@@ -518,7 +534,13 @@ function App() {
 
   // Summaries contain complete totals, never calculated from a partial page.
   // Loading the first history page does not block the dashboard.
-  const loadData = async ({ initial = !hasSnapshotRef.current, onlyStats = false, retry = false } = {}) => {
+  //
+  // historyBumped: ленту уже запросили (refreshInBackground сдвигает ревизию
+  // сразу после записи, параллельно снимку), и по завершении снимка второй раз
+  // ревизию двигать не надо. Всё остальное с historyRefreshNeededRef прежнее:
+  // он остаётся поднятым, пока снимок не загружен, а повтор с экрана ошибки
+  // (retry) historyBumped не передаёт и ленту перезапрашивает.
+  const loadData = async ({ initial = !hasSnapshotRef.current, onlyStats = false, retry = false, historyBumped = false } = {}) => {
     // A filter change during a post-write refresh must still finish the full
     // snapshot, rather than cancel it with a stats-only read.
     onlyStats = onlyStats && !historyRefreshNeededRef.current;
@@ -612,7 +634,7 @@ function App() {
         // enabled у useHistoryList): ревизия выросла бы зря и лента грузилась
         // бы второй раз. Повтор с экрана ошибки ленту перезапрашивает: ее
         // первый запрос мог сорваться вместе со снимком.
-        if (!initial || retry) setHistoryRevision(value => value + 1);
+        if ((!initial || retry) && !historyBumped) bumpHistoryRevision();
         historyRefreshNeededRef.current = false;
       }
       setLastSuccessfulSync(new Date());
@@ -658,8 +680,19 @@ function App() {
   // если обновление не удалось, loadData сам покажет плашку «не удалось
   // обновить» с повтором. catch здесь только страхует от unhandled rejection,
   // который глобальный репортер ошибок принял бы за сбой приложения.
-  const refreshInBackground = () => {
-    loadData({ initial: false }).catch(() => {});
+  //
+  // Лента запрашивается сразу, параллельно снимку, а не после него: запись уже
+  // на сервере, и ленте не нужны ни итоги, ни счета. Раньше ревизия росла
+  // только когда снимок загружен, и новая строка появлялась на секунду позже
+  // остального. saved - ответ POST новой операции: до прихода ленты Обзор
+  // показывает по нему строку (untilRevision - ревизия, с которой уйдёт лента).
+  const refreshInBackground = (saved = null) => {
+    if (saved) {
+      const untilRevision = historyRevisionRef.current + 1;
+      setRecentInserts(list => [...list, { saved, untilRevision }].slice(-MAX_RECENT_INSERTS));
+    }
+    bumpHistoryRevision();
+    loadData({ initial: false, historyBumped: true }).catch(() => {});
   };
 
   const beginAuthenticatedSession = () => {
@@ -1165,10 +1198,14 @@ function App() {
         if (session !== sessionGenerationRef.current) return false;
       }
       if (res.ok) {
+        // Тело нужно для строки в «Последних операциях»; не разобралось - строка
+        // придёт вместе с лентой, как раньше.
+        const saved = await res.json().catch(() => null);
+        if (session !== sessionGenerationRef.current) return false;
         // The write is already durable. If the following GET refresh fails,
         // loadData keeps the old snapshot and exposes a retry that performs
         // GETs only; returning true closes the form without duplicating POST.
-        refreshInBackground();
+        refreshInBackground(saved);
         return true;
       }
       // Причину показывает сама форма плашкой над кнопкой, поэтому общего
@@ -1825,6 +1862,7 @@ function App() {
             onOpenMonthReviewCategory={(category) => openHistoryFromAsk({ category, type: 'expense', month: monthReview.month })}
             request={apiFetch}
             historyRevision={historyRevision}
+            recentInserts={recentInserts}
             openEditModal={openEditModal}
             getAccountDisplay={getAccountDisplay}
             formatDate={formatDate}

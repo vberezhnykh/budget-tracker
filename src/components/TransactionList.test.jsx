@@ -326,3 +326,110 @@ describe('empty list', () => {
         expect(screen.getByText('Нет операций')).toBeInTheDocument();
     });
 });
+
+// Свежие строки «Последних операций»: появляются с анимацией один раз, при
+// монтировании, и не повторяют её, когда настоящий список подменяет строку.
+describe('fresh rows', () => {
+    const rows = [
+        expense,
+        { _id: 'two', amount: 5, type: 'expense', account: 'card', category: 'Кафе', date: day },
+    ];
+    const groupsOf = list => computePeriodData(transformTransactions(list), '2026-09').transactions;
+    const listProps = {
+        openEditModal: () => { },
+        getAccountDisplay: id => ACCOUNT_NAMES[id] || 'Мой счёт',
+        formatDate: date => `день ${date}`,
+    };
+    const rowEl = (container, id) => container.querySelector(`[data-history-item="${id}"]`);
+
+    let animate;
+    let animation;
+    beforeEach(() => {
+        animation = { cancel: vi.fn() };
+        animate = vi.fn(() => animation);
+        Element.prototype.animate = animate;
+    });
+    afterEach(() => {
+        delete Element.prototype.animate;
+        vi.unstubAllGlobals();
+    });
+
+    it('wraps only the fresh row for the tint and grows it from zero height', () => {
+        const { container } = render(<TransactionList {...listProps} groups={groupsOf(rows)} freshIds={new Set(['two'])} />);
+
+        expect(rowEl(container, 'two').parentElement).toHaveClass('tx-fresh');
+        expect(rowEl(container, 'one').parentElement).not.toHaveClass('tx-fresh');
+        expect(animate).toHaveBeenCalledTimes(1);
+        const [keyframes, options] = animate.mock.calls[0];
+        expect(animate.mock.contexts[0]).toBe(rowEl(container, 'two'));
+        expect(keyframes[0]).toMatchObject({ height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 });
+        expect(keyframes[1]).toMatchObject({ opacity: 1 });
+        expect(options).toMatchObject({ duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    });
+
+    it('clips the day card to its rounded corners while it holds a fresh row', () => {
+        const { container } = render(<TransactionList {...listProps} groups={groupsOf(rows)} freshIds={new Set(['two'])} />);
+
+        expect(container.querySelector('[data-history-date]').lastElementChild).toHaveStyle({ overflow: 'hidden' });
+    });
+
+    it('swaps in the server row without a second animation or a visible change', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(<TransactionList {...listProps} groups={groups} freshIds={new Set(['two'])} />);
+        const before = rowEl(container, 'two');
+        const html = before.innerHTML;
+
+        // Пришёл настоящий список: те же строки, но свежих больше нет.
+        rerender(<TransactionList {...listProps} groups={groupsOf(rows.map(row => ({ ...row })))} freshIds={new Set()} />);
+
+        expect(rowEl(container, 'two')).toBe(before);
+        expect(before.innerHTML).toBe(html);
+        // Подсветка доигрывает, а рост не повторяется.
+        expect(before.parentElement).toHaveClass('tx-fresh');
+        expect(container.querySelector('[data-history-date]').lastElementChild).toHaveStyle({ overflow: 'hidden' });
+        expect(animate).toHaveBeenCalledTimes(1);
+        expect(animation.cancel).not.toHaveBeenCalled();
+    });
+
+    it('does not animate rows that were already there when a later row arrives', () => {
+        const { container, rerender } = render(<TransactionList {...listProps} groups={groupsOf([expense])} freshIds={new Set()} />);
+        expect(animate).not.toHaveBeenCalled();
+
+        rerender(<TransactionList {...listProps} groups={groupsOf(rows)} freshIds={new Set(['two'])} />);
+
+        expect(animate).toHaveBeenCalledTimes(1);
+        expect(rowEl(container, 'one').parentElement).not.toHaveClass('tx-fresh');
+    });
+
+    it('animates a fresh split purchase as a whole', () => {
+        const parts = [
+            { _id: 'p1', amount: 10, type: 'expense', account: 'card', category: 'Еда', date: day, splitId: 'split_1', description: 'Магазин' },
+            { _id: 'p2', amount: 4, type: 'expense', account: 'card', category: 'Дом', date: day, splitId: 'split_1', description: 'Магазин' },
+        ];
+        const { container } = render(<TransactionList {...listProps} groups={groupsOf(parts)} freshIds={new Set(['split_1'])} />);
+
+        // Строка-шапка и части внутри одной обёртки; анимируется одна.
+        const head = rowEl(container, 'split_1');
+        expect(head.closest('.tx-fresh')).not.toBeNull();
+        expect(animate).toHaveBeenCalledTimes(1);
+        expect(screen.getByText(/Разделено/)).toBeInTheDocument();
+    });
+
+    it('skips the growth for reduced motion but keeps the tint', () => {
+        vi.stubGlobal('matchMedia', query => ({ matches: query.includes('prefers-reduced-motion'), media: query }));
+
+        const { container } = render(<TransactionList {...listProps} groups={groupsOf(rows)} freshIds={new Set(['two'])} />);
+
+        expect(animate).not.toHaveBeenCalled();
+        expect(rowEl(container, 'two').parentElement).toHaveClass('tx-fresh');
+    });
+
+    it('behaves exactly as before without freshIds (history)', () => {
+        const { container } = render(<TransactionList {...listProps} groups={groupsOf(rows)} />);
+
+        expect(container.querySelector('.tx-fresh')).toBeNull();
+        expect(animate).not.toHaveBeenCalled();
+        expect(rowEl(container, 'one').parentElement).toBe(container.querySelector('[data-history-date]').lastElementChild);
+        expect(container.querySelector('[data-history-date]').lastElementChild).not.toHaveStyle({ overflow: 'hidden' });
+    });
+});

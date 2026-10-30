@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowRight, EyeOff } from 'lucide-react';
 import TransactionIcon from './TransactionIcon';
 import { formatMoney } from '../utils/money';
@@ -149,6 +149,68 @@ const DAY_CARD_STYLE = {
     padding: '0 var(--space-4)',
 };
 
+// Карточка дня со свежей строкой: голубая подсветка строки тянется на всю
+// ширину карточки (за её внутренний отступ), и скруглённые углы карточки
+// должны её обрезать.
+const DAY_CARD_CLIPPED_STYLE = { ...DAY_CARD_STYLE, overflow: 'hidden' };
+
+const ENTER_MS = 240;
+const ENTER_EASING = 'cubic-bezier(.2,.8,.2,1)';
+
+// Строка (или разбитая покупка), которая только что сохранена и показана до
+// ответа сервера. Появляется плавно: высота растёт от нуля до своей, пока
+// проступает прозрачность, а за строкой на всю ширину карточки светится
+// голубая подсветка (TransactionList.css) и гаснет.
+//
+// Анимация - только при монтировании: `entering` запоминается один раз, и
+// когда настоящий список подменяет строку (тот же key, но fresh уже нет),
+// элемент остаётся тем же, подсветка доигрывает, а рост не повторяется.
+// Поэтому и разметка строки не зависит от текущего fresh. Рост - через Web
+// Animations на измеренной высоте (в CSS «auto» не анимируется); overflow:
+// hidden действует только пока он идёт, чтобы не срезать кольцо фокуса.
+// Подсветка живёт на обёртке вокруг строки, а не на ней самой: иначе
+// overflow: hidden на время роста срезал бы её по ширине строки.
+// При «уменьшить движение» рост и прозрачность пропускаются, остаётся только
+// плавное угасание цвета.
+function EnterBox({ fresh = false, children, ...props }) {
+    const [entering] = useState(fresh);
+    const ref = useRef(null);
+
+    useLayoutEffect(() => {
+        const element = ref.current;
+        if (!entering || !element || typeof element.animate !== 'function') return undefined;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
+        const { paddingTop, paddingBottom } = getComputedStyle(element);
+        const height = `${element.getBoundingClientRect().height}px`;
+        const animation = element.animate([
+            { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0, overflow: 'hidden' },
+            { height, paddingTop, paddingBottom, opacity: 1, overflow: 'hidden' },
+        ], { duration: ENTER_MS, easing: ENTER_EASING });
+        return () => animation.cancel();
+    }, [entering]);
+
+    if (!entering) return <div {...props}>{children}</div>;
+    return (
+        <div className="tx-fresh">
+            <div ref={ref} {...props}>{children}</div>
+        </div>
+    );
+}
+
+// Карточка дня. Обрезка по скруглению включается, когда в ней появилась
+// свежая строка, и остаётся до конца жизни карточки: если снять её, когда
+// настоящий список подменил строку, подсветка, не догоревшая до конца,
+// выскочила бы за углы.
+function DayCard({ hasFresh, children }) {
+    const [clipped, setClipped] = useState(hasFresh);
+    if (hasFresh && !clipped) setClipped(true);
+    return (
+        <div className={clipped ? 'tx-day-clipped' : undefined} style={clipped ? DAY_CARD_CLIPPED_STYLE : DAY_CARD_STYLE}>
+            {children}
+        </div>
+    );
+}
+
 export default function TransactionList({
     groups,
     selectedCategory,
@@ -161,6 +223,10 @@ export default function TransactionList({
     // (например, «Сбросить фильтры» в пустом месяце Истории).
     emptyIcon = null,
     emptyAction = null,
+    // Необязательный: Set с id строк, только что вставленных до ответа сервера
+    // (блок «Последние операции»). Эти строки появляются с анимацией. В Истории
+    // не передаётся, и список ведёт себя как раньше.
+    freshIds = null,
 }) {
     const dates = Object.keys(groups || {}).sort((a, b) => new Date(b) - new Date(a));
 
@@ -228,11 +294,12 @@ export default function TransactionList({
 
     // Строка-карточка (обычная операция и «шапка» разбитой): иконка,
     // название с подписью, сумма. Кнопка-подложка только у редактируемых.
-    const renderRow = (item, { index, title, parts, overlay, faded }) => {
+    const renderRow = (item, { index, title, parts, overlay, faded, fresh = false }) => {
         const { text, color } = amountFor(item);
         return (
-            <div
+            <EnterBox
                 key={item.id}
+                fresh={fresh}
                 data-history-item={item.id}
                 style={{
                     position: 'relative',
@@ -261,12 +328,12 @@ export default function TransactionList({
                 <div style={{ flexShrink: 0, fontSize: 'var(--text-lg)', fontWeight: 'var(--weight-strong)', whiteSpace: 'nowrap', color }}>
                     {text}
                 </div>
-            </div>
+            </EnterBox>
         );
     };
 
     const renderSplit = (item, index) => (
-        <div key={item.id} style={{ borderTop: index > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}>
+        <EnterBox key={item.id} fresh={Boolean(freshIds?.has(item.id))} style={{ borderTop: index > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}>
             {renderRow(item, {
                 index: 0,
                 title: `${displayName(item)} (Разделено)`,
@@ -320,7 +387,7 @@ export default function TransactionList({
                     </div>
                 ))}
             </div>
-        </div>
+        </EnterBox>
     );
 
     return (
@@ -341,7 +408,7 @@ export default function TransactionList({
                             )}
                         </div>
 
-                        <div style={DAY_CARD_STYLE}>
+                        <DayCard hasFresh={Boolean(freshIds) && items.some(item => freshIds.has(item.id))}>
                             {items.map((item, index) => {
                                 if (item.type === 'split_group') return renderSplit(item, index);
 
@@ -356,9 +423,10 @@ export default function TransactionList({
                                     parts: subtitleParts(item),
                                     overlay: isEditable && <RowOverlayButton label={rowLabel(item)} onClick={() => openEditModal(item)} />,
                                     faded: item.excludeFromStats,
+                                    fresh: Boolean(freshIds?.has(item.id)),
                                 });
                             })}
-                        </div>
+                        </DayCard>
                     </div>
                 );
             })}

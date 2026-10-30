@@ -21,3 +21,39 @@
   outline-offset: -2px;
   border-radius: 2px;
 }
+
+/* Только что сохранённая операция в «Последних операциях» (см. EnterBox).
+   Обёртка отделяет подсветку от самой строки, которая на время появления
+   обрезается по overflow. isolation - чтобы подсветка с z-index: -1 осталась
+   под содержимым строки, но над фоном карточки. Подсветка вылезает за обёртку
+   на внутренний отступ карточки дня (--space-4 в DAY_CARD_STYLE), и карточка
+   обрезает её по своим скруглённым углам. Держится треть времени и гаснет;
+   цвет возвращается к прозрачному сам, без fill-mode. */
+.tx-fresh {
+  position: relative;
+  isolation: isolate;
+}
+
+.tx-fresh::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--space-4));
+  right: calc(-1 * var(--space-4));
+  z-index: -1;
+  pointer-events: none;
+  animation: tx-fresh-tint 1400ms ease-out;
+}
+
+@keyframes tx-fresh-tint {
+  0%,
+  35% { background-color: var(--color-primary-tint); }
+  100% { background-color: transparent; }
+}
+
+/* Карточка дня обрезает подсветку, а вместе с ней и кольцо фокуса у первой и
+   последней строки: обводку кнопок строки прячем внутрь. */
+.tx-day-clipped button:focus-visible {
+  outline-offset: -2px;
+}

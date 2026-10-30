@@ -661,6 +661,135 @@ describe('App Integration Tests', () => {
         expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/transactions' && options?.method === 'POST')).toHaveLength(1);
     });
 
+    describe('recent operations right after a write', () => {
+        const recentRegion = () => within(screen.getByRole('region', { name: 'Последние операции' }));
+        const recentCalls = () => fetchMock.mock.calls.filter(([url]) => typeof url === 'string' && url.startsWith('/api/history?') && url.includes('limit=5'));
+        const savedDoc = {
+            _id: 'new-expense', amount: 25, type: 'expense', account: 'card',
+            category: 'Продукты', description: 'Новая покупка', date: '2026-01-15T00:00:00Z',
+        };
+
+        // Запись проходит сразу, а итоги и список «Последних операций» после
+        // неё держатся: ответ придёт только по команде теста.
+        const setup = () => {
+            currentCategories = [{ _id: 'food', name: 'Продукты', type: 'expense', order: 1 }];
+            const normalFetch = createFetchMock();
+            const held = { dashboard: null, recent: null, written: false };
+            fetchMock.mockImplementation((url, options) => {
+                if (url === '/api/transactions' && options?.method === 'POST') {
+                    currentTransactions = [...currentTransactions, savedDoc];
+                    held.written = true;
+                    return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(savedDoc) });
+                }
+                if (held.written && typeof url === 'string' && url.startsWith('/api/stats/dashboard?')) {
+                    return new Promise(resolve => { held.dashboard = () => normalFetch(url, options).then(resolve); });
+                }
+                if (held.written && typeof url === 'string' && url.startsWith('/api/history?') && url.includes('limit=5')) {
+                    return new Promise(resolve => { held.recent = () => normalFetch(url, options).then(resolve); });
+                }
+                return normalFetch(url, options);
+            });
+            return held;
+        };
+
+        const saveExpense = async () => {
+            render(<App />);
+            await waitForOverview();
+            expect(await recentRegion().findByText('Monthly flat rent')).toBeInTheDocument();
+            const recentBefore = recentCalls().length;
+            fireEvent.click(screen.getByRole('button', { name: 'Добавить операцию' }));
+            fireEvent.change(screen.getByPlaceholderText('0'), { target: { value: '25' } });
+            fireEvent.click(screen.getByText('Продукты'));
+            fireEvent.click(within(screen.getByRole('dialog', { name: 'Новый расход' })).getByRole('button', { name: 'Карта', exact: true }));
+            fireEvent.click(screen.getByRole('button', { name: SAVE_BUTTON_NAME }));
+            return recentBefore;
+        };
+
+        it('shows the new row on top of its day before the history GET resolves, with the day sum updated', async () => {
+            const held = setup();
+            await saveExpense();
+
+            await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Новый расход' })).not.toBeInTheDocument());
+            // Ни список, ни итоги ещё не ответили, а строка уже на экране.
+            await waitFor(() => expect(held.recent).toBeTruthy());
+            expect(held.dashboard).toBeTruthy();
+            const row = recentRegion().getByText('Новая покупка').closest('[data-history-item]');
+            expect(row).toHaveAttribute('data-history-item', 'new-expense');
+            expect(row.parentElement).toHaveClass('tx-fresh');
+            // Сверху своего дня: 15 января - новый день над 2 и 1 января.
+            const days = [...screen.getByRole('region', { name: 'Последние операции' }).querySelectorAll('[data-history-date]')];
+            expect(days[0]).toHaveAttribute('data-history-date', '2026-01-15');
+            expect(days[0]).toHaveTextContent('−€25,00');
+            expect(days[1]).toHaveAttribute('data-history-date', '2026-01-02');
+        });
+
+        it('asks for the list at once, in parallel with the totals, and exactly once', async () => {
+            const held = setup();
+            const before = await saveExpense();
+
+            // Итоги ещё держатся, а список уже запрошен.
+            await waitFor(() => expect(held.recent).toBeTruthy());
+            expect(held.dashboard).toBeTruthy();
+            expect(recentCalls()).toHaveLength(before + 1);
+
+            await act(async () => held.dashboard());
+            await waitFor(() => expect(screen.getAllByText(/3\.975/)[0]).toBeInTheDocument());
+            await act(async () => held.recent());
+
+            // Снимок завершился - второго запроса ленты за той же записью нет.
+            expect(recentCalls()).toHaveLength(before + 1);
+        });
+
+        it('still refetches the list on «Повторить» after the snapshot of a write failed', async () => {
+            const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+            currentCategories = [{ _id: 'food', name: 'Продукты', type: 'expense', order: 1 }];
+            const normalFetch = createFetchMock();
+            let failNextAccountsGet = false;
+            fetchMock.mockImplementation((url, options) => {
+                if (url === '/api/transactions' && options?.method === 'POST') {
+                    currentTransactions = [...currentTransactions, savedDoc];
+                    failNextAccountsGet = true;
+                    return Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve(savedDoc) });
+                }
+                if (url === '/api/accounts' && !options?.method && failNextAccountsGet) {
+                    failNextAccountsGet = false;
+                    return Promise.reject(new Error('offline after write'));
+                }
+                return normalFetch(url, options);
+            });
+
+            const before = await saveExpense();
+            await screen.findByText(/^Не удалось обновить\. Показаны данные на /);
+            // Лента ушла сразу после записи, не дожидаясь упавшего снимка.
+            expect(recentCalls()).toHaveLength(before + 1);
+            expect(await recentRegion().findByText('Новая покупка')).toBeInTheDocument();
+
+            fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+
+            await waitFor(() => expect(screen.queryByText(/^Не удалось обновить\./)).not.toBeInTheDocument());
+            expect(recentCalls()).toHaveLength(before + 2);
+            expect(recentRegion().getAllByText('Новая покупка')).toHaveLength(1);
+            consoleSpy.mockRestore();
+        });
+
+        it('swaps the inserted row for the server one without duplicating it', async () => {
+            const held = setup();
+            await saveExpense();
+            await waitFor(() => expect(held.recent).toBeTruthy());
+            const inserted = recentRegion().getByText('Новая покупка').closest('[data-history-item]');
+
+            await act(async () => held.recent());
+
+            await waitFor(() => expect(recentRegion().getAllByText('Новая покупка')).toHaveLength(1));
+            const served = recentRegion().getByText('Новая покупка').closest('[data-history-item]');
+            expect(served).toBe(inserted);
+            expect(served.parentElement).toHaveClass('tx-fresh');
+            expect(recentRegion().getAllByText('Monthly flat rent')).toHaveLength(1);
+            await act(async () => held.dashboard());
+            await waitFor(() => expect(screen.getAllByText(/3\.975/)[0]).toBeInTheDocument());
+        });
+    });
+
     describe('sync warning strip', () => {
         // Общая подготовка: данные загружены, дальше обновление падает.
         const renderWithFailingRefresh = async ({ holdRetry = false } = {}) => {

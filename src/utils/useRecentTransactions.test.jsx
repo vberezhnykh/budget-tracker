@@ -111,4 +111,100 @@ describe('useRecentTransactions', () => {
     expect(request).not.toHaveBeenCalled();
     expect(result.current).toMatchObject({ loading: false, error: false, groups: {} });
   });
+
+  // Вставки: только что сохранённая операция видна, пока не пришёл список,
+  // который её уже содержит.
+  describe('inserts of just-saved operations', () => {
+    const saved = { _id: 'ff1', title: 'Кофе', amount: 4.5, type: 'expense', category: 'Еда', account: 'card', date: '2026-09-24T00:00:00.000Z' };
+    const insert = { saved, untilRevision: 1 };
+
+    it('puts the saved row on top of the old list while the refetch is in flight, and marks it fresh', async () => {
+      let finishSecond;
+      const request = vi.fn()
+        .mockResolvedValueOnce(response(page('a1')))
+        .mockImplementationOnce(() => new Promise(resolve => { finishSecond = resolve; }));
+      const { result, rerender } = setup(request);
+      await waitFor(() => expect(ids(result)).toEqual(['a1']));
+
+      rerender({ revision: 1, inserts: [insert] });
+
+      expect(result.current.loading).toBe(false);
+      expect(ids(result)).toEqual(['ff1', 'a1']);
+      expect([...result.current.freshIds]).toEqual(['ff1']);
+      expect(result.current.groups['2026-09-24'].dailySum).toBeCloseTo(-14.5);
+
+      // Список ревизии 1 уже содержит операцию: вставка отбрасывается, строка
+      // - серверная и больше не свежая.
+      await act(async () => finishSecond(response({
+        transactions: { '2026-09-24': { dailySum: -14.5, items: [{ id: 'ff1' }, { id: 'a1' }] } },
+      })));
+      expect(ids(result)).toEqual(['ff1', 'a1']);
+      expect(result.current.freshIds.size).toBe(0);
+      expect(result.current.groups['2026-09-24'].dailySum).toBe(-14.5);
+    });
+
+    it('does not apply an insert to a list loaded for the same or a newer revision', async () => {
+      const request = vi.fn().mockResolvedValue(response(page('a2')));
+      const { result } = setup(request, { revision: 1, inserts: [insert] });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(ids(result)).toEqual(['a2']);
+      expect(result.current.freshIds.size).toBe(0);
+    });
+
+    it('keeps the insert while the loaded list is older than the revision it waits for', async () => {
+      // Вставка ждёт ревизии 2: список ревизии 1 её ещё не содержит.
+      const request = vi.fn().mockResolvedValue(response(page('a2')));
+      const { result } = setup(request, { revision: 1, inserts: [{ saved, untilRevision: 2 }] });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(ids(result)).toEqual(['ff1', 'a2']);
+    });
+
+    it('shows neither the insert nor fresh ids under the skeleton (account switched)', async () => {
+      let finishSecond;
+      const request = vi.fn()
+        .mockResolvedValueOnce(response(page('all')))
+        .mockImplementationOnce(() => new Promise(resolve => { finishSecond = resolve; }));
+      const { result, rerender } = setup(request);
+      await waitFor(() => expect(ids(result)).toEqual(['all']));
+
+      rerender({ revision: 1, account: 'card', inserts: [insert] });
+
+      expect(result.current.loading).toBe(true);
+      expect(ids(result)).toEqual([]);
+      expect(result.current.freshIds.size).toBe(0);
+      await act(async () => finishSecond(response(page('card-row'))));
+      expect(ids(result)).toEqual(['card-row']);
+    });
+
+    it('does not apply inserts to an error state', async () => {
+      const request = vi.fn()
+        .mockResolvedValueOnce(response(page('a1')))
+        .mockRejectedValueOnce(new Error('offline'));
+      const { result, rerender } = setup(request);
+      await waitFor(() => expect(ids(result)).toEqual(['a1']));
+
+      rerender({ revision: 1, inserts: [insert] });
+      await waitFor(() => expect(result.current.error).toBe(true));
+
+      expect(ids(result)).toEqual([]);
+      expect(result.current.freshIds.size).toBe(0);
+    });
+
+    it('skips an insert that does not belong to the list (other account, future month)', async () => {
+      let finishSecond;
+      const request = vi.fn()
+        .mockResolvedValueOnce(response(page('a1')))
+        .mockImplementationOnce(() => new Promise(resolve => { finishSecond = resolve; }));
+      const { result, rerender } = setup(request, { account: 'cash' });
+      await waitFor(() => expect(ids(result)).toEqual(['a1']));
+
+      rerender({ account: 'cash', revision: 1, inserts: [insert, { saved: { ...saved, _id: '700', account: 'cash', date: '2026-10-01T00:00:00.000Z' }, untilRevision: 1 }] });
+
+      expect(ids(result)).toEqual(['a1']);
+      expect(result.current.freshIds.size).toBe(0);
+      await act(async () => finishSecond(response(page('a1'))));
+    });
+  });
 });

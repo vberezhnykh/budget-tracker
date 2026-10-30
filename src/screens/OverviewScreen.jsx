@@ -80,6 +80,9 @@ export default function OverviewScreen({
   // Последние операции: запрос и счётчик обновления - те же, что у Истории
   request,
   historyRevision,
+  // Только что сохранённые операции { saved, untilRevision }: показываются в
+  // списке сразу, до ответа сервера (см. useRecentTransactions).
+  recentInserts,
   openEditModal,
   getAccountDisplay,
   formatDate,
@@ -90,6 +93,7 @@ export default function OverviewScreen({
     month: getCurrentMonth(),
     account: selectedAccount,
     revision: historyRevision,
+    inserts: recentInserts,
   });
 
   // Месяц берётся из итогов по месяцам, а не из periodStats: они приходят
@@ -225,6 +229,7 @@ export default function OverviewScreen({
           {hasRecent && (
             <TransactionList
               groups={recent.groups}
+              freshIds={recent.freshIds}
               openEditModal={openEditModal}
               getAccountDisplay={getAccountDisplay}
               formatDate={formatDate}

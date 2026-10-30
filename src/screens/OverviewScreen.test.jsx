@@ -4,8 +4,8 @@ import OverviewScreen from './OverviewScreen';
 
 // Последние операции - отдельный запрос; сами состояния блока проверяются
 // здесь, поэтому хук подменён.
-const recent = vi.hoisted(() => ({ value: { groups: {}, loading: false, error: false, retry: () => { } } }));
-vi.mock('../utils/useRecentTransactions', () => ({ default: () => recent.value }));
+const recent = vi.hoisted(() => ({ value: { groups: {}, loading: false, error: false, retry: () => { } }, args: null }));
+vi.mock('../utils/useRecentTransactions', () => ({ default: args => { recent.args = args; return recent.value; } }));
 
 const baseProps = {
     syncStatus: null,
@@ -121,6 +121,42 @@ describe('OverviewScreen empty states', () => {
             rerender(<OverviewScreen {...baseProps} />);
             expect(screen.queryByText('Операций пока нет')).not.toBeInTheDocument();
             expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить операции');
+        });
+    });
+
+    describe('just-saved operations', () => {
+        const groups = {
+            '2026-11-03': {
+                dailySum: -12,
+                items: [
+                    { id: 'new', type: 'expense', visualAmount: -7, account: 'card', category: 'Кафе', description: 'Латте', date: '2026-11-03' },
+                    { id: 'old', type: 'expense', visualAmount: -5, account: 'card', category: 'Еда', description: 'Хлеб', date: '2026-11-03' },
+                ],
+            },
+        };
+        const props = { ...baseProps, getAccountDisplay: () => 'Карта' };
+
+        it('hands the inserts and the revision to the recent list hook', () => {
+            const recentInserts = [{ saved: { _id: 'new' }, untilRevision: 3 }];
+            render(<OverviewScreen {...props} historyRevision={2} recentInserts={recentInserts} selectedAccount="card" />);
+
+            expect(recent.args).toMatchObject({ revision: 2, inserts: recentInserts, account: 'card', month: '2026-11' });
+        });
+
+        it('animates only the rows the hook reports as fresh', () => {
+            recent.value = { groups, freshIds: new Set(['new']), loading: false, error: false, retry: () => { } };
+            const { container } = render(<OverviewScreen {...props} />);
+
+            expect(container.querySelector('[data-history-item="new"]').parentElement).toHaveClass('tx-fresh');
+            expect(container.querySelector('[data-history-item="old"]').parentElement).not.toHaveClass('tx-fresh');
+        });
+
+        it('lists plain rows when the hook reports no fresh ones', () => {
+            recent.value = { groups, freshIds: new Set(), loading: false, error: false, retry: () => { } };
+            const { container } = render(<OverviewScreen {...props} />);
+
+            expect(container.querySelector('.tx-fresh')).toBeNull();
+            expect(screen.getByText('Латте')).toBeInTheDocument();
         });
     });
 
