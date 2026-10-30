@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { createRequire } from 'node:module';
 import { readApi } from '../server/test/readApi.mjs';
 // Fixture data + API stubbing for the Playwright smoke suite. There is no
 // backend here on purpose (see README) - every /api/** request is answered
@@ -54,6 +57,39 @@ function bootstrapBody(url, { accounts: accountsData, categories: categoriesData
   };
 }
 
+// Шрифт Onest приложение берёт с Google Fonts (@import в src/index.css). В
+// тестах это был единственный запрос в интернет, и от его скорости зависел
+// результат: пока шрифт не доехал, текст набран запасным (на раннере CI это
+// DejaVu Sans, он шире), а догрузившись, Onest сдвигает раскладку посреди
+// замеров. Зависший запрос держал событие load, и page.goto и ожидание
+// перезагрузки падали по таймауту. Поэтому и таблица стилей, и файлы шрифта
+// отдаются здесь, из пакета @fontsource/onest: тот же шрифт, но без сети и
+// всегда одинаково быстро.
+const fontsourceDir = dirname(createRequire(import.meta.url).resolve('@fontsource/onest/package.json'));
+const LOCAL_FONT_HOST = 'https://fonts.gstatic.com/e2e-onest/';
+
+async function serveFontsLocally(page) {
+  await page.route('https://fonts.googleapis.com/**', (route) => {
+    // Веса - из того же адреса, что в index.css: family=Onest:wght@400;600;700.
+    const family = new URL(route.request().url()).searchParams.get('family') || '';
+    const weights = (family.match(/wght@([\d;]+)/)?.[1] || '400').split(';');
+    const css = weights
+      .map(weight => readFileSync(join(fontsourceDir, `${weight}.css`), 'utf8'))
+      .join('\n')
+      .replaceAll('url(./files/', `url(${LOCAL_FONT_HOST}`);
+    return route.fulfill({ status: 200, contentType: 'text/css', body: css });
+  });
+  await page.route(`${LOCAL_FONT_HOST}**`, (route) => {
+    const file = new URL(route.request().url()).pathname.split('/').pop();
+    return route.fulfill({
+      status: 200,
+      contentType: file.endsWith('.woff2') ? 'font/woff2' : 'font/woff',
+      headers: { 'access-control-allow-origin': '*' },
+      body: readFileSync(join(fontsourceDir, 'files', file)),
+    });
+  });
+}
+
 // Installs a single catch-all route for every /api/** call. GETs for the
 // endpoints App.jsx fetches on load (/api/bootstrap, which bundles accounts,
 // categories, settings and the summary, plus the history list) return the fixtures above (or the
@@ -61,6 +97,7 @@ function bootstrapBody(url, { accounts: accountsData, categories: categoriesData
 // anything else) gets a generic 200 so nothing the app does mid-test can
 // hang waiting on a real server.
 export async function mockApi(page, overrides = {}) {
+  await serveFontsLocally(page);
   const accountsData = overrides.accounts || accounts;
   const transactionsData = overrides.transactions || transactions;
   const categoriesData = overrides.categories || categories;
@@ -102,6 +139,7 @@ export async function mockApi(page, overrides = {}) {
 }
 
 export async function mockPhase2Api(page, overrides = {}) {
+  await serveFontsLocally(page);
   const state = {
     accounts: structuredClone(overrides.accounts || accounts),
     categories: structuredClone(overrides.categories || categories),

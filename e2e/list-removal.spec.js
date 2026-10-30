@@ -14,6 +14,9 @@ const data = () => [
   { _id: 'tx-5', title: 'Хлеб', amount: 3, type: 'expense', account: 'acc-cash', date: '2026-01-06T00:00:00Z', category: 'Еда' },
 ];
 
+// Дожидается конца всех идущих анимаций и переходов.
+const settle = page => page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => null))));
+
 // Страница с Обзором; ответ ленты (limit=5) после первого же удаления держится,
 // пока тест не вызовет release(). Каждый release() открывает текущие ворота и
 // ставит новые.
@@ -23,8 +26,11 @@ async function open(page) {
   await page.goto('/');
   const region = page.getByRole('region', { name: 'Последние операции' });
   await expect(region.getByText('Продукты на неделю')).toBeVisible();
-  // Размеры меряются до и после: шрифт, догрузившийся между ними, сдвинул бы их.
+  // Размеры меряются до и после: шрифт, догрузившийся между ними, сдвинул бы их,
+  // как и проявление ленты (.fade-in с подъёмом на несколько пикселей), если
+  // снять первую отметку посреди него.
   await page.evaluate(() => document.fonts.ready);
+  await settle(page);
   const gate = { open: null, held: 0, wait: null };
   const arm = () => { gate.wait = new Promise(resolve => { gate.open = resolve; }); };
   arm();
@@ -48,7 +54,6 @@ const height = locator => locator.evaluate(el => el.getBoundingClientRect().heig
 // От начала страницы, а не окна: пока блок свёрнут, страница короче и браузер
 // может сдвинуть прокрутку, а положение блока в документе от этого не зависит.
 const top = locator => locator.evaluate(el => el.getBoundingClientRect().top + window.scrollY);
-const settle = page => page.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => null))));
 
 test.describe('Deleting and undoing in «Последние операции» (mobile, real browser)', () => {
   test('collapses the row at once and for good, lowers the day sum, and lets the late list unmount it without a jump', async ({ page }) => {
