@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { insertRecentTransaction } from './recentInsert';
+import { applyListRemovals } from './listRemoval';
 
 const EMPTY = {};
 const NO_IDS = new Set();
 const NO_INSERTS = [];
+const NO_REMOVALS = [];
 
 // Последние операции для блока на Обзоре: первая страница той же ленты, что и
 // в Истории (`/api/history?continuous=1`), но на 5 строк и со своим запросом.
@@ -26,7 +28,14 @@ const NO_INSERTS = [];
 // содержит операцию, и вставка отбрасывается. Скелетон и ошибку вставки не
 // трогают: показывать нечего или нечем. freshIds - id вставленных строк,
 // их список анимирует появление.
-export default function useRecentTransactions({ enabled, request, month, account, revision, inserts = NO_INSERTS, limit = 5 }) {
+//
+// removals - удалённые операции `{ id, splitId, untilRevision }`: пока на экране
+// список, загруженный раньше этой ревизии, строка остаётся в нём, но значится в
+// leavingIds (список плавно сворачивает её), а сумма дня уже без неё. Как только
+// приходит список ревизии untilRevision и новее, строки в нём нет, и она просто
+// исчезает - уже свёрнутая. Строка, вставленная и тут же удалённая, уходит так же.
+// Отмена удаления убирает запись: строка возвращается (leavingIds без неё).
+export default function useRecentTransactions({ enabled, request, month, account, revision, inserts = NO_INSERTS, removals = NO_REMOVALS, limit = 5 }) {
   // attempt - ручной «Повторить»: тот же запрос, но ключ новый.
   const [attempt, setAttempt] = useState(0);
   // revision в состоянии - ревизия, с которой загружен список: по ней видно,
@@ -66,7 +75,7 @@ export default function useRecentTransactions({ enabled, request, month, account
   const showing = enabled && (current ? !state.error : state.url === url && !state.error);
 
   const shown = useMemo(() => {
-    if (!showing) return { groups: state.groups, freshIds: NO_IDS };
+    if (!showing) return { groups: state.groups, freshIds: NO_IDS, leavingIds: NO_IDS };
     let groups = state.groups;
     const freshIds = new Set();
     for (const { saved, untilRevision } of inserts) {
@@ -76,13 +85,18 @@ export default function useRecentTransactions({ enabled, request, month, account
       groups = result.groups;
       freshIds.add(result.id);
     }
-    return freshIds.size > 0 ? { groups, freshIds } : { groups: state.groups, freshIds: NO_IDS };
-  }, [showing, state.groups, state.revision, inserts, month, account, limit]);
+    const removed = applyListRemovals(groups, removals.filter(removal => removal.untilRevision > state.revision));
+    return {
+      groups: removed.groups,
+      freshIds: freshIds.size > 0 ? freshIds : NO_IDS,
+      leavingIds: removed.leavingIds,
+    };
+  }, [showing, state.groups, state.revision, inserts, removals, month, account, limit]);
 
-  if (!enabled) return { groups: EMPTY, freshIds: NO_IDS, loading: false, error: false, retry };
+  if (!enabled) return { groups: EMPTY, freshIds: NO_IDS, leavingIds: NO_IDS, loading: false, error: false, retry };
   if (current) return { ...shown, loading: false, error: state.error, retry };
   // Идёт запрос по тому же адресу (ревизия выросла после записи) - до ответа
   // показываем прежний список, а не скелетон.
   if (showing) return { ...shown, loading: false, error: false, retry };
-  return { groups: EMPTY, freshIds: NO_IDS, loading: true, error: false, retry };
+  return { groups: EMPTY, freshIds: NO_IDS, leavingIds: NO_IDS, loading: true, error: false, retry };
 }

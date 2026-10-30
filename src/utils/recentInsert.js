@@ -39,7 +39,7 @@ const matchesAccount = (item, account) => (
 
 // Вклад операции в сумму дня: без стартового баланса, переводов и помеченных
 // «не в статистику» - то же правило, что у dailySum на сервере.
-const contribution = item => (
+export const contribution = item => (
   item.type !== 'initial' && item.type !== 'transfer' && !item.excludeFromStats ? item.visualAmount : 0
 );
 

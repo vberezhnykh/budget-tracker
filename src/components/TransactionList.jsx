@@ -52,11 +52,13 @@ function amountFor(item) {
 // отдельным слоем под содержимым (position: absolute + inset: 0), а не
 // оборачивает его: вложенная в кнопку кнопка невалидна, а щелчок по
 // категории иначе открывал бы редактирование.
-function RowOverlayButton({ label, onClick }) {
+function RowOverlayButton({ label, onClick, inactive = false }) {
     return (
         <button
             type="button"
             aria-label={label}
+            // Строка уходит из списка: до фокуса клавиатурой ей уже не должно быть дела.
+            tabIndex={inactive ? -1 : undefined}
             onClick={onClick}
             style={{
                 position: 'absolute',
@@ -81,12 +83,12 @@ function RowOverlayButton({ label, onClick }) {
 // Там, где фильтра по категории нет (блок «Последние операции» на Обзоре),
 // onToggle не передаётся, и категория остаётся простым текстом: «ссылка»,
 // которая ничего не делает, хуже её отсутствия.
-function CategoryFilterLink({ category, selected, onToggle }) {
+function CategoryFilterLink({ category, selected, onToggle, inactive = false }) {
     if (!onToggle) return <span>{category}</span>;
     return (
         <span
             role="button"
-            tabIndex={0}
+            tabIndex={inactive ? -1 : 0}
             className="tx-category-link"
             onClick={() => onToggle(category)}
             onKeyDown={(e) => {
@@ -156,50 +158,194 @@ const DAY_CARD_CLIPPED_STYLE = { ...DAY_CARD_STYLE, overflow: 'hidden' };
 
 const ENTER_MS = 240;
 const ENTER_EASING = 'cubic-bezier(.2,.8,.2,1)';
+const LEAVE_EASING = 'ease-in';
 
-// Строка (или разбитая покупка), которая только что сохранена и показана до
-// ответа сервера. Появляется плавно: высота растёт от нуля до своей, пока
-// проступает прозрачность, а за строкой на всю ширину карточки светится
-// голубая подсветка (TransactionList.css) и гаснет.
+// Свёрнутая строка: ни высоты, ни отступов, ни рамки. Шорткаты (padding,
+// borderTop) заданы теми же шорткатами, что у самой строки, - иначе React при
+// перерисовке ругается на смесь шортката и его части. Отрицательный нижний
+// отступ у блока дня съедает зазор списка между днями.
+const COLLAPSED_STYLE = { height: 0, padding: 0, borderTop: 'none', opacity: 0, overflow: 'hidden' };
+const COLLAPSED_DAY_STYLE = { ...COLLAPSED_STYLE, marginBottom: 'calc(-1 * var(--space-4))' };
+
+const prefersReducedMotion = () => Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+const canAnimate = () => typeof Element !== 'undefined' && typeof Element.prototype.animate === 'function';
+// Без движения: «уменьшить движение» в системе или нет Web Animations.
+const motionOff = () => !canAnimate() || prefersReducedMotion();
+
+// Кадры «раскрыто» и «свёрнуто» одного элемента по его нынешним размерам (в CSS
+// «auto» не анимируется). gap - зазор списка под блоком дня: пока блок
+// сворачивается, его отрицательный нижний отступ съедает и этот зазор.
+function measureFrames(element, withGap) {
+    const style = getComputedStyle(element);
+    const opacity = parseFloat(style.opacity);
+    const open = {
+        height: `${element.getBoundingClientRect().height}px`,
+        paddingTop: style.paddingTop,
+        paddingBottom: style.paddingBottom,
+        opacity: Number.isFinite(opacity) ? opacity : 1,
+        overflow: 'hidden',
+    };
+    const closed = { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0, overflow: 'hidden' };
+    if (style.borderTopWidth) {
+        open.borderTopWidth = style.borderTopWidth;
+        closed.borderTopWidth = '0px';
+    }
+    if (withGap) {
+        const gap = parseFloat(getComputedStyle(element.parentElement).rowGap) || 0;
+        open.marginBottom = '0px';
+        closed.marginBottom = `${-gap}px`;
+    }
+    return { open, closed };
+}
+
+// Движение блока списка (строки, разбитой покупки или целого дня): появление
+// при монтировании (enter), сворачивание, когда блок уходит (leaving), и рост
+// обратно, когда уход отменён.
 //
-// Анимация - только при монтировании: `entering` запоминается один раз, и
+// Сворачивание: высота, отступы и прозрачность до нуля за ENTER_MS, затем блок
+// остаётся свёрнутым - сначала заливкой анимации (fill: 'forwards'), а когда она
+// дошла до конца, стилем из COLLAPSED_STYLE (collapsed). Так свёрнутое
+// переживает и перерисовки, и отмену анимации; когда настоящий список пришёл
+// без блока, он просто размонтируется уже свёрнутым и ничего не двигает. Блок,
+// который в списке уже при монтировании уходящим (экран открыли, пока удаление
+// не подтверждено), сразу свёрнут, без анимации. «Уменьшить движение»: блок
+// прячется и возвращается мгновенно.
+//
+// own - сворачивается ли блок сам. Если уходят все строки дня, сворачивается
+// день целиком, а его строки только значатся уходящими (own = false): иначе
+// строки и день двигались бы друг в друге. Свёрнутость, уже случившаяся у
+// строки, при этом не снимается. Возвращаясь, блок растёт, только если до этого
+// сворачивался сам.
+//
+// returns растёт с каждым возвращением блока - по нему EnterBox заново
+// зажигает подсветку.
+function useBlockMotion(ref, { enter = false, leaving = false, own = leaving, withGap = false }) {
+    const [enterOnMount] = useState(enter && !leaving);
+    const animationRef = useRef(null);
+    // Блок уже свёрнут или сворачивается; при монтировании уходящим - свёрнут.
+    const collapsedRef = useRef(leaving);
+    const [seen, setSeen] = useState(leaving);
+    const [returns, setReturns] = useState(0);
+    // Анимация сворачивания дошла до конца; уходящий при монтировании - сразу.
+    const [finished, setFinished] = useState(leaving);
+
+    // Возвращение замечается при рендере (как в DayCard): «свёрнуто» сбрасывается
+    // до того, как слой-эффект снимет заливку анимации и вырастит блок.
+    if (seen !== leaving) {
+        setSeen(leaving);
+        if (!leaving) {
+            setFinished(false);
+            setReturns(count => count + 1);
+        }
+    }
+
+    // Появление при монтировании.
+    useLayoutEffect(() => {
+        const element = ref.current;
+        if (!enterOnMount || !element || motionOff()) return undefined;
+        const { open, closed } = measureFrames(element, withGap);
+        const animation = element.animate([closed, open], { duration: ENTER_MS, easing: ENTER_EASING });
+        animationRef.current = animation;
+        return () => animation.cancel();
+    }, [enterOnMount, ref, withGap]);
+
+    // Уход и возвращение. Недоигравшая анимация снимается до измерения: иначе
+    // замерилась бы промежуточная высота.
+    useLayoutEffect(() => {
+        const element = ref.current;
+        if (!element) return;
+        if (!leaving) {
+            if (!collapsedRef.current) return;
+            collapsedRef.current = false;
+            animationRef.current?.cancel();
+            animationRef.current = null;
+            if (motionOff()) return;
+            const { open, closed } = measureFrames(element, withGap);
+            animationRef.current = element.animate([closed, open], { duration: ENTER_MS, easing: ENTER_EASING });
+        } else if (own && !collapsedRef.current) {
+            collapsedRef.current = true;
+            animationRef.current?.cancel();
+            animationRef.current = null;
+            // Без движения свёрнутость даёт стиль (collapsed ниже).
+            if (motionOff()) return;
+            const { open, closed } = measureFrames(element, withGap);
+            const animation = element.animate([open, closed], { duration: ENTER_MS, easing: LEAVE_EASING, fill: 'forwards' });
+            animation.onfinish = () => setFinished(true);
+            animationRef.current = animation;
+        }
+    }, [leaving, own, withGap, ref]);
+
+    return { collapsed: leaving && (finished || (own && motionOff())), returns };
+}
+
+// Строка (или разбитая покупка). Появляется плавно, если она только что
+// сохранена и показана до ответа сервера: высота растёт от нуля до своей, пока
+// проступает прозрачность, а за строкой на всю ширину карточки светится голубая
+// подсветка (TransactionList.css) и гаснет. Уходит плавным сворачиванием, если
+// её удалили, а список ещё без ответа сервера, и тем же ростом с подсветкой
+// возвращается, если удаление отменили (useBlockMotion).
+//
+// Появление - только при монтировании: `entering` запоминается один раз, и
 // когда настоящий список подменяет строку (тот же key, но fresh уже нет),
 // элемент остаётся тем же, подсветка доигрывает, а рост не повторяется.
 // Поэтому и разметка строки не зависит от текущего fresh. Рост - через Web
 // Animations на измеренной высоте (в CSS «auto» не анимируется); overflow:
 // hidden действует только пока он идёт, чтобы не срезать кольцо фокуса.
 // Подсветка живёт на обёртке вокруг строки, а не на ней самой: иначе
-// overflow: hidden на время роста срезал бы её по ширине строки.
+// overflow: hidden на время роста срезал бы её по ширине строки. Обёртка
+// появляется у строки с самого начала, если она свежая или список следит за
+// уходящими (tracked): добавить её позже значило бы пересоздать строку.
 // При «уменьшить движение» рост и прозрачность пропускаются, остаётся только
 // плавное угасание цвета.
-function EnterBox({ fresh = false, children, ...props }) {
+// Уходящая строка недоступна: inert и aria-hidden - ни Tab, ни скринридер.
+function EnterBox({ fresh = false, leaving = false, own = leaving, tracked = false, children, style, ...props }) {
     const [entering] = useState(fresh);
+    const [wrapped] = useState(fresh || tracked);
     const ref = useRef(null);
+    const { collapsed, returns } = useBlockMotion(ref, { enter: entering, leaving, own });
 
-    useLayoutEffect(() => {
-        const element = ref.current;
-        if (!entering || !element || typeof element.animate !== 'function') return undefined;
-        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return undefined;
-        const { paddingTop, paddingBottom } = getComputedStyle(element);
-        const height = `${element.getBoundingClientRect().height}px`;
-        const animation = element.animate([
-            { height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0, overflow: 'hidden' },
-            { height, paddingTop, paddingBottom, opacity: 1, overflow: 'hidden' },
-        ], { duration: ENTER_MS, easing: ENTER_EASING });
-        return () => animation.cancel();
-    }, [entering]);
-
-    if (!entering) return <div {...props}>{children}</div>;
+    const row = (
+        <div
+            ref={ref}
+            {...props}
+            style={collapsed ? { ...style, ...COLLAPSED_STYLE } : style}
+            inert={leaving || undefined}
+            aria-hidden={leaving || undefined}
+        >
+            {children}
+        </div>
+    );
+    if (!wrapped) return row;
+    const tinted = (entering || returns > 0) && !leaving;
     return (
-        <div className="tx-fresh">
-            <div ref={ref} {...props}>{children}</div>
+        <div className={tinted ? 'tx-fresh' : undefined}>
+            {tinted && <span key={returns} className="tx-fresh-glow" aria-hidden="true" />}
+            {row}
+        </div>
+    );
+}
+
+// День целиком: заголовок с суммой и карточка. Если уходят все его строки,
+// сворачивается весь блок, а не карточка с пустым заголовком.
+function DayBlock({ date, leaving, children }) {
+    const ref = useRef(null);
+    const { collapsed } = useBlockMotion(ref, { leaving, withGap: true });
+    return (
+        <div
+            ref={ref}
+            data-history-date={date}
+            inert={leaving || undefined}
+            aria-hidden={leaving || undefined}
+            style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', ...(collapsed ? COLLAPSED_DAY_STYLE : null) }}
+        >
+            {children}
         </div>
     );
 }
 
 // Карточка дня. Обрезка по скруглению включается, когда в ней появилась
-// свежая строка, и остаётся до конца жизни карточки: если снять её, когда
-// настоящий список подменил строку, подсветка, не догоревшая до конца,
+// свежая или уходящая строка, и остаётся до конца жизни карточки: если снять её,
+// когда настоящий список подменил строку, подсветка, не догоревшая до конца,
 // выскочила бы за углы.
 function DayCard({ hasFresh, children }) {
     const [clipped, setClipped] = useState(hasFresh);
@@ -227,6 +373,12 @@ export default function TransactionList({
     // (блок «Последние операции»). Эти строки появляются с анимацией. В Истории
     // не передаётся, и список ведёт себя как раньше.
     freshIds = null,
+    // Необязательный: Set с id строк, которые только что удалены, а список ещё
+    // без ответа сервера (в нём они остаются). Эти строки плавно сворачиваются и
+    // остаются свёрнутыми и недоступными; день, где уходят все строки, - целиком.
+    // Вернулись из Set (удаление отменили) - растут обратно с подсветкой. Без
+    // него список ведёт себя как раньше.
+    leavingIds = null,
 }) {
     const dates = Object.keys(groups || {}).sort((a, b) => new Date(b) - new Date(a));
 
@@ -279,12 +431,12 @@ export default function TransactionList({
     // Подпись «категория · счёт · комментарий». Категорию не повторяем,
     // когда список и так отфильтрован по ней: в каждой строке она была бы
     // одним и тем же словом.
-    const subtitleParts = (item) => {
+    const subtitleParts = (item, leaving = false) => {
         const parts = [];
         if (item.category && item.category !== selectedCategory) {
             parts.push({
                 key: 'category',
-                node: <CategoryFilterLink category={item.category} selected={false} onToggle={toggleCategoryFilter} />,
+                node: <CategoryFilterLink category={item.category} selected={false} onToggle={toggleCategoryFilter} inactive={leaving} />,
             });
         }
         parts.push({ key: 'account', node: visibleAccounts(item) });
@@ -294,12 +446,15 @@ export default function TransactionList({
 
     // Строка-карточка (обычная операция и «шапка» разбитой): иконка,
     // название с подписью, сумма. Кнопка-подложка только у редактируемых.
-    const renderRow = (item, { index, title, parts, overlay, faded, fresh = false }) => {
+    const renderRow = (item, { index, title, parts, overlay, faded, fresh = false, leaving = false, own = leaving }) => {
         const { text, color } = amountFor(item);
         return (
             <EnterBox
                 key={item.id}
                 fresh={fresh}
+                leaving={leaving}
+                own={own}
+                tracked={Boolean(leavingIds)}
                 data-history-item={item.id}
                 style={{
                     position: 'relative',
@@ -332,8 +487,15 @@ export default function TransactionList({
         );
     };
 
-    const renderSplit = (item, index) => (
-        <EnterBox key={item.id} fresh={Boolean(freshIds?.has(item.id))} style={{ borderTop: index > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}>
+    const renderSplit = (item, index, { leaving, own }) => (
+        <EnterBox
+            key={item.id}
+            fresh={Boolean(freshIds?.has(item.id))}
+            leaving={leaving}
+            own={own}
+            tracked={Boolean(leavingIds)}
+            style={{ borderTop: index > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}
+        >
             {renderRow(item, {
                 index: 0,
                 title: `${displayName(item)} (Разделено)`,
@@ -364,12 +526,14 @@ export default function TransactionList({
                         <RowOverlayButton
                             label={`${displayName(item)} (Разделено): ${rowLabel(subItem)}`}
                             onClick={() => openEditModal(subItem)}
+                            inactive={leaving}
                         />
                         <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
                             <CategoryFilterLink
                                 category={subItem.category}
                                 selected={selectedCategory === subItem.category}
                                 onToggle={toggleCategoryFilter}
+                                inactive={leaving}
                             />
                             {hasCompanyField(item) && subItem.companyName && subItem.companyName !== item.companyName && (
                                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>{subItem.companyName}</div>
@@ -390,6 +554,8 @@ export default function TransactionList({
         </EnterBox>
     );
 
+    const isLeaving = item => Boolean(leavingIds?.has(item.id));
+
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             {dates.map(date => {
@@ -397,8 +563,14 @@ export default function TransactionList({
                 // Сумма дня, округляющаяся до нуля, - то же, что ноль: плавающая
                 // пыль от сложения копеек не должна рисовать «€0,00».
                 const showDailySum = Math.round(Math.abs(dailySum) * 100) !== 0;
+                // Уходят все строки дня - сворачивается день целиком, строки
+                // только значатся уходящими.
+                const dayLeaving = items.length > 0 && items.every(isLeaving);
+                // Первая из остающихся строк без разделителя сверху, даже если
+                // выше неё ещё сворачивается другая: так нет линии у края карточки.
+                let staying = 0;
                 return (
-                    <div key={date} data-history-date={date} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+                    <DayBlock key={date} date={date} leaving={dayLeaving}>
                         <div style={DAY_HEADER_STYLE}>
                             <span style={{ color: 'var(--color-text-muted)' }}>{formatDate(date)}</span>
                             {showDailySum && (
@@ -408,9 +580,12 @@ export default function TransactionList({
                             )}
                         </div>
 
-                        <DayCard hasFresh={Boolean(freshIds) && items.some(item => freshIds.has(item.id))}>
-                            {items.map((item, index) => {
-                                if (item.type === 'split_group') return renderSplit(item, index);
+                        <DayCard hasFresh={(Boolean(freshIds) && items.some(item => freshIds.has(item.id))) || items.some(isLeaving)}>
+                            {items.map((item, position) => {
+                                const leaving = isLeaving(item);
+                                const own = leaving && !dayLeaving;
+                                const index = leaving ? position : staying++;
+                                if (item.type === 'split_group') return renderSplit(item, index, { leaving, own });
 
                                 // openEditModal ничего не делает для засеянных
                                 // 'initial' операций, поэтому у них нет и кнопки:
@@ -420,14 +595,16 @@ export default function TransactionList({
                                 return renderRow(item, {
                                     index,
                                     title: displayName(item),
-                                    parts: subtitleParts(item),
-                                    overlay: isEditable && <RowOverlayButton label={rowLabel(item)} onClick={() => openEditModal(item)} />,
+                                    parts: subtitleParts(item, leaving),
+                                    overlay: isEditable && <RowOverlayButton label={rowLabel(item)} onClick={() => openEditModal(item)} inactive={leaving} />,
                                     faded: item.excludeFromStats,
                                     fresh: Boolean(freshIds?.has(item.id)),
+                                    leaving,
+                                    own,
                                 });
                             })}
                         </DayCard>
-                    </div>
+                    </DayBlock>
                 );
             })}
         </div>

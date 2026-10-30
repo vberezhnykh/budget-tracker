@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import HistoryScreen from './HistoryScreen';
 
 const groups = {
@@ -788,5 +788,30 @@ describe('HistoryScreen', () => {
         expect(coffee).not.toHaveTextContent('Food');
         const salary = scroll.querySelector('[data-history-item="card-1"] [data-testid="transaction-subtitle"]');
         expect(salary).toHaveTextContent('Job · Карта');
+    });
+    describe('rows the list is told to animate', () => {
+        beforeEach(() => { Element.prototype.animate = vi.fn(() => ({ cancel: vi.fn() })); });
+        afterEach(() => { delete Element.prototype.animate; });
+
+        it('collapses and locks the rows from leavingIds, and tints the ones from freshIds', () => {
+            renderScreen({ history: makeHistory({ freshIds: new Set(['card-1']), leavingIds: new Set(['cash-1']) }) });
+            const scroll = screen.getByTestId('history-scroll');
+
+            const leaving = scroll.querySelector('[data-history-item="cash-1"]');
+            expect(leaving).toHaveAttribute('inert');
+            expect(leaving).toHaveStyle({ height: '0px', overflow: 'hidden' });
+            // Единственная строка дня уходит - сворачивается день целиком.
+            expect(scroll.querySelector('[data-history-date="2026-01-05"]')).toHaveAttribute('inert');
+            expect(scroll.querySelector('[data-history-item="card-1"]').parentElement).toHaveClass('tx-fresh');
+        });
+
+        it('behaves as before when the list reports no fresh or leaving rows', () => {
+            renderScreen({ history: makeHistory({ freshIds: new Set(), leavingIds: new Set() }) });
+            const scroll = screen.getByTestId('history-scroll');
+
+            expect(scroll.querySelector('[inert]')).toBeNull();
+            expect(scroll.querySelector('.tx-fresh')).toBeNull();
+            expect(Element.prototype.animate).not.toHaveBeenCalled();
+        });
     });
 });

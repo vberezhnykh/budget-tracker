@@ -93,6 +93,9 @@ function createTrashRouter() {
         }
         let session;
         let count = 0;
+        // Восстановленные документы: клиент показывает их в списках сразу, не
+        // дожидаясь повторного чтения (см. src/utils/recentInsert.js).
+        let transactions = [];
         try {
             session = await mongoose.startSession();
             await session.withTransaction(async () => {
@@ -100,6 +103,7 @@ function createTrashRouter() {
                 if (!representative) throw new TrashError(404, 'Transaction not found');
                 if (!representative.deletedAt) {
                     count = 0;
+                    transactions = [];
                     return;
                 }
 
@@ -118,8 +122,14 @@ function createTrashRouter() {
                     { session }
                 );
                 count = result.modifiedCount;
+                // Читаем заново после обновления: у документов новый __v и нет
+                // deletedAt, то есть ровно то, что отдал бы POST /api/transactions.
+                transactions = await Transaction.find({ _id: { $in: documents.map(document => document._id) } })
+                    .sort({ _id: 1 })
+                    .session(session)
+                    .lean();
             });
-            return res.json({ count });
+            return res.json({ count, transactions });
         } catch (error) {
             return res.status(error.status || 500).json({ message: error.message });
         } finally {

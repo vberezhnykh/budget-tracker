@@ -252,3 +252,105 @@ describe('useHistoryList', () => {
     await waitFor(() => expect(ids(result)).toEqual(['B']));
   });
 });
+
+// Правки поверх списка до ответа сервера: сохранённые и удалённые операции.
+describe('useHistoryList with just-saved and just-deleted operations', () => {
+  const item = (id, amount, extra = {}) => ({ id, type: 'expense', visualAmount: amount, account: 'card', date: '2026-09-24', ...extra });
+  const full = () => ({
+    transactions: {
+      '2026-09-24': { dailySum: -15, items: [item('b2', -10), item('a1', -5)] },
+      '2026-08-30': { dailySum: -3, items: [item('c0', -3, { date: '2026-08-30' })] },
+    },
+    count: 3, complete: true,
+  });
+  const saved = { _id: 'z9', amount: 7, type: 'expense', category: 'Еда', account: 'card', date: '2026-09-24T00:00:00.000Z' };
+  const removal = { id: 'a1', splitId: null, trashId: 'a1', untilRevision: 1 };
+  // Запрос ревизии 1 держится: список остаётся прежним.
+  const held = () => vi.fn()
+    .mockResolvedValueOnce(response(full()))
+    .mockImplementation(() => new Promise(() => { }));
+
+  it('keeps a deleted row marked as leaving, with the day sum already lower, until the refreshed list arrives', async () => {
+    let second;
+    const request = vi.fn()
+      .mockResolvedValueOnce(response(full()))
+      .mockImplementationOnce(() => new Promise(resolve => { second = resolve; }));
+    const { result, rerender } = setup({}, request);
+    await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+
+    rerender({ revision: 1, removals: [removal] });
+
+    expect(ids(result)).toEqual(['b2', 'a1', 'c0']);
+    expect([...result.current.leavingIds]).toEqual(['a1']);
+    expect(result.current.transactions['2026-09-24'].dailySum).toBe(-10);
+    expect(result.current.refreshing).toBe(true);
+
+    await act(async () => second(response({
+      transactions: { '2026-09-24': { dailySum: -10, items: [item('b2', -10)] }, '2026-08-30': full().transactions['2026-08-30'] },
+      count: 2, complete: true,
+    })));
+    expect(ids(result)).toEqual(['b2', 'c0']);
+    expect(result.current.leavingIds.size).toBe(0);
+  });
+
+  it('applies removals whatever the filter is', async () => {
+    const { result, rerender } = setup({ filters: { category: 'Еда', q: 'кофе', type: 'expense' } }, held());
+    await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+
+    rerender({ filters: { category: 'Еда', q: 'кофе', type: 'expense' }, revision: 1, removals: [removal] });
+
+    expect([...result.current.leavingIds]).toEqual(['a1']);
+  });
+
+  it('puts a just-saved row into an unfiltered list as fresh, with no page limit and no month cap', async () => {
+    const { result, rerender } = setup({}, held());
+    await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+
+    rerender({ revision: 1, inserts: [{ saved, untilRevision: 1 }, { saved: { ...saved, _id: 'z8', date: '2027-02-01T00:00:00.000Z' }, untilRevision: 1 }] });
+
+    expect(ids(result)).toEqual(['z8', 'z9', 'b2', 'a1', 'c0']);
+    expect([...result.current.freshIds].sort()).toEqual(['z8', 'z9']);
+    expect(result.current.transactions['2026-09-24'].dailySum).toBe(-22);
+  });
+
+  it('inserts into an account-only filter when the account matches, and skips other accounts', async () => {
+    const { result, rerender } = setup({ filters: { account: 'card' } }, held());
+    await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+
+    rerender({ filters: { account: 'card' }, revision: 1, inserts: [{ saved, untilRevision: 1 }, { saved: { ...saved, _id: 'z8', account: 'cash' }, untilRevision: 1 }] });
+
+    expect(ids(result)).toEqual(['z9', 'b2', 'a1', 'c0']);
+    expect([...result.current.freshIds]).toEqual(['z9']);
+  });
+
+  it.each([
+    ['category', { category: 'Еда' }],
+    ['type', { type: 'expense' }],
+    ['search', { q: 'кофе' }],
+  ])('does not insert into a list filtered by %s', async (_name, filters) => {
+    const { result, rerender } = setup({ filters }, held());
+    await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+
+    rerender({ filters, revision: 1, inserts: [{ saved, untilRevision: 1 }] });
+
+    expect(ids(result)).toEqual(['b2', 'a1', 'c0']);
+    expect(result.current.freshIds.size).toBe(0);
+  });
+
+  it('drops an insert and a removal once the list of their revision is on screen', async () => {
+    const { result } = setup({ revision: 1, inserts: [{ saved, untilRevision: 1 }], removals: [removal] });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.freshIds.size).toBe(0);
+    expect(result.current.leavingIds.size).toBe(0);
+  });
+
+  it('gives back the server list untouched when there is nothing to apply', async () => {
+    const { result } = setup({}, held());
+    await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+
+    expect(result.current.freshIds.size).toBe(0);
+    expect(result.current.leavingIds.size).toBe(0);
+    expect(result.current.transactions['2026-09-24'].dailySum).toBe(-15);
+  });
+});

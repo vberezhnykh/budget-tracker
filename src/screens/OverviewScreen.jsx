@@ -83,6 +83,9 @@ export default function OverviewScreen({
   // Только что сохранённые операции { saved, untilRevision }: показываются в
   // списке сразу, до ответа сервера (см. useRecentTransactions).
   recentInserts,
+  // Удалённые операции { id, splitId, untilRevision }: строка остаётся в списке и
+  // плавно сворачивается до ответа сервера (см. useRecentTransactions).
+  listRemovals,
   openEditModal,
   getAccountDisplay,
   formatDate,
@@ -94,6 +97,7 @@ export default function OverviewScreen({
     account: selectedAccount,
     revision: historyRevision,
     inserts: recentInserts,
+    removals: listRemovals,
   });
 
   // Месяц берётся из итогов по месяцам, а не из periodStats: они приходят
@@ -230,6 +234,7 @@ export default function OverviewScreen({
             <TransactionList
               groups={recent.groups}
               freshIds={recent.freshIds}
+              leavingIds={recent.leavingIds}
               openEditModal={openEditModal}
               getAccountDisplay={getAccountDisplay}
               formatDate={formatDate}

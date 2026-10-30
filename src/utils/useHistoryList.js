@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { insertRecentTransaction } from './recentInsert';
+import { applyListRemovals } from './listRemoval';
 
 const EMPTY = {};
+const NO_IDS = new Set();
+const NO_ENTRIES = [];
+// Потолок месяца для вставки: лента с all=1 не режется по месяцам и страницам.
+const NO_MONTH_CAP = '9999-12';
 // Сколько фильтров держим в памяти: вернуться на только что виденный список
 // надо мгновенно, но каждый занимает до нескольких МБ объектов.
 const MAX_KEYS = 8;
@@ -35,7 +41,17 @@ export function historyKey({ account, category, type, q } = {}) {
 //   выдаётся за свежий.
 // - Выход (enabled=false) стирает весь кэш: это чужие личные данные.
 // - Ошибка не убирает данные, если они есть; retry() запрашивает заново.
-export default function useHistoryList({ filters, enabled, revision, request, searching }) {
+//
+// inserts / removals - только что сохранённые `{ saved, untilRevision }` и
+// удалённые `{ id, splitId, untilRevision }` операции (App ведёт их, как и для
+// «Последних операций»). Пока на экране запись, снятая раньше untilRevision,
+// список правится на месте, не дожидаясь ответа сервера: удалённая строка
+// остаётся и значится в leavingIds (её сворачивает TransactionList), сумма дня
+// уже без неё; сохранённая вставляется на своё место и значится в freshIds.
+// Удаления не зависят от фильтра, а вставка - только в список без фильтра по
+// категории, типу и поиска (иначе непонятно, подходит ли ему новая операция):
+// в остальных случаях строку принесёт обычное обновление.
+export default function useHistoryList({ filters, enabled, revision, request, searching, inserts = NO_ENTRIES, removals = NO_ENTRIES }) {
   const key = historyKey(filters);
   const [cache, setCache] = useState(() => new Map());
   const [attempt, setAttempt] = useState(0);
@@ -130,10 +146,35 @@ export default function useHistoryList({ filters, enabled, revision, request, se
   }, []);
 
   const entry = enabled ? cache.get(key) : undefined;
+
+  // Правки поверх записи кэша. Сам кэш остаётся ответом сервера: правки живут
+  // только до ответа ревизии untilRevision и новее.
+  const { account: filterAccount, category, type, q } = filters || {};
+  const insertable = !category && !type && !(typeof q === 'string' && q.trim());
+  const entryRevision = entry?.revision;
+  const entryGroups = entry?.data.transactions;
+  const edited = useMemo(() => {
+    if (!entryGroups) return { groups: EMPTY, freshIds: NO_IDS, leavingIds: NO_IDS };
+    let groups = entryGroups;
+    const freshIds = new Set();
+    if (insertable) {
+      for (const { saved, untilRevision } of inserts) {
+        if (untilRevision <= entryRevision) continue;
+        const result = insertRecentTransaction(groups, saved, { month: NO_MONTH_CAP, account: filterAccount || null, limit: Infinity });
+        if (result.id === null) continue;
+        groups = result.groups;
+        freshIds.add(result.id);
+      }
+    }
+    const removed = applyListRemovals(groups, removals.filter(removal => removal.untilRevision > entryRevision));
+    return { groups: removed.groups, freshIds: freshIds.size > 0 ? freshIds : NO_IDS, leavingIds: removed.leavingIds };
+  }, [entryGroups, entryRevision, insertable, inserts, removals, filterAccount]);
   const failed = enabled && failure !== null && failure.key === key
     && failure.revision === revision && failure.attempt === attempt;
   return {
-    transactions: entry?.data.transactions || EMPTY,
+    transactions: edited.groups,
+    freshIds: edited.freshIds,
+    leavingIds: edited.leavingIds,
     count: entry?.data.count ?? 0,
     loading: enabled && !entry && !failed,
     // Данные есть, но сняты до последней записи: показываем их и обновляем.

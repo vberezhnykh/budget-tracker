@@ -142,7 +142,8 @@ describe('чтение после записи через HTTP API', () => {
         await warm();
 
         const restored = await agent.post(`/api/trash/${saved._id}/restore`);
-        expect(restored.body).toEqual({ count: 1 });
+        expect(restored.body.count).toBe(1);
+        expect(restored.body.transactions.map(row => row._id)).toEqual([String(saved._id)]);
 
         expect((await dashboard()).body.balances.total).toBe(900);
         expect((await agent.get('/api/history?continuous=1&all=1')).body.count).toBe(2);

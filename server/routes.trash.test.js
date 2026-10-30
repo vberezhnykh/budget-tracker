@@ -57,11 +57,50 @@ describe('корзина операций', () => {
         const restored = await agent.post(`/api/trash/${first._id}/restore`);
         const repeated = await agent.post(`/api/trash/${first._id}/restore`);
 
-        expect(restored.body).toEqual({ count: 2 });
-        expect(repeated.body).toEqual({ count: 0 });
+        expect(restored.body.count).toBe(2);
+        expect(repeated.body).toEqual({ count: 0, transactions: [] });
         expect(await Transaction.countDocuments()).toBe(2);
         expect(await Transaction.countDocuments({ deletedAt: null, __v: 2 })).toBe(2);
         expect((await agent.get('/api/trash')).body).toEqual([]);
+    });
+
+    it('отдаёт в ответе restore восстановленные документы: новый __v и без следов корзины', async () => {
+        const [first] = await Transaction.create([
+            tx({ account: 'card', splitId: 'split-a', amount: 30 }),
+            tx({ account: 'card', splitId: 'split-a', amount: 70 }),
+            tx({ account: 'card', amount: 5 })
+        ]);
+        await agent.delete(`/api/transactions/${first._id}?splitId=split-a`);
+
+        const restored = await agent.post(`/api/trash/${first._id}/restore`);
+
+        expect(restored.status).toBe(200);
+        expect(restored.body.count).toBe(2);
+        expect(restored.body.transactions).toHaveLength(2);
+        expect(restored.body.transactions.map(row => row.amount).sort()).toEqual([30, 70]);
+        for (const row of restored.body.transactions) {
+            expect(row).toMatchObject({ splitId: 'split-a', type: 'expense', account: 'card', __v: 2 });
+            expect(typeof row._id).toBe('string');
+            expect(typeof row.date).toBe('string');
+            expect(row).not.toHaveProperty('deletedAt');
+            expect(row).not.toHaveProperty('deletionBatchId');
+        }
+        // Та же форма, что у ответа GET /api/transactions для этих документов.
+        const listed = (await agent.get('/api/transactions')).body;
+        for (const row of restored.body.transactions) {
+            expect(listed.find(item => item._id === row._id)).toMatchObject({ amount: row.amount, splitId: 'split-a', __v: 2 });
+        }
+    });
+
+    it('восстанавливает одиночную операцию одним документом', async () => {
+        const transaction = await Transaction.create(tx({ account: 'card', amount: 12 }));
+        await agent.delete(`/api/transactions/${transaction._id}`);
+
+        const restored = await agent.post(`/api/trash/${transaction._id}/restore`);
+
+        expect(restored.body.count).toBe(1);
+        expect(restored.body.transactions).toHaveLength(1);
+        expect(restored.body.transactions[0]).toMatchObject({ _id: String(transaction._id), amount: 12, __v: 2 });
     });
 
     it('два одновременных удаления создают одну batch и дают стабильный результат', async () => {

@@ -143,6 +143,27 @@ describe('OverviewScreen empty states', () => {
             expect(recent.args).toMatchObject({ revision: 2, inserts: recentInserts, account: 'card', month: '2026-11' });
         });
 
+        it('hands the removals to the recent list hook', () => {
+            const listRemovals = [{ id: 'old', splitId: null, trashId: 'old', untilRevision: 3 }];
+            render(<OverviewScreen {...props} listRemovals={listRemovals} />);
+
+            expect(recent.args).toMatchObject({ removals: listRemovals });
+        });
+
+        it('collapses and locks the rows the hook reports as leaving, with the sum it computed', () => {
+            Element.prototype.animate = () => ({ cancel: () => { } });
+            try {
+                recent.value = { groups: { ...groups, '2026-11-03': { ...groups['2026-11-03'], dailySum: -5 } }, freshIds: new Set(), leavingIds: new Set(['new']), loading: false, error: false, retry: () => { } };
+                const { container } = render(<OverviewScreen {...props} />);
+
+                expect(container.querySelector('[data-history-item="new"]')).toHaveAttribute('inert');
+                expect(container.querySelector('[data-history-item="old"]')).not.toHaveAttribute('inert');
+                expect(container.querySelector('[data-history-date="2026-11-03"]')).toHaveTextContent('−€5,00');
+            } finally {
+                delete Element.prototype.animate;
+            }
+        });
+
         it('animates only the rows the hook reports as fresh', () => {
             recent.value = { groups, freshIds: new Set(['new']), loading: false, error: false, retry: () => { } };
             const { container } = render(<OverviewScreen {...props} />);

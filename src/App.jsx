@@ -63,6 +63,9 @@ const TOAST_STACK_STEP = 64;
 // операциях» до ответа сервера: одна вставка живёт до первого же ответа ленты,
 // так что несколько штук - это несколько быстрых записей подряд.
 const MAX_RECENT_INSERTS = 5;
+// Так же для только что удалённых операций: запись живёт до первого ответа
+// ленты, в списках строка за это время плавно сворачивается и остаётся свёрнутой.
+const MAX_LIST_REMOVALS = 5;
 
 class DataLoadError extends Error {
   constructor(message) {
@@ -297,6 +300,10 @@ function App() {
   // операций» на Обзоре: строка видна, пока лента ревизии untilRevision не
   // пришла (см. useRecentTransactions).
   const [recentInserts, setRecentInserts] = useState([]);
+  // Только что удалённые операции { id, splitId, trashId, untilRevision } для
+  // «Последних операций» и Истории: строка остаётся в списке и сворачивается, пока
+  // лента ревизии untilRevision не пришла; «Отменить» убирает запись по trashId.
+  const [listRemovals, setListRemovals] = useState([]);
   const bumpHistoryRevision = () => {
     historyRevisionRef.current += 1;
     setHistoryRevision(historyRevisionRef.current);
@@ -333,6 +340,7 @@ function App() {
     setIsExporting(false);
     bumpHistoryRevision();
     setRecentInserts([]);
+    setListRemovals([]);
     history.reset();
     historyPositionRef.current = { key: null, top: 0, pending: true };
     setCategories([]);
@@ -461,6 +469,8 @@ function App() {
     // первый в очереди к серверу, а лента его не задерживает.
     enabled: isAuthenticated === true || (isAuthenticated === null && startupRequested),
     revision: historyRevision, request: apiFetch, searching: Boolean(searchQuery.trim()),
+    // Сохранённые и удалённые операции показываются в списке до ответа сервера.
+    inserts: recentInserts, removals: listRemovals,
   });
 
   const fetchDashboard = async key => assertDashboardShape(
@@ -1412,7 +1422,15 @@ function App() {
         undoDeletionIdRef.current = null;
         setUndoDeletion(null);
       }
-      refreshInBackground();
+      // Ответ - восстановленные документы (старый сервер и заглушки их не
+      // отдают). Строка возвращается в списки сразу: если она там ещё стоит
+      // свёрнутой, запись об удалении снимается, и она вырастает с подсветкой;
+      // если лента уже пришла без неё, её вставляют по документам, как новую.
+      const body = await (async () => res.json())().catch(() => null);
+      if (session !== sessionGenerationRef.current) return;
+      setListRemovals(list => list.filter(removal => removal.trashId !== trashId));
+      const restored = Array.isArray(body?.transactions) && body.transactions.length > 0 ? body.transactions : null;
+      refreshInBackground(restored);
     } catch (err) {
       console.error('Undo delete error:', err);
       if (session === sessionGenerationRef.current) {
@@ -1457,6 +1475,13 @@ function App() {
         const data = await res.json().catch(() => null);
         if (session !== sessionGenerationRef.current) return false;
         if (data?.trashId) showUndoDeletion(data.trashId, Number(data.count) || 1);
+        // Строка (или вся разбитая покупка) сворачивается в списках сразу, не
+        // дожидаясь ленты; запись живёт до ответа ленты, с которой уйдёт
+        // обновление (следующая ревизия).
+        setListRemovals(list => [...list, {
+          id: String(id), splitId: splitId || null, trashId: data?.trashId ?? null,
+          untilRevision: historyRevisionRef.current + 1,
+        }].slice(-MAX_LIST_REMOVALS));
         refreshInBackground();
         setEditingTransaction(null);
         return true;
@@ -1863,6 +1888,7 @@ function App() {
             request={apiFetch}
             historyRevision={historyRevision}
             recentInserts={recentInserts}
+            listRemovals={listRemovals}
             openEditModal={openEditModal}
             getAccountDisplay={getAccountDisplay}
             formatDate={formatDate}

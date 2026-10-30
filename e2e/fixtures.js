@@ -141,7 +141,8 @@ export async function mockPhase2Api(page, overrides = {}) {
       const index = state.trash.findIndex(group => group.id === restoreMatch[1]);
       const [group] = state.trash.splice(index, 1);
       state.transactions.push(...group.transactions);
-      return fulfill(route, { count: group.count });
+      // Как сервер: вместе со счётчиком отдаёт восстановленные документы.
+      return fulfill(route, { count: group.count, transactions: group.transactions });
     }
 
     const purgeMatch = pathname.match(/^\/api\/trash\/([^/]+)$/);

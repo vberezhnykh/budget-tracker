@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import TransactionList from './TransactionList';
 import { transformTransactions } from '../utils/finance';
 // Группы по дням экран получает с сервера готовыми - берём их оттуда же.
@@ -431,5 +432,302 @@ describe('fresh rows', () => {
         expect(animate).not.toHaveBeenCalled();
         expect(rowEl(container, 'one').parentElement).toBe(container.querySelector('[data-history-date]').lastElementChild);
         expect(container.querySelector('[data-history-date]').lastElementChild).not.toHaveStyle({ overflow: 'hidden' });
+    });
+});
+
+// Удалённые строки: остаются в списке, плавно сворачиваются и остаются
+// свёрнутыми и недоступными; при отмене удаления растут обратно с подсветкой.
+describe('leaving rows', () => {
+    const rows = [
+        expense,
+        { _id: 'two', amount: 5, type: 'expense', account: 'card', category: 'Кафе', date: day },
+    ];
+    const otherDay = { _id: 'three', amount: 8, type: 'expense', account: 'card', category: 'Еда', date: '2026-09-11' };
+    const groupsOf = list => computePeriodData(transformTransactions(list), '2026-09').transactions;
+    const listProps = {
+        openEditModal: () => { },
+        toggleCategoryFilter: () => { },
+        getAccountDisplay: id => ACCOUNT_NAMES[id] || 'Мой счёт',
+        formatDate: date => `день ${date}`,
+    };
+    const rowEl = (container, id) => container.querySelector(`[data-history-item="${id}"]`);
+    const dayEl = (container, date) => container.querySelector(`[data-history-date="${date}"]`);
+    const view = (groups, leaving) => <TransactionList {...listProps} groups={groups} leavingIds={new Set(leaving)} />;
+    const COLLAPSED = { height: '0px', overflow: 'hidden', opacity: '0' };
+
+    let animations;
+    beforeEach(() => {
+        animations = [];
+        Element.prototype.animate = vi.fn(function animate(keyframes, options) {
+            const animation = { cancel: vi.fn(), keyframes, options, target: this };
+            animations.push(animation);
+            return animation;
+        });
+    });
+    afterEach(() => {
+        delete Element.prototype.animate;
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+    const finish = animation => act(() => animation.onfinish());
+    // В jsdom нет раскладки: зазор списка между днями (16px) подставляем сами.
+    const withListGap = () => {
+        const real = window.getComputedStyle.bind(window);
+        vi.spyOn(window, 'getComputedStyle').mockImplementation((element, ...rest) => new Proxy(real(element, ...rest), {
+            get: (style, name) => (name === 'rowGap' ? '16px' : typeof style[name] === 'function' ? style[name].bind(style) : style[name]),
+        }));
+    };
+
+    it('wraps nothing and animates nothing while no row is leaving', () => {
+        const { container } = render(view(groupsOf(rows), []));
+
+        expect(Element.prototype.animate).not.toHaveBeenCalled();
+        expect(container.querySelector('.tx-fresh')).toBeNull();
+        expect(rowEl(container, 'one')).not.toHaveAttribute('inert');
+        expect(rowEl(container, 'one')).not.toHaveAttribute('aria-hidden');
+    });
+
+    it('collapses a leaving row to zero height over 240 ms and keeps it there', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+
+        rerender(view(groups, ['two']));
+
+        expect(animations).toHaveLength(1);
+        const [{ keyframes, options, target }] = animations;
+        expect(target).toBe(rowEl(container, 'two'));
+        expect(keyframes[0]).toMatchObject({ opacity: 1 });
+        expect(keyframes[1]).toMatchObject({ height: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 });
+        expect(options).toMatchObject({ duration: 240, easing: 'ease-in', fill: 'forwards' });
+        // Соседняя строка не двигалась.
+        expect(rowEl(container, 'one')).not.toHaveAttribute('inert');
+
+        // Дошла до конца - свёрнута стилем и остаётся такой после перерисовок.
+        finish(animations[0]);
+        expect(rowEl(container, 'two')).toHaveStyle(COLLAPSED);
+        rerender(view(groupsOf(rows), ['two']));
+        expect(rowEl(container, 'two')).toHaveStyle(COLLAPSED);
+        expect(animations).toHaveLength(1);
+        expect(animations[0].cancel).not.toHaveBeenCalled();
+    });
+
+    it('takes a leaving row out of reach of the keyboard and screen readers at once', async () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+        const button = screen.getByRole('button', { name: /Кафе.*Карта.*€5,00/ });
+        expect(button).not.toHaveAttribute('tabindex');
+
+        rerender(view(groups, ['two']));
+
+        const row = rowEl(container, 'two');
+        expect(row).toHaveAttribute('inert');
+        expect(row).toHaveAttribute('aria-hidden', 'true');
+        expect(button).toHaveAttribute('tabindex', '-1');
+        // Tab с начала страницы проходит мимо: остаётся только строка «one» (и её категория).
+        const user = userEvent.setup();
+        const reached = [];
+        for (let i = 0; i < 6; i += 1) {
+            await user.tab();
+            reached.push(document.activeElement);
+        }
+        expect(reached).not.toContain(button);
+        expect(reached.some(element => row.contains(element))).toBe(false);
+    });
+
+    it('collapses a split purchase as one block and takes its parts out of the tab order', () => {
+        const parts = [
+            { _id: 'p1', amount: 10, type: 'expense', account: 'card', category: 'Еда', date: day, splitId: 'split_1', description: 'Магазин' },
+            { _id: 'p2', amount: 4, type: 'expense', account: 'card', category: 'Дом', date: day, splitId: 'split_1', description: 'Магазин' },
+        ];
+        const groups = groupsOf([...parts, { ...expense, _id: 'plain' }]);
+        const { container, rerender } = render(view(groups, []));
+
+        rerender(view(groups, ['split_1']));
+
+        expect(animations).toHaveLength(1);
+        const group = rowEl(container, 'split_1').closest('[inert]');
+        expect(animations[0].target).toBe(group);
+        expect(group).toHaveAttribute('inert');
+        for (const button of within(group).getAllByRole('button', { hidden: true })) expect(button).toHaveAttribute('tabindex', '-1');
+        expect(rowEl(container, 'plain')).not.toHaveAttribute('inert');
+    });
+
+    it('drops the divider above the first remaining row while the one over it leaves', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+        const [first, second] = [...container.querySelectorAll('[data-history-item]')].map(element => element.dataset.historyItem);
+        expect(rowEl(container, second).style.borderTop).toContain('var(--color-border-subtle)');
+
+        rerender(view(groups, [first]));
+
+        expect(rowEl(container, second).style.borderTop).not.toContain('var(--color-border-subtle)');
+        // Уходящая строка сама ещё со своим верхом - его гасит анимация.
+        expect(rowEl(container, first).style.borderTop).not.toContain('var(--color-border-subtle)');
+    });
+
+    it('collapses the whole day, header and card, when all its rows leave, without moving the rows one by one', () => {
+        withListGap();
+        const groups = groupsOf([...rows, otherDay]);
+        const { container, rerender } = render(view(groups, []));
+
+        rerender(view(groups, ['three']));
+
+        expect(animations).toHaveLength(1);
+        const dayBlock = dayEl(container, '2026-09-11');
+        expect(animations[0].target).toBe(dayBlock);
+        // Зазор между днями съедает отрицательный нижний отступ.
+        expect(animations[0].keyframes[0]).toMatchObject({ marginBottom: '0px' });
+        expect(animations[0].keyframes[1]).toMatchObject({ height: '0px', marginBottom: '-16px' });
+        expect(dayBlock).toHaveAttribute('inert');
+        expect(dayBlock).toHaveAttribute('aria-hidden', 'true');
+        expect(dayEl(container, day)).not.toHaveAttribute('inert');
+
+        finish(animations[0]);
+        expect(dayBlock).toHaveStyle({ height: '0px', overflow: 'hidden', opacity: '0' });
+        expect(dayBlock.style.marginBottom).toBe('calc(-1 * var(--space-4))');
+    });
+
+    it('does not collapse the day while another row of it stays', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+
+        rerender(view(groups, ['two']));
+
+        expect(animations.map(animation => animation.target)).toEqual([rowEl(container, 'two')]);
+        expect(dayEl(container, day)).not.toHaveAttribute('inert');
+    });
+
+    it('shows the day sum it is given at once, whatever is still collapsing', () => {
+        const groups = groupsOf(rows);
+        const adjusted = { ...groups, [day]: { ...groups[day], dailySum: -12 } };
+        const { container, rerender } = render(view(groups, []));
+        expect(dayEl(container, day)).toHaveTextContent(`${MINUS}€17,00`);
+
+        rerender(view(adjusted, ['two']));
+
+        expect(dayEl(container, day)).toHaveTextContent(`${MINUS}€12,00`);
+    });
+
+    it('grows a restored row back from its collapsed state with a fresh tint', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+        rerender(view(groups, ['two']));
+        finish(animations[0]);
+        expect(container.querySelector('.tx-fresh')).toBeNull();
+
+        rerender(view(groups, []));
+
+        // Сворачивание снято до измерения, выросла новая анимация от нуля.
+        expect(animations[0].cancel).toHaveBeenCalledTimes(1);
+        expect(animations).toHaveLength(2);
+        expect(animations[1].target).toBe(rowEl(container, 'two'));
+        expect(animations[1].keyframes[0]).toMatchObject({ height: '0px', opacity: 0 });
+        expect(animations[1].keyframes[1]).toMatchObject({ opacity: 1 });
+        expect(animations[1].options).toMatchObject({ duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
+        const row = rowEl(container, 'two');
+        expect(row).not.toHaveStyle(COLLAPSED);
+        expect(row).not.toHaveAttribute('inert');
+        expect(row).not.toHaveAttribute('aria-hidden');
+        expect(row.parentElement).toHaveClass('tx-fresh');
+        expect(row.parentElement.querySelector('.tx-fresh-glow')).not.toBeNull();
+        expect(screen.getByRole('button', { name: /Кафе.*Карта.*€5,00/ })).not.toHaveAttribute('tabindex');
+        // Остальное не тронуто.
+        expect(rowEl(container, 'one').parentElement).not.toHaveClass('tx-fresh');
+    });
+
+    it('replays the tint (a new glow element) when a row is restored again', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+        rerender(view(groups, ['two']));
+        rerender(view(groups, []));
+        const first = rowEl(container, 'two').parentElement.querySelector('.tx-fresh-glow');
+        const row = rowEl(container, 'two');
+
+        rerender(view(groups, ['two']));
+        expect(row.parentElement.querySelector('.tx-fresh-glow')).toBeNull();
+        rerender(view(groups, []));
+
+        const second = row.parentElement.querySelector('.tx-fresh-glow');
+        expect(second).not.toBeNull();
+        expect(second).not.toBe(first);
+        expect(rowEl(container, 'two')).toBe(row);
+    });
+
+    it('grows a restored row back even if it was still collapsing', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+        rerender(view(groups, ['two']));
+
+        rerender(view(groups, []));
+
+        expect(animations[0].cancel).toHaveBeenCalledTimes(1);
+        expect(animations[1].keyframes[0]).toMatchObject({ height: '0px' });
+        expect(rowEl(container, 'two').parentElement).toHaveClass('tx-fresh');
+    });
+
+    it('grows the whole day back when its rows return', () => {
+        withListGap();
+        const groups = groupsOf([...rows, otherDay]);
+        const { container, rerender } = render(view(groups, []));
+        rerender(view(groups, ['three']));
+        finish(animations[0]);
+
+        rerender(view(groups, []));
+
+        expect(animations).toHaveLength(2);
+        expect(animations[1].target).toBe(dayEl(container, '2026-09-11'));
+        expect(animations[1].keyframes[0]).toMatchObject({ height: '0px', marginBottom: '-16px' });
+        expect(dayEl(container, '2026-09-11')).not.toHaveAttribute('inert');
+        // Строка в нём светится, но не растёт отдельно.
+        expect(rowEl(container, 'three').parentElement).toHaveClass('tx-fresh');
+    });
+
+    it('shows a row that is already leaving when the list is mounted collapsed, with no animation', () => {
+        const { container } = render(view(groupsOf(rows), ['two']));
+
+        expect(Element.prototype.animate).not.toHaveBeenCalled();
+        expect(rowEl(container, 'two')).toHaveStyle(COLLAPSED);
+        expect(rowEl(container, 'two')).toHaveAttribute('inert');
+    });
+
+    it('hides and shows rows instantly for reduced motion, keeping only the tint', () => {
+        vi.stubGlobal('matchMedia', query => ({ matches: query.includes('prefers-reduced-motion'), media: query }));
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+
+        rerender(view(groups, ['two']));
+        expect(rowEl(container, 'two')).toHaveStyle(COLLAPSED);
+        rerender(view(groups, []));
+
+        expect(Element.prototype.animate).not.toHaveBeenCalled();
+        expect(rowEl(container, 'two')).not.toHaveStyle(COLLAPSED);
+        expect(rowEl(container, 'two').parentElement).toHaveClass('tx-fresh');
+    });
+
+    it('collapses instantly when the browser has no Web Animations', () => {
+        delete Element.prototype.animate;
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+
+        rerender(view(groups, ['two']));
+
+        expect(rowEl(container, 'two')).toHaveStyle(COLLAPSED);
+    });
+
+    it('clips the day card to its corners once a row in it is leaving', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups, []));
+        expect(dayEl(container, day).lastElementChild).not.toHaveStyle({ overflow: 'hidden' });
+
+        rerender(view(groups, ['two']));
+
+        expect(dayEl(container, day).lastElementChild).toHaveStyle({ overflow: 'hidden' });
+    });
+
+    it('lets a row that is both fresh and leaving mount collapsed without growing', () => {
+        const { container } = render(<TransactionList {...listProps} groups={groupsOf(rows)} freshIds={new Set(['two'])} leavingIds={new Set(['two'])} />);
+
+        expect(Element.prototype.animate).not.toHaveBeenCalled();
+        expect(rowEl(container, 'two')).toHaveStyle(COLLAPSED);
     });
 });

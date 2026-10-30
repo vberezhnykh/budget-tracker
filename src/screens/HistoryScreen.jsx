@@ -408,6 +408,8 @@ export default function HistoryScreen({
             openEditModal={openEditModal}
             getAccountDisplay={getAccountDisplay}
             formatDate={formatDate}
+            freshIds={history.freshIds}
+            leavingIds={history.leavingIds}
           /></div>}
           <div ref={moreRef} style={{ padding: 'var(--space-4) 0', textAlign: 'center' }}>
             {historyRefreshing && <div role="status" style={{ color: 'var(--color-text-muted)', fontSize: 'var(--text-sm)' }}>Обновление…</div>}

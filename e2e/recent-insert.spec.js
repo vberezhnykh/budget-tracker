@@ -63,15 +63,15 @@ test.describe('Recent operations right after a write (mobile, real browser)', ()
     await expect(day.locator('[data-history-item]').first()).toHaveAttribute('data-history-item', 'tx-new');
     await expect(day).toContainText('−€45,00');
 
-    // Подсветка: обёртка строки, чья подложка шире строки на отступы карточки
-    // и совпадает с шириной самой карточки.
+    // Подсветка: обёртка строки, чей светящийся слой шире строки на отступы
+    // карточки и совпадает с шириной самой карточки.
     const tint = await row.evaluate(el => {
       const wrapper = el.parentElement;
       const card = el.closest('[data-history-date]').lastElementChild;
-      const before = getComputedStyle(wrapper, '::before');
+      const glow = wrapper.querySelector('.tx-fresh-glow');
       return {
         isWrapper: wrapper.classList.contains('tx-fresh'),
-        tintWidth: parseFloat(before.width),
+        tintWidth: glow.getBoundingClientRect().width,
         cardWidth: card.getBoundingClientRect().width,
         rowWidth: el.getBoundingClientRect().width,
         cardOverflow: getComputedStyle(card).overflow,
