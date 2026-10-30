@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import AddTransactionForm from './AddTransactionForm';
 import { SAVE_BUTTON_NAME } from '../test/queries';
@@ -952,6 +952,22 @@ describe('AddTransactionForm Component', () => {
 
             fireEvent.focus(amountField());
             expect(calc()).toBeInTheDocument();
+        });
+
+        it('keeps the row in place until a press that took the focus away is over', async () => {
+            // Нажатие на категорию снимает фокус с суммы уже на pointerdown.
+            // Если ряд исчезнет сразу, категории подскочат, и click уйдёт мимо.
+            render(<AddTransactionForm type="expense" {...props} />);
+            const category = screen.getByRole('button', { name: 'Продукты', exact: true });
+            expect(amountField()).toHaveFocus();
+            fireEvent.pointerDown(category);
+            act(() => category.focus());
+            expect(calc()).toBeInTheDocument();
+
+            fireEvent.pointerUp(category);
+            fireEvent.click(category);
+            expect(category).toHaveAttribute('aria-pressed', 'true');
+            await waitFor(() => expect(screen.queryByRole('group', { name: 'Калькулятор' })).not.toBeInTheDocument());
         });
 
         it('keeps the field focused when a button is pressed', () => {

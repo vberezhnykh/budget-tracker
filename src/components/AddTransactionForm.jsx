@@ -135,6 +135,44 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
     const amountValue = amountCalc.error ? null : amountCalc.value;
     const [amountFocused, setAmountFocused] = useState(false);
     const amountRef = useRef(null);
+    // Нажат ли сейчас палец или кнопка мыши. Нужно, чтобы ряд калькулятора
+    // не исчезал посреди нажатия (см. hideCalculator).
+    const pointerPressedRef = useRef(false);
+    useEffect(() => {
+        if (!amountFocused) return undefined;
+        const press = () => { pointerPressedRef.current = true; };
+        const release = () => { pointerPressedRef.current = false; };
+        window.addEventListener('pointerdown', press, true);
+        window.addEventListener('pointerup', release, true);
+        window.addEventListener('pointercancel', release, true);
+        return () => {
+            window.removeEventListener('pointerdown', press, true);
+            window.removeEventListener('pointerup', release, true);
+            window.removeEventListener('pointercancel', release, true);
+        };
+    }, [amountFocused]);
+
+    // Поле суммы теряет фокус уже на нажатии (mousedown), а click приходит
+    // на отпускании. Если убрать ряд калькулятора сразу, всё ниже него
+    // подскакивает на высоту ряда, и отпускание попадает не туда, где было
+    // нажатие: первое нажатие на категорию после ввода суммы пропадало. Поэтому
+    // при нажатии ряд прячем после того, как нажатие завершилось и click
+    // отработал, и только если фокус в поле за это время не вернулся.
+    const hideCalculator = () => {
+        if (!pointerPressedRef.current) {
+            setAmountFocused(false);
+            return;
+        }
+        const hide = () => {
+            window.removeEventListener('pointerup', hide, true);
+            window.removeEventListener('pointercancel', hide, true);
+            setTimeout(() => {
+                if (document.activeElement !== amountRef.current) setAmountFocused(false);
+            }, 0);
+        };
+        window.addEventListener('pointerup', hide, true);
+        window.addEventListener('pointercancel', hide, true);
+    };
 
     // Новая операция начинается с суммы, поэтому курсор сразу в её поле.
     // Лист сам переводит фокус на первый элемент (переключатель типа), а
@@ -509,7 +547,7 @@ export default function AddTransactionForm({ type = 'expense', initialData = nul
                                 value={formData.amount}
                                 onChange={e => changeAmount(limitAmountInput(e.target.value, formData.amount))}
                                 onFocus={() => setAmountFocused(true)}
-                                onBlur={() => { setAmountFocused(false); collapse(); }}
+                                onBlur={() => { hideCalculator(); collapse(); }}
                                 style={{
                                     width: amountWidth,
                                     maxWidth: 'calc(100% - 3rem)',
