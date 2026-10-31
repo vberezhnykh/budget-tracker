@@ -86,6 +86,9 @@ export default function OverviewScreen({
   // Удалённые операции { id, splitId, untilRevision }: строка остаётся в списке и
   // плавно сворачивается до ответа сервера (см. useRecentTransactions).
   listRemovals,
+  // Изменённые операции { id, saved, seq, untilRevision }: строка сразу
+  // показывает новые данные и подсвечивается до ответа сервера (см. useRecentTransactions).
+  listEdits,
   openEditModal,
   getAccountDisplay,
   formatDate,
@@ -97,6 +100,7 @@ export default function OverviewScreen({
     account: selectedAccount,
     revision: historyRevision,
     inserts: recentInserts,
+    edits: listEdits,
     removals: listRemovals,
   });
 
@@ -235,6 +239,7 @@ export default function OverviewScreen({
               groups={recent.groups}
               freshIds={recent.freshIds}
               leavingIds={recent.leavingIds}
+              editedIds={recent.editedIds}
               openEditModal={openEditModal}
               getAccountDisplay={getAccountDisplay}
               formatDate={formatDate}

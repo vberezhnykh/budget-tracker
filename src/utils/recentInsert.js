@@ -21,7 +21,7 @@ const dateKeyOf = raw => (typeof raw === 'string' ? raw.slice(0, 10) : '');
 // Сырой документ -> элемент списка. Приведение берётся общее с остальным
 // клиентом (utils/finance), а идентификаторы и дата подготавливаются так, как
 // их видит серверный transformTransactions: id и companyId - строками.
-function toListItems(docs) {
+export function toListItems(docs) {
   const prepared = docs.map(doc => ({
     ...doc,
     _id: String(doc._id),
@@ -33,7 +33,7 @@ function toListItems(docs) {
 
 // Операция совпадает со счётом запроса: сам счёт или получатель перевода
 // (matchesAccount на сервере). Фильтр по типу счёта сюда не доходит.
-const matchesAccount = (item, account) => (
+export const matchesAccount = (item, account) => (
   item.type === 'transfer' ? item.account === account || item.toAccount === account : item.account === account
 );
 
@@ -44,7 +44,7 @@ export const contribution = item => (
 );
 
 // Части покупки -> одна строка split_group, как её собирает computePeriodData.
-function buildSplitGroup(parts) {
+export function buildSplitGroup(parts) {
   const first = parts[0];
   const group = {
     id: first.splitId,
@@ -85,7 +85,12 @@ function presentIds(groups) {
 }
 
 // Порядок строк внутри дня на сервере - по убыванию id как строки.
-const compareIds = (a, b) => String(a).localeCompare(String(b));
+export const compareIds = (a, b) => String(a).localeCompare(String(b));
+
+// Ответ не в виде полного документа (пустой, без _id, суммы или типа) - не из
+// чего строить строку: лучше дождаться списка, чем показать «€NaN».
+export const isDocument = doc => Boolean(doc) && typeof doc === 'object' && doc._id != null
+  && typeof doc.type === 'string' && Number.isFinite(parseFloat(doc.amount));
 
 /**
  * Вставляет сохранённую операцию в группы списка последних операций.
@@ -100,10 +105,6 @@ const compareIds = (a, b) => String(a).localeCompare(String(b));
 export function insertRecentTransaction(groups, saved, { month, account = null, limit = 5 }) {
   const unchanged = { groups, id: null };
   const docs = Array.isArray(saved) ? saved : [saved];
-  // Ответ не в виде полных документов (пустой, без _id, суммы или типа) - не из
-  // чего строить строку: лучше дождаться списка, чем показать «€NaN».
-  const isDocument = doc => doc && typeof doc === 'object' && doc._id != null
-    && typeof doc.type === 'string' && Number.isFinite(parseFloat(doc.amount));
   if (docs.length === 0 || !docs.every(isDocument)) return unchanged;
   // Фильтр по типу счёта требует справочника счетов; список обновится запросом.
   if (account && account.startsWith('type:')) return unchanged;

@@ -285,6 +285,11 @@ function useBlockMotion(ref, { enter = false, leaving = false, own = leaving, wi
 // её удалили, а список ещё без ответа сервера, и тем же ростом с подсветкой
 // возвращается, если удаление отменили (useBlockMotion).
 //
+// Поправленная строка (editSeq - номер правки из editedIds) остаётся тем же
+// элементом: показывает новые данные, светится той же подсветкой, а если высота
+// изменилась (добавили комментарий и т.п.), плавно меняет её за ENTER_MS. Новая
+// правка той же строки (другой editSeq) зажигает подсветку заново.
+//
 // Появление - только при монтировании: `entering` запоминается один раз, и
 // когда настоящий список подменяет строку (тот же key, но fresh уже нет),
 // элемент остаётся тем же, подсветка доигрывает, а рост не повторяется.
@@ -294,15 +299,56 @@ function useBlockMotion(ref, { enter = false, leaving = false, own = leaving, wi
 // Подсветка живёт на обёртке вокруг строки, а не на ней самой: иначе
 // overflow: hidden на время роста срезал бы её по ширине строки. Обёртка
 // появляется у строки с самого начала, если она свежая или список следит за
-// уходящими (tracked): добавить её позже значило бы пересоздать строку.
-// При «уменьшить движение» рост и прозрачность пропускаются, остаётся только
-// плавное угасание цвета.
+// уходящими и поправленными (tracked): добавить её позже значило бы пересоздать
+// строку. При «уменьшить движение» рост и прозрачность пропускаются, остаётся
+// только плавное угасание цвета.
 // Уходящая строка недоступна: inert и aria-hidden - ни Tab, ни скринридер.
-function EnterBox({ fresh = false, leaving = false, own = leaving, tracked = false, children, style, ...props }) {
+function EnterBox({ fresh = false, leaving = false, own = leaving, tracked = false, editSeq = null, children, style, ...props }) {
     const [entering] = useState(fresh);
-    const [wrapped] = useState(fresh || tracked);
+    const [wrapped] = useState(fresh || tracked || editSeq !== null);
     const ref = useRef(null);
     const { collapsed, returns } = useBlockMotion(ref, { enter: entering, leaving, own });
+
+    // Новая правка замечается при рендере (как в DayCard и useBlockMotion): число
+    // подсветок растёт, а старая высота строки читается сейчас - DOM ещё прежний,
+    // после коммита её уже не узнать. Читаем только при смене номера правки, а не
+    // на каждый рендер: измерение раскладки у каждой строки длинного списка стоило бы дорого.
+    const [seenEdit, setSeenEdit] = useState(null);
+    const [glows, setGlows] = useState(0);
+    const heightBeforeRef = useRef(null);
+    if (seenEdit !== editSeq) {
+        setSeenEdit(editSeq);
+        if (editSeq !== null) {
+            setGlows(count => count + 1);
+            heightBeforeRef.current = ref.current ? ref.current.getBoundingClientRect().height : null;
+        }
+    }
+
+    // Плавная смена высоты поправленной строки. Не трогаем строку, которая уходит
+    // или ещё растёт/сворачивается: у неё своя анимация высоты. Предыдущая
+    // анимация правки снимается при следующей правке, и новая начинается с высоты,
+    // которую строка показывала в тот момент. Когда правка отброшена (список
+    // пришёл), анимацию не обрываем - она доигрывает сама.
+    const editAnimationRef = useRef(null);
+    useLayoutEffect(() => {
+        const before = heightBeforeRef.current;
+        heightBeforeRef.current = null;
+        const element = ref.current;
+        if (before === null || !element) return;
+        editAnimationRef.current?.cancel();
+        editAnimationRef.current = null;
+        if (leaving || motionOff()) return;
+        if ((element.getAnimations?.().length ?? 0) > 0) return;
+        const after = element.getBoundingClientRect().height;
+        if (!(Math.abs(after - before) > 0.5)) return;
+        editAnimationRef.current = element.animate(
+            [{ height: `${before}px`, overflow: 'hidden' }, { height: `${after}px`, overflow: 'hidden' }],
+            { duration: ENTER_MS, easing: ENTER_EASING },
+        );
+        // leaving читается только в момент правки; смена leaving - не повод мерить заново.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editSeq]);
+    useLayoutEffect(() => () => editAnimationRef.current?.cancel(), []);
 
     const row = (
         <div
@@ -316,11 +362,33 @@ function EnterBox({ fresh = false, leaving = false, own = leaving, tracked = fal
         </div>
     );
     if (!wrapped) return row;
-    const tinted = (entering || returns > 0) && !leaving;
+    const tinted = (entering || returns > 0 || glows > 0) && !leaving;
     return (
         <div className={tinted ? 'tx-fresh' : undefined}>
-            {tinted && <span key={returns} className="tx-fresh-glow" aria-hidden="true" />}
+            {tinted && <span key={`${returns}:${glows}`} className="tx-fresh-glow" aria-hidden="true" />}
             {row}
+        </div>
+    );
+}
+
+// Строка части разбитой покупки. Поправленная часть светится той же подсветкой,
+// что и строка, но растянутой до краёв карточки (.tx-part-glow); сама верстка
+// части остаётся прежней. isolation - чтобы подсветка с z-index: -1 осталась под
+// содержимым части, но над фоном карточки. Новая правка (другой editSeq)
+// пересоздаёт подсветку по ключу. Подсветка остаётся и после того, как правка
+// отброшена (пришёл список, editSeq снова null): лента обычно приходит раньше,
+// чем подсветка догорит, и снимать её тогда значило бы оборвать на середине.
+function SplitPart({ editSeq = null, style, children }) {
+    const [seenEdit, setSeenEdit] = useState(null);
+    const [glows, setGlows] = useState(0);
+    if (seenEdit !== editSeq) {
+        setSeenEdit(editSeq);
+        if (editSeq !== null) setGlows(count => count + 1);
+    }
+    return (
+        <div style={glows === 0 ? style : { ...style, isolation: 'isolate' }}>
+            {glows > 0 && <span key={glows} className="tx-fresh-glow tx-part-glow" aria-hidden="true" />}
+            {children}
         </div>
     );
 }
@@ -379,6 +447,14 @@ export default function TransactionList({
     // Вернулись из Set (удаление отменили) - растут обратно с подсветкой. Без
     // него список ведёт себя как раньше.
     leavingIds = null,
+    // Необязательный: Map id -> номер правки для строк (и частей разбитых покупок),
+    // которые только что изменены, а список ещё без ответа сервера: они уже
+    // показывают новые данные. Такая строка светится той же подсветкой и плавно
+    // меняет высоту; новый номер у той же строки зажигает подсветку заново. Строка,
+    // переехавшая в другой день, приходит с призраком `movedAway` на старом месте
+    // (сворачивается как уходящая) и в freshIds на новом (вырастает как новая).
+    // Без него список ведёт себя как раньше.
+    editedIds = null,
 }) {
     const dates = Object.keys(groups || {}).sort((a, b) => new Date(b) - new Date(a));
 
@@ -446,7 +522,7 @@ export default function TransactionList({
 
     // Строка-карточка (обычная операция и «шапка» разбитой): иконка,
     // название с подписью, сумма. Кнопка-подложка только у редактируемых.
-    const renderRow = (item, { index, title, parts, overlay, faded, fresh = false, leaving = false, own = leaving }) => {
+    const renderRow = (item, { index, title, parts, overlay, faded, fresh = false, leaving = false, own = leaving, editSeq = null }) => {
         const { text, color } = amountFor(item);
         return (
             <EnterBox
@@ -454,7 +530,8 @@ export default function TransactionList({
                 fresh={fresh}
                 leaving={leaving}
                 own={own}
-                tracked={Boolean(leavingIds)}
+                tracked={Boolean(leavingIds || editedIds)}
+                editSeq={editSeq}
                 data-history-item={item.id}
                 style={{
                     position: 'relative',
@@ -490,10 +567,10 @@ export default function TransactionList({
     const renderSplit = (item, index, { leaving, own }) => (
         <EnterBox
             key={item.id}
-            fresh={Boolean(freshIds?.has(item.id))}
+            fresh={!item.movedAway && Boolean(freshIds?.has(item.id))}
             leaving={leaving}
             own={own}
-            tracked={Boolean(leavingIds)}
+            tracked={Boolean(leavingIds || editedIds)}
             style={{ borderTop: index > 0 ? '1px solid var(--color-border-subtle)' : 'none' }}
         >
             {renderRow(item, {
@@ -509,8 +586,9 @@ export default function TransactionList({
                 бывают, поэтому редактируются всегда. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', paddingLeft: NESTED_INDENT, paddingBottom: 'var(--space-3)' }}>
                 {item.items.map(subItem => (
-                    <div
+                    <SplitPart
                         key={subItem.id}
+                        editSeq={editedIds?.get(subItem.id) ?? null}
                         style={{
                             position: 'relative',
                             display: 'flex',
@@ -548,13 +626,18 @@ export default function TransactionList({
                         <div style={{ flexShrink: 0, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: MAIN_COLOR }}>
                             {formatMoney(subItem.visualAmount)}
                         </div>
-                    </div>
+                    </SplitPart>
                 ))}
             </div>
         </EnterBox>
     );
 
-    const isLeaving = item => Boolean(leavingIds?.has(item.id));
+    // Призрак переехавшей правкой строки уходит по самому маркеру, без leavingIds.
+    const isLeaving = item => Boolean(item.movedAway || leavingIds?.has(item.id));
+    // Номер правки строки; у призрака его нет - светится копия в новом дне.
+    const editSeqOf = item => (item.movedAway ? null : (editedIds?.get(item.id) ?? null));
+    const hasEdited = item => Boolean(editedIds) && !item.movedAway
+        && (editedIds.has(item.id) || (item.type === 'split_group' && item.items.some(part => editedIds.has(part.id))));
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -580,7 +663,7 @@ export default function TransactionList({
                             )}
                         </div>
 
-                        <DayCard hasFresh={(Boolean(freshIds) && items.some(item => freshIds.has(item.id))) || items.some(isLeaving)}>
+                        <DayCard hasFresh={(Boolean(freshIds) && items.some(item => freshIds.has(item.id))) || items.some(isLeaving) || items.some(hasEdited)}>
                             {items.map((item, position) => {
                                 const leaving = isLeaving(item);
                                 const own = leaving && !dayLeaving;
@@ -598,9 +681,10 @@ export default function TransactionList({
                                     parts: subtitleParts(item, leaving),
                                     overlay: isEditable && <RowOverlayButton label={rowLabel(item)} onClick={() => openEditModal(item)} inactive={leaving} />,
                                     faded: item.excludeFromStats,
-                                    fresh: Boolean(freshIds?.has(item.id)),
+                                    fresh: !item.movedAway && Boolean(freshIds?.has(item.id)),
                                     leaving,
                                     own,
+                                    editSeq: editSeqOf(item),
                                 });
                             })}
                         </DayCard>

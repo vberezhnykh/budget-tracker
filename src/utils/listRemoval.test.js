@@ -119,4 +119,23 @@ describe('applyListRemovals', () => {
     const numeric = { '2026-09-24': { items: [row(7)], dailySum: -10 } };
     expect([...applyListRemovals(numeric, [{ id: '7' }]).leavingIds]).toEqual(['7']);
   });
+
+  it('skips the ghost of a row that moved away: its amount is already out of the day sum and it leaves by its marker', () => {
+    const ghosted = { '2026-09-24': { items: [row('c'), row('b', { movedAway: true })], dailySum: -10 } };
+
+    const { groups: next, leavingIds } = applyListRemovals(ghosted, [{ id: 'b' }]);
+
+    expect(next).toBe(ghosted);
+    expect(leavingIds.size).toBe(0);
+
+    // Копия той же строки в другом дне уходит как обычно, призрак остается как есть.
+    const both = {
+      '2026-09-24': ghosted['2026-09-24'],
+      '2026-09-23': { items: [row('b', { date: '2026-09-23' })], dailySum: -10 },
+    };
+    const removed = applyListRemovals(both, [{ id: 'b' }]);
+    expect(removed.groups['2026-09-24']).toBe(ghosted['2026-09-24']);
+    expect(removed.groups['2026-09-23'].dailySum).toBe(0);
+    expect([...removed.leavingIds]).toEqual(['b']);
+  });
 });

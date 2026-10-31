@@ -337,6 +337,70 @@ describe('useHistoryList with just-saved and just-deleted operations', () => {
     expect(result.current.freshIds.size).toBe(0);
   });
 
+  describe('edits', () => {
+    const doc = (overrides = {}) => ({ _id: 'b2', amount: 25, type: 'expense', category: 'Еда', account: 'card', date: '2026-09-24T00:00:00.000Z', ...overrides });
+    const edit = (overrides = {}, extra = {}) => ({ id: 'b2', saved: doc(overrides), seq: 3, untilRevision: 1, ...extra });
+
+    it('shows the new data and day sum before the refreshed list lands, and drops the edit once it is on screen', async () => {
+      let second;
+      const request = vi.fn()
+        .mockResolvedValueOnce(response(full()))
+        .mockImplementationOnce(() => new Promise(resolve => { second = resolve; }));
+      const { result, rerender } = setup({}, request);
+      await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+      expect(result.current.editedIds.size).toBe(0);
+
+      rerender({ revision: 1, edits: [edit()] });
+
+      expect(result.current.transactions['2026-09-24'].items[0].visualAmount).toBe(-25);
+      expect(result.current.transactions['2026-09-24'].dailySum).toBe(-30);
+      expect([...result.current.editedIds]).toEqual([['b2', 3]]);
+      expect(result.current.refreshing).toBe(true);
+
+      await act(async () => second(response({
+        transactions: { '2026-09-24': { dailySum: -30, items: [item('b2', -25), item('a1', -5)] }, '2026-08-30': full().transactions['2026-08-30'] },
+        count: 3, complete: true,
+      })));
+      expect(result.current.transactions['2026-09-24'].items[0].visualAmount).toBe(-25);
+      expect(result.current.editedIds.size).toBe(0);
+      expect(result.current.freshIds.size).toBe(0);
+    });
+
+    it('moves a row to its new day with a ghost behind it', async () => {
+      const { result, rerender } = setup({}, held());
+      await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+
+      rerender({ revision: 1, edits: [edit({ date: '2026-08-30T00:00:00.000Z' })] });
+
+      expect(result.current.transactions['2026-09-24'].items[0]).toMatchObject({ id: 'b2', movedAway: true });
+      expect(result.current.transactions['2026-09-24'].dailySum).toBe(-5);
+      expect(result.current.transactions['2026-08-30'].items.map(row => row.id)).toEqual(['c0', 'b2']);
+      expect([...result.current.freshIds]).toEqual(['b2']);
+    });
+
+    it('takes the filters into account: a row that no longer fits the category leaves', async () => {
+      const { result, rerender } = setup({ filters: { category: 'Еда' } }, held());
+      await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+      const filters = { category: 'Еда' };
+
+      rerender({ filters, revision: 1, edits: [edit({ category: 'Дом' })] });
+
+      expect(result.current.transactions['2026-09-24'].items[0]).toMatchObject({ id: 'b2', movedAway: true });
+      expect(result.current.editedIds.size).toBe(0);
+    });
+
+    it('does not apply edits while a search is active', async () => {
+      const filters = { q: 'кофе' };
+      const { result, rerender } = setup({ filters }, held());
+      await waitFor(() => expect(ids(result)).toEqual(['b2', 'a1', 'c0']));
+
+      rerender({ filters, revision: 1, edits: [edit()] });
+
+      expect(result.current.transactions['2026-09-24'].items[0].visualAmount).toBe(-10);
+      expect(result.current.editedIds.size).toBe(0);
+    });
+  });
+
   it('drops an insert and a removal once the list of their revision is on screen', async () => {
     const { result } = setup({ revision: 1, inserts: [{ saved, untilRevision: 1 }], removals: [removal] });
     await waitFor(() => expect(result.current.loading).toBe(false));

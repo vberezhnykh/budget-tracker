@@ -66,6 +66,9 @@ const MAX_RECENT_INSERTS = 5;
 // Так же для только что удалённых операций: запись живёт до первого ответа
 // ленты, в списках строка за это время плавно сворачивается и остаётся свёрнутой.
 const MAX_LIST_REMOVALS = 5;
+// И для только что изменённых операций: запись живёт до первого ответа ленты,
+// в списках строка за это время показывает новые данные с подсветкой.
+const MAX_LIST_EDITS = 5;
 
 class DataLoadError extends Error {
   constructor(message) {
@@ -304,6 +307,12 @@ function App() {
   // «Последних операций» и Истории: строка остаётся в списке и сворачивается, пока
   // лента ревизии untilRevision не пришла; «Отменить» убирает запись по trashId.
   const [listRemovals, setListRemovals] = useState([]);
+  // Только что изменённые операции { id, saved, seq, untilRevision } для тех же
+  // списков: строка сразу показывает ответ PUT и подсвечивается, пока лента ревизии
+  // untilRevision не пришла (см. utils/listEdit.js). seq растёт с каждой правкой -
+  // по нему список заново зажигает подсветку у уже поправленной строки.
+  const [listEdits, setListEdits] = useState([]);
+  const editSeqRef = useRef(0);
   const bumpHistoryRevision = () => {
     historyRevisionRef.current += 1;
     setHistoryRevision(historyRevisionRef.current);
@@ -341,6 +350,7 @@ function App() {
     bumpHistoryRevision();
     setRecentInserts([]);
     setListRemovals([]);
+    setListEdits([]);
     history.reset();
     historyPositionRef.current = { key: null, top: 0, pending: true };
     setCategories([]);
@@ -469,8 +479,8 @@ function App() {
     // первый в очереди к серверу, а лента его не задерживает.
     enabled: isAuthenticated === true || (isAuthenticated === null && startupRequested),
     revision: historyRevision, request: apiFetch, searching: Boolean(searchQuery.trim()),
-    // Сохранённые и удалённые операции показываются в списке до ответа сервера.
-    inserts: recentInserts, removals: listRemovals,
+    // Сохранённые, изменённые и удалённые операции показываются в списке до ответа сервера.
+    inserts: recentInserts, edits: listEdits, removals: listRemovals,
   });
 
   const fetchDashboard = async key => assertDashboardShape(
@@ -1454,6 +1464,16 @@ function App() {
         return { error: 'Операция уже изменена. Обновите данные и повторите попытку.' };
       }
       if (res.ok) {
+        // Тело - сохранённый документ: по нему строка в списках сразу показывает
+        // новые данные. Не разобралось - строка обновится вместе с лентой, как раньше.
+        const saved = await res.json().catch(() => null);
+        if (session !== sessionGenerationRef.current) return false;
+        if (saved) {
+          setListEdits(list => [...list, {
+            id: String(updatedTx.id), saved, seq: ++editSeqRef.current,
+            untilRevision: historyRevisionRef.current + 1,
+          }].slice(-MAX_LIST_EDITS));
+        }
         refreshInBackground();
         return true;
       }
@@ -1889,6 +1909,7 @@ function App() {
             historyRevision={historyRevision}
             recentInserts={recentInserts}
             listRemovals={listRemovals}
+            listEdits={listEdits}
             openEditModal={openEditModal}
             getAccountDisplay={getAccountDisplay}
             formatDate={formatDate}

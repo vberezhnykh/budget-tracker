@@ -731,3 +731,312 @@ describe('leaving rows', () => {
         expect(rowEl(container, 'two')).toHaveStyle(COLLAPSED);
     });
 });
+
+// Поправленные строки: показывают новые данные, светятся той же подсветкой и
+// плавно меняют высоту; переехавшая в другой день сворачивается призраком на
+// старом месте и вырастает в новом.
+describe('edited rows', () => {
+    const rows = [
+        expense,
+        { _id: 'two', amount: 5, type: 'expense', account: 'card', category: 'Кафе', date: day },
+    ];
+    const otherDay = '2026-09-11';
+    const groupsOf = list => computePeriodData(transformTransactions(list), '2026-09').transactions;
+    const listProps = {
+        openEditModal: () => { },
+        toggleCategoryFilter: () => { },
+        getAccountDisplay: id => ACCOUNT_NAMES[id] || 'Мой счёт',
+        formatDate: date => `день ${date}`,
+    };
+    const rowEl = (container, id, date = day) => container.querySelector(`[data-history-date="${date}"] [data-history-item="${id}"]`);
+    const dayEl = (container, date) => container.querySelector(`[data-history-date="${date}"]`);
+    const view = (groups, { edited = [], fresh = [], leaving = [] } = {}) => (
+        <TransactionList {...listProps} groups={groups} editedIds={new Map(edited)} freshIds={new Set(fresh)} leavingIds={new Set(leaving)} />
+    );
+
+    let animations;
+    beforeEach(() => {
+        animations = [];
+        Element.prototype.animate = vi.fn(function animate(keyframes, options) {
+            const animation = { cancel: vi.fn(), keyframes, options, target: this };
+            animations.push(animation);
+            return animation;
+        });
+    });
+    afterEach(() => {
+        delete Element.prototype.animate;
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    // В jsdom нет раскладки: высоты строки отдаём по очереди - сначала прежнюю
+    // (читается при рендере), потом новую (после коммита).
+    const heights = (...values) => {
+        const queue = [...values];
+        vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(() => ({ height: queue.length > 1 ? queue.shift() : queue[0], width: 0, top: 0, left: 0 }));
+    };
+
+    it('lights the row when its id shows up in editedIds, in place, and relights it for a new edit number', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups));
+        const one = rowEl(container, 'one');
+        expect(one.parentElement.querySelector('.tx-fresh-glow')).toBeNull();
+
+        rerender(view(groups, { edited: [['one', 1]] }));
+
+        expect(rowEl(container, 'one')).toBe(one);
+        expect(one.parentElement).toHaveClass('tx-fresh');
+        const first = one.parentElement.querySelector('.tx-fresh-glow');
+        expect(first).not.toBeNull();
+        expect(rowEl(container, 'two').parentElement.querySelector('.tx-fresh-glow')).toBeNull();
+
+        // Перерисовка с тем же номером подсветку не перезапускает.
+        rerender(view(groupsOf(rows.map(row => ({ ...row }))), { edited: [['one', 1]] }));
+        expect(one.parentElement.querySelector('.tx-fresh-glow')).toBe(first);
+
+        // Новая правка той же строки - новый светящийся слой.
+        rerender(view(groups, { edited: [['one', 2]] }));
+        expect(rowEl(container, 'one')).toBe(one);
+        const second = one.parentElement.querySelector('.tx-fresh-glow');
+        expect(second).not.toBeNull();
+        expect(second).not.toBe(first);
+    });
+
+    it('keeps the tint after the server list swaps the row in (the edit is dropped)', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups));
+        rerender(view(groups, { edited: [['one', 1]] }));
+        const one = rowEl(container, 'one');
+
+        rerender(view(groupsOf(rows.map(row => ({ ...row }))), { edited: [] }));
+
+        expect(rowEl(container, 'one')).toBe(one);
+        expect(one.parentElement).toHaveClass('tx-fresh');
+        expect(animations).toHaveLength(0);
+    });
+
+    it('does not light a leaving row', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups));
+
+        rerender(view(groups, { edited: [['one', 1]], leaving: ['one'] }));
+
+        expect(rowEl(container, 'one').parentElement.querySelector('.tx-fresh-glow')).toBeNull();
+        expect(rowEl(container, 'one')).toHaveAttribute('inert');
+    });
+
+    it('clips the day card to its rounded corners once a row in it is edited', () => {
+        const groups = groupsOf(rows);
+        const { container, rerender } = render(view(groups));
+        expect(dayEl(container, day).lastElementChild).not.toHaveStyle({ overflow: 'hidden' });
+
+        rerender(view(groups, { edited: [['one', 1]] }));
+
+        expect(dayEl(container, day).lastElementChild).toHaveStyle({ overflow: 'hidden' });
+    });
+
+    it('behaves as before without editedIds', () => {
+        const { container } = render(<TransactionList {...listProps} groups={groupsOf(rows)} />);
+
+        expect(container.querySelector('.tx-fresh')).toBeNull();
+        expect(animations).toHaveLength(0);
+        expect(dayEl(container, day).lastElementChild).not.toHaveStyle({ overflow: 'hidden' });
+    });
+
+    describe('a row that moved to another day', () => {
+        const before = [...rows, { _id: 'three', amount: 8, type: 'expense', account: 'card', category: 'Еда', date: otherDay }];
+        const withGhost = () => {
+            const groups = groupsOf(before);
+            const old = groups[day];
+            const ghost = { ...old.items.find(item => item.id === 'one'), movedAway: true };
+            const copy = { ...ghost, movedAway: undefined, date: otherDay };
+            delete copy.movedAway;
+            return {
+                ...groups,
+                [day]: { ...old, items: old.items.map(item => (item.id === 'one' ? ghost : item)), dailySum: old.dailySum + 12 },
+                [otherDay]: { ...groups[otherDay], items: [copy, ...groups[otherDay].items] },
+            };
+        };
+
+        it('collapses the ghost where it was and grows the copy in the new day with the tint', () => {
+            const { container, rerender } = render(view(groupsOf(before), { fresh: [] }));
+            expect(animations).toHaveLength(0);
+
+            rerender(view(withGhost(), { fresh: ['one'] }));
+
+            const ghost = rowEl(container, 'one', day);
+            const copy = rowEl(container, 'one', otherDay);
+            expect(ghost).toHaveAttribute('inert');
+            expect(ghost).toHaveAttribute('aria-hidden', 'true');
+            const collapse = animations.find(animation => animation.target === ghost);
+            expect(collapse.options).toMatchObject({ duration: 240, easing: 'ease-in', fill: 'forwards' });
+            expect(collapse.keyframes[1]).toMatchObject({ height: '0px', opacity: 0 });
+            // Призрак не светится и не растет, копия - растет и светится.
+            expect(ghost.parentElement.querySelector('.tx-fresh-glow')).toBeNull();
+            expect(copy).not.toHaveAttribute('inert');
+            const grow = animations.find(animation => animation.target === copy);
+            expect(grow.keyframes[0]).toMatchObject({ height: '0px', opacity: 0 });
+            expect(copy.parentElement).toHaveClass('tx-fresh');
+            expect(copy.parentElement.querySelector('.tx-fresh-glow')).not.toBeNull();
+            // Другая строка старого дня не двигалась.
+            expect(rowEl(container, 'two', day)).not.toHaveAttribute('inert');
+        });
+
+        it('collapses the whole day when only ghosts are left in it', () => {
+            const lone = groupsOf([expense]);
+            const { container, rerender } = render(view(lone));
+            const ghostOnly = { [day]: { ...lone[day], items: lone[day].items.map(item => ({ ...item, movedAway: true })), dailySum: 0 } };
+
+            rerender(view(ghostOnly));
+
+            expect(dayEl(container, day)).toHaveAttribute('inert');
+            expect(animations.some(animation => animation.target === dayEl(container, day))).toBe(true);
+        });
+    });
+
+    describe('parts of a split purchase', () => {
+        const parts = [
+            { _id: 'p1', amount: 10, type: 'expense', account: 'card', category: 'Еда', date: day, splitId: 'split_1', description: 'Магазин' },
+            { _id: 'p2', amount: 4, type: 'expense', account: 'card', category: 'Дом', date: day, splitId: 'split_1', description: 'Магазин' },
+        ];
+        const partButtons = container => within(container).getAllByRole('button', { name: /Магазин \(Разделено\)/ });
+
+        it('lights only the edited part, stretched to the card edges', () => {
+            const groups = groupsOf(parts);
+            const { container, rerender } = render(view(groups));
+            expect(container.querySelector('.tx-part-glow')).toBeNull();
+
+            rerender(view(groups, { edited: [['p2', 1]] }));
+
+            const glows = container.querySelectorAll('.tx-part-glow');
+            expect(glows).toHaveLength(1);
+            expect(glows[0]).toHaveClass('tx-fresh-glow');
+            const [first, second] = partButtons(container).map(button => button.parentElement);
+            expect(second.contains(glows[0])).toBe(true);
+            expect(first.querySelector('.tx-part-glow')).toBeNull();
+            expect(second).toHaveStyle({ isolation: 'isolate', position: 'relative' });
+            expect(dayEl(container, day).lastElementChild).toHaveStyle({ overflow: 'hidden' });
+        });
+
+        it('replays the part glow for a new edit number', () => {
+            const groups = groupsOf(parts);
+            const { container, rerender } = render(view(groups, { edited: [['p2', 1]] }));
+            const first = container.querySelector('.tx-part-glow');
+
+            rerender(view(groups, { edited: [['p2', 2]] }));
+
+            expect(container.querySelector('.tx-part-glow')).not.toBe(first);
+            expect(container.querySelectorAll('.tx-part-glow')).toHaveLength(1);
+        });
+
+        it('lets the part glow finish when the refetched list drops the edit', () => {
+            const groups = groupsOf(parts);
+            const { container, rerender } = render(view(groups, { edited: [['p2', 1]] }));
+            const glow = container.querySelector('.tx-part-glow');
+
+            rerender(view(groupsOf(parts.map(part => ({ ...part })))));
+
+            expect(container.querySelector('.tx-part-glow')).toBe(glow);
+        });
+    });
+
+    describe('row height', () => {
+        it('animates the height change over 240 ms with overflow hidden only for the animation', () => {
+            const groups = groupsOf(rows);
+            const { container, rerender } = render(view(groups));
+            const one = rowEl(container, 'one');
+            expect(one).not.toHaveStyle({ overflow: 'hidden' });
+            heights(50, 80);
+
+            rerender(view(groups, { edited: [['one', 1]] }));
+
+            const edit = animations.filter(animation => animation.target === one);
+            expect(edit).toHaveLength(1);
+            expect(edit[0].keyframes).toEqual([{ height: '50px', overflow: 'hidden' }, { height: '80px', overflow: 'hidden' }]);
+            expect(edit[0].options).toEqual({ duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
+            expect(one).not.toHaveStyle({ overflow: 'hidden' });
+        });
+
+        it('does not animate when the height did not change', () => {
+            const groups = groupsOf(rows);
+            const { rerender } = render(view(groups));
+            heights(50, 50.3);
+
+            rerender(view(groups, { edited: [['one', 1]] }));
+
+            expect(animations).toHaveLength(0);
+        });
+
+        it('starts the next edit from where the previous one is and cancels it', () => {
+            const groups = groupsOf(rows);
+            const { rerender } = render(view(groups));
+            heights(50, 80);
+            rerender(view(groups, { edited: [['one', 1]] }));
+            heights(65, 40);
+
+            rerender(view(groups, { edited: [['one', 2]] }));
+
+            expect(animations).toHaveLength(2);
+            expect(animations[0].cancel).toHaveBeenCalledTimes(1);
+            expect(animations[1].keyframes).toEqual([{ height: '65px', overflow: 'hidden' }, { height: '40px', overflow: 'hidden' }]);
+        });
+
+        it('lets the animation finish when the server list swaps the row in', () => {
+            const groups = groupsOf(rows);
+            const { rerender } = render(view(groups));
+            heights(50, 80);
+            rerender(view(groups, { edited: [['one', 1]] }));
+
+            rerender(view(groupsOf(rows.map(row => ({ ...row }))), { edited: [] }));
+
+            expect(animations).toHaveLength(1);
+            expect(animations[0].cancel).not.toHaveBeenCalled();
+        });
+
+        it('cancels a running height animation when the row unmounts', () => {
+            const groups = groupsOf(rows);
+            const { rerender, unmount } = render(view(groups));
+            heights(50, 80);
+            rerender(view(groups, { edited: [['one', 1]] }));
+
+            unmount();
+
+            expect(animations[0].cancel).toHaveBeenCalled();
+        });
+
+        it('does not touch the height of a leaving row', () => {
+            const groups = groupsOf(rows);
+            const { rerender } = render(view(groups));
+            heights(50, 80);
+
+            rerender(view(groups, { edited: [['one', 1]], leaving: ['one'] }));
+
+            // Одна анимация - сворачивание, а не смена высоты.
+            expect(animations).toHaveLength(1);
+            expect(animations[0].options).toMatchObject({ easing: 'ease-in' });
+        });
+
+        it('skips the height animation for reduced motion but keeps the tint', () => {
+            vi.stubGlobal('matchMedia', query => ({ matches: query.includes('prefers-reduced-motion'), media: query }));
+            const groups = groupsOf(rows);
+            const { container, rerender } = render(view(groups));
+            heights(50, 80);
+
+            rerender(view(groups, { edited: [['one', 1]] }));
+
+            expect(animations).toHaveLength(0);
+            expect(rowEl(container, 'one').parentElement.querySelector('.tx-fresh-glow')).not.toBeNull();
+        });
+
+        it('skips the height animation while the row is still growing or collapsing', () => {
+            const groups = groupsOf(rows);
+            const { container, rerender } = render(view(groups));
+            Object.defineProperty(rowEl(container, 'one'), 'getAnimations', { value: () => [{}], configurable: true });
+            heights(50, 80);
+
+            rerender(view(groups, { edited: [['one', 1]] }));
+
+            expect(animations).toHaveLength(0);
+        });
+    });
+});

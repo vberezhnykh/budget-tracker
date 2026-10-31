@@ -75,7 +75,7 @@ test('switching the filter A -> B -> A asks for A only once', async ({ page }) =
   expect(requested).toHaveLength(2);
 });
 
-test('after editing an operation the list stays on screen and the change appears', async ({ page }) => {
+test('after editing an operation the list stays on screen and the change shows at once', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-01-15T12:00:00Z'));
   const transactions = [
     { _id: 'tx-1', title: 'Зарплата', amount: 3000, type: 'income', account: 'acc-card-1', date: '2026-01-01T00:00:00Z', category: 'Зарплата' },
@@ -108,7 +108,8 @@ test('after editing an operation the list stays on screen and the change appears
   await expect(page.getByText('Продукты', { exact: true })).toBeVisible();
   await expect(page.getByText('Зарплата', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('status', { name: 'Загрузка операций…' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /−€77,00$/ })).toHaveCount(0);
+  // Правка видна сразу, до ответа ленты (см. utils/listEdit.js): строка одна, с новой суммой.
+  await expect(page.getByRole('button', { name: /^Продукты, .*−€77,00$/ })).toHaveCount(1);
   release();
   await expect(page.getByRole('button', { name: /^Продукты, .*−€77,00$/ })).toBeVisible();
   await expect(page.getByText('Продукты', { exact: true })).toBeVisible();

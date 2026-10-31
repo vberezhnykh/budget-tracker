@@ -41,6 +41,9 @@ export function applyListRemovals(groups, removals) {
   for (const [date, group] of Object.entries(groups)) {
     let dailySum = group.dailySum;
     for (const item of group.items) {
+      // Призрак переехавшей правкой строки (listEdit.js): вклад в сумму дня с него
+      // уже снят, и уходящей она значится по самому маркеру.
+      if (item.movedAway) continue;
       if (!removals.some(removal => matches(item, removal))) continue;
       leavingIds.add(String(item.id));
       dailySum -= rowContribution(item);

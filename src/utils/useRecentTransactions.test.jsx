@@ -320,4 +320,92 @@ describe('useRecentTransactions', () => {
       expect(result.current.groups['2026-09-24'].dailySum).toBe(-5);
     });
   });
+
+  // Правки: изменённая операция показывает новые данные, пока не пришёл список,
+  // который их уже содержит.
+  describe('edits of just-changed operations', () => {
+    const item = (id, amount, extra = {}) => ({ id, type: 'expense', visualAmount: amount, account: 'card', category: 'Еда', date: '2026-09-24', ...extra });
+    const twoRows = () => ({
+      transactions: { '2026-09-24': { dailySum: -15, items: [item('z1', -10), item('b2', -5)] } },
+    });
+    const saved = { _id: 'z1', title: 'Кофе', amount: 25, type: 'expense', category: 'Еда', account: 'card', date: '2026-09-24T00:00:00.000Z', __v: 1 };
+    const edit = { id: 'z1', saved, seq: 4, untilRevision: 1 };
+
+    it('shows the new data and the new day sum before the refetch lands, then lets the server row replace it', async () => {
+      let finishSecond;
+      const request = vi.fn()
+        .mockResolvedValueOnce(response(twoRows()))
+        .mockImplementationOnce(() => new Promise(resolve => { finishSecond = resolve; }));
+      const { result, rerender } = setup(request);
+      await waitFor(() => expect(ids(result)).toEqual(['z1', 'b2']));
+      expect(result.current.editedIds.size).toBe(0);
+
+      rerender({ revision: 1, edits: [edit] });
+
+      expect(result.current.loading).toBe(false);
+      expect(ids(result)).toEqual(['z1', 'b2']);
+      expect(result.current.groups['2026-09-24'].items[0].visualAmount).toBe(-25);
+      expect(result.current.groups['2026-09-24'].dailySum).toBe(-30);
+      expect([...result.current.editedIds]).toEqual([['z1', 4]]);
+
+      // Список ревизии 1 пришёл с правкой: она отброшена, строка серверная.
+      await act(async () => finishSecond(response({
+        transactions: { '2026-09-24': { dailySum: -30, items: [item('z1', -25), item('b2', -5)] } },
+      })));
+      expect(result.current.groups['2026-09-24'].items[0].visualAmount).toBe(-25);
+      expect(result.current.groups['2026-09-24'].dailySum).toBe(-30);
+      expect(result.current.editedIds.size).toBe(0);
+      expect(result.current.freshIds.size).toBe(0);
+    });
+
+    it('keeps a moved row as a ghost on its old day and grows it on the new one as fresh', async () => {
+      const request = vi.fn()
+        .mockResolvedValueOnce(response({
+          transactions: { '2026-09-24': { dailySum: -15, items: [item('z1', -10), item('b2', -5)] }, '2026-09-20': { dailySum: -2, items: [item('c0', -2, { date: '2026-09-20' })] } },
+        }))
+        .mockImplementationOnce(() => new Promise(() => { }));
+      const { result, rerender } = setup(request);
+      await waitFor(() => expect(ids(result)).toEqual(['z1', 'b2', 'c0']));
+
+      rerender({ revision: 1, edits: [{ ...edit, saved: { ...saved, date: '2026-09-20T00:00:00.000Z' } }] });
+
+      expect(result.current.groups['2026-09-24'].items[0]).toMatchObject({ id: 'z1', movedAway: true });
+      expect(result.current.groups['2026-09-24'].dailySum).toBe(-5);
+      expect(result.current.groups['2026-09-20'].items.map(row => row.id)).toEqual(['z1', 'c0']);
+      expect(result.current.groups['2026-09-20'].dailySum).toBe(-27);
+      expect([...result.current.freshIds]).toEqual(['z1']);
+      expect(result.current.editedIds.size).toBe(0);
+    });
+
+    it('applies edits after inserts, before removals', async () => {
+      const request = vi.fn()
+        .mockResolvedValueOnce(response(twoRows()))
+        .mockImplementationOnce(() => new Promise(() => { }));
+      const { result, rerender } = setup(request);
+      await waitFor(() => expect(ids(result)).toEqual(['z1', 'b2']));
+
+      rerender({
+        revision: 1,
+        inserts: [{ saved: { ...saved, _id: 'zzz', amount: 1 }, untilRevision: 1 }],
+        edits: [{ id: 'zzz', saved: { ...saved, _id: 'zzz', amount: 3 }, seq: 2, untilRevision: 1 }],
+        removals: [{ id: 'b2', splitId: null, trashId: 'b2', untilRevision: 1 }],
+      });
+
+      expect(ids(result)).toEqual(['zzz', 'z1', 'b2']);
+      expect(result.current.groups['2026-09-24'].items[0].visualAmount).toBe(-3);
+      expect(result.current.groups['2026-09-24'].dailySum).toBe(-13);
+      expect([...result.current.freshIds]).toEqual(['zzz']);
+      expect([...result.current.editedIds]).toEqual([['zzz', 2]]);
+      expect([...result.current.leavingIds]).toEqual(['b2']);
+    });
+
+    it('does not apply an edit that belongs to a list of an older or the same revision', async () => {
+      const request = vi.fn().mockResolvedValue(response(twoRows()));
+      const { result } = setup(request, { revision: 1, edits: [edit] });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.groups['2026-09-24'].items[0].visualAmount).toBe(-10);
+      expect(result.current.editedIds.size).toBe(0);
+    });
+  });
 });
